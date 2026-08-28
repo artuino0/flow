@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.11.0] - 2026-08-27
+#### [add]
+- [ERD-17](https://dydasoftware.atlassian.net/browse/ERD-17) - Generador de schema Zod dinamico desde entity_fields (cacheado en memoria por huella de metadatos), integrado en create/update de records
+
 ### [0.10.0] - 2026-08-27
 #### [add]
 - [ERD-16](https://dydasoftware.atlassian.net/browse/ERD-16) - CRUD generico sobre records (list paginado, create, get, update, delete) protegido por requirePermission + withTenant

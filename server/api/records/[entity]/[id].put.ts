@@ -1,10 +1,13 @@
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
+import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
 import { records } from '~/server/db/schema'
 
 // PUT /api/records/:entity/:id { customData } (HU-ERD-16)
+// Igual que en el create, customData se revalida contra el schema Zod
+// dinamico de la entidad (HU-ERD-17) antes de actualizar.
 const bodySchema = z.object({
   customData: z.record(z.any())
 })
@@ -15,10 +18,20 @@ export default defineEventHandler(async (event) => {
   const { auth, entity } = await requirePermission(event, entitySlug, 'canUpdate')
   const body = await readValidatedBody(event, bodySchema.parse)
 
+  const dynamicSchema = await getEntityZodSchema(auth.tenantId, entity.id)
+  const parsed = dynamicSchema.safeParse(body.customData)
+  if (!parsed.success) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'customData invalido para esta entidad',
+      data: parsed.error.flatten()
+    })
+  }
+
   const row = await withTenant(auth.tenantId, async (tx) => {
     const [r] = await tx
       .update(records)
-      .set({ customData: body.customData, updatedAt: new Date() })
+      .set({ customData: parsed.data, updatedAt: new Date() })
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
       .returning()
     return r
