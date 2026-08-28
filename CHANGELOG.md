@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.9.0] - 2026-08-27
+#### [add]
+- [ERD-15](https://dydasoftware.atlassian.net/browse/ERD-15) - Middleware de autorizacion RBAC por rol y entidad (guard reutilizable requirePermission)
+
 ### [0.8.0] - 2026-08-27
 #### [add]
 - [ERD-14](https://dydasoftware.atlassian.net/browse/ERD-14) - Autenticacion propia JWT + bcrypt sobre tabla users (login + endpoint protegido de ejemplo)

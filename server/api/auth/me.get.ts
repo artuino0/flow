@@ -1,19 +1,9 @@
-import { getBearerToken, verifyAuthToken } from '~/server/utils/auth'
+import type { AuthTokenPayload } from '~/server/utils/auth'
 
-// Endpoint protegido de ejemplo (HU-ERD-14): valida el JWT del header
-// Authorization: Bearer <token> y devuelve el payload decodificado.
+// Endpoint protegido de ejemplo (HU-ERD-14/HU-ERD-15): el middleware global
+// (server/middleware/auth.ts) ya valido el JWT y dejo el payload en
+// event.context.auth antes de que este handler se ejecute.
 export default defineEventHandler((event) => {
-  const config = useRuntimeConfig()
-  const token = getBearerToken(getHeader(event, 'authorization'))
-
-  if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'Falta el header Authorization: Bearer <token>' })
-  }
-
-  try {
-    const payload = verifyAuthToken(token, config.jwtSecret as string)
-    return { authenticated: true, ...payload }
-  } catch {
-    throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
-  }
+  const auth = event.context.auth as AuthTokenPayload
+  return { authenticated: true, ...auth }
 })
