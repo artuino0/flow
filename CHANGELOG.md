@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.13.1] - 2026-08-27
+#### [fix]
+- [ERD-45](https://dydasoftware.atlassian.net/browse/ERD-45) - Seguridad: bump drizzle-orm 0.36 -> 0.45.2 (fix de GHSA-gpj5-g38j-94v9, inyeccion SQL via identificadores mal escapados, CVSS 7.5) y drizzle-kit -> 0.31.10
+
 ### [0.13.0] - 2026-08-27
 #### [add]
 - [ERD-19](https://dydasoftware.atlassian.net/browse/ERD-19) - Endpoints de relaciones entre records (list/create/delete sobre record_relations), integridad via trigger de ERD-10, RBAC via canRead/canUpdate sobre las entidades source/target
