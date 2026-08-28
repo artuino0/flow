@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.5.0] - 2026-08-27
+#### [add]
+- [ERD-10](https://dydasoftware.atlassian.net/browse/ERD-10) - Crear relation_definitions y record_relations (edge tables) con triggers de integridad
+
 ### [0.4.0] - 2026-08-27
 #### [add]
 - [ERD-9](https://dydasoftware.atlassian.net/browse/ERD-9) - Crear tabla records (almacenamiento generico)

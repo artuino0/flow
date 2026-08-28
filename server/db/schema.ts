@@ -61,3 +61,29 @@ export const records = pgTable('records', {
   entityIdx: index('records_entity_idx').on(table.entityId),
   customDataGinIdx: index('records_custom_data_gin_idx').using('gin', table.customData)
 }))
+
+// relation_definitions: define tipos de vinculo permitidos entre dos entidades (grafo).
+export const relationDefinitions = pgTable('relation_definitions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  name: text('name').notNull(),
+  sourceEntityId: uuid('source_entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  targetEntityId: uuid('target_entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantNameUnique: uniqueIndex('relation_definitions_tenant_name_unique').on(table.tenantId, table.name)
+}))
+
+// record_relations: instancias del grafo - vincula dos records segun una relation_definition.
+// La integridad referencial (que el record exista y sea del tipo esperado) se valida
+// via trigger PL/pgSQL (ver migracion 0005); la validacion de campos vive solo en Zod (Nitro).
+export const recordRelations = pgTable('record_relations', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  relationDefinitionId: uuid('relation_definition_id').notNull().references(() => relationDefinitions.id, { onDelete: 'cascade' }),
+  sourceRecordId: uuid('source_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
+  targetRecordId: uuid('target_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  sourceIdx: index('record_relations_source_idx').on(table.sourceRecordId),
+  targetIdx: index('record_relations_target_idx').on(table.targetRecordId)
+}))
