@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.12.0] - 2026-08-27
+#### [add]
+- [ERD-18](https://dydasoftware.atlassian.net/browse/ERD-18) - Revalidacion perezosa: trigger marca records.is_dirty al cambiar entity_fields (insert/update/delete), revalidacion bajo demanda en GET y PUT de records (sin job masivo)
+
 ### [0.11.0] - 2026-08-27
 #### [add]
 - [ERD-17](https://dydasoftware.atlassian.net/browse/ERD-17) - Generador de schema Zod dinamico desde entity_fields (cacheado en memoria por huella de metadatos), integrado en create/update de records

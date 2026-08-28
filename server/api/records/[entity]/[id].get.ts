@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
+import { revalidateIfDirty } from '~/server/utils/lazyRevalidation'
 import { withTenant } from '~/server/db'
 import { records } from '~/server/db/schema'
 
@@ -15,7 +16,9 @@ export default defineEventHandler(async (event) => {
       .from(records)
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
       .limit(1)
-    return r
+    if (!r) return r
+    // HU-ERD-18: revalidacion perezosa en el proximo acceso al registro.
+    return revalidateIfDirty(tx, r)
   })
 
   if (!row) {

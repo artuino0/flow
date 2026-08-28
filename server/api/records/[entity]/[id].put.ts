@@ -31,7 +31,10 @@ export default defineEventHandler(async (event) => {
   const row = await withTenant(auth.tenantId, async (tx) => {
     const [r] = await tx
       .update(records)
-      .set({ customData: parsed.data, updatedAt: new Date() })
+      // customData ya se valido arriba contra el schema vigente (ERD-17), asi
+      // que esta edicion deja al registro limpio (HU-ERD-18: la edicion es
+      // uno de los dos puntos de revalidacion perezosa, junto con el GET).
+      .set({ customData: parsed.data, isDirty: false, updatedAt: new Date() })
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
       .returning()
     return r
