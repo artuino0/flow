@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.14.0] - 2026-08-27
+#### [add]
+- [ERD-20](https://dydasoftware.atlassian.net/browse/ERD-20) - SDK de Sentry (no-op sin SENTRY_DSN) + logging estructurado JSON, hook global de errores en Nitro, log de acceso por request, endpoint de prueba controlado
+
 ### [0.13.1] - 2026-08-27
 #### [fix]
 - [ERD-45](https://dydasoftware.atlassian.net/browse/ERD-45) - Seguridad: bump drizzle-orm 0.36 -> 0.45.2 (fix de GHSA-gpj5-g38j-94v9, inyeccion SQL via identificadores mal escapados, CVSS 7.5) y drizzle-kit -> 0.31.10
