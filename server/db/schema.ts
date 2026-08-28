@@ -32,3 +32,15 @@ export const entityFields = pgTable('entity_fields', {
 }, (table) => ({
   entityNameUnique: uniqueIndex('entity_fields_entity_name_unique').on(table.entityId, table.name)
 }))
+
+// entity_field_history: snapshot en cada cambio de tipo/regla de un entity_field,
+// para auditoria de metadatos.
+export const entityFieldHistory = pgTable('entity_field_history', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  entityFieldId: uuid('entity_field_id').notNull().references(() => entityFields.id, { onDelete: 'cascade' }),
+  dataType: text('data_type').notNull(),
+  validationRules: jsonb('validation_rules').notNull(),
+  isRequired: boolean('is_required').notNull(),
+  changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+  changedBy: uuid('changed_by')
+})
