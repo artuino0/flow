@@ -11,6 +11,6 @@ const querySchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const query = await getValidatedQuery(event, querySchema.parse)
-  const auth = await requirePermission(event, query.entity, query.action as PermissionAction)
-  return { allowed: true, entity: query.entity, action: query.action, auth }
+  const { auth, entity } = await requirePermission(event, query.entity, query.action as PermissionAction)
+  return { allowed: true, entity, action: query.action, auth }
 })

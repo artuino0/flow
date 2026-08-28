@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.10.0] - 2026-08-27
+#### [add]
+- [ERD-16](https://dydasoftware.atlassian.net/browse/ERD-16) - CRUD generico sobre records (list paginado, create, get, update, delete) protegido por requirePermission + withTenant
+
 ### [0.9.0] - 2026-08-27
 #### [add]
 - [ERD-15](https://dydasoftware.atlassian.net/browse/ERD-15) - Middleware de autorizacion RBAC por rol y entidad (guard reutilizable requirePermission)

@@ -6,16 +6,29 @@ import type { AuthTokenPayload } from '~/server/utils/auth'
 
 export type PermissionAction = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
 
+export interface ResolvedEntity {
+  id: string
+  slug: string
+  name: string
+}
+
+export interface PermissionResult {
+  auth: AuthTokenPayload
+  entity: ResolvedEntity
+}
+
 /**
  * Guard reutilizable (HU-ERD-15) para endpoints genericos: valida que el rol
  * del usuario autenticado tenga el permiso pedido sobre la entidad indicada
- * (por slug), dentro de su tenant. Lanza 401/403 si no corresponde.
+ * (por slug), dentro de su tenant. Lanza 401/403/404 si no corresponde y
+ * devuelve tanto el auth como la entidad ya resuelta (evita resolverla dos
+ * veces en cada endpoint de records, HU-ERD-16).
  */
 export async function requirePermission(
   event: H3Event,
   entitySlug: string,
   action: PermissionAction
-): Promise<AuthTokenPayload> {
+): Promise<PermissionResult> {
   const auth = event.context.auth as AuthTokenPayload | undefined
   if (!auth) {
     throw createError({ statusCode: 401, statusMessage: 'No autenticado' })
@@ -24,27 +37,30 @@ export async function requirePermission(
     throw createError({ statusCode: 403, statusMessage: 'Usuario sin rol asignado' })
   }
 
-  const allowed = await withTenant(auth.tenantId, async (tx) => {
+  const result = await withTenant(auth.tenantId, async (tx) => {
     const [entity] = await tx
-      .select({ id: entities.id })
+      .select({ id: entities.id, slug: entities.slug, name: entities.name })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))
       .limit(1)
-    if (!entity) return false
+    if (!entity) return { entity: null, allowed: false }
 
     const [perm] = await tx
       .select()
       .from(roleEntityPermissions)
       .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entity.id)))
       .limit(1)
-    if (!perm) return false
+    if (!perm) return { entity, allowed: false }
 
-    return Boolean(perm[action])
+    return { entity, allowed: Boolean(perm[action]) }
   })
 
-  if (!allowed) {
+  if (!result.entity) {
+    throw createError({ statusCode: 404, statusMessage: `Entidad "${entitySlug}" no existe` })
+  }
+  if (!result.allowed) {
     throw createError({ statusCode: 403, statusMessage: `No tenes permiso "${action}" sobre "${entitySlug}"` })
   }
 
-  return auth
+  return { auth, entity: result.entity }
 }
