@@ -50,6 +50,20 @@
       "when": 1787888253197,
       "tag": "0006_brown_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787888316228,
+      "tag": "0007_complex_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787888317010,
+      "tag": "0008_row_level_security",
+      "breakpoints": true
     }
   ]
 }

@@ -79,11 +79,13 @@ export const relationDefinitions = pgTable('relation_definitions', {
 // via trigger PL/pgSQL (ver migracion 0005); la validacion de campos vive solo en Zod (Nitro).
 export const recordRelations = pgTable('record_relations', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
   relationDefinitionId: uuid('relation_definition_id').notNull().references(() => relationDefinitions.id, { onDelete: 'cascade' }),
   sourceRecordId: uuid('source_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
   targetRecordId: uuid('target_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
+  tenantIdx: index('record_relations_tenant_idx').on(table.tenantId),
   sourceIdx: index('record_relations_source_idx').on(table.sourceRecordId),
   targetIdx: index('record_relations_target_idx').on(table.targetRecordId)
 }))

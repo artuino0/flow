@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.7.0] - 2026-08-27
+#### [add]
+- [ERD-12](https://dydasoftware.atlassian.net/browse/ERD-12) - Row-Level Security (RLS) sobre tenant_id en entities, records, relation_definitions, record_relations y roles
+
 ### [0.6.0] - 2026-08-27
 #### [add]
 - [ERD-11](https://dydasoftware.atlassian.net/browse/ERD-11) - Crear roles y role_entity_permissions (RBAC por tenant)
