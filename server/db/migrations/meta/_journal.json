@@ -64,6 +64,20 @@
       "when": 1787888317010,
       "tag": "0008_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787890703486,
+      "tag": "0009_conscious_wallflower",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787890704337,
+      "tag": "0010_users_rls",
+      "breakpoints": true
     }
   ]
 }

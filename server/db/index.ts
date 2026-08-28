@@ -1,5 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
+import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
+import * as schema from './schema'
 
 // En runtime la app debe conectarse con APP_DATABASE_URL (rol "erp_app", sin
 // privilegios de superusuario) para que las politicas RLS (HU-ERD-12) apliquen.
@@ -11,8 +13,19 @@ const connectionString =
 
 const client = postgres(connectionString)
 
-export const db = drizzle(client, { schema: undefined })
+export const db = drizzle(client, { schema })
 
-// TODO (ERD-15, middleware RBAC): en cada request, ejecutar
-// `SET LOCAL app.tenant_id = '<uuid-del-tenant-autenticado>'` en la misma
-// transaccion antes de consultar, para que la RLS filtre correctamente.
+/**
+ * Corre `fn` dentro de una transaccion con `app.tenant_id` seteado via
+ * set_config(), para que las politicas RLS filtren por ese tenant.
+ * Toda consulta a tablas multi-tenant (HU-ERD-15 en adelante) debe pasar por aca.
+ */
+export async function withTenant<T>(
+  tenantId: string,
+  fn: (tx: typeof db) => Promise<T>
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`)
+    return fn(tx as unknown as typeof db)
+  })
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.8.0] - 2026-08-27
+#### [add]
+- [ERD-14](https://dydasoftware.atlassian.net/browse/ERD-14) - Autenticacion propia JWT + bcrypt sobre tabla users (login + endpoint protegido de ejemplo)
+
 ### [0.7.0] - 2026-08-27
 #### [add]
 - [ERD-12](https://dydasoftware.atlassian.net/browse/ERD-12) - Row-Level Security (RLS) sobre tenant_id en entities, records, relation_definitions, record_relations y roles

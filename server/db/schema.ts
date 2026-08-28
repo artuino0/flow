@@ -114,3 +114,20 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
 }, (table) => ({
   roleEntityUnique: uniqueIndex('role_entity_permissions_role_entity_unique').on(table.roleId, table.entityId)
 }))
+
+// users: autenticacion propia (JWT + bcrypt), sin proveedor externo.
+// El email es unico por tenant (no global) - un mismo email puede existir en
+// distintos tenants, como espacios de trabajo independientes.
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
+  email: text('email').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  fullName: text('full_name'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantEmailUnique: uniqueIndex('users_tenant_email_unique').on(table.tenantId, table.email)
+}))
