@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.15.0] - 2026-08-27
+#### [add]
+- [ERD-21](https://dydasoftware.atlassian.net/browse/ERD-21) - Tailwind CSS (@nuxtjs/tailwindcss) + tema por defecto, layout base header/sidebar/contenido, placeholder de menu dinamico (AppNav) para ERD-44
+
 ### [0.14.0] - 2026-08-27
 #### [add]
 - [ERD-20](https://dydasoftware.atlassian.net/browse/ERD-20) - SDK de Sentry (no-op sin SENTRY_DSN) + logging estructurado JSON, hook global de errores en Nitro, log de acceso por request, endpoint de prueba controlado

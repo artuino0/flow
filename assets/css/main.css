@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* HU-ERD-21: tema por defecto de la app. */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
