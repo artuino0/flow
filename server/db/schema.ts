@@ -1,6 +1,6 @@
 // Esquema dinamico del Motor ERP (dominio OLTP).
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 // entities: define los objetos/modulos del sistema (ej. Clientes, Facturas, Productores).
@@ -44,3 +44,20 @@ export const entityFieldHistory = pgTable('entity_field_history', {
   changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
   changedBy: uuid('changed_by')
 })
+
+// records: almacenamiento generico de cualquier registro de cualquier entidad.
+// custom_data (JSONB) guarda los valores segun entity_fields; is_dirty marca
+// revalidacion perezosa cuando cambian los metadatos de la entidad.
+export const records = pgTable('records', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull(),
+  customData: jsonb('custom_data').notNull().default({}),
+  isDirty: boolean('is_dirty').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('records_tenant_idx').on(table.tenantId),
+  entityIdx: index('records_entity_idx').on(table.entityId),
+  customDataGinIdx: index('records_custom_data_gin_idx').using('gin', table.customData)
+}))

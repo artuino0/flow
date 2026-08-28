@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.4.0] - 2026-08-27
+#### [add]
+- [ERD-9](https://dydasoftware.atlassian.net/browse/ERD-9) - Crear tabla records (almacenamiento generico)
+
 ### [0.3.0] - 2026-08-27
 #### [add]
 - [ERD-8](https://dydasoftware.atlassian.net/browse/ERD-8) - Crear tabla entity_field_history (auditoria de metadatos)
