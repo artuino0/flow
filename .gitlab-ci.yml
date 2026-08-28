@@ -1,0 +1,40 @@
+stages:
+  - install
+  - lint
+  - build
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+install:
+  stage: install
+  image: node:22-alpine
+  script:
+    - npm install
+  artifacts:
+    paths:
+      - node_modules/
+    expire_in: 1h
+
+lint:
+  stage: lint
+  image: node:22-alpine
+  needs: ["install"]
+  script:
+    - npm run lint
+
+build:
+  stage: build
+  image: node:22-alpine
+  needs: ["install"]
+  script:
+    - npm run build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'

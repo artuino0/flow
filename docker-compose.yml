@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-dinamico-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://erp_admin:changeme@erp-dinamico-db:5432/erp_dinamico}
+      JWT_SECRET: ${JWT_SECRET:-changeme}
+      APP_MODE: ${APP_MODE:-saas}
+    networks:
+      - erp-dinamico-net
+
+networks:
+  erp-dinamico-net:
+    name: erp-dinamico-net
+    external: true
