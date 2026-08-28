@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.16.0] - 2026-08-27
+#### [add]
+- [ERD-22](https://dydasoftware.atlassian.net/browse/ERD-22) - Pantalla de login conectada a /api/auth/login, JWT en cookie httpOnly (no localStorage), manejo de credenciales invalidas, logout, middleware global de rutas protegidas con redireccion post-login
+
 ### [0.15.0] - 2026-08-27
 #### [add]
 - [ERD-21](https://dydasoftware.atlassian.net/browse/ERD-21) - Tailwind CSS (@nuxtjs/tailwindcss) + tema por defecto, layout base header/sidebar/contenido, placeholder de menu dinamico (AppNav) para ERD-44

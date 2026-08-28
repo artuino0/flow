@@ -1,9 +1,11 @@
-import { getBearerToken, verifyAuthToken } from '~/server/utils/auth'
+import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/utils/auth'
 
 // Middleware global (HU-ERD-15): valida el JWT de cualquier ruta /api/* salvo
 // las publicas, y deja el payload disponible en event.context.auth para que
 // los endpoints y requirePermission() no tengan que reverificar el token.
-const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login'])
+// HU-ERD-22: el token puede venir por header Authorization (clientes API) o
+// por la cookie httpOnly que setea /api/auth/login (frontend web).
+const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout'])
 
 export default defineEventHandler((event) => {
   const path = getRequestURL(event).pathname
@@ -13,10 +15,10 @@ export default defineEventHandler((event) => {
   }
 
   const config = useRuntimeConfig()
-  const token = getBearerToken(getHeader(event, 'authorization'))
+  const token = resolveAuthToken(getHeader(event, 'authorization'), getCookie(event, AUTH_COOKIE_NAME))
 
   if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'Falta el header Authorization: Bearer <token>' })
+    throw createError({ statusCode: 401, statusMessage: 'No autenticado (falta token)' })
   }
 
   try {

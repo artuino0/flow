@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { users } from '~/server/db/schema'
-import { verifyPassword, signAuthToken } from '~/server/utils/auth'
+import { AUTH_COOKIE_MAX_AGE_SECONDS, AUTH_COOKIE_NAME, verifyPassword, signAuthToken } from '~/server/utils/auth'
 
 // MVP: el cliente indica el tenant explicitamente (tenantId). Cuando exista
 // resolucion por subdominio/dominio (multi-tenant SaaS), este endpoint debe
@@ -40,5 +40,15 @@ export default defineEventHandler(async (event) => {
     config.jwtSecret as string
   )
 
-  return { token }
+  // HU-ERD-22: almacenamiento seguro del JWT - cookie httpOnly (no accesible
+  // desde JS, mitiga robo por XSS), no se devuelve el token crudo en el body.
+  setCookie(event, AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: AUTH_COOKIE_MAX_AGE_SECONDS
+  })
+
+  return { ok: true }
 })
