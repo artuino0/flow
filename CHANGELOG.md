@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.6.0] - 2026-08-27
+#### [add]
+- [ERD-11](https://dydasoftware.atlassian.net/browse/ERD-11) - Crear roles y role_entity_permissions (RBAC por tenant)
+
 ### [0.5.0] - 2026-08-27
 #### [add]
 - [ERD-10](https://dydasoftware.atlassian.net/browse/ERD-10) - Crear relation_definitions y record_relations (edge tables) con triggers de integridad

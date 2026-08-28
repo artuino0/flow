@@ -87,3 +87,28 @@ export const recordRelations = pgTable('record_relations', {
   sourceIdx: index('record_relations_source_idx').on(table.sourceRecordId),
   targetIdx: index('record_relations_target_idx').on(table.targetRecordId)
 }))
+
+// roles: RBAC por tenant. Sin permisos a nivel de campo en el MVP.
+export const roles = pgTable('roles', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  name: text('name').notNull(),
+  isSystem: boolean('is_system').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantNameUnique: uniqueIndex('roles_tenant_name_unique').on(table.tenantId, table.name)
+}))
+
+// role_entity_permissions: permisos can_read/can_create/can_update/can_delete
+// por rol y por entidad.
+export const roleEntityPermissions = pgTable('role_entity_permissions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  canRead: boolean('can_read').notNull().default(false),
+  canCreate: boolean('can_create').notNull().default(false),
+  canUpdate: boolean('can_update').notNull().default(false),
+  canDelete: boolean('can_delete').notNull().default(false)
+}, (table) => ({
+  roleEntityUnique: uniqueIndex('role_entity_permissions_role_entity_unique').on(table.roleId, table.entityId)
+}))
