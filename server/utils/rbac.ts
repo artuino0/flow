@@ -17,6 +17,17 @@ export interface PermissionResult {
   entity: ResolvedEntity
 }
 
+function getAuthOrThrow(event: H3Event): AuthTokenPayload {
+  const auth = event.context.auth as AuthTokenPayload | undefined
+  if (!auth) {
+    throw createError({ statusCode: 401, statusMessage: 'No autenticado' })
+  }
+  if (!auth.roleId) {
+    throw createError({ statusCode: 403, statusMessage: 'Usuario sin rol asignado' })
+  }
+  return auth
+}
+
 /**
  * Guard reutilizable (HU-ERD-15) para endpoints genericos: valida que el rol
  * del usuario autenticado tenga el permiso pedido sobre la entidad indicada
@@ -29,13 +40,7 @@ export async function requirePermission(
   entitySlug: string,
   action: PermissionAction
 ): Promise<PermissionResult> {
-  const auth = event.context.auth as AuthTokenPayload | undefined
-  if (!auth) {
-    throw createError({ statusCode: 401, statusMessage: 'No autenticado' })
-  }
-  if (!auth.roleId) {
-    throw createError({ statusCode: 403, statusMessage: 'Usuario sin rol asignado' })
-  }
+  const auth = getAuthOrThrow(event)
 
   const result = await withTenant(auth.tenantId, async (tx) => {
     const [entity] = await tx
@@ -63,4 +68,34 @@ export async function requirePermission(
   }
 
   return { auth, entity: result.entity }
+}
+
+/**
+ * Variante de requirePermission() para cuando ya se conoce el entityId
+ * directamente (p. ej. via relation_definitions.source_entity_id /
+ * target_entity_id, HU-ERD-19) y no hace falta resolverlo por slug. No
+ * lanza 404 de entidad (se asume que el caller ya la resolvio); solo
+ * valida el permiso del rol sobre esa entidad. Devuelve el auth.
+ */
+export async function requirePermissionForEntityId(
+  event: H3Event,
+  entityId: string,
+  action: PermissionAction
+): Promise<AuthTokenPayload> {
+  const auth = getAuthOrThrow(event)
+
+  const allowed = await withTenant(auth.tenantId, async (tx) => {
+    const [perm] = await tx
+      .select()
+      .from(roleEntityPermissions)
+      .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
+      .limit(1)
+    if (!perm) return false
+    return Boolean(perm[action])
+  })
+
+  if (!allowed) {
+    throw createError({ statusCode: 403, statusMessage: `No tenes permiso "${action}" sobre esta entidad` })
+  }
+  return auth
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.13.0] - 2026-08-27
+#### [add]
+- [ERD-19](https://dydasoftware.atlassian.net/browse/ERD-19) - Endpoints de relaciones entre records (list/create/delete sobre record_relations), integridad via trigger de ERD-10, RBAC via canRead/canUpdate sobre las entidades source/target
+
 ### [0.12.0] - 2026-08-27
 #### [add]
 - [ERD-18](https://dydasoftware.atlassian.net/browse/ERD-18) - Revalidacion perezosa: trigger marca records.is_dirty al cambiar entity_fields (insert/update/delete), revalidacion bajo demanda en GET y PUT de records (sin job masivo)
