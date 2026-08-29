@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 import { withTenant } from '~/server/db'
-import { entities, roleEntityPermissions } from '~/server/db/schema'
+import { entities, roleEntityPermissions, roles } from '~/server/db/schema'
 import type { AuthTokenPayload } from '~/server/utils/auth'
 
 export type PermissionAction = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
@@ -96,6 +96,33 @@ export async function requirePermissionForEntityId(
 
   if (!allowed) {
     throw createError({ statusCode: 403, statusMessage: `No tenes permiso "${action}" sobre esta entidad` })
+  }
+  return auth
+}
+
+/**
+ * Guard para pantallas de administracion del propio tenant (HU-ERD-61, ej.
+ * Configuracion General) que no encajan en el modelo de permisos por entidad
+ * de role_entity_permissions (no son un modulo dinamico). No existe todavia
+ * un concepto formal de "rol administrador" en el sistema - se reutiliza
+ * roles.isSystem (ya existente, sin uso hasta ahora) como esa senal: el rol
+ * creado como "de sistema" para el tenant es el que tiene acceso total.
+ * Si en el futuro se necesita un modelo mas fino, esto es lo primero a revisar.
+ */
+export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload> {
+  const auth = getAuthOrThrow(event)
+
+  const isAdmin = await withTenant(auth.tenantId, async (tx) => {
+    const [role] = await tx
+      .select({ isSystem: roles.isSystem })
+      .from(roles)
+      .where(eq(roles.id, auth.roleId!))
+      .limit(1)
+    return Boolean(role?.isSystem)
+  })
+
+  if (!isAdmin) {
+    throw createError({ statusCode: 403, statusMessage: 'Requiere rol administrador' })
   }
   return auth
 }

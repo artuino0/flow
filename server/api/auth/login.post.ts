@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
-import { withTenant } from '~/server/db'
-import { users } from '~/server/db/schema'
+import { db, withTenant } from '~/server/db'
+import { tenants, users } from '~/server/db/schema'
 import { AUTH_COOKIE_MAX_AGE_SECONDS, AUTH_COOKIE_NAME, verifyPassword, signAuthToken } from '~/server/utils/auth'
 
 // MVP: el cliente indica el tenant explicitamente (tenantId). Cuando exista
@@ -16,6 +16,14 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, bodySchema.parse)
   const config = useRuntimeConfig()
+
+  // HU-ERD-61: tenants ahora existe como tabla propia (antes tenant_id era
+  // un UUID suelto sin fila asociada). Mismo error generico que credenciales
+  // invalidas si no existe, para no revelar si el UUID es real o no.
+  const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, body.tenantId)).limit(1)
+  if (!tenant) {
+    throw createError({ statusCode: 401, statusMessage: 'Credenciales invalidas' })
+  }
 
   const user = await withTenant(body.tenantId, async (tx) => {
     const rows = await tx

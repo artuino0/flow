@@ -115,6 +115,26 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
   roleEntityUnique: uniqueIndex('role_entity_permissions_role_entity_unique').on(table.roleId, table.entityId)
 }))
 
+// tenants: registro de organizaciones (HU-ERD-61). Antes tenant_id era solo un
+// UUID suelto sin fila propia. Esta tabla NO lleva RLS por tenant_id (ella ES
+// el tenant) - el acceso se protege en el endpoint (server/api/tenant/*),
+// exigiendo que coincida con auth.tenantId del JWT.
+// fiscal_data (jsonb) guarda datos que varian por pais (RFC/regimen fiscal en
+// Mexico) sin forzar una migracion por cada mercado nuevo - mismo patron que
+// entity_fields.validation_rules.
+export const tenants = pgTable('tenants', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  name: text('name').notNull(),
+  email: text('email'),
+  phone: text('phone'),
+  defaultCurrency: text('default_currency').notNull().default('MXN'),
+  timezone: text('timezone').notNull().default('America/Mexico_City'),
+  country: text('country').notNull().default('MX'),
+  fiscalData: jsonb('fiscal_data').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})
+
 // users: autenticacion propia (JWT + bcrypt), sin proveedor externo.
 // El email es unico por tenant (no global) - un mismo email puede existir en
 // distintos tenants, como espacios de trabajo independientes.

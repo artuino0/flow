@@ -1,5 +1,13 @@
 # Changelog
 
+### [0.18.0] - 2026-08-29
+#### [add]
+- [ERD-61](https://dydasoftware.atlassian.net/browse/ERD-61) - Tabla tenants (nombre, moneda, zona horaria, fiscal_data jsonb con validacion Mexico: RFC/regimen fiscal/CP), endpoints GET/PUT /api/tenant (solo rol administrador, via roles.isSystem), login.post.ts ahora valida que el tenantId exista en tenants, seed-dev-user.mjs actualizado
+
+### [0.17.0] - 2026-08-28
+#### [add]
+- Pantalla de login rediseñada segun Screen/Login de ERPDinamico.pen: paleta de marca (brand.*) y tipografia Inter en tailwind.config.ts/nuxt.config.ts, iconos @lucide/vue. Campo "Organizacion" mantiene el contrato tenantId (UUID) del backend - no existe aun resolucion de slug a tenant. Agregado tambien vue-tsc como devDependency (faltaba en package.json desde ERD-21, necesario para `nuxt typecheck`).
+
 ### [0.16.0] - 2026-08-27
 #### [add]
 - [ERD-22](https://dydasoftware.atlassian.net/browse/ERD-22) - Pantalla de login conectada a /api/auth/login, JWT en cookie httpOnly (no localStorage), manejo de credenciales invalidas, logout, middleware global de rutas protegidas con redireccion post-login
