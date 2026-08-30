@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.19.0] - 2026-08-29
+#### [add]
+- [ERD-23](https://dydasoftware.atlassian.net/browse/ERD-23) - Form Builder dinamico: componente DynamicForm.vue que renderiza inputs segun entity_fields (text/enum, number, boolean, date, json, relation) con validacion en cliente espejo de dynamicSchema.ts, paginas genericas de alta/edicion de registro (pages/registros/:entity/nuevo y /:id/editar). Se agrego tambien GET /api/entities/:entity/fields (prerequisito no cubierto por ningun ticket existente: ERD-43 solo expone el listado de entidades, no sus campos).
+
 ### [0.18.0] - 2026-08-29
 #### [add]
 - [ERD-61](https://dydasoftware.atlassian.net/browse/ERD-61) - Tabla tenants (nombre, moneda, zona horaria, fiscal_data jsonb con validacion Mexico: RFC/regimen fiscal/CP), endpoints GET/PUT /api/tenant (solo rol administrador, via roles.isSystem), login.post.ts ahora valida que el tenantId exista en tenants, seed-dev-user.mjs actualizado
