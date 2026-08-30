@@ -1,6 +1,6 @@
 // Esquema dinamico del Motor ERP (dominio OLTP).
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 // entities: define los objetos/modulos del sistema (ej. Clientes, Facturas, Productores).
@@ -150,4 +150,78 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
   tenantEmailUnique: uniqueIndex('users_tenant_email_unique').on(table.tenantId, table.email)
+}))
+
+// ---- Dominio OLAP (HU-ERD-27): esquema en estrella para analitica ----
+// El ETL que puebla estas tablas a partir del dominio transaccional
+// (records/entities) es HU-ERD-28, todavia no implementado - aca solo se
+// define el esquema (fact + dimensiones) con sus FKs.
+
+// dim_date: dimension de fecha clasica de un DWH. Es GLOBAL (sin tenant_id):
+// una fecha es la misma fila para todos los tenants, se puebla una sola vez
+// (ej. con un generate_series) y no lleva RLS.
+export const dimDate = pgTable('dim_date', {
+  id: integer('id').primaryKey(), // clave surrogate yyyymmdd, ej 20260829
+  date: date('date').notNull(),
+  year: integer('year').notNull(),
+  quarter: integer('quarter').notNull(),
+  month: integer('month').notNull(),
+  day: integer('day').notNull(),
+  dayOfWeek: integer('day_of_week').notNull(), // 0 (domingo) - 6 (sabado)
+  isWeekend: boolean('is_weekend').notNull().default(false)
+}, (table) => ({
+  dateUnique: uniqueIndex('dim_date_date_unique').on(table.date)
+}))
+
+// dim_cliente / dim_sucursal: dimensiones tenant-scoped, pobladas como
+// snapshot/copia denormalizada desde records (entidad Clientes u otra que
+// haga de "sucursal"). record_id queda como referencia informativa al record
+// de origen SIN foreign key: una dimension de un DWH no debe acoplarse al
+// ciclo de vida del dato transaccional (si el record de origen se borra, los
+// hechos historicos ya facturados/registrados deben seguir siendo validos).
+export const dimCliente = pgTable('dim_cliente', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  recordId: uuid('record_id'),
+  nombre: text('nombre').notNull(),
+  email: text('email'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('dim_cliente_tenant_idx').on(table.tenantId)
+}))
+
+export const dimSucursal = pgTable('dim_sucursal', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  recordId: uuid('record_id'),
+  nombre: text('nombre').notNull(),
+  ciudad: text('ciudad'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('dim_sucursal_tenant_idx').on(table.tenantId)
+}))
+
+// fact_eventos: tabla de hechos generica (metricas/eventos de negocio -
+// ventas, visitas, etc.). tipo_evento distingue el tipo de metrica sin
+// necesitar una fact table por caso de uso; HU-ERD-28 decide que eventos
+// transaccionales alimentan esto. monto/cantidad son las medidas aditivas
+// tipicas de un esquema en estrella.
+export const factEventos = pgTable('fact_eventos', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  dateId: integer('date_id').notNull().references(() => dimDate.id),
+  clienteId: uuid('cliente_id').references(() => dimCliente.id, { onDelete: 'set null' }),
+  sucursalId: uuid('sucursal_id').references(() => dimSucursal.id, { onDelete: 'set null' }),
+  recordId: uuid('record_id'), // record de origen en el dominio transaccional, sin FK (ver nota en dim_cliente)
+  tipoEvento: text('tipo_evento').notNull(),
+  monto: numeric('monto', { precision: 14, scale: 2 }).notNull().default('0'),
+  cantidad: integer('cantidad').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('fact_eventos_tenant_idx').on(table.tenantId),
+  dateIdx: index('fact_eventos_date_idx').on(table.dateId),
+  clienteIdx: index('fact_eventos_cliente_idx').on(table.clienteId),
+  sucursalIdx: index('fact_eventos_sucursal_idx').on(table.sucursalId)
 }))

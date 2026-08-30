@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.22.0] - 2026-08-29
+#### [add]
+- [ERD-27](https://dydasoftware.atlassian.net/browse/ERD-27) - Esquema OLAP en estrella: dim_date (global), dim_cliente y dim_sucursal (tenant-scoped, snapshot de records sin FK hacia el dominio transaccional a proposito) y fact_eventos (metricas/eventos genericos, FK obligatoria a dim_date y opcionales ON DELETE SET NULL a dim_cliente/dim_sucursal). Migraciones 0013 (tablas) y 0014 (RLS sobre las 3 tablas tenant-scoped). Documentado en DOCS/Esquema_OLAP.md. El ETL que lo puebla es ERD-28 (pendiente).
+
 ### [0.21.0] - 2026-08-29
 #### [add]
 - [ERD-25](https://dydasoftware.atlassian.net/browse/ERD-25) - scripts/seed.mjs: seed idempotente (ON CONFLICT DO NOTHING sobre los unique existentes) de entities/entity_fields para Clientes, Empresas y Empleados, parametrizado por perfil (generico | agro, este ultimo agrega tipo_cliente/hectareas/tipo_produccion/trabaja_en_campo). Otorga tambien permiso CRUD completo al rol admin (isSystem) del tenant si existe, para que el modulo sea usable de inmediato via el RBAC existente (fuera del alcance estricto del ticket, agregado por usabilidad).
