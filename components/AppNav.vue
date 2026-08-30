@@ -37,8 +37,24 @@ const { data: crmLinks } = await useAsyncData('appnav-crm-links', async () => {
     .map((r) => r.value)
 })
 
+// HU-ERD-33: link a "Roles y permisos", visible solo si GET /api/roles no
+// tira 403 (requiere rol administrador, requireAdminRole - HU-ERD-61) - mismo
+// truco de "probar el endpoint real" que los links de arriba, en vez de
+// duplicar en el frontend la logica de "es admin" (roles.isSystem no viaja
+// en /api/auth/me hoy).
+const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
+  const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
+  try {
+    await $fetch('/api/roles', { headers })
+    return true
+  } catch {
+    return false
+  }
+})
+
 const items = computed(() => [{ label: 'Inicio', to: '/' }])
 const crmItems = computed(() => (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}` })))
+const adminItems = computed(() => (isAdmin.value ? [{ label: 'Roles y permisos', to: '/roles' }] : []))
 </script>
 
 <template>
@@ -57,6 +73,19 @@ const crmItems = computed(() => (crmLinks.value ?? []).map((entry) => ({ label: 
       <p class="mt-3 px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Directorio</p>
       <NuxtLink
         v-for="item in crmItems"
+        :key="item.to"
+        :to="item.to"
+        class="rounded px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"
+        active-class="bg-primary-100 text-primary-800"
+      >
+        {{ item.label }}
+      </NuxtLink>
+    </template>
+
+    <template v-if="adminItems.length">
+      <p class="mt-3 px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Administración</p>
+      <NuxtLink
+        v-for="item in adminItems"
         :key="item.to"
         :to="item.to"
         class="rounded px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"

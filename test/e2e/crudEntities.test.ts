@@ -32,6 +32,7 @@ let testDb: TestDb
 let server: ChildProcess
 let baseUrl: string
 let authCookie: string
+let adminRoleId: string
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -144,6 +145,7 @@ beforeAll(async () => {
     const [role] = await admin`
       insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Administrador', true) returning id
     `
+    adminRoleId = role.id
     await admin`
       insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
       values (${TENANT_ID}, ${role.id}, ${ADMIN_EMAIL}, ${passwordHash}, 'Admin E2E', true)
@@ -276,5 +278,103 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).not.toContain('No se pudo cargar la definicion de esta entidad')
+  })
+
+  // HU-ERD-33: UI de gestion de roles y permisos. Reusa el server ya
+  // levantado arriba (HU-ERD-30). El rol "Administrador" de este e2e ya tiene
+  // CRUD completo sobre clientes/empresas/empleados porque scripts/seed.mjs
+  // (HU-ERD-25) se lo otorga automaticamente al rol isSystem - por eso el
+  // primer GET de permisos abajo espera todo en true, no el default false.
+  it('SSR: la home ahora muestra "Roles y permisos" en el nav (admin real via GET /api/roles)', async () => {
+    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toContain('Roles y permisos')
+  })
+
+  it('GET /api/roles lista el rol Administrador del tenant', async () => {
+    const res = await api('/api/roles')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.roles).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: adminRoleId, name: 'Administrador', isSystem: true })])
+    )
+  })
+
+  it('GET /api/roles/:id/permissions refleja el auto-grant de scripts/seed.mjs (CRUD completo)', async () => {
+    const res = await api(`/api/roles/${adminRoleId}/permissions`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const clientesRow = body.permissions.find((p: { entitySlug: string }) => p.entitySlug === 'clientes')
+    expect(clientesRow).toMatchObject({ canRead: true, canCreate: true, canUpdate: true, canDelete: true })
+  })
+
+  it('PUT /api/roles/:id/permissions guarda cambios reales, persistidos entre requests', async () => {
+    const before = await api(`/api/roles/${adminRoleId}/permissions`)
+    const { permissions } = await before.json()
+    const updated = permissions.map((p: Record<string, unknown>) =>
+      p.entitySlug === 'empleados' ? { ...p, canDelete: false } : p
+    )
+
+    const putRes = await api(`/api/roles/${adminRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        permissions: updated.map((p: any) => ({
+          entityId: p.entityId,
+          canRead: p.canRead,
+          canCreate: p.canCreate,
+          canUpdate: p.canUpdate,
+          canDelete: p.canDelete
+        }))
+      })
+    })
+    expect(putRes.status).toBe(200)
+
+    const after = await api(`/api/roles/${adminRoleId}/permissions`)
+    const afterBody = await after.json()
+    expect(afterBody.permissions.find((p: { entitySlug: string }) => p.entitySlug === 'empleados')).toMatchObject({
+      canDelete: false
+    })
+
+    // Deja el estado como estaba (canDelete: true) para no afectar los tests
+    // de CRUD de "Empleados" de arriba si vitest los corriera en otro orden.
+    await api(`/api/roles/${adminRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        permissions: permissions.map((p: any) => ({
+          entityId: p.entityId,
+          canRead: p.canRead,
+          canCreate: p.canCreate,
+          canUpdate: p.canUpdate,
+          canDelete: p.canDelete
+        }))
+      })
+    })
+  })
+
+  it('SSR: /roles y /roles/:id (F5 completo) renderizan contenido real, no el estado de error', async () => {
+    const listRes = await fetch(`${baseUrl}/roles`, { headers: { cookie: authCookie } })
+    expect(listRes.status).toBe(200)
+    const listHtml = await listRes.text()
+    expect(listHtml).toContain('Administrador')
+    expect(listHtml).not.toContain('No se pudo cargar el listado de roles')
+
+    const editRes = await fetch(`${baseUrl}/roles/${adminRoleId}`, { headers: { cookie: authCookie } })
+    expect(editRes.status).toBe(200)
+    const editHtml = await editRes.text()
+    expect(editHtml).toContain('Clientes')
+    expect(editHtml).not.toContain('No se pudo cargar este rol')
+  })
+
+  it('GET /api/roles sin cookie es 401, y PUT con un entityId de otro tenant es rechazado (404)', async () => {
+    const noAuthRes = await fetch(`${baseUrl}/api/roles`)
+    expect(noAuthRes.status).toBe(401)
+
+    const putRes = await api(`/api/roles/${adminRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        permissions: [{ entityId: randomUUID(), canRead: true, canCreate: true, canUpdate: true, canDelete: true }]
+      })
+    })
+    expect(putRes.status).toBe(404)
   })
 })

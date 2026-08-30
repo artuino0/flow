@@ -1,6 +1,10 @@
 # Changelog
 
-### [0.27.0] - 2026-08-30
+### [0.28.0] - 2026-08-30
+#### [add]
+- [ERD-33](https://dydasoftware.atlassian.net/browse/ERD-33) - UI de gestion de roles y permisos. Backend nuevo (no existia): GET /api/roles (listado), GET/PUT /api/roles/:id/permissions (matriz de can_read/can_create/can_update/can_delete por entidad, upsert sobre role_entity_permissions) - logica en server/utils/rolePermissions.ts, testeable sin HTTP. Cada entityId del body de PUT se revalida server-side contra las entidades del tenant autenticado antes de guardar nada (todo o nada, nunca un guardado parcial con un entityId ajeno). Guard: requireAdminRole (HU-ERD-61), mismo criterio que el resto de pantallas de administracion. Frontend: pages/roles/index.vue (listado) y pages/roles/[id].vue (matriz de checkboxes por entidad, guardado con feedback de exito/error). AppNav.vue suma una seccion "Administracion" con el link, visible solo si GET /api/roles no da 403 (mismo patron de HU-ERD-32 para los links del Directorio).
+
+- Validado con `test/integration/rolePermissions.test.ts` (Postgres real embebido, HU-ERD-29): valores default en false, aislamiento estricto entre tenants (ni por id de rol ni por id de entidad), upsert correcto, y que un guardado con un entityId de otro tenant no persiste NADA (ni siquiera las entidades validas del mismo request). Ademas 8 casos e2e nuevos (HU-ERD-30) contra el server compilado real: el auto-grant de scripts/seed.mjs se ve reflejado, un PUT real persiste entre requests, las pantallas /roles y /roles/:id renderizan bien en SSR (con cookie, sin JS de cliente), y los casos negativos (401 sin cookie, 404 con entityId ajeno).
 #### [add]
 - [ERD-32](https://dydasoftware.atlassian.net/browse/ERD-32) - UI del modulo CRM (Clientes/Empresas/Empleados): reusa integramente el Form Builder y Table Builder dinamicos de HU-ERD-23/24 (`pages/registros/:entity/*`) - no se crearon pantallas nuevas, ya funcionaban para cualquier slug de entidad. Lo que agrega esta HU es la navegacion: components/AppNav.vue ahora muestra los 3 links del "Directorio" resolviendo cada uno contra GET /api/entities/:slug/fields (HU-ERD-23/24) y filtrando por el resultado (403/404 => el link no se muestra), asi que el menu respeta el RBAC del usuario logueado sin adelantarse a HU-ERD-43/44 (menu dinamico generico para cualquier entidad).
 
