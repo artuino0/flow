@@ -377,4 +377,30 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     })
     expect(putRes.status).toBe(404)
   })
+
+  // HU-ERD-34: dashboard interno OLAP. OLAP_ETL_ENABLED=false en este e2e (ver
+  // env del server arriba), asi que fact_eventos queda vacio para este tenant -
+  // el chequeo es que la pantalla renderiza bien el estado "sin eventos" (y el
+  // endpoint agrega sin explotar con 0 filas), no que haya datos.
+  it('SSR: la home ahora tambien muestra "Dashboard" en el nav', async () => {
+    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+    expect(await res.text()).toContain('Dashboard')
+  })
+
+  it('GET /api/dashboard/metrics agrega sin datos sin explotar (fact_eventos vacio en este e2e)', async () => {
+    const res = await api('/api/dashboard/metrics')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.eventos.total).toBe(0)
+    expect(body.clientes.total).toBe(0)
+    expect(body.usuarios.total).toBe(1) // el admin creado en este e2e
+  })
+
+  it('SSR: /dashboard (F5 completo) renderiza el estado real, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Usuarios activos')
+    expect(html).not.toContain('No se pudieron cargar las metricas')
+  })
 })

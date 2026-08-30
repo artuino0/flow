@@ -37,11 +37,13 @@ const { data: crmLinks } = await useAsyncData('appnav-crm-links', async () => {
     .map((r) => r.value)
 })
 
-// HU-ERD-33: link a "Roles y permisos", visible solo si GET /api/roles no
-// tira 403 (requiere rol administrador, requireAdminRole - HU-ERD-61) - mismo
-// truco de "probar el endpoint real" que los links de arriba, en vez de
-// duplicar en el frontend la logica de "es admin" (roles.isSystem no viaja
-// en /api/auth/me hoy).
+// HU-ERD-33: seccion "Administracion" (Roles y permisos, HU-ERD-34: Dashboard),
+// visible solo si GET /api/roles no tira 403 (requiere rol administrador,
+// requireAdminRole - HU-ERD-61) - mismo truco de "probar el endpoint real" que
+// los links de arriba, en vez de duplicar en el frontend la logica de "es
+// admin" (roles.isSystem no viaja en /api/auth/me hoy). Se prueba solo
+// /api/roles (no tambien /api/dashboard/metrics) porque ambos usan el MISMO
+// guard - alcanza con uno para saber si el rol es administrador.
 const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
   try {
@@ -54,7 +56,9 @@ const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
 
 const items = computed(() => [{ label: 'Inicio', to: '/' }])
 const crmItems = computed(() => (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}` })))
-const adminItems = computed(() => (isAdmin.value ? [{ label: 'Roles y permisos', to: '/roles' }] : []))
+const adminItems = computed(() =>
+  isAdmin.value ? [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Roles y permisos', to: '/roles' }] : []
+)
 </script>
 
 <template>
