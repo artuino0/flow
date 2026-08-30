@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.23.0] - 2026-08-29
+#### [add]
+- [ERD-28](https://dydasoftware.atlassian.net/browse/ERD-28) - Job node-cron (`*/15 * * * *`) dentro del proceso Nitro (server/plugins/olap-etl.ts) que sincroniza records al esquema OLAP (server/utils/olapEtl.ts): ventana de 30 min (2x el intervalo, da solapamiento) sobre records.updated_at, upsert idempotente via los unicos parciales (tenant_id, record_id) de dim_cliente/dim_sucursal/fact_eventos (migracion 0015). Deshabilitable con OLAP_ETL_ENABLED=false. Alcance documentado: fact_eventos trata cualquier record creado/editado como "evento" (tipo_evento = slug de su entidad) hasta que exista una entidad real de ventas/eventos; solo la entidad "clientes" alimenta ademas dim_cliente.
+
 ### [0.22.0] - 2026-08-29
 #### [add]
 - [ERD-27](https://dydasoftware.atlassian.net/browse/ERD-27) - Esquema OLAP en estrella: dim_date (global), dim_cliente y dim_sucursal (tenant-scoped, snapshot de records sin FK hacia el dominio transaccional a proposito) y fact_eventos (metricas/eventos genericos, FK obligatoria a dim_date y opcionales ON DELETE SET NULL a dim_cliente/dim_sucursal). Migraciones 0013 (tablas) y 0014 (RLS sobre las 3 tablas tenant-scoped). Documentado en DOCS/Esquema_OLAP.md. El ETL que lo puebla es ERD-28 (pendiente).

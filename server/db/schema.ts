@@ -188,7 +188,10 @@ export const dimCliente = pgTable('dim_cliente', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
-  tenantIdx: index('dim_cliente_tenant_idx').on(table.tenantId)
+  tenantIdx: index('dim_cliente_tenant_idx').on(table.tenantId),
+  // Unico parcial (solo cuando hay record_id) - clave de upsert idempotente
+  // del ETL (HU-ERD-28): una fila de dim_cliente por record de origen.
+  recordUnique: uniqueIndex('dim_cliente_tenant_record_unique').on(table.tenantId, table.recordId).where(sql`${table.recordId} is not null`)
 }))
 
 export const dimSucursal = pgTable('dim_sucursal', {
@@ -200,7 +203,8 @@ export const dimSucursal = pgTable('dim_sucursal', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
-  tenantIdx: index('dim_sucursal_tenant_idx').on(table.tenantId)
+  tenantIdx: index('dim_sucursal_tenant_idx').on(table.tenantId),
+  recordUnique: uniqueIndex('dim_sucursal_tenant_record_unique').on(table.tenantId, table.recordId).where(sql`${table.recordId} is not null`)
 }))
 
 // fact_eventos: tabla de hechos generica (metricas/eventos de negocio -
@@ -218,10 +222,14 @@ export const factEventos = pgTable('fact_eventos', {
   tipoEvento: text('tipo_evento').notNull(),
   monto: numeric('monto', { precision: 14, scale: 2 }).notNull().default('0'),
   cantidad: integer('cantidad').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
   tenantIdx: index('fact_eventos_tenant_idx').on(table.tenantId),
   dateIdx: index('fact_eventos_date_idx').on(table.dateId),
   clienteIdx: index('fact_eventos_cliente_idx').on(table.clienteId),
-  sucursalIdx: index('fact_eventos_sucursal_idx').on(table.sucursalId)
+  sucursalIdx: index('fact_eventos_sucursal_idx').on(table.sucursalId),
+  // Unico parcial - clave de upsert idempotente del ETL (HU-ERD-28): un hecho
+  // por record de origen (se re-sube/actualiza, nunca se duplica).
+  recordUnique: uniqueIndex('fact_eventos_tenant_record_unique').on(table.tenantId, table.recordId).where(sql`${table.recordId} is not null`)
 }))

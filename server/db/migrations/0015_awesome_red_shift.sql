@@ -1,0 +1,4 @@
+ALTER TABLE "fact_eventos" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "dim_cliente_tenant_record_unique" ON "dim_cliente" USING btree ("tenant_id","record_id") WHERE "dim_cliente"."record_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "dim_sucursal_tenant_record_unique" ON "dim_sucursal" USING btree ("tenant_id","record_id") WHERE "dim_sucursal"."record_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "fact_eventos_tenant_record_unique" ON "fact_eventos" USING btree ("tenant_id","record_id") WHERE "fact_eventos"."record_id" is not null;
