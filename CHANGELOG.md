@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.20.0] - 2026-08-29
+#### [add]
+- [ERD-24](https://dydasoftware.atlassian.net/browse/ERD-24) - Table Builder dinamico: componente DynamicTable.vue con columnas derivadas de entity_fields, orden por encabezado y paginacion, acciones Editar/Eliminar por fila segun RBAC; pagina generica de listado (pages/registros/:entity). Se agrego orden server-side (sortBy/sortDir) a GET /api/records/:entity (createdAt/updatedAt o campo dinamico via custom_data->>, parametrizado) y los 4 flags de permiso (canRead/Create/Update/Delete) a GET /api/entities/:entity/fields (ERD-43 solo cubrira esto a nivel de menu, no por entidad puntual).
+
 ### [0.19.0] - 2026-08-29
 #### [add]
 - [ERD-23](https://dydasoftware.atlassian.net/browse/ERD-23) - Form Builder dinamico: componente DynamicForm.vue que renderiza inputs segun entity_fields (text/enum, number, boolean, date, json, relation) con validacion en cliente espejo de dynamicSchema.ts, paginas genericas de alta/edicion de registro (pages/registros/:entity/nuevo y /:id/editar). Se agrego tambien GET /api/entities/:entity/fields (prerequisito no cubierto por ningun ticket existente: ERD-43 solo expone el listado de entidades, no sus campos).

@@ -16,9 +16,17 @@ export interface EntityMeta {
   name: string
 }
 
+export interface EntityPermissions {
+  canRead: boolean
+  canCreate: boolean
+  canUpdate: boolean
+  canDelete: boolean
+}
+
 export interface EntityFieldsResponse {
   entity: EntityMeta
   fields: EntityFieldMeta[]
+  permissions: EntityPermissions
 }
 
 export function useEntityFields(slug: string) {

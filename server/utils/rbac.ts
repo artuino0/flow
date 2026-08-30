@@ -100,6 +100,42 @@ export async function requirePermissionForEntityId(
   return auth
 }
 
+export interface PermissionFlags {
+  canRead: boolean
+  canCreate: boolean
+  canUpdate: boolean
+  canDelete: boolean
+}
+
+/**
+ * Devuelve los 4 flags de permiso del rol del usuario sobre una entidad
+ * (HU-ERD-24). No reemplaza a requirePermission (que ademas resuelve la
+ * entidad por slug y lanza 403 si falta el permiso puntual pedido) - esto es
+ * para cuando el frontend necesita los 4 a la vez, para decidir que botones
+ * mostrar (Nuevo/Editar/Eliminar) sin adivinar. Mismo gap que fields.get.ts:
+ * ERD-43 (listado de entidades) devolvera esto tambien a nivel de menu, pero
+ * el Table Builder lo necesita ya, por entidad puntual.
+ */
+export async function getPermissionFlags(auth: AuthTokenPayload, entityId: string): Promise<PermissionFlags> {
+  if (!auth.roleId) {
+    return { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
+  }
+
+  return withTenant(auth.tenantId, async (tx) => {
+    const [perm] = await tx
+      .select({
+        canRead: roleEntityPermissions.canRead,
+        canCreate: roleEntityPermissions.canCreate,
+        canUpdate: roleEntityPermissions.canUpdate,
+        canDelete: roleEntityPermissions.canDelete
+      })
+      .from(roleEntityPermissions)
+      .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
+      .limit(1)
+    return perm ?? { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
+  })
+}
+
 /**
  * Guard para pantallas de administracion del propio tenant (HU-ERD-61, ej.
  * Configuracion General) que no encajan en el modelo de permisos por entidad

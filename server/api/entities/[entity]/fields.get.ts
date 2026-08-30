@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm'
-import { requirePermission } from '~/server/utils/rbac'
+import { eq } from 'drizzle-orm'
+import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
 
@@ -33,5 +33,10 @@ export default defineEventHandler(async (event) => {
       .orderBy(entityFields.createdAt)
   )
 
-  return { entity, fields }
+  // HU-ERD-24: se agregan los 4 flags de permiso ademas de canRead (ya
+  // implicito en que la request paso requirePermission) para que el Table
+  // Builder decida que acciones mostrar (Nuevo/Editar/Eliminar) por fila.
+  const permissions = await getPermissionFlags(auth, entity.id)
+
+  return { entity, fields, permissions }
 })

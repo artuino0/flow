@@ -68,6 +68,9 @@ async function onSubmit() {
         <p v-if="submitted" class="text-sm text-green-700">Cambios guardados correctamente.</p>
 
         <div class="flex justify-end gap-2">
+          <NuxtLink :to="`/registros/${slug}`" class="rounded px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
+            Volver al listado
+          </NuxtLink>
           <button
             type="submit"
             :disabled="submitting"

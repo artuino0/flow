@@ -14,11 +14,9 @@ const formValues = ref<Record<string, unknown>>({})
 const formRef = ref<{ validateAll: () => boolean } | null>(null)
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
-const submitted = ref(false)
 
 async function onSubmit() {
   submitError.value = null
-  submitted.value = false
   if (!formRef.value?.validateAll()) return
 
   submitting.value = true
@@ -27,8 +25,7 @@ async function onSubmit() {
       method: 'POST',
       body: { customData: formValues.value }
     })
-    formValues.value = {}
-    submitted.value = true
+    await navigateTo(`/registros/${slug}`)
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo crear el registro'
   } finally {
@@ -55,9 +52,11 @@ async function onSubmit() {
         <DynamicForm ref="formRef" v-model="formValues" :fields="data.fields" :disabled="submitting" />
 
         <p v-if="submitError" class="text-sm text-red-600">{{ submitError }}</p>
-        <p v-if="submitted" class="text-sm text-green-700">Registro creado correctamente.</p>
 
         <div class="flex justify-end gap-2">
+          <NuxtLink :to="`/registros/${slug}`" class="rounded px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
+            Cancelar
+          </NuxtLink>
           <button
             type="submit"
             :disabled="submitting"
