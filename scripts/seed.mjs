@@ -99,6 +99,17 @@ const entityDefs = [
 
 const sql = postgres(connectionString)
 
+// Se guarda afuera del begin() para el aviso final (ver mas abajo) - HU-ERD-30
+// encontro que volver a consultarlo con una query suelta despues del begin()
+// (sobre la misma conexion pooleada) dispara el quirk de Postgres documentado
+// en HU-ERD-29 (test/integration/rlsTenantIsolation.test.ts): set_config con
+// is_local=true dentro de una transaccion deja, al terminar esta, el GUC
+// app.tenant_id en '' (no NULL) en esa conexion - y una query sin tenant
+// context sobre esa misma conexion falla con "invalid input syntax for type
+// uuid" en vez de simplemente no encontrar filas. Reusar el valor ya
+// resuelto dentro de la transaccion evita esa segunda query.
+let adminRoleFound = false
+
 try {
   await sql.begin(async (tx) => {
     // Mismo mecanismo que withTenant() (server/db/index.ts): habilita las
@@ -108,6 +119,7 @@ try {
     const [adminRole] = await tx`
       select id from roles where tenant_id = ${tenantId} and is_system = true limit 1
     `
+    adminRoleFound = Boolean(adminRole)
 
     for (const def of entityDefs) {
       const fields = perfil === 'agro' ? [...def.fields, ...def.agroFields] : def.fields
@@ -144,7 +156,7 @@ try {
     }
   })
 
-  if (!(await sql`select id from roles where tenant_id = ${tenantId} and is_system = true limit 1`).length) {
+  if (!adminRoleFound) {
     console.log('')
     console.log('Aviso: no se encontro un rol de sistema (isSystem=true) para este tenant - las entidades')
     console.log('quedaron creadas pero sin permisos otorgados a ningun rol todavia.')

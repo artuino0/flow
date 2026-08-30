@@ -40,6 +40,13 @@ lint:
 # distribuye binarios de Postgres precompilados contra glibc: en Alpine fallan
 # al ejecutarse. Si en algun momento se quiere volver a alpine, hay que resolver
 # eso primero (ej. instalando gcompat) o esta suite rompe en CI.
+#
+# HU-ERD-30: test/e2e/crudEntities.test.ts corre `nuxt build` y levanta el
+# server compilado como proceso hijo dentro de este mismo stage (ademas del
+# Postgres embebido de arriba) - por eso este job ahora tambien compila la
+# app, antes de que lo haga el stage "build". Costo aceptado a cambio de un
+# e2e real (HTTP -> Nitro -> Drizzle -> Postgres), no uno que solo llama
+# funciones de servidor a mano.
 test:
   stage: test
   image: node:22-bookworm
