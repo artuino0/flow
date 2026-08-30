@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.21.0] - 2026-08-29
+#### [add]
+- [ERD-25](https://dydasoftware.atlassian.net/browse/ERD-25) - scripts/seed.mjs: seed idempotente (ON CONFLICT DO NOTHING sobre los unique existentes) de entities/entity_fields para Clientes, Empresas y Empleados, parametrizado por perfil (generico | agro, este ultimo agrega tipo_cliente/hectareas/tipo_produccion/trabaja_en_campo). Otorga tambien permiso CRUD completo al rol admin (isSystem) del tenant si existe, para que el modulo sea usable de inmediato via el RBAC existente (fuera del alcance estricto del ticket, agregado por usabilidad).
+
 ### [0.20.0] - 2026-08-29
 #### [add]
 - [ERD-24](https://dydasoftware.atlassian.net/browse/ERD-24) - Table Builder dinamico: componente DynamicTable.vue con columnas derivadas de entity_fields, orden por encabezado y paginacion, acciones Editar/Eliminar por fila segun RBAC; pagina generica de listado (pages/registros/:entity). Se agrego orden server-side (sortBy/sortDir) a GET /api/records/:entity (createdAt/updatedAt o campo dinamico via custom_data->>, parametrizado) y los 4 flags de permiso (canRead/Create/Update/Delete) a GET /api/entities/:entity/fields (ERD-43 solo cubrira esto a nivel de menu, no por entidad puntual).
