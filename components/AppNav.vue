@@ -54,11 +54,19 @@ const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
   }
 })
 
+// HU-ERD-35: FEATURE_DASHBOARD=false lo apaga de punta a punta - tambien acá
+// (ademas del 404 real en GET /api/dashboard/metrics). GET /api/config, no
+// useRuntimeConfig() - ver composables/useDeploymentConfig.ts.
+const { data: appConfig } = await useDeploymentConfig()
+
 const items = computed(() => [{ label: 'Inicio', to: '/' }])
 const crmItems = computed(() => (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}` })))
-const adminItems = computed(() =>
-  isAdmin.value ? [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Roles y permisos', to: '/roles' }] : []
-)
+const adminItems = computed(() => {
+  if (!isAdmin.value) return []
+  const links = [{ label: 'Roles y permisos', to: '/roles' }]
+  if (appConfig.value?.featureFlags.dashboard) links.unshift({ label: 'Dashboard', to: '/dashboard' })
+  return links
+})
 </script>
 
 <template>

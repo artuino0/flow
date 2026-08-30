@@ -25,7 +25,10 @@ export function useAuth() {
     return user.value
   }
 
-  async function login(tenantId: string, email: string, password: string): Promise<void> {
+  // HU-ERD-35: tenantId es opcional - en modo "dedicated" (APP_MODE) no se le
+  // pide "Organizacion" al usuario (pages/login.vue), el backend lo resuelve
+  // solo. undefined se omite del body via JSON.stringify.
+  async function login(tenantId: string | undefined, email: string, password: string): Promise<void> {
     await $fetch('/api/auth/login', {
       method: 'POST',
       body: { tenantId, email, password }

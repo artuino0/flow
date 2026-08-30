@@ -31,11 +31,18 @@ const from = ref(isoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
 const to = ref(isoDate(new Date()))
 const tipoEvento = ref('')
 
+// HU-ERD-35: FEATURE_DASHBOARD=false lo apaga de punta a punta - ni siquiera
+// se intenta el fetch (que igual daria 404, ver server/api/dashboard/metrics.get.ts).
+// GET /api/config, no useRuntimeConfig() - ver composables/useDeploymentConfig.ts.
+const { data: appConfig } = await useDeploymentConfig()
+const dashboardEnabled = appConfig.value?.featureFlags.dashboard ?? true
+
 // HU-ERD-32: forwarding manual de la cookie en SSR (ver useEntityFields.ts).
 const { data, pending, error: fetchError, refresh } = await useFetch<DashboardMetrics>('/api/dashboard/metrics', {
   key: 'dashboard-metrics',
   query: computed(() => ({ from: from.value, to: to.value, tipoEvento: tipoEvento.value || undefined })),
-  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined,
+  immediate: dashboardEnabled
 })
 
 const maxMonto = computed(() => {
@@ -80,7 +87,8 @@ function formatMonto(monto: string): string {
       </button>
     </form>
 
-    <p v-if="pending" class="text-sm text-gray-500">Cargando...</p>
+    <p v-if="!dashboardEnabled" class="text-sm text-gray-500">Esta funcionalidad esta deshabilitada.</p>
+    <p v-else-if="pending" class="text-sm text-gray-500">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-red-600">
       No se pudieron cargar las metricas{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>

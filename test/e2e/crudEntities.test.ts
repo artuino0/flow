@@ -404,3 +404,117 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(html).not.toContain('No se pudieron cargar las metricas')
   })
 })
+
+// HU-ERD-35: modo "dedicated" (login sin tenantId) y FEATURE_DASHBOARD=false
+// (kill switch real, no solo cosmetico) - un segundo server real, con su
+// propio Postgres embebido y su propio env (APP_MODE/FEATURE_DASHBOARD
+// distintos), pero reusando el MISMO .output ya compilado en el beforeAll de
+// arriba (correr `nuxt build` dos veces en paralelo sobre el mismo directorio
+// corromperia el output - un build alcanza, el binario compilado no cambia
+// segun env vars de runtime).
+describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
+  let dedicatedDb: TestDb
+  let dedicatedServer: ChildProcess
+  let dedicatedBaseUrl: string
+  let dedicatedTenantId: string
+  let dedicatedAdmin: ReturnType<typeof postgres>
+
+  const DEDICATED_EMAIL = 'admin@dedicated.test'
+  const DEDICATED_PASSWORD = 'dedicated-password-1234'
+
+  async function dedicatedLoginCookie(): Promise<string> {
+    const res = await fetch(`${dedicatedBaseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: DEDICATED_EMAIL, password: DEDICATED_PASSWORD })
+    })
+    expect(res.status).toBe(200)
+    return extractCookie(res)
+  }
+
+  beforeAll(async () => {
+    dedicatedDb = await createTestDb()
+    dedicatedTenantId = randomUUID()
+    dedicatedAdmin = postgres(dedicatedDb.adminUrl)
+
+    const passwordHash = await bcrypt.hash(DEDICATED_PASSWORD, 12)
+    await dedicatedAdmin`insert into tenants (id, name) values (${dedicatedTenantId}, 'Tenant Dedicated E2E')`
+    const [role] = await dedicatedAdmin`
+      insert into roles (tenant_id, name, is_system) values (${dedicatedTenantId}, 'Administrador', true) returning id
+    `
+    await dedicatedAdmin`
+      insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
+      values (${dedicatedTenantId}, ${role.id}, ${DEDICATED_EMAIL}, ${passwordHash}, 'Admin Dedicated', true)
+    `
+
+    const port = await getFreePort()
+    dedicatedBaseUrl = `http://localhost:${port}`
+    dedicatedServer = spawn('node', ['.output/server/index.mjs'], {
+      cwd: PROJECT_ROOT,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        NITRO_PORT: String(port),
+        APP_DATABASE_URL: dedicatedDb.appUrl,
+        JWT_SECRET: 'e2e-dedicated-secret',
+        OLAP_ETL_ENABLED: 'false',
+        NODE_ENV: 'test',
+        APP_MODE: 'dedicated',
+        FEATURE_DASHBOARD: 'false'
+      },
+      stdio: 'pipe'
+    })
+    await waitForServer(`${dedicatedBaseUrl}/api/health`, 20_000)
+  }, 60_000)
+
+  afterAll(async () => {
+    if (dedicatedServer) {
+      await new Promise<void>((resolve) => {
+        dedicatedServer.once('exit', () => resolve())
+        dedicatedServer.kill('SIGTERM')
+        setTimeout(() => {
+          dedicatedServer.kill('SIGKILL')
+          resolve()
+        }, 5000)
+      })
+    }
+    if (dedicatedAdmin) await dedicatedAdmin.end()
+    if (dedicatedDb) await dedicatedDb.stop()
+  }, 30_000)
+
+  it('login SIN tenantId funciona en modo dedicated - resuelve el unico tenant solo', async () => {
+    const cookie = await dedicatedLoginCookie()
+    expect(cookie).toContain('erp_auth_token=')
+  })
+
+  it('GET /api/dashboard/metrics da 404 con FEATURE_DASHBOARD=false, incluso autenticado como admin', async () => {
+    const cookie = await dedicatedLoginCookie()
+    const res = await fetch(`${dedicatedBaseUrl}/api/dashboard/metrics`, { headers: { cookie } })
+    expect(res.status).toBe(404)
+  })
+
+  it('SSR: la home NO muestra "Dashboard" (flag off) pero si "Roles y permisos" (guard distinto, no afectado por el flag)', async () => {
+    const cookie = await dedicatedLoginCookie()
+    const res = await fetch(`${dedicatedBaseUrl}/`, { headers: { cookie } })
+    const html = await res.text()
+    expect(html).not.toContain('Dashboard')
+    expect(html).toContain('Roles y permisos')
+  })
+
+  it('SSR: /login NO muestra el campo "Organización" en modo dedicated', async () => {
+    const res = await fetch(`${dedicatedBaseUrl}/login`)
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).not.toContain('for="tenantId"')
+  })
+
+  it('login falla con 500 (error de configuracion, no de credenciales) si "dedicated" tiene mas de un tenant', async () => {
+    await dedicatedAdmin`insert into tenants (id, name) values (${randomUUID()}, 'Tenant Extra')`
+    const res = await fetch(`${dedicatedBaseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: DEDICATED_EMAIL, password: DEDICATED_PASSWORD })
+    })
+    expect(res.status).toBe(500)
+  })
+})

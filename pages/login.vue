@@ -12,6 +12,15 @@ const { login } = useAuth()
 // UUID crudo - no existe una tabla de tenants con slug para resolverlo. Se
 // mantiene el label del diseno pero el campo sigue funcionando como antes
 // (UUID) hasta que exista esa resolucion.
+//
+// HU-ERD-35: en modo "dedicated" (APP_MODE) directamente no se muestra - un
+// deployment de un solo cliente no tiene nada que preguntar aca. GET /api/config
+// (no useRuntimeConfig() - ver composables/useDeploymentConfig.ts) porque
+// necesita reflejar el APP_MODE real del server en runtime, no el que habia
+// al buildear.
+const { data: appConfig } = await useDeploymentConfig()
+const isDedicated = computed(() => appConfig.value?.appMode === 'dedicated')
+
 const tenantId = ref('')
 const email = ref('')
 const password = ref('')
@@ -23,7 +32,7 @@ async function onSubmit() {
   errorMessage.value = ''
   loading.value = true
   try {
-    await login(tenantId.value, email.value, password.value)
+    await login(isDedicated.value ? undefined : tenantId.value, email.value, password.value)
     await navigateTo('/')
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo iniciar sesion.'
@@ -59,7 +68,7 @@ async function onSubmit() {
           <p class="text-[13px] font-medium text-brand-error-text">{{ errorMessage }}</p>
         </div>
 
-        <div class="flex flex-col gap-1.5">
+        <div v-if="!isDedicated" class="flex flex-col gap-1.5">
           <label for="tenantId" class="text-[13px] font-semibold text-brand-text">Organización</label>
           <input
             id="tenantId"

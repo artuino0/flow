@@ -5,7 +5,10 @@ import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/ut
 // los endpoints y requirePermission() no tengan que reverificar el token.
 // HU-ERD-22: el token puede venir por header Authorization (clientes API) o
 // por la cookie httpOnly que setea /api/auth/login (frontend web).
-const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout'])
+// HU-ERD-35: /api/config es publica (sin auth) - login.vue la necesita ANTES
+// de autenticarse (para saber si mostrar el campo "Organizacion" en modo
+// "dedicated"), y el modo/feature flags no son informacion sensible.
+const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/config'])
 
 export default defineEventHandler((event) => {
   const path = getRequestURL(event).pathname
