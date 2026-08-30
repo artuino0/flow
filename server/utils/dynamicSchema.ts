@@ -8,7 +8,7 @@ import { entityFields } from '~/server/db/schema'
 // a un ZodTypeAny y arma un z.object() por entidad, usado para validar
 // records.custom_data en los endpoints de records (ERD-16).
 
-interface EntityFieldRow {
+export interface EntityFieldRow {
   name: string
   dataType: string
   validationRules: unknown
@@ -34,7 +34,9 @@ function fingerprint(rows: EntityFieldRow[]): string {
   )
 }
 
-function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
+// Exportada para HU-ERD-29: permite testear unitariamente la generacion de
+// schema Zod desde metadatos, sin necesitar una base de datos.
+export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
   const rules = (field.validationRules ?? {}) as Record<string, unknown>
   let base: z.ZodTypeAny
 

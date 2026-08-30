@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.24.0] - 2026-08-29
+#### [add]
+- [ERD-29](https://dydasoftware.atlassian.net/browse/ERD-29) - Suite de tests con Vitest (npm run test), corre en CI (.gitlab-ci.yml, stage test): (1) test/unit/dynamicSchema.test.ts, 17 casos cubriendo la generacion de schema Zod desde metadatos (buildFieldType, ahora exportada) para los 6 data types y sus reglas, sin DB; (2) test/integration/rlsTenantIsolation.test.ts, 7 casos contra un Postgres REAL embebido (embedded-postgres, sin Docker) con el rol erp_app real (no superusuario) - confirma que RLS aisla por tenant_id aun sin el WHERE que pondria Drizzle, y que un INSERT con tenant_id ajeno es rechazado. Hallazgo documentado (no corregido, fuera de alcance de esta HU): en una conexion que ya uso set_config alguna vez, dejar app.tenant_id sin setear hace fallar la query con un error de Postgres en vez de devolver 0 filas (sigue siendo seguro - no hay fuga de datos - pero es un modo de fallo distinto al esperado; ver comentarios en el test).
+
 ### [0.23.0] - 2026-08-29
 #### [add]
 - [ERD-28](https://dydasoftware.atlassian.net/browse/ERD-28) - Job node-cron (`*/15 * * * *`) dentro del proceso Nitro (server/plugins/olap-etl.ts) que sincroniza records al esquema OLAP (server/utils/olapEtl.ts): ventana de 30 min (2x el intervalo, da solapamiento) sobre records.updated_at, upsert idempotente via los unicos parciales (tenant_id, record_id) de dim_cliente/dim_sucursal/fact_eventos (migracion 0015). Deshabilitable con OLAP_ETL_ENABLED=false. Alcance documentado: fact_eventos trata cualquier record creado/editado como "evento" (tipo_evento = slug de su entidad) hasta que exista una entidad real de ventas/eventos; solo la entidad "clientes" alimenta ademas dim_cliente.

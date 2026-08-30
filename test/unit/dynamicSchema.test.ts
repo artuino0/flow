@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest'
+import { buildFieldType } from '../../server/utils/dynamicSchema'
+
+// HU-ERD-29: cubre la generacion de schema Zod desde metadatos (entity_fields
+// -> ZodTypeAny), sin necesitar una base de datos - buildFieldType() es pura.
+
+describe('buildFieldType', () => {
+  describe('text', () => {
+    it('acepta un string valido sin reglas', () => {
+      const type = buildFieldType({ name: 'nombre', dataType: 'text', validationRules: {}, isRequired: true })
+      expect(type.safeParse('Acme').success).toBe(true)
+    })
+
+    it('rechaza si falta minLength', () => {
+      const type = buildFieldType({ name: 'x', dataType: 'text', validationRules: { minLength: 3 }, isRequired: true })
+      expect(type.safeParse('ab').success).toBe(false)
+      expect(type.safeParse('abc').success).toBe(true)
+    })
+
+    it('rechaza si excede maxLength', () => {
+      const type = buildFieldType({ name: 'x', dataType: 'text', validationRules: { maxLength: 3 }, isRequired: true })
+      expect(type.safeParse('abcd').success).toBe(false)
+      expect(type.safeParse('abc').success).toBe(true)
+    })
+
+    it('valida pattern (regex)', () => {
+      const type = buildFieldType({ name: 'email', dataType: 'text', validationRules: { pattern: '^[^@]+@[^@]+$' }, isRequired: true })
+      expect(type.safeParse('a@b.com').success).toBe(true)
+      expect(type.safeParse('no-es-email').success).toBe(false)
+    })
+
+    it('enum: solo acepta valores de la lista', () => {
+      const type = buildFieldType({ name: 'estado', dataType: 'text', validationRules: { enum: ['activo', 'inactivo'] }, isRequired: true })
+      expect(type.safeParse('activo').success).toBe(true)
+      expect(type.safeParse('pendiente').success).toBe(false)
+    })
+  })
+
+  describe('number', () => {
+    it('rechaza no-numeros', () => {
+      const type = buildFieldType({ name: 'edad', dataType: 'number', validationRules: {}, isRequired: true })
+      expect(type.safeParse('abc' as unknown as number).success).toBe(false)
+      expect(type.safeParse(30).success).toBe(true)
+    })
+
+    it('respeta min/max', () => {
+      const type = buildFieldType({ name: 'edad', dataType: 'number', validationRules: { min: 0, max: 120 }, isRequired: true })
+      expect(type.safeParse(-1).success).toBe(false)
+      expect(type.safeParse(121).success).toBe(false)
+      expect(type.safeParse(50).success).toBe(true)
+    })
+
+    it('integer:true rechaza decimales', () => {
+      const type = buildFieldType({ name: 'cantidad', dataType: 'number', validationRules: { integer: true }, isRequired: true })
+      expect(type.safeParse(1.5).success).toBe(false)
+      expect(type.safeParse(2).success).toBe(true)
+    })
+  })
+
+  describe('boolean', () => {
+    it('solo acepta booleanos', () => {
+      const type = buildFieldType({ name: 'activo', dataType: 'boolean', validationRules: {}, isRequired: true })
+      expect(type.safeParse(true).success).toBe(true)
+      expect(type.safeParse('true' as unknown as boolean).success).toBe(false)
+    })
+  })
+
+  describe('date', () => {
+    it('coerciona strings de fecha validas', () => {
+      const type = buildFieldType({ name: 'fecha', dataType: 'date', validationRules: {}, isRequired: true })
+      expect(type.safeParse('2026-08-29').success).toBe(true)
+      expect(type.safeParse('no-es-fecha').success).toBe(false)
+    })
+
+    it('respeta min/max', () => {
+      const type = buildFieldType({ name: 'fecha', dataType: 'date', validationRules: { min: '2026-01-01', max: '2026-12-31' }, isRequired: true })
+      expect(type.safeParse('2025-12-31').success).toBe(false)
+      expect(type.safeParse('2027-01-01').success).toBe(false)
+      expect(type.safeParse('2026-06-15').success).toBe(true)
+    })
+  })
+
+  describe('json', () => {
+    it('acepta objetos y arrays', () => {
+      const type = buildFieldType({ name: 'meta', dataType: 'json', validationRules: {}, isRequired: true })
+      expect(type.safeParse({ a: 1 }).success).toBe(true)
+      expect(type.safeParse([1, 2, 3]).success).toBe(true)
+    })
+
+    it('rechaza primitivos sueltos', () => {
+      const type = buildFieldType({ name: 'meta', dataType: 'json', validationRules: {}, isRequired: true })
+      expect(type.safeParse('texto plano' as unknown as object).success).toBe(false)
+    })
+  })
+
+  describe('relation', () => {
+    it('exige forma de uuid', () => {
+      const type = buildFieldType({ name: 'cliente_id', dataType: 'relation', validationRules: {}, isRequired: true })
+      expect(type.safeParse('11111111-1111-1111-1111-111111111111').success).toBe(true)
+      expect(type.safeParse('no-es-uuid').success).toBe(false)
+    })
+  })
+
+  describe('tipo desconocido', () => {
+    it('cae a z.any()', () => {
+      const type = buildFieldType({ name: 'x', dataType: 'inventado', validationRules: {}, isRequired: true })
+      expect(type.safeParse('cualquier cosa').success).toBe(true)
+    })
+  })
+
+  describe('isRequired', () => {
+    it('required=false vuelve el campo opcional y nullable', () => {
+      const type = buildFieldType({ name: 'nombre', dataType: 'text', validationRules: {}, isRequired: false })
+      expect(type.safeParse(undefined).success).toBe(true)
+      expect(type.safeParse(null).success).toBe(true)
+    })
+
+    it('required=true no acepta undefined', () => {
+      const type = buildFieldType({ name: 'nombre', dataType: 'text', validationRules: {}, isRequired: true })
+      expect(type.safeParse(undefined).success).toBe(false)
+    })
+  })
+})

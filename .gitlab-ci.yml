@@ -1,6 +1,7 @@
 stages:
   - install
   - lint
+  - test
   - build
 
 variables:
@@ -29,6 +30,22 @@ lint:
   needs: ["install"]
   script:
     - npm run lint
+
+# HU-ERD-29: la suite (unit + integracion) es autocontenida - test/setup/testDb.ts
+# levanta un Postgres real embebido (embedded-postgres) por corrida, sin
+# depender de un servicio de CI ni de erp-dinamico-database. Nada especial que
+# levantar aca, a diferencia de un setup con "services: postgres".
+#
+# image node:22-BOOKWORM (glibc), no -alpine (musl) a proposito: embedded-postgres
+# distribuye binarios de Postgres precompilados contra glibc: en Alpine fallan
+# al ejecutarse. Si en algun momento se quiere volver a alpine, hay que resolver
+# eso primero (ej. instalando gcompat) o esta suite rompe en CI.
+test:
+  stage: test
+  image: node:22-bookworm
+  needs: ["install"]
+  script:
+    - npm run test
 
 build:
   stage: build
