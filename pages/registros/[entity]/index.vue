@@ -21,6 +21,10 @@ interface RecordsResponse {
   total: number
 }
 
+// HU-ERD-32: mismo fix de forwarding de cookie en SSR que useEntityFields.ts
+// (HU-ERD-22/23/24) - sin esto, un refresh completo (F5) de esta pagina tira
+// 401 durante el SSR y muestra el estado de error aunque el usuario si este
+// logueado.
 const {
   data: recordsData,
   pending: recordsPending,
@@ -28,7 +32,8 @@ const {
   refresh: refreshRecords
 } = await useFetch<RecordsResponse>(`/api/records/${slug}`, {
   key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}`,
-  query: computed(() => ({ page: page.value, pageSize: 20, sortBy: sortBy.value, sortDir: sortDir.value }))
+  query: computed(() => ({ page: page.value, pageSize: 20, sortBy: sortBy.value, sortDir: sortDir.value })),
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
 
 function onSort(value: { sortBy: string; sortDir: 'asc' | 'desc' }) {

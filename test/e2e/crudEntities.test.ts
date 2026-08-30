@@ -246,4 +246,35 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     })
     expect(res.status).toBe(422)
   })
+
+  // HU-ERD-32: UI del modulo CRM (AppNav + paginas genericas de HU-ERD-23/24
+  // reusadas para Clientes/Empresas/Empleados). Reusa el server ya levantado
+  // arriba en vez de compilar/levantar uno nuevo. Pega con fetch crudo (no un
+  // browser) pasando la cookie a mano - exactamente lo que hace un refresh
+  // completo (F5), el escenario donde el bug de forwarding de cookie en SSR
+  // (fix de esta misma HU en useEntityFields.ts/AppNav.vue/index.vue/editar.vue)
+  // se manifestaba.
+  it('SSR: la home renderiza los links de Clientes/Empresas/Empleados en el nav (AppNav filtra por RBAC via SSR)', async () => {
+    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Clientes')
+    expect(html).toContain('Empresas')
+    expect(html).toContain('Empleados')
+  })
+
+  it('SSR: /registros/clientes (F5 completo, con cookie pero sin JS de cliente) renderiza el listado, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/registros/clientes`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).not.toContain('No se pudo cargar la definicion de esta entidad')
+    expect(html).not.toContain('No se pudieron cargar los registros')
+  })
+
+  it('SSR: /registros/clientes/nuevo (F5 completo) renderiza el formulario, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/registros/clientes/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).not.toContain('No se pudo cargar la definicion de esta entidad')
+  })
 })

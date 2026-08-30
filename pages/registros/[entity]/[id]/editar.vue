@@ -14,9 +14,10 @@ interface RecordRow {
   customData: Record<string, unknown>
 }
 
+// HU-ERD-32: mismo fix de forwarding de cookie en SSR que useEntityFields.ts.
 const { data: record, pending: recordPending, error: recordError } = await useFetch<RecordRow>(
   `/api/records/${slug}/${id}`,
-  { key: `record-${slug}-${id}` }
+  { key: `record-${slug}-${id}`, headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined }
 )
 
 const formValues = ref<Record<string, unknown>>({})
