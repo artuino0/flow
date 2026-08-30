@@ -19,7 +19,10 @@ import { logger } from '~/server/utils/logger'
 
 const LOOKBACK_MINUTES = 30 // > 2x el intervalo del cron (15 min), da margen ante una corrida lenta o fallida
 
-function toDimDateId(d: Date): number {
+// Exportada (HU-ERD-31): el endpoint de metricas del dashboard interno
+// (server/utils/dashboardMetrics.ts) necesita el mismo mapeo fecha -> id de
+// dim_date para poder filtrar fact_eventos por rango de fechas.
+export function toDimDateId(d: Date): number {
   return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate()
 }
 
