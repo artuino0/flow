@@ -12,8 +12,8 @@ import { entityFields } from '~/server/db/schema'
 // como prerequisito de ERD-23, en vez de inventar un tipo de dato paralelo
 // o hardcodear formularios por entidad.
 //
-// Mismo gate que records (canRead sobre la entidad): si podes leer registros,
-// podes leer la forma de sus campos.
+// Mismo gate que records (canRead sobre la entidad): si puedes leer registros,
+// puedes leer la forma de sus campos.
 export default defineEventHandler(async (event) => {
   const entitySlug = getRouterParam(event, 'entity')!
   const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')

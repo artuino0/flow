@@ -71,7 +71,7 @@ export async function requirePermission(
     throw createError({ statusCode: 404, statusMessage: `Entidad "${entitySlug}" no existe` })
   }
   if (!result.allowed) {
-    throw createError({ statusCode: 403, statusMessage: `No tenes permiso "${action}" sobre "${entitySlug}"` })
+    throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre "${entitySlug}"` })
   }
 
   return { auth, entity: result.entity }
@@ -102,7 +102,7 @@ export async function requirePermissionForEntityId(
   })
 
   if (!allowed) {
-    throw createError({ statusCode: 403, statusMessage: `No tenes permiso "${action}" sobre esta entidad` })
+    throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre esta entidad` })
   }
   return auth
 }

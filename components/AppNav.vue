@@ -16,7 +16,7 @@
 // Diseno Pencil: look de "Sidebar Item" (icono + label, activo con fondo +
 // borde izquierdo azul) y titulos de seccion en mayusculas, igual que
 // Screen/Dashboard, Screen/List Clientes, etc. del .pen.
-import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck, Settings } from '@lucide/vue'
+import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck, Settings, Blocks } from '@lucide/vue'
 import type { Component } from 'vue'
 
 interface CrmEntry {
@@ -84,9 +84,15 @@ const crmItems = computed(() =>
 )
 // "Ajustes" es un placeholder (pages/ajustes/index.vue) - se reserva el
 // lugar en el menu a pedido del usuario; el alcance real es una HU aparte.
+// "Modulos" (HU-ERD-69) usa el mismo guard que ya prueba isAdmin arriba
+// (GET /api/roles y GET /api/entities comparten requireAdminRole) - no hace
+// falta una tercera llamada "de prueba" solo para este link. Icono "blocks"
+// verificado contra Sidebar Item/Active de Screen/Listado Modulos en el .pen
+// (no elegido a mano).
 const adminItems = computed(() => {
   if (!isAdmin.value) return []
   return [
+    { label: 'Módulos', to: '/modulos', icon: Blocks },
     { label: 'Roles y permisos', to: '/roles', icon: ShieldCheck },
     { label: 'Ajustes', to: '/ajustes', icon: Settings }
   ]

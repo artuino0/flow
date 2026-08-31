@@ -876,3 +876,162 @@ describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
     expect(res.status).toBe(500)
   })
 })
+
+// HU-ERD-69: pantalla de administracion "Listado de Modulos"
+// (pages/modulos/index.vue) + GET /api/entities (listado, nuevo en esta HU -
+// hasta ahora solo existian POST/PUT/DELETE puntuales, HU-ERD-66). Reusa el
+// server/tenant/admin del beforeAll de arriba (HU-ERD-30) y el usuario
+// no-admin ya creado en el describe de HU-ERD-66 (mismo criterio que
+// HU-ERD-67: solo hace falta loguear, no volver a crearlo).
+describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos)', () => {
+  const MODULOS_NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const MODULOS_NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let modulosNonAdminCookie: string
+  let listadoModuleName: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: MODULOS_NON_ADMIN_EMAIL, password: MODULOS_NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    modulosNonAdminCookie = extractCookie(loginRes)
+
+    listadoModuleName = 'Modulo Listado E2E'
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: listadoModuleName, slug: 'modulo-listado-e2e', description: 'Para probar el listado' })
+    })
+    expect(createRes.status).toBe(201)
+  }, 30_000)
+
+  it('GET /api/entities sin cookie es 401, y con un rol no-admin es 403', async () => {
+    const noAuthRes = await fetch(`${baseUrl}/api/entities`)
+    expect(noAuthRes.status).toBe(401)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities`, { headers: { cookie: modulosNonAdminCookie } })
+    expect(nonAdminRes.status).toBe(403)
+  })
+
+  it('GET /api/entities (admin) lista los modulos del tenant, ordenados por nombre', async () => {
+    const res = await api('/api/entities')
+    expect(res.status).toBe(200)
+    const { entities } = await res.json()
+    expect(Array.isArray(entities)).toBe(true)
+    expect(entities.find((e: { slug: string }) => e.slug === 'modulo-listado-e2e')).toMatchObject({
+      name: listadoModuleName,
+      description: 'Para probar el listado'
+    })
+    const names = entities.map((e: { name: string }) => e.name)
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)))
+  })
+
+  it('SSR: /modulos (F5 completo, admin) renderiza el listado real, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/modulos`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Módulos')
+    expect(html).toContain(listadoModuleName)
+    expect(html).not.toContain('No se pudo cargar el listado de módulos')
+  })
+
+  it('SSR: /modulos con un rol no-admin muestra el estado de error claro (403), no el listado', async () => {
+    const res = await fetch(`${baseUrl}/modulos`, { headers: { cookie: modulosNonAdminCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('requiere rol administrador')
+    expect(html).not.toContain(listadoModuleName)
+  })
+
+  it('SSR: la home muestra el link "Módulos" en el nav para admin, pero no para un rol no-admin', async () => {
+    const adminHomeRes = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+    const adminHtml = await adminHomeRes.text()
+    expect(adminHtml).toContain('Módulos')
+
+    const nonAdminHomeRes = await fetch(`${baseUrl}/`, { headers: { cookie: modulosNonAdminCookie } })
+    const nonAdminHtml = await nonAdminHomeRes.text()
+    expect(nonAdminHtml).not.toContain('Módulos')
+  })
+
+  it('DELETE de un modulo con registros existentes devuelve un mensaje 409 claro (con el conteo), no un error generico', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Con Datos E2E', slug: 'con-datos-listado-e2e' })
+    })
+    const entity = await createRes.json()
+    await api(`/api/records/${entity.slug}`, { method: 'POST', body: JSON.stringify({ customData: {} }) })
+
+    const deleteRes = await api(`/api/entities/${entity.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(409)
+    const body = await deleteRes.json()
+    expect(body.statusMessage).toContain('registro')
+    expect(body.statusMessage).toContain('1')
+  })
+
+  it('GET /api/entities incluye recordCount/fieldCount reales por modulo (columnas "Registros"/"Campos" del diseno)', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Conteo E2E', slug: 'conteo-listado-e2e' })
+    })
+    const entity = await createRes.json()
+    await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text' })
+    })
+    await api(`/api/records/${entity.slug}`, { method: 'POST', body: JSON.stringify({ customData: {} }) })
+
+    const res = await api('/api/entities')
+    const { entities } = await res.json()
+    expect(entities.find((e: { slug: string }) => e.slug === 'conteo-listado-e2e')).toMatchObject({
+      recordCount: 1,
+      fieldCount: 1
+    })
+  })
+
+  // Sigue el diseno real de Screen/Listado Modulos en el .pen (revisado con
+  // las herramientas de Pencil): breadcrumb Inicio > Modulos, boton "Crear
+  // modulo" que navega a una pagina dedicada (no un panel/card en el
+  // listado), columnas Modulo/Registros/Campos/Creado/Acciones.
+  it('SSR: /modulos (admin) renderiza el diseno real - breadcrumb, boton "Crear módulo" y conteos, sin ningun formulario inline', async () => {
+    const res = await fetch(`${baseUrl}/modulos`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Crear módulo')
+    expect(html).toContain('href="/modulos/nuevo"')
+    expect(html).not.toContain('id="modulo-name"')
+  })
+
+  it('SSR: /modulos/nuevo (admin) renderiza el formulario de alta, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/modulos/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Crear módulo')
+    expect(html).toContain('id="modulo-name"')
+  })
+
+  it('POST vía /modulos/nuevo (simulado con la API real) crea el módulo y aparece de inmediato en el listado', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Creado Desde Pagina Dedicada', slug: 'creado-pagina-dedicada' })
+    })
+    expect(createRes.status).toBe(201)
+    const entity = await createRes.json()
+
+    const listRes = await fetch(`${baseUrl}/modulos`, { headers: { cookie: authCookie } })
+    const html = await listRes.text()
+    expect(html).toContain('Creado Desde Pagina Dedicada')
+
+    const editRes = await fetch(`${baseUrl}/modulos/${entity.id}/editar`, { headers: { cookie: authCookie } })
+    expect(editRes.status).toBe(200)
+    const editHtml = await editRes.text()
+    expect(editHtml).toContain('Creado Desde Pagina Dedicada')
+    expect(editHtml).toContain('disabled')
+  })
+
+  it('SSR: la home muestra el icono/link "Módulos" (icono blocks, verificado contra el .pen) para admin', async () => {
+    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+    const html = await res.text()
+    expect(html).toContain('href="/modulos"')
+  })
+})

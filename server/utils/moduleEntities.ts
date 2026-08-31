@@ -1,6 +1,6 @@
-import { and, count, eq } from 'drizzle-orm'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, records, roleEntityPermissions, roles } from '~/server/db/schema'
+import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 
 // HU-ERD-66: logica de "modulos" (entities) como metadatos administrables -
 // hasta ahora entities/entity_fields solo se creaban por scripts/seed.mjs
@@ -25,6 +25,63 @@ export interface EntitySummary {
 const PG_UNIQUE_VIOLATION = '23505'
 
 export class DuplicateSlugError extends Error {}
+
+export interface EntityListItem extends EntitySummary {
+  createdAt: Date
+  recordCount: number
+  fieldCount: number
+}
+
+/**
+ * HU-ERD-69: lista todos los modulos (entities) del tenant, para la pantalla
+ * de administracion "Listado de Modulos" (pages/modulos/index.vue, siguiendo
+ * el diseno real de Screen/Listado Modulos en el .pen) - hasta esta HU no
+ * existia ningun endpoint de LECTURA sobre entities en si (solo
+ * GET /api/entities/:slug/fields, HU-ERD-23, que resuelve una entidad
+ * puntual por slug para permisos/campos). Orden alfabetico por nombre, unico
+ * criterio razonable sin un campo de orden propio en el schema.
+ *
+ * Suma recordCount/fieldCount (columnas "Registros"/"Campos" del diseno) con
+ * dos queries agrupadas en vez de N+1 por entidad. entity_fields no tiene
+ * tenant_id/RLS propio (ver moduleEntityFields.ts) - se filtra explicitamente
+ * por los ids de entities ya resueltos para este tenant, no por RLS.
+ *
+ * El diseno tambien trae una columna "Estado" (badge Publicado/Borrador) que
+ * no existe como concepto en `entities` hoy - se dejo afuera a proposito,
+ * no se inventa el dato ni se agrega un campo nuevo sin una HU que lo pida.
+ */
+export async function listEntities(tenantId: string): Promise<EntityListItem[]> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = await tx
+      .select({ id: entities.id, slug: entities.slug, name: entities.name, description: entities.description, createdAt: entities.createdAt })
+      .from(entities)
+      .where(eq(entities.tenantId, tenantId))
+      .orderBy(entities.name)
+
+    if (rows.length === 0) return []
+    const ids = rows.map((r) => r.id)
+
+    const recordRows = await tx
+      .select({ entityId: records.entityId, value: count() })
+      .from(records)
+      .where(and(eq(records.tenantId, tenantId), inArray(records.entityId, ids)))
+      .groupBy(records.entityId)
+    const fieldRows = await tx
+      .select({ entityId: entityFields.entityId, value: count() })
+      .from(entityFields)
+      .where(inArray(entityFields.entityId, ids))
+      .groupBy(entityFields.entityId)
+
+    const recordCountByEntity = new Map(recordRows.map((r) => [r.entityId, r.value]))
+    const fieldCountByEntity = new Map(fieldRows.map((r) => [r.entityId, r.value]))
+
+    return rows.map((r) => ({
+      ...r,
+      recordCount: recordCountByEntity.get(r.id) ?? 0,
+      fieldCount: fieldCountByEntity.get(r.id) ?? 0
+    }))
+  })
+}
 
 /**
  * Crea un modulo (entity) y le otorga de inmediato permiso CRUD completo al

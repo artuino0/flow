@@ -6,6 +6,7 @@ import type {
   createEntity as CreateEntity,
   updateEntity as UpdateEntity,
   deleteEntity as DeleteEntity,
+  listEntities as ListEntities,
   DuplicateSlugError as DuplicateSlugErrorType
 } from '../../server/utils/moduleEntities'
 
@@ -22,6 +23,7 @@ let admin: postgres.Sql
 let createEntity: typeof CreateEntity
 let updateEntity: typeof UpdateEntity
 let deleteEntity: typeof DeleteEntity
+let listEntities: typeof ListEntities
 let DuplicateSlugError: typeof DuplicateSlugErrorType
 
 let adminRoleA: string
@@ -38,7 +40,7 @@ beforeAll(async () => {
   await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_B}, 'Administrador', true)`
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ createEntity, updateEntity, deleteEntity, DuplicateSlugError } = await import('../../server/utils/moduleEntities'))
+  ;({ createEntity, updateEntity, deleteEntity, listEntities, DuplicateSlugError } = await import('../../server/utils/moduleEntities'))
 }, 60_000)
 
 afterAll(async () => {
@@ -102,5 +104,54 @@ describe('moduleEntities (Postgres real)', () => {
 
   it('deleteEntity devuelve "not-found" si el modulo no existe o es de otro tenant', async () => {
     expect(await deleteEntity(TENANT_A, randomUUID())).toEqual({ status: 'not-found' })
+  })
+
+  // HU-ERD-69: soporte de listado para pages/modulos/index.vue (siguiendo
+  // Screen/Listado Modulos del .pen).
+  it('listEntities devuelve solo los modulos del tenant, ordenados por nombre, con recordCount/fieldCount en 0 por default', async () => {
+    const tenantList = randomUUID()
+    await admin`insert into tenants (id, name) values (${tenantList}, 'Tenant Listado')`
+
+    await createEntity(tenantList, { name: 'Zetas', slug: 'zetas', description: null })
+    await createEntity(tenantList, { name: 'Alfas', slug: 'alfas', description: 'Con descripcion' })
+
+    const result = await listEntities(tenantList)
+    expect(result.map((e) => e.name)).toEqual(['Alfas', 'Zetas'])
+    expect(result.find((e) => e.slug === 'alfas')).toMatchObject({
+      name: 'Alfas',
+      description: 'Con descripcion',
+      recordCount: 0,
+      fieldCount: 0
+    })
+    expect(result[0].createdAt).toBeInstanceOf(Date)
+  })
+
+  it('listEntities no devuelve modulos de otros tenants', async () => {
+    const tenantX = randomUUID()
+    const tenantY = randomUUID()
+    await admin`insert into tenants (id, name) values (${tenantX}, 'Tenant X')`
+    await admin`insert into tenants (id, name) values (${tenantY}, 'Tenant Y')`
+
+    await createEntity(tenantX, { name: 'Solo X', slug: 'solo-x', description: null })
+    await createEntity(tenantY, { name: 'Solo Y', slug: 'solo-y', description: null })
+
+    const result = await listEntities(tenantX)
+    expect(result.map((e) => e.slug)).toEqual(['solo-x'])
+  })
+
+  it('listEntities cuenta records y entity_fields reales por modulo (columnas "Registros"/"Campos" del diseno)', async () => {
+    const tenantCounts = randomUUID()
+    await admin`insert into tenants (id, name) values (${tenantCounts}, 'Tenant Counts')`
+
+    const withData = await createEntity(tenantCounts, { name: 'Con Datos', slug: 'con-datos', description: null })
+    const empty = await createEntity(tenantCounts, { name: 'Vacio', slug: 'vacio', description: null })
+
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${tenantCounts}, ${withData.id}, '{}')`
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${tenantCounts}, ${withData.id}, '{}')`
+    await admin`insert into entity_fields (entity_id, name, label, data_type) values (${withData.id}, 'nombre', 'Nombre', 'text')`
+
+    const result = await listEntities(tenantCounts)
+    expect(result.find((e) => e.slug === 'con-datos')).toMatchObject({ recordCount: 2, fieldCount: 1 })
+    expect(result.find((e) => e.slug === 'vacio')).toMatchObject({ recordCount: 0, fieldCount: 0 })
   })
 })
