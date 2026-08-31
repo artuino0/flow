@@ -405,6 +405,150 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
   })
 })
 
+// HU-ERD-66: endpoints de escritura sobre metadatos de modulos (entities) -
+// hasta esta HU, la unica forma de dar de alta un modulo era scripts/seed.mjs
+// o SQL directo. Reusa el server/tenant/admin ya levantados en el beforeAll
+// de arriba (HU-ERD-30); solo agrega un usuario no-admin para probar el 403.
+describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
+  const NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let nonAdminCookie: string
+
+  beforeAll(async () => {
+    const admin = postgres(testDb.adminUrl)
+    try {
+      const passwordHash = await bcrypt.hash(NON_ADMIN_PASSWORD, 12)
+      const [role] = await admin`
+        insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Vendedor', false) returning id
+      `
+      await admin`
+        insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
+        values (${TENANT_ID}, ${role.id}, ${NON_ADMIN_EMAIL}, ${passwordHash}, 'Vendedor E2E', true)
+      `
+    } finally {
+      await admin.end()
+    }
+
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: NON_ADMIN_EMAIL, password: NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    nonAdminCookie = extractCookie(loginRes)
+  }, 30_000)
+
+  it('POST /api/entities sin cookie es 401, y con un rol no-admin es 403', async () => {
+    const noAuthRes = await fetch(`${baseUrl}/api/entities`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Proyectos', slug: 'proyectos' })
+    })
+    expect(noAuthRes.status).toBe(401)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: nonAdminCookie },
+      body: JSON.stringify({ name: 'Proyectos', slug: 'proyectos' })
+    })
+    expect(nonAdminRes.status).toBe(403)
+  })
+
+  it('POST /api/entities crea el modulo (admin) y el rol Administrador queda con CRUD completo de inmediato', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Proyectos', slug: 'proyectos', description: 'Modulo E2E' })
+    })
+    expect(createRes.status).toBe(201)
+    const entity = await createRes.json()
+    expect(entity).toMatchObject({ name: 'Proyectos', slug: 'proyectos', description: 'Modulo E2E' })
+
+    // Sin esto el modulo recien creado seria inaccesible incluso para el
+    // admin que lo creo - confirma el auto-grant de moduleEntities.ts.
+    const permsRes = await api(`/api/roles/${adminRoleId}/permissions`)
+    const { permissions } = await permsRes.json()
+    expect(permissions.find((p: { entitySlug: string }) => p.entitySlug === 'proyectos')).toMatchObject({
+      canRead: true,
+      canCreate: true,
+      canUpdate: true,
+      canDelete: true
+    })
+
+    // Confirma que ya es usable de punta a punta: crear un record de verdad
+    // en el modulo recien creado (sin ningun entity_field todavia, customData vacio).
+    const recordRes = await api('/api/records/proyectos', {
+      method: 'POST',
+      body: JSON.stringify({ customData: {} })
+    })
+    expect(recordRes.status).toBe(201)
+  })
+
+  it('POST /api/entities con un slug duplicado devuelve 409', async () => {
+    const res = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Proyectos otra vez', slug: 'proyectos' })
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('PUT /api/entities/:id edita nombre/descripcion; con un rol no-admin es 403; con id inexistente es 404', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Editable', slug: 'editable' })
+    })
+    const entity = await createRes.json()
+
+    const putRes = await api(`/api/entities/${entity.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'Editable renombrado' })
+    })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).name).toBe('Editable renombrado')
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities/${entity.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: nonAdminCookie },
+      body: JSON.stringify({ name: 'Hackeado' })
+    })
+    expect(nonAdminRes.status).toBe(403)
+
+    const notFoundRes = await api(`/api/entities/${randomUUID()}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'No existe' })
+    })
+    expect(notFoundRes.status).toBe(404)
+  })
+
+  it('DELETE /api/entities/:id borra un modulo sin records, pero 409 si tiene records', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Descartable', slug: 'descartable-e2e' })
+    })
+    const entity = await createRes.json()
+
+    const deleteRes = await api(`/api/entities/${entity.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+    expect((await deleteRes.json()).deleted).toBe(true)
+
+    // "proyectos" ya tiene un record (test anterior) - debe bloquear el borrado.
+    const proyectosListRes = await api('/api/records/proyectos?pageSize=1')
+    const proyectosList = await proyectosListRes.json()
+    const proyectosId = (await (await api('/api/roles/' + adminRoleId + '/permissions')).json()).permissions.find(
+      (p: { entitySlug: string }) => p.entitySlug === 'proyectos'
+    ).entityId
+    expect(proyectosList.data.length).toBeGreaterThan(0)
+
+    const blockedRes = await api(`/api/entities/${proyectosId}`, { method: 'DELETE' })
+    expect(blockedRes.status).toBe(409)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities/${proyectosId}`, {
+      method: 'DELETE',
+      headers: { cookie: nonAdminCookie }
+    })
+    expect(nonAdminRes.status).toBe(403)
+  })
+})
+
 // HU-ERD-35: modo "dedicated" (login sin tenantId) y FEATURE_DASHBOARD=false
 // (kill switch real, no solo cosmetico) - un segundo server real, con su
 // propio Postgres embebido y su propio env (APP_MODE/FEATURE_DASHBOARD
