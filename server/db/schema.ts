@@ -11,6 +11,15 @@ export const entities = pgTable('entities', {
   slug: text('slug').notNull(),
   description: text('description'),
   isSystem: boolean('is_system').notNull().default(false),
+  // HU-ERD-74: configuracion del "Diseño del detalle" (que propiedades y
+  // relaciones inversas se muestran en la ficha de un registro, en que orden,
+  // y si se muestra la linea de tiempo de actividad). Null = sin configurar
+  // todavia -> la ficha usa el orden por defecto (ver server/utils/detailLayout.ts,
+  // resolveDetailLayout()), nunca rompe ni queda vacia (criterio de aceptacion
+  // explicito de la HU). Misma decision de "sin tabla nueva" ya usada para
+  // Tabla/Select (ERD-68): vive en una columna jsonb de entities, no en una
+  // tabla de layout aparte.
+  detailLayout: jsonb('detail_layout'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

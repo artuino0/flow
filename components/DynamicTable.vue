@@ -5,7 +5,7 @@
 //
 // Diseno Pencil: "Table Header Row" / "Table Row" / "Pagination Item"
 // (Default/Active) del .pen, envueltos en un contenedor tipo Card.
-import { Pencil, Trash2, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from '@lucide/vue'
 import type { EntityFieldMeta, EntityPermissions } from '~/composables/useEntityFields'
 
 interface RecordRow {
@@ -101,7 +101,7 @@ function onDelete(id: string) {
               {{ field.label }}
               <span v-if="sortBy === field.name" class="ml-1 text-brand-blue">{{ sortDir === 'asc' ? '↑' : '↓' }}</span>
             </th>
-            <th v-if="permissions.canUpdate || permissions.canDelete" class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">
+            <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">
               Acciones
             </th>
           </tr>
@@ -114,8 +114,18 @@ function onDelete(id: string) {
             <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-3 text-brand-text">
               {{ cellValue(field, row) }}
             </td>
-            <td v-if="permissions.canUpdate || permissions.canDelete" class="whitespace-nowrap px-4 py-3">
+            <td class="whitespace-nowrap px-4 py-3">
               <div class="flex justify-end gap-2">
+                <!-- HU-ERD-74: ficha de solo lectura - siempre disponible
+                     (ya se llegó a este listado con canRead), no depende de
+                     canUpdate/canDelete como las otras dos acciones. -->
+                <NuxtLink
+                  :to="`/registros/${entitySlug}/${row.id}`"
+                  title="Ver detalle"
+                  class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary hover:bg-brand-bg"
+                >
+                  <Eye class="h-4 w-4" :stroke-width="1.75" />
+                </NuxtLink>
                 <NuxtLink
                   v-if="permissions.canUpdate"
                   :to="`/registros/${entitySlug}/${row.id}/editar`"

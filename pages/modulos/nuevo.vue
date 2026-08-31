@@ -13,13 +13,17 @@
 // vacio - se puede borrar despues desde /modulos si no se quiere, igual que
 // cualquier otro modulo sin registros.
 import { ArrowRight, Blocks, Check, ChevronRight } from '@lucide/vue'
-import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
 
 const router = useRouter()
 
-const step = ref<'basica' | 'campos'>('basica')
+// HU-ERD-74: tercer paso "Diseño del detalle" (Screen/Diseño del Detalle del
+// .pen - el mismo asistente ahora tiene 3 pasos, un 4to "Diseño del listado"
+// queda para HU-ERD-75, todavia no implementada). "Guardar diseño" en este
+// paso 3 es el fin del asistente por ahora (no hay paso 4 al que avanzar).
+const step = ref<'basica' | 'campos' | 'detalle'>('basica')
 
 const name = ref('')
 const slug = ref('')
@@ -43,11 +47,31 @@ function onSlugInput(value: string) {
 
 const entityId = ref<string | null>(null)
 const fields = ref<EntityFieldMeta[]>([])
+const inverseRelations = ref<InverseRelation[]>([])
+const detailLayout = ref<DetailLayout>({ properties: [], relations: [], showActivity: false })
 
 async function loadFields() {
   if (!slug.value) return
-  const res = await $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${slug.value}/fields`)
+  const res = await $fetch<{ fields: EntityFieldMeta[]; inverseRelations: InverseRelation[]; detailLayout: DetailLayout }>(`/api/entities/${slug.value}/fields`)
   fields.value = res.fields
+  inverseRelations.value = res.inverseRelations
+  detailLayout.value = res.detailLayout
+}
+
+const savingDetailLayout = ref(false)
+const detailLayoutError = ref<string | null>(null)
+async function onSaveDetailLayout() {
+  if (!entityId.value) return
+  detailLayoutError.value = null
+  savingDetailLayout.value = true
+  try {
+    await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { detailLayout: detailLayout.value } })
+    router.push('/modulos')
+  } catch (err: any) {
+    detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
+  } finally {
+    savingDetailLayout.value = false
+  }
 }
 
 async function onContinue() {
@@ -76,7 +100,7 @@ async function onContinue() {
       <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
       <NuxtLink to="/modulos" class="text-brand-text-secondary hover:underline">Módulos</NuxtLink>
       <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
-      <span class="font-bold text-brand-text">{{ step === 'basica' ? 'Nuevo módulo' : 'Campos' }}</span>
+      <span class="font-bold text-brand-text">{{ step === 'basica' ? 'Nuevo módulo' : step === 'campos' ? 'Campos' : 'Diseño del detalle' }}</span>
     </div>
 
     <template v-if="step === 'basica'">
@@ -90,10 +114,15 @@ async function onContinue() {
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">1</span>
           <span class="text-sm font-bold text-brand-text">Información básica</span>
         </div>
-        <div class="h-px flex-1 max-w-[120px] bg-brand-border" />
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">2</span>
           <span class="text-sm font-semibold text-brand-text-muted">Campos</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">3</span>
+          <span class="text-sm font-semibold text-brand-text-muted">Diseño del detalle</span>
         </div>
       </div>
 
@@ -162,7 +191,7 @@ async function onContinue() {
       </div>
     </template>
 
-    <template v-else-if="entityId">
+    <template v-else-if="step === 'campos' && entityId">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-[38px] w-[38px] items-center justify-center rounded bg-brand-blue-bg">
@@ -181,10 +210,10 @@ async function onContinue() {
           <button
             type="button"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-            @click="router.push('/modulos')"
+            @click="step = 'detalle'"
           >
-            <Check class="h-4 w-4" :stroke-width="1.75" />
-            Guardar módulo
+            Continuar
+            <ArrowRight class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
       </div>
@@ -201,11 +230,76 @@ async function onContinue() {
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">2</span>
           <span class="text-sm font-bold text-brand-text">Campos</span>
         </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">3</span>
+          <span class="text-sm font-semibold text-brand-text-muted">Diseño del detalle</span>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         <ModuleFieldsCard :entity-id="entityId" :fields="fields" @changed="loadFields" />
         <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+      </div>
+    </template>
+
+    <!-- HU-ERD-74: paso 3, "Diseño del detalle" - ver components/ModuleDetailLayoutCard.vue
+         (configurador) y components/RecordDetailView.vue (vista previa, el
+         MISMO componente que renderiza la ficha real de un registro). -->
+    <template v-else-if="step === 'detalle' && entityId">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex h-[38px] w-[38px] items-center justify-center rounded bg-brand-blue-bg">
+            <Blocks class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center gap-2">
+              <span class="text-[15px] font-bold text-brand-text">{{ name }}</span>
+              <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ slug }}</span>
+            </div>
+            <p class="text-sm text-brand-text-secondary">Configurá qué información aparece en la ficha de un registro y en qué orden</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <NuxtLink to="/modulos" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
+          <button
+            type="button"
+            :disabled="savingDetailLayout"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSaveDetailLayout"
+          >
+            <Check class="h-4 w-4" :stroke-width="1.75" />
+            {{ savingDetailLayout ? 'Guardando...' : 'Guardar diseño' }}
+          </button>
+        </div>
+      </div>
+
+      <p v-if="detailLayoutError" class="text-sm text-brand-error-text">{{ detailLayoutError }}</p>
+
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+            <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
+          </span>
+          <span class="text-sm font-bold text-brand-text">Información básica</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+            <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
+          </span>
+          <span class="text-sm font-bold text-brand-text">Campos</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">3</span>
+          <span class="text-sm font-bold text-brand-text">Diseño del detalle</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+        <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
+        <RecordDetailView :entity-slug="slug" :entity-name="name" :fields="fields" :layout="detailLayout" :inverse-relations="inverseRelations" :record="null" />
       </div>
     </template>
   </div>

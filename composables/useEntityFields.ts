@@ -23,10 +23,37 @@ export interface EntityPermissions {
   canDelete: boolean
 }
 
+// HU-ERD-74: "Diseño del detalle" - ver server/utils/detailLayout.ts para la
+// logica real (default + reconciliacion). El frontend solo consume el
+// resultado YA resuelto (nunca `entity.detailLayout` crudo, que puede ser
+// null o estar desactualizado contra los campos/relaciones de hoy).
+export interface DetailLayoutProperty {
+  name: string
+  visible: boolean
+}
+export interface DetailLayoutRelation {
+  entitySlug: string
+  fieldName: string
+  visible: boolean
+}
+export interface DetailLayout {
+  properties: DetailLayoutProperty[]
+  relations: DetailLayoutRelation[]
+  showActivity: boolean
+}
+export interface InverseRelation {
+  entitySlug: string
+  entityName: string
+  fieldName: string
+  fieldLabel: string
+}
+
 export interface EntityFieldsResponse {
   entity: EntityMeta
   fields: EntityFieldMeta[]
   permissions: EntityPermissions
+  inverseRelations: InverseRelation[]
+  detailLayout: DetailLayout
 }
 
 export function useEntityFields(slug: string) {

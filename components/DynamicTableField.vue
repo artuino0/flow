@@ -128,17 +128,10 @@ async function ensureEntityFields(slug: string): Promise<EntityFieldMeta[]> {
   }
   return entityFieldsCache[slug]
 }
-// No hay un campo "nombre" fijo por entidad (custom_data es dinamico) - se
-// usa el primer campo de tipo texto como etiqueta de exhibicion, con el id
-// truncado como ultimo recurso si la entidad no tiene ningun campo texto.
-function labelFieldFor(fields: EntityFieldMeta[]): string | null {
-  return fields.find((f) => f.dataType === 'text')?.name ?? null
-}
-function labelForRecord(fields: EntityFieldMeta[], customData: Record<string, unknown>, id: string): string {
-  const labelField = labelFieldFor(fields)
-  const raw = labelField ? customData[labelField] : null
-  return typeof raw === 'string' && raw.length > 0 ? raw : id.slice(0, 8)
-}
+// labelFieldFor()/labelForRecord(): HU-ERD-74 las extrajo a
+// utils/recordLabel.ts (auto-importado) para reusarlas tal cual en
+// RecordDetailView.vue (encabezado de la ficha de detalle real) - mismo
+// criterio que utils/slugify.ts.
 
 const labelCache = reactive<Record<string, string>>({})
 function cacheKey(slug: string, id: string): string {

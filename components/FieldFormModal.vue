@@ -130,7 +130,14 @@ const form = reactive({
   dateMin: '',
   dateMax: '',
   options: [] as OptionDraft[],
-  columns: [] as ColumnDraft[]
+  columns: [] as ColumnDraft[],
+  // HU-ERD-74: entidad destino de un campo "Relación" de nivel superior -
+  // hasta esta HU un campo relation no registraba a que entidad apuntaba
+  // (solo exigia forma de uuid, ver dynamicSchema.ts). Opcional (un campo
+  // relation viejo sin esto sigue funcionando igual) - se usa para calcular
+  // las "relaciones inversas" de otra entidad (ver server/utils/detailLayout.ts)
+  // y para resolver la etiqueta del registro relacionado en la ficha de detalle.
+  relationEntity: ''
 })
 
 // Entidades del tenant, para el picker "Entidad relacionada" de una columna
@@ -204,6 +211,8 @@ watch(
     form.integer = rules.integer === true
     form.dateMin = typeof rules.min === 'string' ? rules.min : ''
     form.dateMax = typeof rules.max === 'string' ? rules.max : ''
+    form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
+    if (form.dataType === 'relation') void ensureRelatedEntitiesLoaded()
 
     const rawOptions = Array.isArray(rules.options) ? (rules.options as Array<{ label?: string; value?: string; color?: string }>) : []
     form.options =
@@ -253,6 +262,7 @@ function selectDataType(value: string) {
     void ensureRelatedEntitiesLoaded()
     if (form.columns.length === 0) form.columns = [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false, readonly: false }]
   }
+  if (value === 'relation') void ensureRelatedEntitiesLoaded()
 }
 
 function addOption() {
@@ -335,6 +345,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
       if (form.dateMax) rules.max = form.dateMax
       return rules
     }
+    case 'relation':
+      return form.relationEntity ? { relationEntity: form.relationEntity } : {}
     case 'select':
     case 'multiselect':
       return { options: form.options.map((o) => ({ value: o.value, label: o.label, color: o.color })) }
@@ -542,6 +554,24 @@ function onSubmit() {
               <input v-model="form.dateMax" type="date" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
             </div>
           </div>
+        </div>
+
+        <!-- HU-ERD-74: entidad destino de un campo Relación - antes de esta
+             HU un campo relation no tenia forma de saber a que entidad
+             apuntaba (solo exigia forma de uuid). Opcional: un campo relation
+             sin esto sigue guardando/validando igual, solo no participa de
+             las "relaciones inversas" en Diseño del Detalle de otra entidad. -->
+        <div v-else-if="form.dataType === 'relation'" class="flex flex-col gap-1.5">
+          <label class="text-[13px] font-semibold text-brand-text">Entidad relacionada</label>
+          <select
+            v-model="form.relationEntity"
+            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            @focus="ensureRelatedEntitiesLoaded()"
+          >
+            <option value="">Sin especificar</option>
+            <option v-for="e in relatedEntities" :key="e.id" :value="e.slug">{{ e.name }}</option>
+          </select>
+          <p class="text-xs text-brand-text-muted">Permite mostrar este campo como relación inversa en la ficha de detalle de la entidad elegida (HU-ERD-74).</p>
         </div>
 
         <!-- HU-ERD-71: builder de opciones (Select/Multiselect) - sigue

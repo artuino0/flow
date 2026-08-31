@@ -113,6 +113,13 @@
       "when": 1788057337289,
       "tag": "0015_awesome_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788210271346,
+      "tag": "0016_erd74_entities_detail_layout",
+      "breakpoints": true
     }
   ]
 }

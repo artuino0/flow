@@ -10,6 +10,10 @@ export interface ResolvedEntity {
   id: string
   slug: string
   name: string
+  // HU-ERD-74: incluida explicitamente en el select() de requirePermission()
+  // (ver abajo) para que fields.get.ts pueda resolver el detailLayout real,
+  // no siempre el default.
+  detailLayout?: unknown
 }
 
 export interface PermissionResult {
@@ -51,7 +55,11 @@ export async function requirePermission(
 
   const result = await withTenant(auth.tenantId, async (tx) => {
     const [entity] = await tx
-      .select({ id: entities.id, slug: entities.slug, name: entities.name })
+      // HU-ERD-74: detailLayout va explicito en el select (antes faltaba, y
+      // GET /api/entities/:entity/fields terminaba resolviendo SIEMPRE el
+      // layout por defecto porque entity.detailLayout era undefined - bug
+      // real encontrado via test e2e, no solo un TS gap).
+      .select({ id: entities.id, slug: entities.slug, name: entities.name, detailLayout: entities.detailLayout })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))
       .limit(1)

@@ -15,13 +15,15 @@
 // pasos con SOLO uno de los dos visible a la vez (paso 1 "Informacion
 // basica" completado en verde, paso 2 "Campos" activo - nunca los dos
 // contenidos juntos). Se corrige con el mismo toggle "step" del asistente
-// (pages/modulos/nuevo.vue), con la diferencia de que aca ambos pasos ya
+// (pages/modulos/nuevo.vue), con la diferencia de que aca todos los pasos ya
 // estan disponibles desde el principio (el modulo ya existe con sus datos
-// basicos Y sus campos) - a diferencia del asistente, donde el paso 2 recien
-// se desbloquea al completar el paso 1 - asi que el indicador de pasos es
+// basicos Y sus campos) - a diferencia del asistente, donde un paso recien
+// se desbloquea al completar el anterior - asi que el indicador de pasos es
 // clickeable en las dos direcciones, no solo hacia adelante.
+//
+// HU-ERD-74 suma el paso 3 "Diseño del detalle" con el mismo criterio.
 import { Blocks, Check } from '@lucide/vue'
-import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
 
@@ -36,7 +38,7 @@ const route = useRoute()
 const router = useRouter()
 const moduleId = route.params.id as string
 
-const step = ref<'basica' | 'campos'>('basica')
+const step = ref<'basica' | 'campos' | 'detalle'>('basica')
 
 // No existe GET /api/entities/:id puntual - se resuelve del listado ya
 // existente (GET /api/entities, HU-ERD-69) en vez de sumar otro endpoint
@@ -84,7 +86,11 @@ async function onSave() {
 // (no un $fetch suelto en un watch) para que la cookie se reenvie en SSR
 // igual que en el fetch del modulo de arriba - un $fetch sin headers durante
 // SSR no lleva la cookie de sesion y el endpoint responde 401.
-const { data: fieldsData, refresh: refreshFields } = await useFetch<{ fields: EntityFieldMeta[] }>(
+const { data: fieldsData, refresh: refreshFields } = await useFetch<{
+  fields: EntityFieldMeta[]
+  inverseRelations: InverseRelation[]
+  detailLayout: DetailLayout
+}>(
   () => `/api/entities/${currentModule.value?.slug ?? ''}/fields`,
   {
     key: 'modulo-fields',
@@ -95,6 +101,35 @@ const { data: fieldsData, refresh: refreshFields } = await useFetch<{ fields: En
 const fields = computed(() => fieldsData.value?.fields ?? [])
 async function loadFields() {
   await refreshFields()
+}
+
+// HU-ERD-74: paso 3 "Diseño del detalle" - borrador local sincronizado desde
+// el layout YA RESUELTO por el servidor (con defaults/reconciliacion, ver
+// server/utils/detailLayout.ts) cada vez que fieldsData cambia (mismo
+// criterio que name/description arriba con watchEffect), y guardado explicito
+// via "Guardar diseño" (no se persiste en cada click, a diferencia de
+// ModuleFieldsCard que si guarda cada cambio de inmediato contra su propio endpoint).
+const inverseRelations = computed(() => fieldsData.value?.inverseRelations ?? [])
+const detailLayout = ref<DetailLayout>({ properties: [], relations: [], showActivity: false })
+watchEffect(() => {
+  if (fieldsData.value) detailLayout.value = fieldsData.value.detailLayout
+})
+
+const savingDetailLayout = ref(false)
+const detailLayoutError = ref<string | null>(null)
+const detailLayoutSaved = ref(false)
+async function onSaveDetailLayout() {
+  detailLayoutError.value = null
+  detailLayoutSaved.value = false
+  savingDetailLayout.value = true
+  try {
+    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { detailLayout: detailLayout.value } })
+    detailLayoutSaved.value = true
+  } catch (err: any) {
+    detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
+  } finally {
+    savingDetailLayout.value = false
+  }
 }
 </script>
 
@@ -145,6 +180,14 @@ async function loadFields() {
             :class="step === 'campos' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
           >2</span>
           <span class="text-sm font-bold" :class="step === 'campos' ? 'text-brand-text' : 'text-brand-text-secondary'">Campos</span>
+        </button>
+        <div class="h-px w-20 bg-brand-border" />
+        <button type="button" class="flex items-center gap-2" @click="step = 'detalle'">
+          <span
+            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
+            :class="step === 'detalle' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+          >3</span>
+          <span class="text-sm font-bold" :class="step === 'detalle' ? 'text-brand-text' : 'text-brand-text-secondary'">Diseño del detalle</span>
         </button>
       </div>
 
@@ -209,10 +252,39 @@ async function loadFields() {
         </div>
       </template>
 
-      <template v-else>
+      <template v-else-if="step === 'campos'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <ModuleFieldsCard :entity-id="currentModule.id" :fields="fields" @changed="loadFields" />
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+        </div>
+      </template>
+
+      <!-- HU-ERD-74: paso 3 - ver components/ModuleDetailLayoutCard.vue
+           (configurador) y components/RecordDetailView.vue (vista previa en
+           vivo, el mismo componente que renderiza la ficha real). -->
+      <template v-else>
+        <p v-if="detailLayoutError" class="text-sm text-brand-error-text">{{ detailLayoutError }}</p>
+        <p v-if="detailLayoutSaved" class="text-sm text-brand-success-text">Diseño del detalle guardado correctamente.</p>
+        <div class="flex justify-end">
+          <button
+            type="button"
+            :disabled="savingDetailLayout"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSaveDetailLayout"
+          >
+            {{ savingDetailLayout ? 'Guardando...' : 'Guardar diseño' }}
+          </button>
+        </div>
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+          <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
+          <RecordDetailView
+            :entity-slug="currentModule.slug"
+            :entity-name="currentModule.name"
+            :fields="fields"
+            :layout="detailLayout"
+            :inverse-relations="inverseRelations"
+            :record="null"
+          />
         </div>
       </template>
     </template>

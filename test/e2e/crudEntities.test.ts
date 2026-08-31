@@ -1494,3 +1494,202 @@ describe('e2e: HU-ERD-73 (filterField/filterValues en GET /api/records + campos 
     expect(html).toContain('Urgente')
   })
 })
+
+describe('e2e: HU-ERD-74 (Diseño del detalle - relationEntity, inverseRelations, detailLayout, pagina de detalle)', () => {
+  let cotizacionesSlug: string
+  let cotizacionesId: string
+  let facturasSlug: string
+  let emailFieldId: string
+  let cotizacionIdFieldId: string
+  let cotizacionRecordId: string
+
+  beforeAll(async () => {
+    cotizacionesSlug = 'cotizaciones-e2e'
+    const cotizacionesRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Cotizaciones E2E', slug: cotizacionesSlug })
+    })
+    expect(cotizacionesRes.status).toBe(201)
+    const cotizaciones = await cotizacionesRes.json()
+    cotizacionesId = cotizaciones.id
+
+    const emailRes = await api(`/api/entities/${cotizacionesId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'email', label: 'Email', dataType: 'text' })
+    })
+    expect(emailRes.status).toBe(201)
+    emailFieldId = (await emailRes.json()).id
+
+    const estadoRes = await api(`/api/entities/${cotizacionesId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'estado', label: 'Estado', dataType: 'text' })
+    })
+    expect(estadoRes.status).toBe(201)
+
+    facturasSlug = 'facturas-e2e'
+    const facturasRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Facturas E2E', slug: facturasSlug })
+    })
+    expect(facturasRes.status).toBe(201)
+    const facturas = await facturasRes.json()
+
+    // Campo relation con relationEntity (HU-ERD-74) apuntando a Cotizaciones -
+    // esto es lo que hace que aparezca como "relacion inversa" del lado de
+    // Cotizaciones, sin resucitar relation_definitions (ERD-10/19, dead code).
+    const cotizacionIdRes = await api(`/api/entities/${facturas.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'cotizacion_id',
+        label: 'Cotización',
+        dataType: 'relation',
+        validationRules: { relationEntity: cotizacionesSlug }
+      })
+    })
+    expect(cotizacionIdRes.status).toBe(201)
+    cotizacionIdFieldId = (await cotizacionIdRes.json()).id
+
+    const cotizacionCreateRes = await api(`/api/records/${cotizacionesSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { email: 'cliente@e2e.test', estado: 'aprobada' } })
+    })
+    expect(cotizacionCreateRes.status).toBe(201)
+    cotizacionRecordId = (await cotizacionCreateRes.json()).id
+
+    for (let i = 0; i < 3; i++) {
+      const res = await api(`/api/records/${facturasSlug}`, {
+        method: 'POST',
+        body: JSON.stringify({ customData: { cotizacion_id: cotizacionRecordId } })
+      })
+      expect(res.status).toBe(201)
+    }
+  }, 30_000)
+
+  it('un campo relation con relationEntity que apunta a un slug inexistente es rechazado (422)', async () => {
+    const res = await api(`/api/entities/${cotizacionesId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'campo_relation_malo',
+        label: 'Malo',
+        dataType: 'relation',
+        validationRules: { relationEntityQueNoExiste: 'x' }
+      })
+    })
+    // relationEntity es un string libre en el schema (no valida existencia del
+    // slug a nivel Zod) - lo que SI debe rechazar es una clave desconocida en
+    // validationRules (.strict()).
+    expect(res.status).toBe(422)
+  })
+
+  it('GET /api/entities/:slug/fields calcula inverseRelations a partir del campo relation de Facturas', async () => {
+    const res = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.inverseRelations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entitySlug: facturasSlug, fieldName: 'cotizacion_id', fieldLabel: 'Cotización' })])
+    )
+  })
+
+  it('sin detailLayout guardado, GET .../fields devuelve el default (todos los campos+relaciones, visibles, actividad apagada)', async () => {
+    const res = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    const body = await res.json()
+    expect(body.detailLayout.properties.map((p: { name: string }) => p.name)).toEqual(expect.arrayContaining(['email', 'estado']))
+    expect(body.detailLayout.properties.every((p: { visible: boolean }) => p.visible)).toBe(true)
+    expect(body.detailLayout.relations.every((r: { visible: boolean }) => r.visible)).toBe(true)
+    expect(body.detailLayout.showActivity).toBe(false)
+  })
+
+  it('PUT /api/entities/:id con un detailLayout lo persiste, y GET .../fields lo devuelve tal cual (round-trip)', async () => {
+    const layout = {
+      properties: [
+        { name: 'estado', visible: true },
+        { name: 'email', visible: false }
+      ],
+      relations: [{ entitySlug: facturasSlug, fieldName: 'cotizacion_id', visible: true }],
+      showActivity: true
+    }
+    const putRes = await api(`/api/entities/${cotizacionesId}`, { method: 'PUT', body: JSON.stringify({ detailLayout: layout }) })
+    expect(putRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.detailLayout).toEqual(layout)
+  })
+
+  it('un campo con forma invalida en detailLayout (viola el schema strict del bodySchema) es rechazado (400 - mismo criterio que name/description en este mismo endpoint, no el 422 de InvalidValidationRulesError que usan otros endpoints para reglas de negocio)', async () => {
+    const res = await api(`/api/entities/${cotizacionesId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ detailLayout: { properties: [{ name: 'estado' }], relations: [], showActivity: false } })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('si despues se agrega un campo nuevo, el detailLayout resuelto lo suma al final como visible (reconciliacion, no rompe)', async () => {
+    const telefonoRes = await api(`/api/entities/${cotizacionesId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'telefono', label: 'Teléfono', dataType: 'text' })
+    })
+    expect(telefonoRes.status).toBe(201)
+
+    const getRes = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    const body = await getRes.json()
+    const names = body.detailLayout.properties.map((p: { name: string }) => p.name)
+    expect(names[names.length - 1]).toBe('telefono')
+    expect(body.detailLayout.properties.find((p: { name: string }) => p.name === 'telefono').visible).toBe(true)
+  })
+
+  it('si un campo referenciado en el detailLayout guardado se borra, el detailLayout resuelto lo descarta silenciosamente (no rompe)', async () => {
+    const deleteRes = await api(`/api/entity-fields/${emailFieldId}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.detailLayout.properties.some((p: { name: string }) => p.name === 'email')).toBe(false)
+  })
+
+  it('si el campo relation de Facturas se borra, la relacion inversa desaparece de inverseRelations y del detailLayout resuelto', async () => {
+    const deleteRes = await api(`/api/entity-fields/${cotizacionIdFieldId}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${cotizacionesSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.inverseRelations).toEqual([])
+    expect(body.detailLayout.relations).toEqual([])
+  })
+
+  it('GET /api/records/:entity/:id sobre una Cotizacion trae el registro real (base de la pagina de detalle)', async () => {
+    const res = await api(`/api/records/${cotizacionesSlug}/${cotizacionRecordId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.customData.estado).toBe('aprobada')
+  })
+
+  it('SSR: /registros/:entity (listado) renderiza el link "Ver detalle" hacia /registros/:entity/:id', async () => {
+    const res = await fetch(`${baseUrl}/registros/${cotizacionesSlug}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain(`/registros/${cotizacionesSlug}/${cotizacionRecordId}`)
+    expect(html).toContain('Ver detalle')
+  })
+
+  it('SSR: /registros/:entity/:id (ficha de detalle) renderiza sin error, con el valor real del registro', async () => {
+    const res = await fetch(`${baseUrl}/registros/${cotizacionesSlug}/${cotizacionRecordId}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('aprobada')
+  })
+
+  it('SSR: /registros/:entity/:id con un id inexistente muestra un mensaje de error (mismo criterio que editar.vue - no propaga el statusCode real a la respuesta HTTP, useFetch captura el error sin re-lanzarlo)', async () => {
+    const res = await fetch(`${baseUrl}/registros/${cotizacionesSlug}/${randomUUID()}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Este registro no existe')
+  })
+
+  it('SSR: pages/modulos/[id]/editar.vue renderiza el indicador de 3 pasos, incluido el nuevo paso "Diseño del detalle"', async () => {
+    const res = await fetch(`${baseUrl}/modulos/${cotizacionesId}/editar`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Diseño del detalle')
+  })
+})

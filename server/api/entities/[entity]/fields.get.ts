@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
+import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/detailLayout'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
 //
@@ -38,5 +39,14 @@ export default defineEventHandler(async (event) => {
   // Builder decida que acciones mostrar (Nuevo/Editar/Eliminar) por fila.
   const permissions = await getPermissionFlags(auth, entity.id)
 
-  return { entity, fields, permissions }
+  // HU-ERD-74: resuelto aca (no solo devuelto crudo) para que tanto la ficha
+  // de detalle real (pages/registros/:entity/:id/index.vue) como el
+  // configurador (pages/modulos/:id/editar.vue, paso "Diseño del detalle")
+  // lean SIEMPRE el mismo layout ya reconciliado contra los campos/relaciones
+  // reales de hoy - un solo lugar que decide el default, no dos copias que
+  // puedan divergir.
+  const inverseRelations = await withTenant(auth.tenantId, (tx) => computeInverseRelations(tx, auth.tenantId, entity.slug))
+  const detailLayout = resolveDetailLayout(entity.detailLayout, fields.map((f) => f.name), inverseRelations)
+
+  return { entity, fields, permissions, inverseRelations, detailLayout }
 })

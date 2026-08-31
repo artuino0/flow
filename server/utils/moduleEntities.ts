@@ -17,6 +17,12 @@ export interface EntitySummary {
   slug: string
   name: string
   description: string | null
+  // HU-ERD-74: guardado tal cual (sin resolver contra entity_fields reales) -
+  // la resolucion con defaults/reconciliacion vive en resolveDetailLayout()
+  // (server/utils/detailLayout.ts), consumida por GET /api/entities/:entity/fields.
+  // Opcional: listEntities() (HU-ERD-69) no lo selecciona - el listado de
+  // modulos no necesita el layout de cada uno, solo create/updateEntity si.
+  detailLayout?: unknown
 }
 
 // Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
@@ -129,19 +135,20 @@ export async function createEntity(
       })
     }
 
-    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description }
+    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description, detailLayout: entity.detailLayout }
   })
 }
 
 export async function updateEntity(
   tenantId: string,
   entityId: string,
-  input: { name?: string; description?: string | null }
+  input: { name?: string; description?: string | null; detailLayout?: unknown }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
+    if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
 
     const [entity] = await tx
       .update(entities)
@@ -150,7 +157,7 @@ export async function updateEntity(
       .returning()
 
     if (!entity) return null
-    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description }
+    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description, detailLayout: entity.detailLayout }
   })
 }
 

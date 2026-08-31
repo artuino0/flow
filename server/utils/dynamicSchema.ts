@@ -140,7 +140,13 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
     })
     .strict(),
   json: z.object({}).strict(),
-  relation: z.object({}).strict(),
+  // HU-ERD-74: relationEntity (slug de la entidad destino) es opcional y
+  // NO afecta buildFieldType() (sigue siendo z.string().uuid() abajo, sin
+  // cambios) - solo metadata para: (a) el picker "Entidad relacionada" de
+  // FieldFormModal.vue, y (b) calcular las "relaciones inversas" de OTRA
+  // entidad (server/utils/detailLayout.ts) para el configurador de Diseño
+  // del Detalle. Un campo relation existente sin esto sigue funcionando igual.
+  relation: z.object({ relationEntity: z.string().min(1).optional() }).strict(),
   tabla: tableColumnsSchema,
   select: selectOptionsSchema,
   multiselect: selectOptionsSchema
