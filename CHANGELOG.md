@@ -1,5 +1,11 @@
 # Changelog
 
+### [0.37.1] - 2026-08-31
+#### [fix]
+- Feedback directo del usuario: "al editar se abren los dos steps al mismo tiempo". `pages/modulos/[id]/editar.vue` (extendida en ERD-70) mostraba la card "Información básica" Y "Campos del módulo"/vista previa juntas, en una sola pantalla larga - no coincide con `Screen/Editor de Campos` del `.pen`, que muestra el indicador de pasos con SOLO uno de los dos visible a la vez. Corregido con el mismo toggle `step` del asistente (`pages/modulos/nuevo.vue`) - la diferencia con el asistente es que en edición ambos pasos ya están disponibles desde el principio (el módulo ya existe con sus datos básicos Y sus campos), así que el indicador de pasos es clickeable en las dos direcciones, no solo hacia adelante. Abre en "Información básica" por default (mismo orden que el asistente); el `ModulePreviewCard` de ese primer paso ya muestra los campos reales del módulo (no el estado vacío del asistente), porque en edición esos campos ya existen desde el primer render.
+- Test SSR de ERD-70 (`test/e2e/crudEntities.test.ts`) actualizado: confirmaba el contenido de ambos pasos mezclados en la misma respuesta (justo el bug), ahora confirma que el SSR por default muestra solo "Información básica" y que "Campos del módulo" NO aparece ahí.
+- Validado con la técnica ya establecida: `npx nuxt typecheck` limpio, `nuxt build` OK, suite completa **132/132**.
+
 ### [0.37.0] - 2026-08-31
 #### [add]
 - [ERD-71](https://dydasoftware.atlassian.net/browse/ERD-71) - Frontend: editor de columnas (campo Tabla) y editor de opciones (campo Select/Multiselect), dentro del mismo modal "Agregar/Editar campo" (`components/FieldFormModal.vue`) de ERD-70. Revisado en el `.pen` antes de construir (`[[pencil-antes-de-frontend]]`): `Screen/Agregar Campo - Opciones (Select)` para el builder de opciones; sin pantalla propia de "editor de columnas Tabla" en el diseño (la HU en Jira solo referencia la de Opciones), se usó como referencia visual más cercana el `ColumnsList` de `Screen/Agregar Campo - Relación (1:N)` ("Campos propios de la relación") para el builder de columnas.

@@ -1121,18 +1121,33 @@ describe('e2e: HU-ERD-70 (Asistente Crear Módulo - paso 2 de campos + reutiliza
     expect(html).toContain('Los campos del formulario se agregarán en el siguiente paso')
   })
 
-  it('SSR: /modulos/:id/editar reusa ModuleFieldsCard - muestra "Campos del módulo" con el campo real y su badge de tipo', async () => {
+  // Fix (feedback directo del usuario, post-entrega): la primera version de
+  // editar.vue mostraba la card "Informacion basica" Y "Campos del modulo"
+  // juntas en una sola pantalla larga - no coincide con el diseno, que
+  // muestra un paso a la vez (igual que el asistente). Se corrigio con el
+  // mismo toggle "step" del asistente, con la diferencia de que en edicion
+  // ambos pasos ya estan disponibles (el modulo ya existe completo) y el
+  // indicador de pasos es clickeable en las dos direcciones. Por default
+  // abre en "Informacion basica" (mismo orden que el asistente) - el harness
+  // e2e hace fetch crudo y no puede clickear el paso 2 (eso ya lo cubre
+  // ModuleFieldsCard.vue via los endpoints reales, en el describe de
+  // HU-ERD-67), asi que esta prueba confirma: (a) el SSR por default NO
+  // mezcla los dos pasos (el bug reportado), y (b) el ModulePreviewCard del
+  // paso 1 ya usa los campos REALES del modulo (no el estado vacio del
+  // asistente) - reusa el mismo DynamicForm.vue con datos reales desde el
+  // primer render, sin esperar a entrar al paso 2.
+  it('SSR: /modulos/:id/editar abre en el paso "Información básica" por default - no mezcla los dos pasos', async () => {
     const res = await fetch(`${baseUrl}/modulos/${wizardModuleId}/editar`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Campos del módulo')
-    expect(html).toContain('Edad')
-    expect(html).toContain('Número')
-    expect(html).toContain('Obligatorio')
-    // Misma card de vista previa que el asistente, ahora con el campo real
-    // (no el estado vacio, porque ya tiene 1 campo) - confirma que ambas
-    // paginas envuelven el mismo DynamicForm.vue.
+    expect(html).toContain('Información básica')
+    expect(html).toContain('id="modulo-slug"')
+    expect(html).not.toContain('Campos del módulo')
+
+    // ModulePreviewCard ya con el campo real (no el estado vacio) desde el
+    // paso 1 - misma DynamicForm.vue que el formulario real de alta.
     expect(html).toContain('Vista previa en vivo')
+    expect(html).toContain('Edad')
     expect(html).not.toContain('Los campos del formulario se agregarán en el siguiente paso')
   })
 
