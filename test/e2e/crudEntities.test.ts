@@ -1002,12 +1002,17 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     expect(html).not.toContain('id="modulo-name"')
   })
 
-  it('SSR: /modulos/nuevo (admin) renderiza el formulario de alta, no el estado de error', async () => {
+  // HU-ERD-70 reescribio /modulos/nuevo como asistente de 2 pasos (Screen/Crear
+  // Módulo Paso1 del .pen) - el paso 1 ya no dice "Crear módulo" sino "Nuevo
+  // módulo" + boton "Continuar"; el formulario de alta real sigue teniendo
+  // el mismo input id="modulo-name".
+  it('SSR: /modulos/nuevo (admin) renderiza el paso 1 del asistente, no el estado de error', async () => {
     const res = await fetch(`${baseUrl}/modulos/nuevo`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Crear módulo')
+    expect(html).toContain('Nuevo módulo')
     expect(html).toContain('id="modulo-name"')
+    expect(html).toContain('Continuar')
   })
 
   it('POST vía /modulos/nuevo (simulado con la API real) crea el módulo y aparece de inmediato en el listado', async () => {
@@ -1033,5 +1038,96 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
     const html = await res.text()
     expect(html).toContain('href="/modulos"')
+  })
+})
+
+// HU-ERD-70: asistente "Crear módulo" (paso 2 - campos) + reutilizacion de
+// ModuleFieldsCard/ModulePreviewCard en pages/modulos/[id]/editar.vue. El
+// harness e2e hace fetch crudo (no ejecuta JS de cliente), asi que no puede
+// abrir el modal FieldFormModal ni tipear en el - la cobertura se centra en:
+// (a) el flujo real de alta/edicion/borrado de campos vía los endpoints de
+// HU-ERD-67 (ya con la forma exacta que produce FieldFormModal/onSubmit), y
+// (b) que el SSR de editar.vue efectivamente reusa el mismo componente de
+// campos que el asistente (mismos badges/textos, misma seccion "Campos del
+// módulo").
+describe('e2e: HU-ERD-70 (Asistente Crear Módulo - paso 2 de campos + reutilizacion en editar)', () => {
+  let wizardModuleId: string
+  let wizardModuleSlug: string
+
+  beforeAll(async () => {
+    wizardModuleSlug = 'modulo-asistente-e2e'
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Modulo Asistente E2E', slug: wizardModuleSlug })
+    })
+    expect(createRes.status).toBe(201)
+    const entity = await createRes.json()
+    wizardModuleId = entity.id
+  }, 30_000)
+
+  it('el flujo del paso 2 del asistente (agregar campo con validationRules) queda disponible de inmediato via GET /api/entities/:slug/fields', async () => {
+    const postRes = await api(`/api/entities/${wizardModuleId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'edad',
+        label: 'Edad',
+        dataType: 'number',
+        isRequired: true,
+        validationRules: { min: 0, max: 120, integer: true }
+      })
+    })
+    expect(postRes.status).toBe(201)
+
+    const fieldsRes = await api(`/api/entities/${wizardModuleSlug}/fields`)
+    expect(fieldsRes.status).toBe(200)
+    const { fields } = await fieldsRes.json()
+    const edad = fields.find((f: { name: string }) => f.name === 'edad')
+    expect(edad).toMatchObject({ label: 'Edad', dataType: 'number', isRequired: true })
+  })
+
+  it('SSR: /modulos/nuevo paso 1 ya muestra la card "Vista previa en vivo" (ModulePreviewCard) en estado vacio', async () => {
+    const res = await fetch(`${baseUrl}/modulos/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Vista previa en vivo')
+    expect(html).toContain('Los campos del formulario se agregarán en el siguiente paso')
+  })
+
+  it('SSR: /modulos/:id/editar reusa ModuleFieldsCard - muestra "Campos del módulo" con el campo real y su badge de tipo', async () => {
+    const res = await fetch(`${baseUrl}/modulos/${wizardModuleId}/editar`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Campos del módulo')
+    expect(html).toContain('Edad')
+    expect(html).toContain('Número')
+    expect(html).toContain('Obligatorio')
+    // Misma card de vista previa que el asistente, ahora con el campo real
+    // (no el estado vacio, porque ya tiene 1 campo) - confirma que ambas
+    // paginas envuelven el mismo DynamicForm.vue.
+    expect(html).toContain('Vista previa en vivo')
+    expect(html).not.toContain('Los campos del formulario se agregarán en el siguiente paso')
+  })
+
+  it('editar un campo (PUT /api/entity-fields/:fieldId) y luego eliminarlo se refleja en el siguiente GET de campos', async () => {
+    const fieldsRes = await api(`/api/entities/${wizardModuleSlug}/fields`)
+    const { fields } = await fieldsRes.json()
+    const edad = fields.find((f: { name: string }) => f.name === 'edad')
+
+    const putRes = await api(`/api/entity-fields/${edad.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ label: 'Edad (años)', validationRules: { min: 0, max: 130, integer: true } })
+    })
+    expect(putRes.status).toBe(200)
+
+    const afterPutRes = await api(`/api/entities/${wizardModuleSlug}/fields`)
+    const afterPut = (await afterPutRes.json()).fields.find((f: { name: string }) => f.name === 'edad')
+    expect(afterPut.label).toBe('Edad (años)')
+
+    const deleteRes = await api(`/api/entity-fields/${edad.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+
+    const afterDeleteRes = await api(`/api/entities/${wizardModuleSlug}/fields`)
+    const afterDelete = (await afterDeleteRes.json()).fields.find((f: { name: string }) => f.name === 'edad')
+    expect(afterDelete).toBeUndefined()
   })
 })
