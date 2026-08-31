@@ -382,11 +382,12 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
   // env del server arriba), asi que fact_eventos queda vacio para este tenant -
   // el chequeo es que la pantalla renderiza bien el estado "sin eventos" (y el
   // endpoint agrega sin explotar con 0 filas), no que haya datos.
-  it('SSR: la home ahora tambien muestra "Dashboard" en el nav', async () => {
-    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
-    expect(await res.text()).toContain('Dashboard')
-  })
-
+  //
+  // Reubicacion (feedback del usuario sobre el menu, post-HU-ERD-67): "Tablero"
+  // (ex-Dashboard/ex-"Inicio") ahora es la home (/) misma, en la seccion
+  // General, visible para CUALQUIER usuario autenticado - ya no vive bajo
+  // Administracion ni esta gateado a admin. GET /api/dashboard/metrics sigue
+  // en la misma URL, solo cambio el guard (requireAuth en vez de requireAdminRole).
   it('GET /api/dashboard/metrics agrega sin datos sin explotar (fact_eventos vacio en este e2e)', async () => {
     const res = await api('/api/dashboard/metrics')
     expect(res.status).toBe(200)
@@ -396,11 +397,44 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(body.usuarios.total).toBe(1) // el admin creado en este e2e
   })
 
-  it('SSR: /dashboard (F5 completo) renderiza el estado real, no el estado de error', async () => {
-    const res = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: authCookie } })
+  it('SSR: / (F5 completo) renderiza "Tablero" con el estado real, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
+    expect(html).toContain('Tablero')
     expect(html).toContain('Usuarios activos')
+    expect(html).not.toContain('No se pudieron cargar las metricas')
+  })
+
+  it('Tablero es visible y funcional para un usuario NO administrador (ya no esta gateado a admin)', async () => {
+    const email = 'tablero-no-admin@e2e.test'
+    const password = 'e2e-password-1234'
+    const admin = postgres(testDb.adminUrl)
+    try {
+      const passwordHash = await bcrypt.hash(password, 12)
+      const [role] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Sin admin Tablero', false) returning id`
+      await admin`
+        insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
+        values (${TENANT_ID}, ${role.id}, ${email}, ${passwordHash}, 'No Admin Tablero', true)
+      `
+    } finally {
+      await admin.end()
+    }
+
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email, password })
+    })
+    expect(loginRes.status).toBe(200)
+    const cookie = extractCookie(loginRes)
+
+    const res = await fetch(`${baseUrl}/api/dashboard/metrics`, { headers: { cookie } })
+    expect(res.status).toBe(200)
+
+    const homeRes = await fetch(`${baseUrl}/`, { headers: { cookie } })
+    const html = await homeRes.text()
+    expect(html).toContain('Tablero')
     expect(html).not.toContain('No se pudieron cargar las metricas')
   })
 })
@@ -813,11 +847,15 @@ describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('SSR: la home NO muestra "Dashboard" (flag off) pero si "Roles y permisos" (guard distinto, no afectado por el flag)', async () => {
+  it('SSR: la home ("Tablero") muestra el estado deshabilitado con el flag off, pero el link a "Roles y permisos" sigue (guard distinto, no afectado por el flag)', async () => {
     const cookie = await dedicatedLoginCookie()
     const res = await fetch(`${dedicatedBaseUrl}/`, { headers: { cookie } })
     const html = await res.text()
-    expect(html).not.toContain('Dashboard')
+    // "Tablero" ahora es la home misma (reubicacion post-HU-ERD-67) - con el
+    // flag off no desaparece de la nav (ya no es un item condicional), pero
+    // su contenido si respeta el kill switch real (no pide metricas).
+    expect(html).toContain('Tablero')
+    expect(html).toContain('Esta funcionalidad esta deshabilitada')
     expect(html).toContain('Roles y permisos')
   })
 

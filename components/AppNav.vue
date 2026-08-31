@@ -16,7 +16,7 @@
 // Diseno Pencil: look de "Sidebar Item" (icono + label, activo con fondo +
 // borde izquierdo azul) y titulos de seccion en mayusculas, igual que
 // Screen/Dashboard, Screen/List Clientes, etc. del .pen.
-import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck } from '@lucide/vue'
+import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck, Settings } from '@lucide/vue'
 import type { Component } from 'vue'
 
 interface CrmEntry {
@@ -54,7 +54,7 @@ const { data: crmLinks } = await useAsyncData('appnav-crm-links', async () => {
     .map((r) => r.value)
 })
 
-// HU-ERD-33: seccion "Administracion" (Roles y permisos, HU-ERD-34: Dashboard),
+// HU-ERD-33: seccion "Administracion" (Roles y permisos, Ajustes),
 // visible solo si GET /api/roles no tira 403 (requiere rol administrador,
 // requireAdminRole - HU-ERD-61) - mismo truco de "probar el endpoint real" que
 // los links de arriba, en vez de duplicar en el frontend la logica de "es
@@ -71,20 +71,25 @@ const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
   }
 })
 
-// HU-ERD-35: FEATURE_DASHBOARD=false lo apaga de punta a punta - tambien acá
-// (ademas del 404 real en GET /api/dashboard/metrics). GET /api/config, no
-// useRuntimeConfig() - ver composables/useDeploymentConfig.ts.
-const { data: appConfig } = await useDeploymentConfig()
-
-const items = computed(() => [{ label: 'Inicio', to: '/', icon: LayoutDashboard }])
+// Reubicacion del menu (feedback del usuario, post-HU-ERD-67): "Tablero"
+// (ex-Dashboard) y la vieja "Inicio" (bienvenida vacia) eran dos pantallas
+// separadas en / y /dashboard - se fusionaron en una sola, en /, y dejo de
+// estar gateada a administrador (ver requireAuth en
+// server/api/dashboard/metrics.get.ts) - por eso vive fija en GENERAL, sin
+// condicionarla a isAdmin/appConfig como antes. La pantalla en si sigue
+// respetando FEATURE_DASHBOARD (HU-ERD-35) puertas adentro (pages/index.vue).
+const items = computed(() => [{ label: 'Tablero', to: '/', icon: LayoutDashboard }])
 const crmItems = computed(() =>
   (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}`, icon: iconFor(entry.slug) }))
 )
+// "Ajustes" es un placeholder (pages/ajustes/index.vue) - se reserva el
+// lugar en el menu a pedido del usuario; el alcance real es una HU aparte.
 const adminItems = computed(() => {
   if (!isAdmin.value) return []
-  const links = [{ label: 'Roles y permisos', to: '/roles', icon: ShieldCheck }]
-  if (appConfig.value?.featureFlags.dashboard) links.unshift({ label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard })
-  return links
+  return [
+    { label: 'Roles y permisos', to: '/roles', icon: ShieldCheck },
+    { label: 'Ajustes', to: '/ajustes', icon: Settings }
+  ]
 })
 
 const route = useRoute()

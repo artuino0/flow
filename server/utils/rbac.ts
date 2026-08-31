@@ -17,7 +17,14 @@ export interface PermissionResult {
   entity: ResolvedEntity
 }
 
-function getAuthOrThrow(event: H3Event): AuthTokenPayload {
+/**
+ * Guard minimo: solo exige un usuario autenticado con rol asignado, sin
+ * ningun chequeo de permiso puntual encima (a diferencia de requirePermission/
+ * requireAdminRole). Exportada (reubicacion del menu, post-HU-ERD-67) para
+ * pantallas como el Tablero (ex-Dashboard) que dejaron de ser exclusivas de
+ * administrador: cualquier usuario autenticado del tenant puede verlas.
+ */
+export function requireAuth(event: H3Event): AuthTokenPayload {
   const auth = event.context.auth as AuthTokenPayload | undefined
   if (!auth) {
     throw createError({ statusCode: 401, statusMessage: 'No autenticado' })
@@ -40,7 +47,7 @@ export async function requirePermission(
   entitySlug: string,
   action: PermissionAction
 ): Promise<PermissionResult> {
-  const auth = getAuthOrThrow(event)
+  const auth = requireAuth(event)
 
   const result = await withTenant(auth.tenantId, async (tx) => {
     const [entity] = await tx
@@ -82,7 +89,7 @@ export async function requirePermissionForEntityId(
   entityId: string,
   action: PermissionAction
 ): Promise<AuthTokenPayload> {
-  const auth = getAuthOrThrow(event)
+  const auth = requireAuth(event)
 
   const allowed = await withTenant(auth.tenantId, async (tx) => {
     const [perm] = await tx
@@ -146,7 +153,7 @@ export async function getPermissionFlags(auth: AuthTokenPayload, entityId: strin
  * Si en el futuro se necesita un modelo mas fino, esto es lo primero a revisar.
  */
 export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload> {
-  const auth = getAuthOrThrow(event)
+  const auth = requireAuth(event)
 
   const isAdmin = await withTenant(auth.tenantId, async (tx) => {
     const [role] = await tx

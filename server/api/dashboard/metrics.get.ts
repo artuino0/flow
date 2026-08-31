@@ -1,20 +1,24 @@
 import { z } from 'zod'
-import { requireAdminRole } from '~/server/utils/rbac'
+import { requireAuth } from '~/server/utils/rbac'
 import { getDashboardMetrics } from '~/server/utils/dashboardMetrics'
 import { isFeatureEnabled } from '~/server/utils/appConfig'
 
 // GET /api/dashboard/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD&tipoEvento=... (HU-ERD-31)
-// Alimenta el dashboard interno con metricas agregadas desde el esquema OLAP
-// (dim_cliente, dim_sucursal, fact_eventos, HU-ERD-27/28) del tenant autenticado,
-// mas conteo de usuarios (tabla `users`, OLTP - ver nota de alcance en
-// server/utils/dashboardMetrics.ts). Mismo guard que la configuracion general del
-// tenant (HU-ERD-61): requiere el rol "de sistema" (roles.isSystem) del tenant, no
-// existe un concepto de admin global en el sistema (ver dashboardMetrics.ts).
+// Alimenta "Tablero" (ex-Dashboard, ex-"Inicio" - reubicado a la home /
+// despues de HU-ERD-67 a pedido del usuario: no tiene sentido que la
+// bienvenida vacia y el dashboard real fueran pantallas separadas) con
+// metricas agregadas desde el esquema OLAP (dim_cliente, dim_sucursal,
+// fact_eventos, HU-ERD-27/28) del tenant autenticado, mas conteo de usuarios
+// (tabla `users`, OLTP - ver nota de alcance en server/utils/dashboardMetrics.ts).
+//
+// Guard: requireAuth (cualquier usuario autenticado del tenant, sin
+// restriccion de rol) - originalmente usaba requireAdminRole (HU-ERD-31), pero
+// al mudarse a la home/seccion General deja de tener sentido reservarlo a
+// administradores: es la pantalla de aterrizaje de CUALQUIERA que entra a la app.
 //
 // HU-ERD-35: apagable con FEATURE_DASHBOARD=false (feature flag de punta a
-// punta - tambien oculta el link y la pantalla, ver AppNav.vue y
-// pages/dashboard/index.vue). Chequeo primero (sin DB) para que apagarlo sea
-// un kill switch real, no solo cosmetico en el frontend.
+// punta - tambien lo refleja pages/index.vue). Chequeo primero (sin DB) para
+// que apagarlo sea un kill switch real, no solo cosmetico en el frontend.
 const querySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from debe ser YYYY-MM-DD').optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to debe ser YYYY-MM-DD').optional(),
@@ -26,7 +30,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Funcionalidad deshabilitada' })
   }
 
-  const auth = await requireAdminRole(event)
+  const auth = requireAuth(event)
   const query = await getValidatedQuery(event, querySchema.parse)
 
   return getDashboardMetrics(auth.tenantId, {
