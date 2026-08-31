@@ -1174,3 +1174,164 @@ describe('e2e: HU-ERD-70 (Asistente Crear Módulo - paso 2 de campos + reutiliza
     expect(afterDelete).toBeUndefined()
   })
 })
+
+// HU-ERD-72: campo tipo Tabla (lineas de item, ej. "Lineas del pedido") +
+// search en GET /api/records/:entity (autocomplete de columnas de relacion
+// dentro de una Tabla, components/DynamicTableField.vue). El harness e2e hace
+// fetch crudo (no ejecuta JS de cliente), asi que no puede tipear en el
+// autocomplete ni ejercitar el "producto de columnas numericas" de
+// DynamicTableField.vue (eso es logica de cliente, sin contraparte server) -
+// la cobertura se centra en lo que SI corre en el servidor real: (a) el
+// query param "search" nuevo de este endpoint, y (b) que un record con un
+// campo Tabla completo (columna de relacion + copyFrom + readonly) se
+// guarda y se devuelve tal cual (snapshot), sin que el servidor recalcule
+// ni valide de mas alla de la forma (eso es a proposito - la "no
+// recalcular nunca" es una garantia de DynamicTableField.vue en el cliente,
+// no algo que el servidor imponga).
+describe('e2e: HU-ERD-72 (search en GET /api/records + campo Tabla de punta a punta)', () => {
+  let productosSlug: string
+  let productoTecladoId: string
+  let productoMouseId: string
+  let pedidosSlug: string
+
+  beforeAll(async () => {
+    productosSlug = 'productos-tabla-e2e'
+    const productosRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Productos Tabla E2E', slug: productosSlug })
+    })
+    expect(productosRes.status).toBe(201)
+    const productosEntity = await productosRes.json()
+
+    await api(`/api/entities/${productosEntity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true })
+    })
+    await api(`/api/entities/${productosEntity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'precio', label: 'Precio', dataType: 'number' })
+    })
+
+    const tecladoRes = await api(`/api/records/${productosSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Teclado mecanico', precio: 100 } })
+    })
+    productoTecladoId = (await tecladoRes.json()).id
+
+    const mouseRes = await api(`/api/records/${productosSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Mouse inalambrico', precio: 50 } })
+    })
+    productoMouseId = (await mouseRes.json()).id
+
+    pedidosSlug = 'pedidos-tabla-e2e'
+    const pedidosRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Pedidos Tabla E2E', slug: pedidosSlug })
+    })
+    expect(pedidosRes.status).toBe(201)
+    const pedidosEntity = await pedidosRes.json()
+
+    const itemsFieldRes = await api(`/api/entities/${pedidosEntity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'items',
+        label: 'Lineas del pedido',
+        dataType: 'tabla',
+        validationRules: {
+          columns: [
+            { name: 'producto_id', label: 'Producto', type: 'relation', relationEntity: productosSlug },
+            { name: 'cantidad', label: 'Cantidad', type: 'number', editable: true },
+            { name: 'precio_unitario', label: 'Precio unitario', type: 'number', copyFrom: `${productosSlug}.precio`, editable: true },
+            { name: 'subtotal', label: 'Subtotal', type: 'number', readonly: true }
+          ]
+        }
+      })
+    })
+    expect(itemsFieldRes.status).toBe(201)
+  }, 30_000)
+
+  it('GET /api/records/:entity?search=... filtra por coincidencia de texto libre dentro de customData', async () => {
+    const tecladoSearch = await api(`/api/records/${productosSlug}?search=teclado`)
+    expect(tecladoSearch.status).toBe(200)
+    const tecladoBody = await tecladoSearch.json()
+    expect(tecladoBody.data.map((r: { id: string }) => r.id)).toEqual([productoTecladoId])
+
+    const sinCoincidencias = await api(`/api/records/${productosSlug}?search=inexistente-xyz`)
+    expect(sinCoincidencias.status).toBe(200)
+    expect((await sinCoincidencias.json()).data).toEqual([])
+  })
+
+  it('search es case-insensitive y el total refleja solo las filas filtradas', async () => {
+    const res = await api(`/api/records/${productosSlug}?search=MOUSE`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id)).toEqual([productoMouseId])
+    expect(body.total).toBe(1)
+  })
+
+  it('sin search, GET sigue devolviendo todos los records de la entidad (no rompe el comportamiento existente)', async () => {
+    const res = await api(`/api/records/${productosSlug}?pageSize=100`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const ids = body.data.map((r: { id: string }) => r.id)
+    expect(ids).toEqual(expect.arrayContaining([productoTecladoId, productoMouseId]))
+  })
+
+  it('un record con un campo Tabla completo (relacion + copyFrom + readonly) se guarda y se lee tal cual (snapshot)', async () => {
+    const createRes = await api(`/api/records/${pedidosSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        customData: {
+          items: [
+            { producto_id: productoTecladoId, cantidad: 2, precio_unitario: 100, subtotal: 200 },
+            { producto_id: productoMouseId, cantidad: 3, precio_unitario: 50, subtotal: 150 }
+          ]
+        }
+      })
+    })
+    expect(createRes.status).toBe(201)
+    const created = await createRes.json()
+    expect(created.customData.items).toHaveLength(2)
+
+    const getRes = await api(`/api/records/${pedidosSlug}/${created.id}`)
+    expect(getRes.status).toBe(200)
+    const fetched = await getRes.json()
+    // El snapshot vuelve exactamente como se guardo - el servidor no
+    // recalcula "subtotal" ni vuelve a copiar "precio_unitario" desde el
+    // producto relacionado en cada lectura (esa es la garantia central de
+    // HU-ERD-72: los valores guardados no reflejan cambios posteriores en
+    // el producto).
+    expect(fetched.customData.items).toEqual(created.customData.items)
+
+    // Confirma la garantia de snapshot ante cambios reales: si el precio del
+    // producto relacionado cambia despues, la fila ya guardada NO se toca.
+    await api(`/api/records/${productosSlug}/${productoTecladoId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ customData: { nombre: 'Teclado mecanico', precio: 999 } })
+    })
+    const getAfterPriceChangeRes = await api(`/api/records/${pedidosSlug}/${created.id}`)
+    const fetchedAfterPriceChange = await getAfterPriceChangeRes.json()
+    expect(fetchedAfterPriceChange.customData.items[0].precio_unitario).toBe(100)
+  })
+
+  it('una fila de Tabla con una columna de relacion en formato invalido (no uuid) es rechazada (422) por el schema dinamico real', async () => {
+    const res = await api(`/api/records/${pedidosSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        customData: {
+          items: [{ producto_id: 'no-es-un-uuid', cantidad: 1, precio_unitario: 100, subtotal: 100 }]
+        }
+      })
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('un campo Tabla vacio ([]) es valido cuando el campo no es requerido', async () => {
+    const res = await api(`/api/records/${pedidosSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { items: [] } })
+    })
+    expect(res.status).toBe(201)
+  })
+})

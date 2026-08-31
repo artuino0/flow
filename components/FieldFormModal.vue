@@ -120,6 +120,12 @@ interface ColumnDraft {
   relationEntity: string
   copyFrom: string
   editable: boolean
+  // HU-ERD-72: columna "calculada" (ej. subtotal) - DynamicTableField.vue la
+  // calcula en vivo (producto de las demas columnas numericas de la fila,
+  // sin formula/eval, ver comentario en ese componente) y la persiste como
+  // numero fijo. Excluyente con copyFrom (una columna se copia de una
+  // relacion O se calcula, no las dos cosas).
+  readonly: boolean
 }
 
 const form = reactive({
@@ -219,7 +225,7 @@ watch(
         : []
 
     const rawColumns = Array.isArray(rules.columns)
-      ? (rules.columns as Array<{ name?: string; label?: string; type?: string; relationEntity?: string; copyFrom?: string; editable?: boolean }>)
+      ? (rules.columns as Array<{ name?: string; label?: string; type?: string; relationEntity?: string; copyFrom?: string; editable?: boolean; readonly?: boolean }>)
       : []
     form.columns =
       form.dataType === 'tabla'
@@ -231,9 +237,10 @@ watch(
               nameTouched: true,
               relationEntity: c.relationEntity ?? '',
               copyFrom: c.copyFrom ?? '',
-              editable: c.editable ?? false
+              editable: c.editable ?? false,
+              readonly: c.readonly ?? false
             }))
-          : [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false }]
+          : [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false, readonly: false }]
         : []
 
     if (form.dataType === 'tabla' && form.columns.some((c) => c.relationEntity)) {
@@ -255,7 +262,7 @@ function selectDataType(value: string) {
   form.dataType = value
   if (value === 'tabla') {
     void ensureRelatedEntitiesLoaded()
-    if (form.columns.length === 0) form.columns = [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false }]
+    if (form.columns.length === 0) form.columns = [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false, readonly: false }]
   }
 }
 
@@ -281,7 +288,7 @@ function onOptionValueInput(opt: OptionDraft, value: string) {
 }
 
 function addColumn() {
-  form.columns.push({ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false })
+  form.columns.push({ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false, readonly: false })
 }
 function removeColumn(index: number) {
   form.columns.splice(index, 1)
@@ -306,7 +313,15 @@ function onColumnTypeChange(col: ColumnDraft) {
   } else {
     col.copyFrom = ''
     col.editable = false
+    col.readonly = false
     void ensureRelatedEntitiesLoaded()
+  }
+}
+function onColumnReadonlyToggle(col: ColumnDraft, value: boolean) {
+  col.readonly = value
+  if (value) {
+    col.copyFrom = ''
+    col.editable = false
   }
 }
 
@@ -340,6 +355,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
           const col: Record<string, unknown> = { name: c.name, label: c.label, type: c.type }
           if (c.type === 'relation') {
             if (c.relationEntity) col.relationEntity = c.relationEntity
+          } else if (c.readonly) {
+            col.readonly = true
           } else {
             if (c.copyFrom) col.copyFrom = c.copyFrom
             if (c.copyFrom && c.editable) col.editable = true
@@ -671,21 +688,38 @@ function onSubmit() {
                 </select>
               </div>
 
-              <div v-else-if="relationColumns.length > 0" class="flex flex-col gap-1.5 pl-6">
-                <label class="text-xs font-semibold text-brand-text-secondary">Copiar desde (opcional)</label>
-                <select
-                  :value="col.copyFrom"
-                  class="w-full max-w-xs rounded border border-brand-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
-                  @change="col.copyFrom = ($event.target as HTMLSelectElement).value"
-                >
-                  <option value="">Sin copiar (valor propio)</option>
-                  <option v-for="o in copyFromOptions(col.name)" :key="o.value" :value="o.value">{{ o.label }}</option>
-                </select>
-                <label v-if="col.copyFrom" class="flex items-center gap-2 text-sm text-brand-text">
-                  <input v-model="col.editable" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
-                  Editable después de copiar
+              <template v-else>
+                <!-- HU-ERD-72: columna "calculada" (ej. subtotal) - la
+                     calcula en vivo DynamicTableField.vue (producto de las
+                     demas columnas numericas de la fila, sin formula/eval) y
+                     la persiste como numero fijo. Solo tiene sentido en
+                     columnas numericas, y es excluyente con copyFrom. -->
+                <label v-if="col.type === 'number'" class="flex items-center gap-2 pl-6 text-sm text-brand-text">
+                  <input
+                    :checked="col.readonly"
+                    type="checkbox"
+                    class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
+                    @change="onColumnReadonlyToggle(col, ($event.target as HTMLInputElement).checked)"
+                  />
+                  Columna calculada (solo lectura) - producto de las demás columnas numéricas de la fila
                 </label>
-              </div>
+
+                <div v-if="!col.readonly && relationColumns.length > 0" class="flex flex-col gap-1.5 pl-6">
+                  <label class="text-xs font-semibold text-brand-text-secondary">Copiar desde (opcional)</label>
+                  <select
+                    :value="col.copyFrom"
+                    class="w-full max-w-xs rounded border border-brand-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
+                    @change="col.copyFrom = ($event.target as HTMLSelectElement).value"
+                  >
+                    <option value="">Sin copiar (valor propio)</option>
+                    <option v-for="o in copyFromOptions(col.name)" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                  <label v-if="col.copyFrom" class="flex items-center gap-2 text-sm text-brand-text">
+                    <input v-model="col.editable" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
+                    Editable después de copiar
+                  </label>
+                </div>
+              </template>
             </div>
           </div>
           <p v-if="columnsHaveDuplicateNames" class="text-xs text-brand-error-text">Hay columnas con el mismo nombre técnico - cada una debe ser única.</p>

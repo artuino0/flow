@@ -1,8 +1,11 @@
 <script setup lang="ts">
 // HU-ERD-23: Form Builder dinamico - renderiza un input por cada entity_field
 // segun su dataType/validationRules, sin desarrollo especifico por formulario.
-// Los tipos soportados son los del diccionario de datos actual (ERD-7/17):
-// text (+ enum), number, boolean, date, json, relation.
+// Tipos soportados: text (+ enum), number, boolean, date, json, relation
+// (ERD-7/17) y tabla (ERD-72, delegado a DynamicTableField.vue - demasiado
+// complejo para vivir inline aca). select/multiselect (ERD-68) todavia caen
+// en el fallback de texto plano - su UI real es HU-ERD-73, no implementada
+// todavia.
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 const props = defineProps<{
@@ -140,6 +143,15 @@ defineExpose({ validateAll })
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLTextAreaElement).value)"
+      />
+
+      <!-- tabla: HU-ERD-72, ver components/DynamicTableField.vue -->
+      <DynamicTableField
+        v-else-if="field.dataType === 'tabla'"
+        :field="field"
+        :model-value="(valueFor(field.name) as Record<string, unknown>[]) ?? []"
+        :disabled="disabled"
+        @update:model-value="(rows) => setValue(field.name, rows)"
       />
 
       <!-- relation: id de otro record (uuid) -->

@@ -92,6 +92,29 @@ export function validateFieldValue(field: EntityFieldMeta, rawValue: unknown): F
       }
       return { valid: true }
     }
+    // HU-ERD-72: un array vacio no cae en isEmpty() de arriba (solo
+    // null/undefined/'' cuentan como vacio ahi) - "requerido" para un campo
+    // Tabla se resuelve aca, no antes del switch. Solo valida que las
+    // columnas de relacion tengan forma de uuid (mismo criterio que el caso
+    // 'relation' de arriba) - la copia/calculo en vivo de DynamicTableField.vue
+    // ya garantiza la forma del resto de columnas al escribirlas.
+    case 'tabla': {
+      const rows = Array.isArray(rawValue) ? (rawValue as Array<Record<string, unknown>>) : []
+      if (rows.length === 0) {
+        return field.isRequired ? { valid: false, error: `"${field.label}" necesita al menos una fila` } : { valid: true }
+      }
+      const columns = Array.isArray(rules.columns) ? (rules.columns as Array<{ name: string; type: string }>) : []
+      for (const row of rows) {
+        for (const col of columns) {
+          if (col.type !== 'relation') continue
+          const v = row[col.name]
+          if (v && !UUID_RE.test(String(v))) {
+            return { valid: false, error: `"${field.label}": falta elegir un valor para "${col.name}" en una fila` }
+          }
+        }
+      }
+      return { valid: true }
+    }
     default:
       return { valid: true }
   }
