@@ -549,6 +549,182 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
   })
 })
 
+// HU-ERD-67: endpoints de escritura sobre metadatos de campos (entity_fields)
+// + historial. Reusa el server/tenant/admin del beforeAll de arriba
+// (HU-ERD-30). POST sigue anidado bajo /api/entities/:entity/fields (:entity
+// aca es el uuid, GET de HU-ERD-23 sibling espera el slug); PUT/DELETE de un
+// campo puntual viven en /api/entity-fields/:fieldId (recurso plano, no
+// anidado) - un anidado .../fields/:fieldId se probo primero contra el
+// server COMPILADO real y encontro un bug de enrutamiento en Nitro/rou3 (ver
+// el comentario largo en server/utils/moduleEntityFields.ts).
+describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historial)', () => {
+  const FIELDS_NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const FIELDS_NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let fieldsNonAdminCookie: string
+  let fieldsEntityId: string
+  let fieldsEntitySlug: string
+
+  beforeAll(async () => {
+    // El usuario no-admin ya existe (creado en el describe de HU-ERD-66,
+    // que corre antes que este en el mismo archivo) - solo hace falta loguear.
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: FIELDS_NON_ADMIN_EMAIL, password: FIELDS_NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    fieldsNonAdminCookie = extractCookie(loginRes)
+
+    fieldsEntitySlug = 'campos-e2e'
+    const entityRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Campos E2E', slug: fieldsEntitySlug })
+    })
+    expect(entityRes.status).toBe(201)
+    fieldsEntityId = (await entityRes.json()).id
+  }, 30_000)
+
+  it('POST fields sin cookie es 401, y con un rol no-admin es 403', async () => {
+    const noAuthRes = await fetch(`${baseUrl}/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text' })
+    })
+    expect(noAuthRes.status).toBe(401)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: fieldsNonAdminCookie },
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text' })
+    })
+    expect(nonAdminRes.status).toBe(403)
+  })
+
+  it('POST fields crea el campo, y GET /api/entities/:slug/fields (por SLUG, HU-ERD-23) ya lo ve - sin colision de rutas', async () => {
+    const createRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true })
+    })
+    expect(createRes.status).toBe(201)
+    const field = await createRes.json()
+    expect(field).toMatchObject({ name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true })
+
+    const getRes = await api(`/api/entities/${fieldsEntitySlug}/fields`)
+    expect(getRes.status).toBe(200)
+    const { fields } = await getRes.json()
+    expect(fields).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'nombre', label: 'Nombre' })]))
+  })
+
+  it('POST fields con validationRules invalido para el dataType es 422, y con nombre duplicado es 409', async () => {
+    const invalidRulesRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'edad', label: 'Edad', dataType: 'number', validationRules: { minLength: 3 } })
+    })
+    expect(invalidRulesRes.status).toBe(422)
+
+    const dupRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre otra vez', dataType: 'text' })
+    })
+    expect(dupRes.status).toBe(409)
+  })
+
+  it('PUT fields/:fieldId cambia dataType, escribe entity_field_history y deja los records existentes is_dirty (revalidacion perezosa real vuelve a validarlos en su proximo GET)', async () => {
+    const createRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'puntaje', label: 'Puntaje', dataType: 'text' })
+    })
+    const field = await createRes.json()
+
+    const recordRes = await api(`/api/records/${fieldsEntitySlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Registro E2E', puntaje: 'no-numero' } })
+    })
+    expect(recordRes.status).toBe(201)
+    const record = await recordRes.json()
+
+    const putRes = await api(`/api/entity-fields/${field.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ dataType: 'number' })
+    })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).dataType).toBe('number')
+
+    // El GET revalida records sucios (HU-ERD-18): como "no-numero" ya no es
+    // valido para el tipo "number" nuevo, se sigue devolviendo el dato viejo
+    // sin bloquear la lectura (no un 500 ni un dato borrado).
+    const getRecordRes = await api(`/api/records/${fieldsEntitySlug}/${record.id}`)
+    expect(getRecordRes.status).toBe(200)
+    expect((await getRecordRes.json()).customData).toMatchObject({ puntaje: 'no-numero' })
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entity-fields/${field.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: fieldsNonAdminCookie },
+      body: JSON.stringify({ label: 'Hackeado' })
+    })
+    expect(nonAdminRes.status).toBe(403)
+
+    const notFoundRes = await api(`/api/entity-fields/${randomUUID()}`, {
+      method: 'PUT',
+      body: JSON.stringify({ label: 'No existe' })
+    })
+    expect(notFoundRes.status).toBe(404)
+  })
+
+  it('DELETE /api/entity-fields/:fieldId borra el campo pero el customData ya guardado en records NO se toca (huerfano en el JSON)', async () => {
+    const createRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'temporal', label: 'Temporal', dataType: 'text' })
+    })
+    const field = await createRes.json()
+
+    const recordRes = await api(`/api/records/${fieldsEntitySlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Otro registro', temporal: 'dato que va a quedar huerfano' } })
+    })
+    const record = await recordRes.json()
+
+    const deleteRes = await api(`/api/entity-fields/${field.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+    expect((await deleteRes.json()).deleted).toBe(true)
+
+    const getFieldsRes = await api(`/api/entities/${fieldsEntitySlug}/fields`)
+    const { fields } = await getFieldsRes.json()
+    expect(fields.find((f: { name: string }) => f.name === 'temporal')).toBeUndefined()
+
+    const getRecordRes = await api(`/api/records/${fieldsEntitySlug}/${record.id}`)
+    expect((await getRecordRes.json()).customData).toMatchObject({ temporal: 'dato que va a quedar huerfano' })
+
+    const deleteAgainRes = await api(`/api/entity-fields/${field.id}`, { method: 'DELETE' })
+    expect(deleteAgainRes.status).toBe(404)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entity-fields/${randomUUID()}`, {
+      method: 'DELETE',
+      headers: { cookie: fieldsNonAdminCookie }
+    })
+    expect(nonAdminRes.status).toBe(403)
+  })
+
+  it('POST fields con un entity id inexistente devuelve 404; PUT/DELETE /api/entity-fields/:fieldId sin cookie es 401', async () => {
+    const fakeEntityId = randomUUID()
+    const postRes = await api(`/api/entities/${fakeEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'x', label: 'X', dataType: 'text' })
+    })
+    expect(postRes.status).toBe(404)
+
+    const putRes = await fetch(`${baseUrl}/api/entity-fields/${randomUUID()}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'X' })
+    })
+    expect(putRes.status).toBe(401)
+
+    const deleteRes = await fetch(`${baseUrl}/api/entity-fields/${randomUUID()}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(401)
+  })
+})
+
 // HU-ERD-35: modo "dedicated" (login sin tenantId) y FEATURE_DASHBOARD=false
 // (kill switch real, no solo cosmetico) - un segundo server real, con su
 // propio Postgres embebido y su propio env (APP_MODE/FEATURE_DASHBOARD

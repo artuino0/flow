@@ -34,6 +34,47 @@ function fingerprint(rows: EntityFieldRow[]): string {
   )
 }
 
+// HU-ERD-67: tipos de dato conocidos y forma esperada de validationRules por
+// tipo - vive aca (no en moduleEntityFields.ts) porque es la MISMA fuente de
+// verdad que buildFieldType() de abajo consume; duplicarla en el endpoint de
+// escritura hubiera sido el tipico bug de "el validador dice A, el que
+// realmente usa las reglas lee B". ERD-68 va a sumar 'table'/'select'/
+// 'multiselect' aca (y en buildFieldType) - no antes, esta HU no los soporta.
+export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation'] as const
+export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
+
+const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
+  text: z
+    .object({
+      minLength: z.number().int().nonnegative().optional(),
+      maxLength: z.number().int().nonnegative().optional(),
+      pattern: z.string().optional(),
+      enum: z.array(z.string()).min(1).optional()
+    })
+    .strict(),
+  number: z
+    .object({
+      min: z.number().optional(),
+      max: z.number().optional(),
+      integer: z.boolean().optional()
+    })
+    .strict(),
+  boolean: z.object({}).strict(),
+  date: z
+    .object({
+      min: z.string().optional(),
+      max: z.string().optional()
+    })
+    .strict(),
+  json: z.object({}).strict(),
+  relation: z.object({}).strict()
+}
+
+/** Devuelve el schema Zod de validationRules para un dataType conocido, o null si no se reconoce. */
+export function getValidationRulesSchema(dataType: string): z.ZodTypeAny | null {
+  return (VALIDATION_RULES_SCHEMAS as Record<string, z.ZodTypeAny>)[dataType] ?? null
+}
+
 // Exportada para HU-ERD-29: permite testear unitariamente la generacion de
 // schema Zod desde metadatos, sin necesitar una base de datos.
 export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
