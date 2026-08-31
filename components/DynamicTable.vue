@@ -64,6 +64,16 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
     }
     case 'json':
       return typeof v === 'string' ? v : JSON.stringify(v)
+    // HU-ERD-73: la celda muestra la etiqueta configurada (validationRules.options),
+    // nunca el "value" tecnico crudo - si una opcion se borro despues, cae al
+    // value crudo como mejor esfuerzo (dato huerfano, mismo criterio que
+    // HU-ERD-67 con entity_fields borrados).
+    case 'select':
+    case 'multiselect': {
+      const options = Array.isArray(field.validationRules?.options) ? (field.validationRules.options as Array<{ value: string; label: string }>) : []
+      const labelFor = (value: string) => options.find((o) => o.value === value)?.label ?? value
+      return Array.isArray(v) ? v.map(labelFor).join(', ') || '-' : labelFor(String(v))
+    }
     default:
       return String(v)
   }

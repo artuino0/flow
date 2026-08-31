@@ -1335,3 +1335,162 @@ describe('e2e: HU-ERD-72 (search en GET /api/records + campo Tabla de punta a pu
     expect(res.status).toBe(201)
   })
 })
+
+// HU-ERD-73: campo Select/Multiselect en el formulario (validado server-side
+// via el buildFieldType() ya existente, cubierto en test/unit/dynamicSchema.test.ts)
+// y el panel de Filtros del listado - nuevo query param filterField/filterValues
+// en GET /api/records/:entity. El harness e2e hace fetch crudo (no ejecuta JS
+// de cliente), asi que no puede abrir el dropdown de DynamicSelectField.vue ni
+// el popover de pages/registros/[entity]/index.vue - la cobertura se centra en
+// lo que corre en el servidor real: el filtro en si (equality-ANY para select,
+// operador de array jsonb `?|` para multiselect, criterio de aceptacion
+// explicito de la HU) y su validacion (campo inexistente, filterField sin
+// filterValues).
+describe('e2e: HU-ERD-73 (filterField/filterValues en GET /api/records + campos Select/Multiselect)', () => {
+  let pedidosFiltroSlug: string
+  let pedidoAltaId: string
+  let pedidoUrgenteId: string
+  let pedidoBajaId: string
+
+  beforeAll(async () => {
+    pedidosFiltroSlug = 'pedidos-filtro-e2e'
+    const entityRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Pedidos Filtro E2E', slug: pedidosFiltroSlug })
+    })
+    expect(entityRes.status).toBe(201)
+    const entity = await entityRes.json()
+
+    const prioridadRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'prioridad',
+        label: 'Prioridad',
+        dataType: 'select',
+        validationRules: {
+          options: [
+            { value: 'baja', label: 'Baja', color: 'neutral' },
+            { value: 'alta', label: 'Alta', color: 'warning' },
+            { value: 'urgente', label: 'Urgente', color: 'error' }
+          ]
+        }
+      })
+    })
+    expect(prioridadRes.status).toBe(201)
+
+    const etiquetasRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'etiquetas',
+        label: 'Etiquetas',
+        dataType: 'multiselect',
+        validationRules: {
+          options: [
+            { value: 'frontend', label: 'Frontend', color: 'blue' },
+            { value: 'bug', label: 'Bug', color: 'error' },
+            { value: 'urgente', label: 'Urgente', color: 'warning' }
+          ]
+        }
+      })
+    })
+    expect(etiquetasRes.status).toBe(201)
+
+    const altaRes = await api(`/api/records/${pedidosFiltroSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { prioridad: 'alta', etiquetas: ['frontend'] } })
+    })
+    pedidoAltaId = (await altaRes.json()).id
+
+    const urgenteRes = await api(`/api/records/${pedidosFiltroSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { prioridad: 'urgente', etiquetas: ['bug', 'urgente'] } })
+    })
+    pedidoUrgenteId = (await urgenteRes.json()).id
+
+    const bajaRes = await api(`/api/records/${pedidosFiltroSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { prioridad: 'baja', etiquetas: [] } })
+    })
+    pedidoBajaId = (await bajaRes.json()).id
+  }, 30_000)
+
+  it('un campo Select con un value fuera de las opciones configuradas es rechazado (422) - z.enum real del servidor', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}`, {
+      method: 'POST',
+      body: JSON.stringify({ customData: { prioridad: 'inventada' } })
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('filterField=prioridad&filterValues=alta ("es") filtra por equality-ANY sobre un campo Select', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=prioridad&filterValues=alta`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id)).toEqual([pedidoAltaId])
+  })
+
+  it('filterValues con varios values ("es alguno de") sobre un campo Select trae la union de coincidencias', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=prioridad&filterValues=alta,urgente`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id).sort()).toEqual([pedidoAltaId, pedidoUrgenteId].sort())
+  })
+
+  it('filterField sobre un campo Multiselect usa el operador de array de Postgres (overlap, no exact match)', async () => {
+    // pedidoUrgenteId tiene etiquetas ['bug','urgente'] - "urgente" solo (un
+    // value) ya debe traerlo por overlap, sin exigir que coincidan TODAS sus
+    // etiquetas (eso confirma que no es un chequeo de igualdad de array).
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=etiquetas&filterValues=urgente`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id)).toEqual([pedidoUrgenteId])
+  })
+
+  it('filterValues con varios values sobre Multiselect trae cualquier registro cuyo array tenga al menos una coincidencia', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=etiquetas&filterValues=frontend,bug`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id).sort()).toEqual([pedidoAltaId, pedidoUrgenteId].sort())
+  })
+
+  it('un filtro sin coincidencias (registro con array vacio) no aparece', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=etiquetas&filterValues=frontend,bug,urgente`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id)).not.toContain(pedidoBajaId)
+  })
+
+  it('filterField que no es un campo real de la entidad es rechazado (422)', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?filterField=no_existe&filterValues=algo`)
+    expect(res.status).toBe(422)
+  })
+
+  it('filterField sin filterValues (o viceversa) es rechazado (422) - deben enviarse juntos', async () => {
+    const onlyFieldRes = await api(`/api/records/${pedidosFiltroSlug}?filterField=prioridad`)
+    expect(onlyFieldRes.status).toBe(422)
+
+    const onlyValuesRes = await api(`/api/records/${pedidosFiltroSlug}?filterValues=alta`)
+    expect(onlyValuesRes.status).toBe(422)
+  })
+
+  it('sin filtro, GET sigue devolviendo todos los records (no rompe el comportamiento existente)', async () => {
+    const res = await api(`/api/records/${pedidosFiltroSlug}?pageSize=100`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.map((r: { id: string }) => r.id)).toEqual(
+      expect.arrayContaining([pedidoAltaId, pedidoUrgenteId, pedidoBajaId])
+    )
+  })
+
+  it('SSR: /registros/:entity (F5 completo) renderiza el boton "Filtros" cuando la entidad tiene un campo Select/Multiselect', async () => {
+    const res = await fetch(`${baseUrl}/registros/${pedidosFiltroSlug}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Filtros')
+    // Las etiquetas configuradas (no los values crudos) se ven en la celda de
+    // la tabla - confirma que DynamicTable.vue resuelve select/multiselect
+    // contra validationRules.options en vez de mostrar el value tecnico.
+    expect(html).toContain('Alta')
+    expect(html).toContain('Urgente')
+  })
+})

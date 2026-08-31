@@ -6,7 +6,7 @@ import type { EntityFieldMeta } from '../../composables/useEntityFields'
 // DynamicForm.vue) - nunca reemplaza la revalidacion real del servidor
 // (server/utils/dynamicSchema.ts, cubierto en test/unit/dynamicSchema.test.ts).
 // Este archivo cubria hasta ahora 0 casos; se agrega foco en el caso 'tabla'
-// (HU-ERD-72), el unico agregado nuevo de esta HU en este archivo.
+// (HU-ERD-72) y select/multiselect (HU-ERD-73).
 
 function field(overrides: Partial<EntityFieldMeta> = {}): EntityFieldMeta {
   return {
@@ -76,6 +76,60 @@ describe('validateFieldValue', () => {
     it('sin columns en validationRules, cualquier fila pasa (nada que validar)', () => {
       const result = validateFieldValue(field({ validationRules: {} }), [{ cualquier_cosa: 'x' }])
       expect(result.valid).toBe(true)
+    })
+  })
+
+  describe('select (HU-ERD-73)', () => {
+    const options = [
+      { value: 'alta', label: 'Alta' },
+      { value: 'baja', label: 'Baja' }
+    ]
+
+    it('acepta un value de la lista de opciones', () => {
+      const result = validateFieldValue(field({ dataType: 'select', label: 'Prioridad', validationRules: { options } }), 'alta')
+      expect(result.valid).toBe(true)
+    })
+
+    it('rechaza un value que no esta en las opciones (espejo de z.enum del servidor)', () => {
+      const result = validateFieldValue(field({ dataType: 'select', label: 'Prioridad', validationRules: { options } }), 'inventado')
+      expect(result.valid).toBe(false)
+    })
+
+    it('sin options en validationRules, cualquier value pasa (nada que validar)', () => {
+      const result = validateFieldValue(field({ dataType: 'select', label: 'Prioridad', validationRules: {} }), 'lo que sea')
+      expect(result.valid).toBe(true)
+    })
+
+    it('requerido y vacio (isEmpty generico) es invalido', () => {
+      const result = validateFieldValue(field({ dataType: 'select', label: 'Prioridad', isRequired: true, validationRules: { options } }), '')
+      expect(result.valid).toBe(false)
+    })
+  })
+
+  describe('multiselect (HU-ERD-73)', () => {
+    const options = [
+      { value: 'frontend', label: 'Frontend' },
+      { value: 'bug', label: 'Bug' }
+    ]
+
+    it('acepta un array de values validos', () => {
+      const result = validateFieldValue(field({ dataType: 'multiselect', label: 'Etiquetas', validationRules: { options } }), ['frontend', 'bug'])
+      expect(result.valid).toBe(true)
+    })
+
+    it('rechaza si algun value no esta en las opciones', () => {
+      const result = validateFieldValue(field({ dataType: 'multiselect', label: 'Etiquetas', validationRules: { options } }), ['frontend', 'inventado'])
+      expect(result.valid).toBe(false)
+    })
+
+    it('un array vacio es valido si el campo no es requerido', () => {
+      const result = validateFieldValue(field({ dataType: 'multiselect', label: 'Etiquetas', isRequired: false, validationRules: { options } }), [])
+      expect(result.valid).toBe(true)
+    })
+
+    it('un array vacio es invalido si el campo es requerido (no cae en isEmpty() generico)', () => {
+      const result = validateFieldValue(field({ dataType: 'multiselect', label: 'Etiquetas', isRequired: true, validationRules: { options } }), [])
+      expect(result.valid).toBe(false)
     })
   })
 

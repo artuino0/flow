@@ -80,22 +80,11 @@ const TYPE_OPTIONS: TypeOption[] = [
 ]
 
 // HU-ERD-71: mismas 7 paletas de color de marca que TYPE_BADGE
-// (ModuleFieldsCard.vue) - reusadas aca para las opciones de Select/
-// Multiselect, y consumibles despues por HU-ERD-73 (badges/chips reales en
-// el formulario y el filtro de listado) con la misma convencion de nombre.
-const OPTION_COLORS = [
-  { value: 'neutral', label: 'Gris', dot: 'bg-brand-neutral-text' },
-  { value: 'blue', label: 'Azul', dot: 'bg-brand-blue' },
-  { value: 'success', label: 'Verde', dot: 'bg-brand-success-text' },
-  { value: 'warning', label: 'Amarillo', dot: 'bg-brand-warning-text' },
-  { value: 'error', label: 'Rojo', dot: 'bg-brand-error-text' },
-  { value: 'purple', label: 'Morado', dot: 'bg-brand-purple-text' },
-  { value: 'pink', label: 'Rosa', dot: 'bg-brand-pink-text' }
-] as const
-
-function colorDot(color: string): string {
-  return OPTION_COLORS.find((c) => c.value === color)?.dot ?? 'bg-brand-neutral-text'
-}
+// (ModuleFieldsCard.vue). HU-ERD-73: extraida a utils/optionColors.ts
+// (auto-importado) para que el renderizado real del campo (DynamicForm.vue)
+// y el panel de Filtros del listado lean la MISMA fuente de verdad en vez de
+// duplicar el mapeo color -> clases - mismo criterio que utils/slugify.ts.
+// OPTION_COLORS y colorDotClass() quedan disponibles por auto-import.
 
 const TABLE_COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: 'text', label: 'Texto' },
@@ -584,7 +573,7 @@ function onSubmit() {
           <div class="flex flex-col gap-2">
             <div v-for="(opt, index) in form.options" :key="index" class="flex items-center gap-2">
               <GripVertical class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
-              <span class="h-4 w-4 shrink-0 rounded-full" :class="colorDot(opt.color)" />
+              <span class="h-4 w-4 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
               <select
                 :value="opt.color"
                 class="w-[92px] shrink-0 rounded border border-brand-border bg-brand-surface px-1.5 py-[7px] text-xs text-brand-text focus:border-brand-blue focus:outline-none"

@@ -92,6 +92,32 @@ export function validateFieldValue(field: EntityFieldMeta, rawValue: unknown): F
       }
       return { valid: true }
     }
+    // HU-ERD-73: espejo de buildFieldType() (server/utils/dynamicSchema.ts,
+    // casos 'select'/'multiselect') - un value que no esta en
+    // validationRules.options nunca pasaria el z.enum() real del servidor.
+    case 'select': {
+      const options = Array.isArray(rules.options) ? (rules.options as Array<{ value: string }>) : []
+      const values = options.map((o) => o.value)
+      if (values.length > 0 && !values.includes(String(rawValue))) {
+        return { valid: false, error: `"${field.label}" debe ser una de las opciones configuradas` }
+      }
+      return { valid: true }
+    }
+    // Igual que 'tabla': un array vacio no cae en isEmpty() (solo
+    // null/undefined/'' cuentan como vacio ahi) - "requerido" para multiselect
+    // se resuelve aca.
+    case 'multiselect': {
+      const chosen = Array.isArray(rawValue) ? (rawValue as unknown[]) : []
+      if (chosen.length === 0) {
+        return field.isRequired ? { valid: false, error: `"${field.label}" es requerido` } : { valid: true }
+      }
+      const options = Array.isArray(rules.options) ? (rules.options as Array<{ value: string }>) : []
+      const values = options.map((o) => o.value)
+      if (values.length > 0 && chosen.some((v) => !values.includes(String(v)))) {
+        return { valid: false, error: `"${field.label}" tiene un valor que no esta entre las opciones configuradas` }
+      }
+      return { valid: true }
+    }
     // HU-ERD-72: un array vacio no cae en isEmpty() de arriba (solo
     // null/undefined/'' cuentan como vacio ahi) - "requerido" para un campo
     // Tabla se resuelve aca, no antes del switch. Solo valida que las
