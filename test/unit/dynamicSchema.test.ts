@@ -101,6 +101,91 @@ describe('buildFieldType', () => {
     })
   })
 
+  // HU-ERD-68: array de objetos - lineas de item (ej. Cotizaciones con
+  // producto/cantidad/precio). Solo valida la FORMA final de cada fila; la
+  // semantica de copia (copyFrom, snapshot al elegir la relacion) es del
+  // formulario (ERD-71/72), no de este generador.
+  describe('tabla', () => {
+    const columns = [
+      { name: 'producto_id', label: 'Producto', type: 'relation', relationEntity: 'productos' },
+      { name: 'precio_unitario', label: 'Precio unitario', type: 'number', copyFrom: 'productos.precio', editable: true },
+      { name: 'cantidad', label: 'Cantidad', type: 'number', editable: true },
+      { name: 'subtotal', label: 'Subtotal', type: 'number', readonly: true }
+    ]
+
+    it('acepta un array de filas con la forma correcta segun columns', () => {
+      const type = buildFieldType({ name: 'items', dataType: 'tabla', validationRules: { columns }, isRequired: true })
+      expect(
+        type.safeParse([
+          { producto_id: '11111111-1111-1111-1111-111111111111', precio_unitario: 100, cantidad: 2, subtotal: 200 }
+        ]).success
+      ).toBe(true)
+    })
+
+    it('rechaza una fila a la que le falta una columna', () => {
+      const type = buildFieldType({ name: 'items', dataType: 'tabla', validationRules: { columns }, isRequired: true })
+      expect(type.safeParse([{ producto_id: '11111111-1111-1111-1111-111111111111', cantidad: 2 }]).success).toBe(false)
+    })
+
+    it('rechaza una fila con el tipo de dato equivocado en una columna', () => {
+      const type = buildFieldType({ name: 'items', dataType: 'tabla', validationRules: { columns }, isRequired: true })
+      expect(
+        type.safeParse([
+          { producto_id: '11111111-1111-1111-1111-111111111111', precio_unitario: 'gratis', cantidad: 2, subtotal: 200 }
+        ]).success
+      ).toBe(false)
+    })
+
+    it('acepta un array vacio (sin filas todavia)', () => {
+      const type = buildFieldType({ name: 'items', dataType: 'tabla', validationRules: { columns }, isRequired: true })
+      expect(type.safeParse([]).success).toBe(true)
+    })
+  })
+
+  describe('select', () => {
+    const options = [
+      { value: 'activo', label: 'Activo', color: 'green' },
+      { value: 'suspendido', label: 'Suspendido', color: 'red' }
+    ]
+
+    it('acepta un value de la lista de opciones', () => {
+      const type = buildFieldType({ name: 'estado', dataType: 'select', validationRules: { options }, isRequired: true })
+      expect(type.safeParse('activo').success).toBe(true)
+    })
+
+    it('rechaza un value que no esta en las opciones', () => {
+      const type = buildFieldType({ name: 'estado', dataType: 'select', validationRules: { options }, isRequired: true })
+      expect(type.safeParse('inventado').success).toBe(false)
+    })
+
+    it('rechaza un array (select es un solo valor, no multiselect)', () => {
+      const type = buildFieldType({ name: 'estado', dataType: 'select', validationRules: { options }, isRequired: true })
+      expect(type.safeParse(['activo']).success).toBe(false)
+    })
+  })
+
+  describe('multiselect', () => {
+    const options = [
+      { value: 'urgente', label: 'Urgente', color: 'red' },
+      { value: 'seguimiento', label: 'Seguimiento', color: 'blue' }
+    ]
+
+    it('acepta un array de values validos', () => {
+      const type = buildFieldType({ name: 'tags', dataType: 'multiselect', validationRules: { options }, isRequired: true })
+      expect(type.safeParse(['urgente', 'seguimiento']).success).toBe(true)
+    })
+
+    it('rechaza si algun value no esta en las opciones', () => {
+      const type = buildFieldType({ name: 'tags', dataType: 'multiselect', validationRules: { options }, isRequired: true })
+      expect(type.safeParse(['urgente', 'inventado']).success).toBe(false)
+    })
+
+    it('acepta un array vacio', () => {
+      const type = buildFieldType({ name: 'tags', dataType: 'multiselect', validationRules: { options }, isRequired: true })
+      expect(type.safeParse([]).success).toBe(true)
+    })
+  })
+
   describe('tipo desconocido', () => {
     it('cae a z.any()', () => {
       const type = buildFieldType({ name: 'x', dataType: 'inventado', validationRules: {}, isRequired: true })

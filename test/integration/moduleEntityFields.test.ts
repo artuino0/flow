@@ -69,6 +69,48 @@ describe('moduleEntityFields (Postgres real)', () => {
     expect(field).toMatchObject({ name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true })
   })
 
+  // HU-ERD-68: confirma que getValidationRulesSchema (dynamicSchema.ts) y
+  // createEntityField estan cableados de punta a punta para los 3 dataType
+  // nuevos - buildFieldType() ya se prueba aislado en test/unit/dynamicSchema.test.ts.
+  it('createEntityField acepta los dataType nuevos de HU-ERD-68 (tabla/select/multiselect) con su validationRules propio', async () => {
+    const tabla = await createEntityField(TENANT_A, entityA, {
+      name: 'items',
+      label: 'Items',
+      dataType: 'tabla',
+      validationRules: { columns: [{ name: 'cantidad', label: 'Cantidad', type: 'number' }] },
+      isRequired: false
+    })
+    expect(tabla.dataType).toBe('tabla')
+
+    const select = await createEntityField(TENANT_A, entityA, {
+      name: 'estado',
+      label: 'Estado',
+      dataType: 'select',
+      validationRules: { options: [{ value: 'activo', label: 'Activo' }] },
+      isRequired: false
+    })
+    expect(select.dataType).toBe('select')
+
+    const multiselect = await createEntityField(TENANT_A, entityA, {
+      name: 'tags',
+      label: 'Tags',
+      dataType: 'multiselect',
+      validationRules: { options: [{ value: 'urgente', label: 'Urgente' }] },
+      isRequired: false
+    })
+    expect(multiselect.dataType).toBe('multiselect')
+  })
+
+  it('createEntityField rechaza "tabla" sin columns y "select" sin options', async () => {
+    await expect(
+      createEntityField(TENANT_A, entityA, { name: 'items_invalido', label: 'Items', dataType: 'tabla', validationRules: {}, isRequired: false })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+
+    await expect(
+      createEntityField(TENANT_A, entityA, { name: 'estado_invalido', label: 'Estado', dataType: 'select', validationRules: {}, isRequired: false })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
   it('createEntityField rechaza validationRules que no calzan con el dataType', async () => {
     await expect(
       createEntityField(TENANT_A, entityA, { name: 'edad', label: 'Edad', dataType: 'number', validationRules: { minLength: 3 }, isRequired: false })

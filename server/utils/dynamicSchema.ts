@@ -38,10 +38,45 @@ function fingerprint(rows: EntityFieldRow[]): string {
 // tipo - vive aca (no en moduleEntityFields.ts) porque es la MISMA fuente de
 // verdad que buildFieldType() de abajo consume; duplicarla en el endpoint de
 // escritura hubiera sido el tipico bug de "el validador dice A, el que
-// realmente usa las reglas lee B". ERD-68 va a sumar 'table'/'select'/
-// 'multiselect' aca (y en buildFieldType) - no antes, esta HU no los soporta.
-export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation'] as const
+// realmente usa las reglas lee B".
+//
+// HU-ERD-68 suma 'tabla' (array de objetos - lineas de item, ej. Cotizaciones
+// con producto/cantidad/precio) y 'select'/'multiselect' (badges de estado),
+// segun el diseño de datos de DOCS/Diseno_Pantallas_Faltantes_Fase2.md. Sin
+// tablas nuevas: todo vive en validation_rules (jsonb ya existente).
+export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect'] as const
 export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
+
+// Tipos permitidos para una columna dentro de un campo 'tabla' - deliberadamente
+// mas chico que KNOWN_DATA_TYPES (sin json/tabla/select anidados: una columna
+// de una fila es un valor simple, no otro campo compuesto).
+const TABLE_COLUMN_TYPES = ['text', 'number', 'boolean', 'date', 'relation'] as const
+type TableColumnType = (typeof TABLE_COLUMN_TYPES)[number]
+
+const tableColumnSchema = z
+  .object({
+    name: z.string().min(1),
+    label: z.string().min(1),
+    type: z.enum(TABLE_COLUMN_TYPES),
+    // Solo tiene sentido si type === 'relation' - no se fuerza con una union
+    // discriminada para no complicar el mensaje de error; queda documentado aca.
+    relationEntity: z.string().min(1).optional(),
+    // "copiar de <entidad>.<campo> al elegir la fila, una sola vez" (snapshot,
+    // ver DOCS/Diseno_Pantallas_Faltantes_Fase2.md "Semantica de copia") - solo
+    // metadata para el frontend (ERD-71/72), buildFieldType() de abajo no la usa.
+    copyFrom: z.string().min(1).optional(),
+    editable: z.boolean().optional(),
+    readonly: z.boolean().optional()
+  })
+  .strict()
+
+const selectOptionSchema = z
+  .object({
+    value: z.string().min(1),
+    label: z.string().min(1),
+    color: z.string().min(1).optional()
+  })
+  .strict()
 
 const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   text: z
@@ -67,12 +102,39 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
     })
     .strict(),
   json: z.object({}).strict(),
-  relation: z.object({}).strict()
+  relation: z.object({}).strict(),
+  tabla: z.object({ columns: z.array(tableColumnSchema).min(1) }).strict(),
+  select: z.object({ options: z.array(selectOptionSchema).min(1) }).strict(),
+  multiselect: z.object({ options: z.array(selectOptionSchema).min(1) }).strict()
 }
 
 /** Devuelve el schema Zod de validationRules para un dataType conocido, o null si no se reconoce. */
 export function getValidationRulesSchema(dataType: string): z.ZodTypeAny | null {
   return (VALIDATION_RULES_SCHEMAS as Record<string, z.ZodTypeAny>)[dataType] ?? null
+}
+
+/** Tipo base de una columna dentro de un campo 'tabla' (HU-ERD-68) - subset simple, sin min/max/pattern propios. */
+function buildColumnType(type: string): z.ZodTypeAny {
+  switch (type as TableColumnType) {
+    case 'text':
+      return z.string()
+    case 'number':
+      return z.number()
+    case 'boolean':
+      return z.boolean()
+    case 'date':
+      return z.coerce.date()
+    case 'relation':
+      return z.string().uuid()
+    default:
+      return z.any()
+  }
+}
+
+/** Extrae los `value` de validationRules.options (select/multiselect, HU-ERD-68). */
+function optionValues(rules: Record<string, unknown>): string[] {
+  if (!Array.isArray(rules.options)) return []
+  return (rules.options as Array<{ value?: unknown }>).map((o) => o.value).filter((v): v is string => typeof v === 'string')
 }
 
 // Exportada para HU-ERD-29: permite testear unitariamente la generacion de
@@ -122,6 +184,29 @@ export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
       // no este schema; aca solo se exige forma de uuid.
       base = z.string().uuid()
       break
+    case 'tabla': {
+      // HU-ERD-68: cada fila es un objeto con una clave por columna definida
+      // en validationRules.columns, tipado con buildColumnType() (subset de
+      // los tipos base, ver TABLE_COLUMN_TYPES). Semantica de snapshot (copyFrom):
+      // esto SOLO valida la FORMA final de la fila ya armada - no sabe ni le
+      // importa si un valor vino copiado de una relacion o se tipeo a mano;
+      // ese comportamiento es del formulario (ERD-71/72), no de este schema.
+      const columns = Array.isArray(rules.columns) ? (rules.columns as Array<{ name: string; type: string }>) : []
+      const rowShape: Record<string, z.ZodTypeAny> = {}
+      for (const col of columns) rowShape[col.name] = buildColumnType(col.type)
+      base = z.array(z.object(rowShape))
+      break
+    }
+    case 'select': {
+      const values = optionValues(rules)
+      base = values.length > 0 ? z.enum(values as [string, ...string[]]) : z.string()
+      break
+    }
+    case 'multiselect': {
+      const values = optionValues(rules)
+      base = values.length > 0 ? z.array(z.enum(values as [string, ...string[]])) : z.array(z.string())
+      break
+    }
     default:
       base = z.any()
   }
