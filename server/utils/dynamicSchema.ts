@@ -78,6 +78,44 @@ const selectOptionSchema = z
   })
   .strict()
 
+// HU-ERD-71: "value" es la clave que efectivamente se guarda en custom_data
+// (z.enum(values), ver buildFieldType() mas abajo) - dos opciones con el
+// mismo value harian z.enum([...]) con entradas repetidas (Zod las tolera,
+// pero el enum resultante quedaria ambiguo: dos etiquetas distintas
+// indistinguibles en los datos guardados). El criterio de aceptacion de la
+// HU pide explicitamente rechazar esto.
+function hasDuplicateOptionValues(options: unknown): boolean {
+  if (!Array.isArray(options)) return false
+  const values = (options as Array<{ value?: unknown }>).map((o) => o.value).filter((v): v is string => typeof v === 'string')
+  return new Set(values).size !== values.length
+}
+
+const selectOptionsSchema = z
+  .object({ options: z.array(selectOptionSchema).min(1) })
+  .strict()
+  .refine((r) => !hasDuplicateOptionValues(r.options), {
+    message: 'Hay valores (value) duplicados entre las opciones de este campo',
+    path: ['options']
+  })
+
+// Mismo razonamiento que las opciones de select/multiselect: el "name" de
+// cada columna es la clave del objeto de fila (buildFieldType() de abajo,
+// caso 'tabla') - dos columnas con el mismo name harian que la segunda pise
+// silenciosamente a la primera en cada fila guardada.
+function hasDuplicateColumnNames(columns: unknown): boolean {
+  if (!Array.isArray(columns)) return false
+  const names = (columns as Array<{ name?: unknown }>).map((c) => c.name).filter((v): v is string => typeof v === 'string')
+  return new Set(names).size !== names.length
+}
+
+const tableColumnsSchema = z
+  .object({ columns: z.array(tableColumnSchema).min(1) })
+  .strict()
+  .refine((r) => !hasDuplicateColumnNames(r.columns), {
+    message: 'Hay columnas con el mismo nombre técnico en este campo',
+    path: ['columns']
+  })
+
 const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   text: z
     .object({
@@ -103,9 +141,9 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
     .strict(),
   json: z.object({}).strict(),
   relation: z.object({}).strict(),
-  tabla: z.object({ columns: z.array(tableColumnSchema).min(1) }).strict(),
-  select: z.object({ options: z.array(selectOptionSchema).min(1) }).strict(),
-  multiselect: z.object({ options: z.array(selectOptionSchema).min(1) }).strict()
+  tabla: tableColumnsSchema,
+  select: selectOptionsSchema,
+  multiselect: selectOptionsSchema
 }
 
 /** Devuelve el schema Zod de validationRules para un dataType conocido, o null si no se reconoce. */

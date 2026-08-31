@@ -8,7 +8,7 @@
 // Reusado tal cual tanto en pages/modulos/nuevo.vue (paso 2 del asistente)
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
-import { Blocks, Braces, Calendar, Hash, Link2, Pencil, Plus, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, Hash, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 
@@ -30,7 +30,14 @@ const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: stri
   boolean: { icon: ToggleLeft, bg: 'bg-brand-warning-bg', text: 'text-brand-warning-text', label: 'Booleano' },
   date: { icon: Calendar, bg: 'bg-brand-pink-bg', text: 'text-brand-pink-text', label: 'Fecha' },
   json: { icon: Braces, bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text', label: 'JSON' },
-  relation: { icon: Link2, bg: 'bg-brand-blue-bg', text: 'text-brand-blue', label: 'Relación' }
+  relation: { icon: Link2, bg: 'bg-brand-blue-bg', text: 'text-brand-blue', label: 'Relación' },
+  // HU-ERD-71: sin badge propio en el .pen para estos 3 tipos (el diseño de
+  // la lista de campos es anterior a HU-ERD-68) - se sigue el mismo patrón
+  // que los demás (icono + par bg/text de marca), usando los tokens
+  // info-* (sin usar todavía en ningún otro badge) para Select/Multiselect.
+  select: { icon: List, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Select' },
+  multiselect: { icon: ListChecks, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Multiselect' },
+  tabla: { icon: Table2, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: 'Tabla' }
 }
 function badgeFor(dataType: string) {
   return TYPE_BADGE[dataType] ?? { icon: Blocks, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: dataType }

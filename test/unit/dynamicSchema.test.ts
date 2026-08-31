@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildFieldType } from '../../server/utils/dynamicSchema'
+import { buildFieldType, getValidationRulesSchema } from '../../server/utils/dynamicSchema'
 
 // HU-ERD-29: cubre la generacion de schema Zod desde metadatos (entity_fields
 // -> ZodTypeAny), sin necesitar una base de datos - buildFieldType() es pura.
@@ -190,6 +190,38 @@ describe('buildFieldType', () => {
     it('cae a z.any()', () => {
       const type = buildFieldType({ name: 'x', dataType: 'inventado', validationRules: {}, isRequired: true })
       expect(type.safeParse('cualquier cosa').success).toBe(true)
+    })
+  })
+
+  // HU-ERD-71: getValidationRulesSchema() (no buildFieldType, que solo mira
+  // la FORMA final) es donde vive el rechazo de duplicados - "value" y
+  // "name" de columna son las claves reales que despues arma buildFieldType
+  // (z.enum / objeto de fila), un duplicado ahi pisaria datos en silencio.
+  describe('getValidationRulesSchema - duplicados (HU-ERD-71)', () => {
+    it('select/multiselect rechazan un "value" repetido entre opciones', () => {
+      const rules = { options: [{ value: 'alta', label: 'Alta' }, { value: 'alta', label: 'Alta (bis)' }] }
+      expect(getValidationRulesSchema('select')!.safeParse(rules).success).toBe(false)
+      expect(getValidationRulesSchema('multiselect')!.safeParse(rules).success).toBe(false)
+    })
+
+    it('select acepta values distintos', () => {
+      const rules = { options: [{ value: 'alta', label: 'Alta' }, { value: 'baja', label: 'Baja' }] }
+      expect(getValidationRulesSchema('select')!.safeParse(rules).success).toBe(true)
+    })
+
+    it('tabla rechaza un nombre de columna repetido', () => {
+      const rules = { columns: [{ name: 'cantidad', label: 'Cantidad', type: 'number' }, { name: 'cantidad', label: 'Otra', type: 'text' }] }
+      expect(getValidationRulesSchema('tabla')!.safeParse(rules).success).toBe(false)
+    })
+
+    it('tabla acepta una columna de relación con copyFrom/editable en otra columna', () => {
+      const rules = {
+        columns: [
+          { name: 'producto_id', label: 'Producto', type: 'relation', relationEntity: 'productos' },
+          { name: 'precio', label: 'Precio', type: 'number', copyFrom: 'productos.precio', editable: true }
+        ]
+      }
+      expect(getValidationRulesSchema('tabla')!.safeParse(rules).success).toBe(true)
     })
   })
 

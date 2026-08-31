@@ -30,17 +30,9 @@ const creating = ref(false)
 
 // Autogenera el slug desde el nombre hasta que el usuario lo edite a mano -
 // criterio de aceptacion HU-ERD-70 ("el slug se genera automaticamente desde
-// el nombre, editable antes de guardar").
-const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g')
-function slugify(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(DIACRITICS_RE, '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+// el nombre, editable antes de guardar"). slugify() vive en utils/slugify.ts
+// (auto-importado) - reusado tal cual en HU-ERD-71 para el value autogenerado
+// de las opciones de Select/Multiselect y el name de columnas de Tabla.
 watch(name, (value) => {
   if (!slugTouched.value) slug.value = slugify(value)
 })

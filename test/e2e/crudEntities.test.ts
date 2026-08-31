@@ -663,6 +663,34 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
     expect(dupRes.status).toBe(409)
   })
 
+  // HU-ERD-71: el mismo 422 de "validationRules invalido", pero por el
+  // camino nuevo (duplicados) - confirmado contra el servidor COMPILADO real
+  // via HTTP, no solo la funcion (esa parte ya la cubre
+  // test/integration/moduleEntityFields.test.ts).
+  it('POST fields con "value" duplicado (select) o nombre de columna duplicado (tabla) es 422', async () => {
+    const dupOptionsRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'prioridad_e2e',
+        label: 'Prioridad',
+        dataType: 'select',
+        validationRules: { options: [{ value: 'alta', label: 'Alta' }, { value: 'alta', label: 'Alta otra vez' }] }
+      })
+    })
+    expect(dupOptionsRes.status).toBe(422)
+
+    const dupColumnsRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'items_e2e',
+        label: 'Items',
+        dataType: 'tabla',
+        validationRules: { columns: [{ name: 'cantidad', label: 'Cantidad', type: 'number' }, { name: 'cantidad', label: 'Otra', type: 'text' }] }
+      })
+    })
+    expect(dupColumnsRes.status).toBe(422)
+  })
+
   it('PUT fields/:fieldId cambia dataType, escribe entity_field_history y deja los records existentes is_dirty (revalidacion perezosa real vuelve a validarlos en su proximo GET)', async () => {
     const createRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
       method: 'POST',

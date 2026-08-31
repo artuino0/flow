@@ -117,6 +117,65 @@ describe('moduleEntityFields (Postgres real)', () => {
     ).rejects.toBeInstanceOf(InvalidValidationRulesError)
   })
 
+  // HU-ERD-71: el editor de opciones (Select/Multiselect) y el editor de
+  // columnas (Tabla) construidos en el frontend dependen de que el backend
+  // rechace duplicados - "value" es la clave real que se guarda en
+  // custom_data (z.enum), y "name" de columna es la clave del objeto de
+  // fila (buildFieldType, caso 'tabla') - un duplicado silencioso ahi
+  // pisaria datos sin que nadie lo note.
+  it('createEntityField rechaza "value" duplicado entre opciones de select/multiselect', async () => {
+    await expect(
+      createEntityField(TENANT_A, entityA, {
+        name: 'prioridad_invalida',
+        label: 'Prioridad',
+        dataType: 'select',
+        validationRules: {
+          options: [
+            { value: 'alta', label: 'Alta' },
+            { value: 'alta', label: 'Alta (duplicado)' }
+          ]
+        },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('createEntityField rechaza nombre de columna duplicado dentro del mismo campo tabla', async () => {
+    await expect(
+      createEntityField(TENANT_A, entityA, {
+        name: 'items_duplicado',
+        label: 'Items',
+        dataType: 'tabla',
+        validationRules: {
+          columns: [
+            { name: 'cantidad', label: 'Cantidad', type: 'number' },
+            { name: 'cantidad', label: 'Cantidad (otra vez)', type: 'text' }
+          ]
+        },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('createEntityField acepta una columna tabla tipo relación con copyFrom/editable en otra columna (HU-ERD-71)', async () => {
+    const field = await createEntityField(TENANT_A, entityA, {
+      name: 'lineas',
+      label: 'Líneas',
+      dataType: 'tabla',
+      validationRules: {
+        columns: [
+          { name: 'producto_id', label: 'Producto', type: 'relation', relationEntity: 'productos' },
+          { name: 'precio_unitario', label: 'Precio unitario', type: 'number', copyFrom: 'productos.precio', editable: true },
+          { name: 'cantidad', label: 'Cantidad', type: 'number' }
+        ]
+      },
+      isRequired: false
+    })
+    const columns = (field.validationRules as { columns: Array<Record<string, unknown>> }).columns
+    expect(columns[0]).toMatchObject({ name: 'producto_id', type: 'relation', relationEntity: 'productos' })
+    expect(columns[1]).toMatchObject({ name: 'precio_unitario', copyFrom: 'productos.precio', editable: true })
+  })
+
   it('createEntityField rechaza un nombre duplicado dentro de la misma entity', async () => {
     await expect(
       createEntityField(TENANT_A, entityA, { name: 'nombre', label: 'Nombre otra vez', dataType: 'text', validationRules: {}, isRequired: false })
