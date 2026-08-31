@@ -20,32 +20,39 @@ const { data, pending, error: fetchError } = await useFetch<{ roles: RoleRow[] }
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <h1 class="text-lg font-semibold text-gray-900">Roles y permisos</h1>
+  <div class="flex flex-col gap-5">
+    <h1 class="text-[22px] font-bold text-brand-text">Roles y permisos</h1>
 
-    <p v-if="pending" class="text-sm text-gray-500">Cargando...</p>
-    <p v-else-if="fetchError" class="text-sm text-red-600">
+    <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
+    <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudo cargar el listado de roles{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
 
     <template v-else-if="data">
-      <p v-if="data.roles.length === 0" class="text-sm text-gray-500">Este tenant todavia no tiene roles.</p>
+      <p v-if="data.roles.length === 0" class="text-sm text-brand-text-muted">Este tenant todavia no tiene roles.</p>
 
-      <div v-else class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table class="min-w-full divide-y divide-gray-200 text-sm">
-          <thead class="bg-gray-50">
+      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <table class="min-w-full text-sm">
+          <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
-              <th class="px-4 py-2 text-left font-medium text-gray-600">Nombre</th>
-              <th class="px-4 py-2 text-left font-medium text-gray-600">Tipo</th>
-              <th class="px-4 py-2"></th>
+              <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Nombre</th>
+              <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Tipo</th>
+              <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="role in data.roles" :key="role.id">
-              <td class="px-4 py-2 text-gray-900">{{ role.name }}</td>
-              <td class="px-4 py-2 text-gray-500">{{ role.isSystem ? 'Sistema (acceso total)' : 'Personalizado' }}</td>
-              <td class="px-4 py-2 text-right">
-                <NuxtLink :to="`/roles/${role.id}`" class="font-medium text-primary-700 hover:underline">
+          <tbody class="divide-y divide-brand-border-light">
+            <tr v-for="role in data.roles" :key="role.id" class="hover:bg-brand-bg">
+              <td class="px-4 py-3 font-medium text-brand-text">{{ role.name }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                  :class="role.isSystem ? 'bg-brand-blue-bg text-brand-blue' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+                >
+                  {{ role.isSystem ? 'Sistema (acceso total)' : 'Personalizado' }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-right">
+                <NuxtLink :to="`/roles/${role.id}`" class="text-sm font-semibold text-brand-blue hover:underline">
                   Editar permisos
                 </NuxtLink>
               </td>

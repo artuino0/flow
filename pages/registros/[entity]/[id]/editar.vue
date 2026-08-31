@@ -51,13 +51,13 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-    <h1 class="text-lg font-semibold text-gray-900">
+  <div class="mx-auto max-w-xl rounded-lg border border-brand-border-light bg-brand-surface p-6 shadow-[0_1px_3px_0_#33475B14]">
+    <h1 class="text-lg font-bold text-brand-text">
       Editar registro{{ data?.entity?.name ? ` - ${data.entity.name}` : '' }}
     </h1>
 
-    <p v-if="pending || recordPending" class="mt-4 text-sm text-gray-500">Cargando...</p>
-    <p v-else-if="fetchError || recordError" class="mt-4 text-sm text-red-600">
+    <p v-if="pending || recordPending" class="mt-4 text-sm text-brand-text-muted">Cargando...</p>
+    <p v-else-if="fetchError || recordError" class="mt-4 text-sm text-brand-error-text">
       No se pudo cargar el registro o la definicion de esta entidad.
     </p>
 
@@ -65,17 +65,20 @@ async function onSubmit() {
       <form class="mt-4 flex flex-col gap-4" @submit.prevent="onSubmit">
         <DynamicForm ref="formRef" v-model="formValues" :fields="data.fields" :disabled="submitting" />
 
-        <p v-if="submitError" class="text-sm text-red-600">{{ submitError }}</p>
-        <p v-if="submitted" class="text-sm text-green-700">Cambios guardados correctamente.</p>
+        <p v-if="submitError" class="text-sm text-brand-error-text">{{ submitError }}</p>
+        <p v-if="submitted" class="text-sm text-brand-success-text">Cambios guardados correctamente.</p>
 
         <div class="flex justify-end gap-2">
-          <NuxtLink :to="`/registros/${slug}`" class="rounded px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
+          <NuxtLink
+            :to="`/registros/${slug}`"
+            class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg"
+          >
             Volver al listado
           </NuxtLink>
           <button
             type="submit"
             :disabled="submitting"
-            class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {{ submitting ? 'Guardando...' : 'Guardar cambios' }}
           </button>

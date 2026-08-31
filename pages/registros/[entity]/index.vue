@@ -3,6 +3,14 @@
 // tabla a partir de GET /api/entities/:slug/fields (columnas + permisos) y
 // GET /api/records/:slug (filas, paginado y ordenado). Reemplazable mas
 // adelante por las pantallas de modulo especificas (ERD-32) sin cambiar el motor.
+//
+// Diseno Pencil: toolbar (titulo + badge de conteo + boton "Crear nuevo") y
+// tabla igual que Screen/List Clientes del .pen. Se omiten el buscador y los
+// chips de filtro del diseno: el backend (GET /api/records/:slug) todavia no
+// soporta busqueda ni filtros por campo, agregar los controles sin que hagan
+// nada seria enganoso.
+import { Plus } from '@lucide/vue'
+
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
@@ -56,27 +64,34 @@ async function onDelete(id: string) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-5">
     <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
-        {{ meta?.entity?.name || slug }}
-      </h1>
+      <div class="flex items-center gap-2.5">
+        <h1 class="text-[22px] font-bold text-brand-text">{{ meta?.entity?.name || slug }}</h1>
+        <span
+          v-if="recordsData"
+          class="rounded-full bg-brand-neutral-bg px-2.5 py-0.5 text-xs font-semibold text-brand-neutral-text"
+        >
+          {{ recordsData.total }} registro{{ recordsData.total === 1 ? '' : 's' }}
+        </span>
+      </div>
       <NuxtLink
         v-if="meta?.permissions?.canCreate"
         :to="`/registros/${slug}/nuevo`"
-        class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+        class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover"
       >
-        Nuevo
+        <Plus class="h-4 w-4" :stroke-width="2" />
+        Crear nuevo
       </NuxtLink>
     </div>
 
-    <p v-if="metaPending || recordsPending" class="text-sm text-gray-500">Cargando...</p>
-    <p v-else-if="metaError" class="text-sm text-red-600">No se pudo cargar la definicion de esta entidad.</p>
-    <p v-else-if="recordsError" class="text-sm text-red-600">No se pudieron cargar los registros.</p>
+    <p v-if="metaPending || recordsPending" class="text-sm text-brand-text-muted">Cargando...</p>
+    <p v-else-if="metaError" class="text-sm text-brand-error-text">No se pudo cargar la definicion de esta entidad.</p>
+    <p v-else-if="recordsError" class="text-sm text-brand-error-text">No se pudieron cargar los registros.</p>
 
     <template v-else-if="meta && recordsData">
-      <p v-if="deleteError" class="text-sm text-red-600">{{ deleteError }}</p>
-      <p v-if="meta.fields.length === 0" class="text-sm text-gray-500">Esta entidad todavia no tiene campos configurados.</p>
+      <p v-if="deleteError" class="text-sm text-brand-error-text">{{ deleteError }}</p>
+      <p v-if="meta.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavia no tiene campos configurados.</p>
       <DynamicTable
         v-else
         :entity-slug="slug"

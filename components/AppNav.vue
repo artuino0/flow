@@ -12,6 +12,13 @@
 // simplemente no se muestra, en vez de llevar a una pantalla rota. Esto NO es
 // el menu dinamico generico de HU-ERD-44 (esa es para CUALQUIER entidad); es
 // especifico de las 3 entidades de este modulo.
+//
+// Diseno Pencil: look de "Sidebar Item" (icono + label, activo con fondo +
+// borde izquierdo azul) y titulos de seccion en mayusculas, igual que
+// Screen/Dashboard, Screen/List Clientes, etc. del .pen.
+import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck } from '@lucide/vue'
+import type { Component } from 'vue'
+
 interface CrmEntry {
   slug: string
   label: string
@@ -22,6 +29,16 @@ const CRM_ENTRIES: CrmEntry[] = [
   { slug: 'empresas', label: 'Empresas' },
   { slug: 'empleados', label: 'Empleados' }
 ]
+
+const CRM_ICONS: Record<string, Component> = {
+  clientes: Users,
+  empresas: Building2,
+  empleados: UserRound
+}
+
+function iconFor(slug: string): Component {
+  return CRM_ICONS[slug] ?? Folder
+}
 
 const { data: crmLinks } = await useAsyncData('appnav-crm-links', async () => {
   // Igual que useAuth.ts (HU-ERD-22): en SSR, $fetch a una ruta interna no
@@ -59,52 +76,65 @@ const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
 // useRuntimeConfig() - ver composables/useDeploymentConfig.ts.
 const { data: appConfig } = await useDeploymentConfig()
 
-const items = computed(() => [{ label: 'Inicio', to: '/' }])
-const crmItems = computed(() => (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}` })))
+const items = computed(() => [{ label: 'Inicio', to: '/', icon: LayoutDashboard }])
+const crmItems = computed(() =>
+  (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}`, icon: iconFor(entry.slug) }))
+)
 const adminItems = computed(() => {
   if (!isAdmin.value) return []
-  const links = [{ label: 'Roles y permisos', to: '/roles' }]
-  if (appConfig.value?.featureFlags.dashboard) links.unshift({ label: 'Dashboard', to: '/dashboard' })
+  const links = [{ label: 'Roles y permisos', to: '/roles', icon: ShieldCheck }]
+  if (appConfig.value?.featureFlags.dashboard) links.unshift({ label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard })
   return links
 })
+
+const route = useRoute()
+function isActive(to: string): boolean {
+  return to === '/' ? route.path === '/' : route.path.startsWith(to)
+}
 </script>
 
 <template>
-  <nav class="flex flex-col gap-1 p-3">
-    <NuxtLink
-      v-for="item in items"
-      :key="item.to"
-      :to="item.to"
-      class="rounded px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"
-      active-class="bg-primary-100 text-primary-800"
-    >
-      {{ item.label }}
-    </NuxtLink>
+  <nav class="flex flex-col gap-4">
+    <div class="flex flex-col gap-px">
+      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">GENERAL</p>
+      <NuxtLink
+        v-for="item in items"
+        :key="item.to"
+        :to="item.to"
+        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+      >
+        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
+        {{ item.label }}
+      </NuxtLink>
+    </div>
 
-    <template v-if="crmItems.length">
-      <p class="mt-3 px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Directorio</p>
+    <div v-if="crmItems.length" class="flex flex-col gap-px">
+      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">DIRECTORIO</p>
       <NuxtLink
         v-for="item in crmItems"
         :key="item.to"
         :to="item.to"
-        class="rounded px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"
-        active-class="bg-primary-100 text-primary-800"
+        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
       >
+        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
         {{ item.label }}
       </NuxtLink>
-    </template>
+    </div>
 
-    <template v-if="adminItems.length">
-      <p class="mt-3 px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Administración</p>
+    <div v-if="adminItems.length" class="flex flex-col gap-px">
+      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">ADMINISTRACIÓN</p>
       <NuxtLink
         v-for="item in adminItems"
         :key="item.to"
         :to="item.to"
-        class="rounded px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700"
-        active-class="bg-primary-100 text-primary-800"
+        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
       >
+        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
         {{ item.label }}
       </NuxtLink>
-    </template>
+    </div>
   </nav>
 </template>

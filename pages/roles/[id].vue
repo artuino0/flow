@@ -59,52 +59,52 @@ async function onSave() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-5">
     <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
+      <h1 class="text-[22px] font-bold text-brand-text">
         Permisos{{ data?.role?.name ? ` - ${data.role.name}` : '' }}
       </h1>
-      <NuxtLink to="/roles" class="text-sm text-gray-600 hover:underline">Volver al listado</NuxtLink>
+      <NuxtLink to="/roles" class="text-sm font-semibold text-brand-text-secondary hover:underline">Volver al listado</NuxtLink>
     </div>
 
-    <p v-if="pending" class="text-sm text-gray-500">Cargando...</p>
-    <p v-else-if="fetchError" class="text-sm text-red-600">
+    <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
+    <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudo cargar este rol{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
 
     <template v-else-if="data">
-      <p v-if="data.role.isSystem" class="text-sm text-gray-500">
+      <p v-if="data.role.isSystem" class="text-sm text-brand-text-muted">
         Este es el rol de sistema del tenant - sus permisos aca son independientes del acceso administrativo
         (Configuracion general, esta misma pantalla), que depende del rol en si, no de estos checkboxes.
       </p>
 
-      <p v-if="rows.length === 0" class="text-sm text-gray-500">Este tenant todavia no tiene entidades configuradas.</p>
+      <p v-if="rows.length === 0" class="text-sm text-brand-text-muted">Este tenant todavia no tiene entidades configuradas.</p>
 
-      <div v-else class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table class="min-w-full divide-y divide-gray-200 text-sm">
-          <thead class="bg-gray-50">
+      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <table class="min-w-full text-sm">
+          <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
-              <th class="px-4 py-2 text-left font-medium text-gray-600">Entidad</th>
-              <th class="px-4 py-2 text-center font-medium text-gray-600">Leer</th>
-              <th class="px-4 py-2 text-center font-medium text-gray-600">Crear</th>
-              <th class="px-4 py-2 text-center font-medium text-gray-600">Editar</th>
-              <th class="px-4 py-2 text-center font-medium text-gray-600">Eliminar</th>
+              <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Entidad</th>
+              <th class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary">Leer</th>
+              <th class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary">Crear</th>
+              <th class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary">Editar</th>
+              <th class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary">Eliminar</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="row in rows" :key="row.entityId">
-              <td class="px-4 py-2 text-gray-900">{{ row.entityName }}</td>
-              <td class="px-4 py-2 text-center">
-                <input v-model="row.canRead" type="checkbox" class="h-4 w-4" />
+          <tbody class="divide-y divide-brand-border-light">
+            <tr v-for="row in rows" :key="row.entityId" class="hover:bg-brand-bg">
+              <td class="px-4 py-3 font-medium text-brand-text">{{ row.entityName }}</td>
+              <td class="px-4 py-3 text-center">
+                <input v-model="row.canRead" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
               </td>
-              <td class="px-4 py-2 text-center">
-                <input v-model="row.canCreate" type="checkbox" class="h-4 w-4" />
+              <td class="px-4 py-3 text-center">
+                <input v-model="row.canCreate" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
               </td>
-              <td class="px-4 py-2 text-center">
-                <input v-model="row.canUpdate" type="checkbox" class="h-4 w-4" />
+              <td class="px-4 py-3 text-center">
+                <input v-model="row.canUpdate" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
               </td>
-              <td class="px-4 py-2 text-center">
-                <input v-model="row.canDelete" type="checkbox" class="h-4 w-4" />
+              <td class="px-4 py-3 text-center">
+                <input v-model="row.canDelete" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
               </td>
             </tr>
           </tbody>
@@ -115,13 +115,13 @@ async function onSave() {
         <button
           type="button"
           :disabled="saving || rows.length === 0"
-          class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="onSave"
         >
           {{ saving ? 'Guardando...' : 'Guardar permisos' }}
         </button>
-        <p v-if="saveError" class="text-sm text-red-600">{{ saveError }}</p>
-        <p v-if="saved" class="text-sm text-green-700">Permisos guardados correctamente.</p>
+        <p v-if="saveError" class="text-sm text-brand-error-text">{{ saveError }}</p>
+        <p v-if="saved" class="text-sm text-brand-success-text">Permisos guardados correctamente.</p>
       </div>
     </template>
   </div>

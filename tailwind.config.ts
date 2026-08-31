@@ -1,12 +1,17 @@
 import type { Config } from 'tailwindcss'
 
-// HU-ERD-21: tema por defecto. Paleta "primary" reutilizada en header/sidebar
-// y en los componentes de Form/Table Builder (ERD-23/24).
+// HU-ERD-21: tema por defecto. Paleta "primary" original de bootstrap, ya
+// reemplazada en la practica por "brand" (ver mas abajo) en todas las
+// pantallas autenticadas - se deja definida por compatibilidad, no se borra
+// para no romper clases sueltas que puedan quedar referenciandola.
 //
 // "brand": paleta extraida de las variables del diseno en Pencil
-// (ERPDinamico.pen), aplicada por ahora solo en pages/login.vue. Se agrega
-// como grupo nuevo (no se pisa "primary") para no re-tematizar header/sidebar
-// sin haberlo pedido explicitamente.
+// (ERPDinamico.pen). Aplicada primero solo a pages/login.vue; extendida a
+// todo el proyecto (layout, sidebar, tablas, formularios, dashboard, roles)
+// para que la app completa siga el mismo sistema visual, no solo el login.
+// Los nombres de color coinciden 1:1 con las variables del .pen
+// (bg/surface/border/border-light/text-primary/etc) para que sea facil
+// contrastar contra el archivo de diseno.
 export default <Partial<Config>>{
   content: [
     './app.vue',
@@ -45,8 +50,21 @@ export default <Partial<Config>>{
           blue: '#0091AE',
           'blue-bg': '#EAF3F6',
           navy: '#213343',
+          'sidebar-active-bg': '#EAF0F6',
+          'success-bg': '#CCF1DE',
+          'success-text': '#0A7A4F',
+          'warning-bg': '#FEF0D2',
+          'warning-text': '#B3720A',
           'error-bg': '#FBE0DD',
-          'error-text': '#C7391F'
+          'error-text': '#C7391F',
+          'info-bg': '#E5F5F8',
+          'info-text': '#0091AE',
+          'neutral-bg': '#EAF0F6',
+          'neutral-text': '#516F90',
+          'purple-bg': '#EDE7FB',
+          'purple-text': '#6D3FC4',
+          'pink-bg': '#FCE4EF',
+          'pink-text': '#C42B7A'
         }
       }
     }

@@ -2,6 +2,10 @@
 // HU-ERD-24: Table Builder dinamico - columnas derivadas de entity_fields,
 // orden (click en encabezado) y paginacion, con acciones por fila segun RBAC
 // (permissions viene de GET /api/entities/:entity/fields, HU-ERD-24 tambien).
+//
+// Diseno Pencil: "Table Header Row" / "Table Row" / "Pagination Item"
+// (Default/Active) del .pen, envueltos en un contenedor tipo Card.
+import { Pencil, Trash2, ChevronLeft, ChevronRight } from '@lucide/vue'
 import type { EntityFieldMeta, EntityPermissions } from '~/composables/useEntityFields'
 
 interface RecordRow {
@@ -28,6 +32,17 @@ const emit = defineEmits<{
 }>()
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+
+// Ventana corta de paginas alrededor de la actual (estilo Pagination Item
+// del diseno) - evita listar cientos de botones cuando total es grande.
+const pageWindow = computed(() => {
+  const span = 2
+  const start = Math.max(1, props.page - span)
+  const end = Math.min(totalPages.value, props.page + span)
+  const out: number[] = []
+  for (let p = start; p <= end; p++) out.push(p)
+  return out
+})
 
 function toggleSort(fieldName: string) {
   if (props.sortBy === fieldName) {
@@ -63,72 +78,86 @@ function onDelete(id: string) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-      <table class="min-w-full divide-y divide-gray-200 text-sm">
-        <thead class="bg-gray-50">
+    <div class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+      <table class="min-w-full text-sm">
+        <thead class="border-b border-brand-border-light bg-brand-bg">
           <tr>
             <th
               v-for="field in fields"
               :key="field.id"
-              class="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium text-gray-600 hover:text-gray-900"
+              class="cursor-pointer select-none whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary hover:text-brand-text"
               @click="toggleSort(field.name)"
             >
               {{ field.label }}
-              <span v-if="sortBy === field.name" class="ml-1 text-primary-600">{{ sortDir === 'asc' ? '↑' : '↓' }}</span>
+              <span v-if="sortBy === field.name" class="ml-1 text-brand-blue">{{ sortDir === 'asc' ? '↑' : '↓' }}</span>
             </th>
-            <th v-if="permissions.canUpdate || permissions.canDelete" class="px-4 py-2 text-right font-medium text-gray-600">
+            <th v-if="permissions.canUpdate || permissions.canDelete" class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">
               Acciones
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody class="divide-y divide-brand-border-light">
           <tr v-if="rows.length === 0">
-            <td :colspan="fields.length + 1" class="px-4 py-6 text-center text-gray-500">Sin registros.</td>
+            <td :colspan="fields.length + 1" class="px-4 py-6 text-center text-sm text-brand-text-muted">Sin registros.</td>
           </tr>
-          <tr v-for="row in rows" :key="row.id" class="hover:bg-gray-50">
-            <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-2 text-gray-800">
+          <tr v-for="row in rows" :key="row.id" class="hover:bg-brand-bg">
+            <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-3 text-brand-text">
               {{ cellValue(field, row) }}
             </td>
-            <td v-if="permissions.canUpdate || permissions.canDelete" class="whitespace-nowrap px-4 py-2 text-right">
-              <NuxtLink
-                v-if="permissions.canUpdate"
-                :to="`/registros/${entitySlug}/${row.id}/editar`"
-                class="mr-3 text-primary-600 hover:underline"
-              >
-                Editar
-              </NuxtLink>
-              <button
-                v-if="permissions.canDelete"
-                type="button"
-                class="text-red-600 hover:underline"
-                @click="onDelete(row.id)"
-              >
-                Eliminar
-              </button>
+            <td v-if="permissions.canUpdate || permissions.canDelete" class="whitespace-nowrap px-4 py-3">
+              <div class="flex justify-end gap-2">
+                <NuxtLink
+                  v-if="permissions.canUpdate"
+                  :to="`/registros/${entitySlug}/${row.id}/editar`"
+                  title="Editar"
+                  class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary hover:bg-brand-bg"
+                >
+                  <Pencil class="h-4 w-4" :stroke-width="1.75" />
+                </NuxtLink>
+                <button
+                  v-if="permissions.canDelete"
+                  type="button"
+                  title="Eliminar"
+                  class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg"
+                  @click="onDelete(row.id)"
+                >
+                  <Trash2 class="h-4 w-4" :stroke-width="1.75" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="flex items-center justify-between text-sm text-gray-600">
-      <span>{{ total }} registro{{ total === 1 ? '' : 's' }} - pagina {{ page }} de {{ totalPages }}</span>
-      <div class="flex gap-2">
+    <div class="flex items-center justify-between">
+      <span class="text-[13px] text-brand-text-secondary">{{ total }} registro{{ total === 1 ? '' : 's' }} - página {{ page }} de {{ totalPages }}</span>
+      <div class="flex items-center gap-1.5">
         <button
           type="button"
-          class="rounded border border-gray-300 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="page <= 1"
           @click="emit('update:page', page - 1)"
         >
-          Anterior
+          <ChevronLeft class="h-[15px] w-[15px]" :stroke-width="2" />
+        </button>
+        <button
+          v-for="p in pageWindow"
+          :key="p"
+          type="button"
+          class="flex h-8 w-8 items-center justify-center rounded text-[13px] font-semibold"
+          :class="p === page ? 'bg-brand-orange text-white' : 'text-brand-text-secondary hover:bg-brand-bg'"
+          @click="emit('update:page', p)"
+        >
+          {{ p }}
         </button>
         <button
           type="button"
-          class="rounded border border-gray-300 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="page >= totalPages"
           @click="emit('update:page', page + 1)"
         >
-          Siguiente
+          <ChevronRight class="h-[15px] w-[15px]" :stroke-width="2" />
         </button>
       </div>
     </div>

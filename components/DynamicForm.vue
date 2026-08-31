@@ -54,10 +54,10 @@ defineExpose({ validateAll })
 
 <template>
   <div class="flex flex-col gap-4">
-    <div v-for="field in fields" :key="field.id" class="flex flex-col gap-1">
-      <label :for="`field-${field.name}`" class="text-sm font-medium text-gray-700">
+    <div v-for="field in fields" :key="field.id" class="flex flex-col gap-1.5">
+      <label :for="`field-${field.name}`" class="text-[13px] font-semibold text-brand-text">
         {{ field.label }}
-        <span v-if="field.isRequired" class="text-red-600">*</span>
+        <span v-if="field.isRequired" class="text-brand-error-text">*</span>
       </label>
 
       <!-- text con enum -> select -->
@@ -65,7 +65,8 @@ defineExpose({ validateAll })
         v-if="field.dataType === 'text' && Array.isArray(field.validationRules?.enum)"
         :id="`field-${field.name}`"
         :disabled="disabled"
-        class="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @change="onInput(field, ($event.target as HTMLSelectElement).value)"
       >
@@ -80,7 +81,8 @@ defineExpose({ validateAll })
         type="text"
         :disabled="disabled"
         :maxlength="(field.validationRules?.maxLength as number) || undefined"
-        class="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -94,19 +96,20 @@ defineExpose({ validateAll })
         :min="field.validationRules?.min as number"
         :max="field.validationRules?.max as number"
         :step="field.validationRules?.integer ? 1 : 'any'"
-        class="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
 
       <!-- boolean -->
-      <label v-else-if="field.dataType === 'boolean'" class="flex items-center gap-2 text-sm text-gray-700">
+      <label v-else-if="field.dataType === 'boolean'" class="flex items-center gap-2 text-sm text-brand-text">
         <input
           :id="`field-${field.name}`"
           type="checkbox"
           :disabled="disabled"
           :checked="Boolean(valueFor(field.name))"
-          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
           @change="onInput(field, ($event.target as HTMLInputElement).checked)"
         />
         <span>Si</span>
@@ -120,7 +123,8 @@ defineExpose({ validateAll })
         :disabled="disabled"
         :min="field.validationRules?.min as string"
         :max="field.validationRules?.max as string"
-        class="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -132,7 +136,8 @@ defineExpose({ validateAll })
         rows="4"
         :disabled="disabled"
         placeholder="{}"
-        class="rounded border border-gray-300 px-3 py-2 font-mono text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLTextAreaElement).value)"
       />
@@ -144,7 +149,8 @@ defineExpose({ validateAll })
         type="text"
         :disabled="disabled"
         placeholder="uuid del registro relacionado"
-        class="rounded border border-gray-300 px-3 py-2 font-mono text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -155,12 +161,13 @@ defineExpose({ validateAll })
         :id="`field-${field.name}`"
         type="text"
         :disabled="disabled"
-        class="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
 
-      <p v-if="errors[field.name]" class="text-xs text-red-600">{{ errors[field.name] }}</p>
+      <p v-if="errors[field.name]" class="flex items-center gap-1 text-xs text-brand-error-text">{{ errors[field.name] }}</p>
     </div>
   </div>
 </template>

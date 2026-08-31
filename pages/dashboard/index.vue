@@ -6,6 +6,13 @@
 // alcance documentada en HU-ERD-31/DOCS/Esquema_OLAP.md: el sistema no tiene
 // un concepto de admin global/staff). Lo que si es filtrable, y esta pantalla
 // expone, es el rango de fechas y el tipo de evento.
+// Diseno Pencil: Cards con icon box (estilo Screen/Dashboard del .pen)
+// aplicadas a las metricas reales de esta HU (eventos/clientes/sucursales/
+// usuarios) - la pantalla disenada mostraba placeholders de otro dominio
+// (Facturas/Pedidos/Proveedores, entidades que no existen en este proyecto),
+// asi que se sigue el look, no el contenido literal del mock.
+import { CalendarDays, Users, Building2, UserCheck } from '@lucide/vue'
+
 definePageMeta({ layout: 'default' })
 
 interface EventoPorTipo {
@@ -60,92 +67,115 @@ function formatMonto(monto: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <h1 class="text-lg font-semibold text-gray-900">Dashboard</h1>
+  <div class="flex flex-col gap-5">
+    <h1 class="text-[22px] font-bold text-brand-text">Dashboard</h1>
 
-    <form class="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4" @submit.prevent="refresh()">
+    <form
+      class="flex flex-wrap items-end gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-4 shadow-[0_1px_3px_0_#33475B14]"
+      @submit.prevent="refresh()"
+    >
       <div class="flex flex-col gap-1">
-        <label for="dashboard-from" class="text-xs font-medium text-gray-600">Desde</label>
-        <input id="dashboard-from" v-model="from" type="date" class="rounded border border-gray-300 px-2 py-1 text-sm" />
+        <label for="dashboard-from" class="text-xs font-semibold text-brand-text-secondary">Desde</label>
+        <input id="dashboard-from" v-model="from" type="date" class="rounded border border-brand-border px-2 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none" />
       </div>
       <div class="flex flex-col gap-1">
-        <label for="dashboard-to" class="text-xs font-medium text-gray-600">Hasta</label>
-        <input id="dashboard-to" v-model="to" type="date" class="rounded border border-gray-300 px-2 py-1 text-sm" />
+        <label for="dashboard-to" class="text-xs font-semibold text-brand-text-secondary">Hasta</label>
+        <input id="dashboard-to" v-model="to" type="date" class="rounded border border-brand-border px-2 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none" />
       </div>
       <div class="flex flex-col gap-1">
-        <label for="dashboard-tipo" class="text-xs font-medium text-gray-600">Tipo de evento (opcional)</label>
+        <label for="dashboard-tipo" class="text-xs font-semibold text-brand-text-secondary">Tipo de evento (opcional)</label>
         <input
           id="dashboard-tipo"
           v-model="tipoEvento"
           type="text"
           placeholder="ej. clientes"
-          class="rounded border border-gray-300 px-2 py-1 text-sm"
+          class="rounded border border-brand-border px-2 py-1.5 text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none"
         />
       </div>
-      <button type="submit" class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
+      <button type="submit" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover">
         Aplicar
       </button>
     </form>
 
-    <p v-if="!dashboardEnabled" class="text-sm text-gray-500">Esta funcionalidad esta deshabilitada.</p>
-    <p v-else-if="pending" class="text-sm text-gray-500">Cargando...</p>
-    <p v-else-if="fetchError" class="text-sm text-red-600">
+    <p v-if="!dashboardEnabled" class="text-sm text-brand-text-muted">Esta funcionalidad esta deshabilitada.</p>
+    <p v-else-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
+    <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudieron cargar las metricas{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
 
     <template v-else-if="data">
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Eventos</p>
-          <p class="mt-1 text-2xl font-semibold text-gray-900">{{ data.eventos.total }}</p>
-          <p class="text-xs text-gray-500">{{ formatMonto(data.eventos.montoTotal) }}</p>
+        <div class="rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14]">
+          <div class="flex items-center justify-between">
+            <p class="text-[13px] font-semibold text-brand-text-secondary">Eventos</p>
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-brand-blue-bg">
+              <CalendarDays class="h-[15px] w-[15px] text-brand-blue" :stroke-width="1.75" />
+            </div>
+          </div>
+          <p class="mt-2 text-[26px] font-bold text-brand-text">{{ data.eventos.total }}</p>
+          <p class="text-xs font-semibold text-brand-blue">{{ formatMonto(data.eventos.montoTotal) }}</p>
         </div>
-        <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Clientes</p>
-          <p class="mt-1 text-2xl font-semibold text-gray-900">{{ data.clientes.total }}</p>
+        <div class="rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14]">
+          <div class="flex items-center justify-between">
+            <p class="text-[13px] font-semibold text-brand-text-secondary">Clientes</p>
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-brand-blue-bg">
+              <Users class="h-[15px] w-[15px] text-brand-blue" :stroke-width="1.75" />
+            </div>
+          </div>
+          <p class="mt-2 text-[26px] font-bold text-brand-text">{{ data.clientes.total }}</p>
         </div>
-        <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Sucursales</p>
-          <p class="mt-1 text-2xl font-semibold text-gray-900">{{ data.sucursales.total }}</p>
+        <div class="rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14]">
+          <div class="flex items-center justify-between">
+            <p class="text-[13px] font-semibold text-brand-text-secondary">Sucursales</p>
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-brand-blue-bg">
+              <Building2 class="h-[15px] w-[15px] text-brand-blue" :stroke-width="1.75" />
+            </div>
+          </div>
+          <p class="mt-2 text-[26px] font-bold text-brand-text">{{ data.sucursales.total }}</p>
         </div>
-        <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Usuarios activos</p>
-          <p class="mt-1 text-2xl font-semibold text-gray-900">{{ data.usuarios.activos }} / {{ data.usuarios.total }}</p>
+        <div class="rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14]">
+          <div class="flex items-center justify-between">
+            <p class="text-[13px] font-semibold text-brand-text-secondary">Usuarios activos</p>
+            <div class="flex h-7 w-7 items-center justify-center rounded bg-brand-blue-bg">
+              <UserCheck class="h-[15px] w-[15px] text-brand-blue" :stroke-width="1.75" />
+            </div>
+          </div>
+          <p class="mt-2 text-[26px] font-bold text-brand-text">{{ data.usuarios.activos }} / {{ data.usuarios.total }}</p>
         </div>
       </div>
 
-      <div v-if="data.eventos.porTipo.length === 0" class="text-sm text-gray-500">
+      <div v-if="data.eventos.porTipo.length === 0" class="text-sm text-brand-text-muted">
         No hay eventos registrados en el rango seleccionado.
       </div>
 
       <template v-else>
-        <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <p class="mb-3 text-sm font-medium text-gray-700">Monto por tipo de evento</p>
+        <div class="rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14]">
+          <p class="mb-3 text-sm font-bold text-brand-text">Monto por tipo de evento</p>
           <div class="flex flex-col gap-2">
             <div v-for="row in data.eventos.porTipo" :key="row.tipoEvento" class="flex items-center gap-2">
-              <span class="w-28 shrink-0 text-xs text-gray-600">{{ row.tipoEvento }}</span>
-              <div class="h-4 flex-1 rounded bg-gray-100">
-                <div class="h-4 rounded bg-primary-500" :style="{ width: `${barWidthPct(row.monto)}%` }"></div>
+              <span class="w-28 shrink-0 text-xs text-brand-text-secondary">{{ row.tipoEvento }}</span>
+              <div class="h-4 flex-1 rounded bg-brand-bg">
+                <div class="h-4 rounded bg-brand-blue" :style="{ width: `${barWidthPct(row.monto)}%` }"></div>
               </div>
-              <span class="w-24 shrink-0 text-right text-xs text-gray-600">{{ formatMonto(row.monto) }}</span>
+              <span class="w-24 shrink-0 text-right text-xs text-brand-text-secondary">{{ formatMonto(row.monto) }}</span>
             </div>
           </div>
         </div>
 
-        <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table class="min-w-full divide-y divide-gray-200 text-sm">
-            <thead class="bg-gray-50">
+        <div class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+          <table class="min-w-full text-sm">
+            <thead class="border-b border-brand-border-light bg-brand-bg">
               <tr>
-                <th class="px-4 py-2 text-left font-medium text-gray-600">Tipo de evento</th>
-                <th class="px-4 py-2 text-right font-medium text-gray-600">Eventos</th>
-                <th class="px-4 py-2 text-right font-medium text-gray-600">Monto</th>
+                <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Tipo de evento</th>
+                <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">Eventos</th>
+                <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">Monto</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody class="divide-y divide-brand-border-light">
               <tr v-for="row in data.eventos.porTipo" :key="row.tipoEvento">
-                <td class="px-4 py-2 text-gray-900">{{ row.tipoEvento }}</td>
-                <td class="px-4 py-2 text-right text-gray-700">{{ row.total }}</td>
-                <td class="px-4 py-2 text-right text-gray-700">{{ formatMonto(row.monto) }}</td>
+                <td class="px-4 py-3 text-brand-text">{{ row.tipoEvento }}</td>
+                <td class="px-4 py-3 text-right text-brand-text-secondary">{{ row.total }}</td>
+                <td class="px-4 py-3 text-right text-brand-text-secondary">{{ formatMonto(row.monto) }}</td>
               </tr>
             </tbody>
           </table>
