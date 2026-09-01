@@ -392,9 +392,18 @@ function validationRulesForSubmit(): Record<string, unknown> {
 
 const nameError = computed(() => {
   if (!form.name) return null
-  return /^[a-z][a-z0-9_]*$/.test(form.name)
-    ? null
-    : 'Solo minúsculas, números y guion bajo, debe empezar con una letra'
+  if (!/^[a-z][a-z0-9_]*$/.test(form.name)) {
+    return 'Solo minúsculas, números y guion bajo, debe empezar con una letra'
+  }
+  // Reportado por el usuario (2026-09-01): "id" es el identificador implicito
+  // del registro (uuid autogenerado) - se bloquea aca ademas del backend
+  // (fields.post.ts) para que el error aparezca al tipear, no recien al
+  // enviar. Solo aplica en modo creacion: en edicion el nombre ya viene
+  // deshabilitado (no se puede cambiar una vez creado).
+  if (props.mode === 'create' && form.name === 'id') {
+    return '"id" es un nombre reservado: el identificador del registro ya existe automáticamente'
+  }
+  return null
 })
 
 const optionsHaveDuplicateValues = computed(() => {

@@ -17,7 +17,12 @@ const bodySchema = z.object({
     .string()
     .trim()
     .min(1, 'El nombre es obligatorio')
-    .regex(/^[a-z][a-z0-9_]*$/, 'El nombre solo puede tener minusculas, numeros y guion bajo, y debe empezar con una letra (ej. "fecha_nacimiento")'),
+    .regex(/^[a-z][a-z0-9_]*$/, 'El nombre solo puede tener minusculas, numeros y guion bajo, y debe empezar con una letra (ej. "fecha_nacimiento")')
+    // Reportado por el usuario (2026-09-01): "id" ya es el identificador
+    // implicito de cada registro (uuid autogenerado, records.id) - no tiene
+    // sentido dejar crear un campo propio con ese mismo nombre. Ver comentario
+    // largo junto a ProtectedFieldError en moduleEntityFields.ts.
+    .refine((v) => v !== 'id', '"id" es un nombre reservado: el identificador del registro ya existe automaticamente'),
   label: z.string().trim().min(1, 'La etiqueta es obligatoria'),
   dataType: z.enum(KNOWN_DATA_TYPES),
   validationRules: z.record(z.any()).optional().default({}),

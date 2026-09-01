@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
-import { updateEntityField, InvalidValidationRulesError } from '~/server/utils/moduleEntityFields'
+import { updateEntityField, InvalidValidationRulesError, ProtectedFieldError } from '~/server/utils/moduleEntityFields'
 import { KNOWN_DATA_TYPES } from '~/server/utils/dynamicSchema'
 
 // PUT /api/entity-fields/:fieldId { label?, dataType?, validationRules?, isRequired? } (HU-ERD-67)
@@ -42,6 +42,9 @@ export default defineEventHandler(async (event) => {
   } catch (err) {
     if (err instanceof InvalidValidationRulesError) {
       throw createError({ statusCode: 422, statusMessage: err.message })
+    }
+    if (err instanceof ProtectedFieldError) {
+      throw createError({ statusCode: 403, statusMessage: err.message })
     }
     throw err
   }

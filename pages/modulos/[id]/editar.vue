@@ -236,7 +236,9 @@ async function onSaveListLayout() {
               :class="currentModule.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
             >{{ currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
           </div>
-          <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ currentModule.slug }}</span>
+          <span class="text-xs text-brand-text-secondary">
+            <span class="font-mono">/{{ currentModule.slug }}</span> · {{ fields.length }} campo{{ fields.length === 1 ? '' : 's' }}
+          </span>
         </div>
       </div>
 
@@ -250,11 +252,19 @@ async function onSaveListLayout() {
           v-for="tab in TABS"
           :key="tab.key"
           type="button"
-          class="flex flex-col items-center gap-2.5 pb-2.5 pt-1"
+          class="relative flex flex-col items-center gap-2.5 pb-2.5 pt-1"
           @click="step = tab.key"
         >
           <span class="text-sm" :class="step === tab.key ? 'font-bold text-brand-orange' : 'font-semibold text-brand-text-secondary'">{{ tab.label }}</span>
-          <span class="h-0.5 w-full rounded-full" :class="step === tab.key ? 'bg-brand-orange' : 'bg-transparent'" />
+          <!-- Reportado por el usuario (2026-09-01): el acento naranja de la
+               pestaña activa quedaba "flotando" arriba del borde gris del
+               contenedor (`border-b` de arriba), con un hueco visible entre
+               los dos, porque el span vivia adentro del flujo normal del
+               boton (empujado por pb-2.5). Se saca del flujo (absolute) y se
+               ancla al mismo borde inferior del boton con `-bottom-px` (1px,
+               el mismo grosor de `border-b`), asi el acento queda pegado
+               justo sobre la linea gris, sin hueco. -->
+          <span class="absolute inset-x-0 -bottom-px h-0.5 rounded-full" :class="step === tab.key ? 'bg-brand-orange' : 'bg-transparent'" />
         </button>
       </div>
 

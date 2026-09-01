@@ -663,6 +663,47 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
     expect(dupRes.status).toBe(409)
   })
 
+  // Reportado por el usuario (2026-09-01): "id" ya se podia crear como un
+  // campo propio sin ningun chequeo (name/dataType eran validos como
+  // cualquier otro), y su fila mostraba editar/eliminar igual que cualquier
+  // otro campo. Se bloquea la creacion (400, mismo Zod refine que name/label)
+  // y, para un campo "id" que ya haya quedado creado ANTES de este fix
+  // (simulado aca con SQL directo, ya que la API ya no lo permite),
+  // PUT/DELETE tambien lo protegen (403 ProtectedFieldError) - no alcanza con
+  // ocultar los botones en ModuleFieldsCard.vue, que por si sola no bloquea
+  // pegarle directo a la API.
+  it('POST fields con name "id" (reservado) es 400; PUT/DELETE sobre un campo "id" preexistente es 403', async () => {
+    const reservedRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'id', label: 'Id', dataType: 'text' })
+    })
+    expect(reservedRes.status).toBe(400)
+
+    const admin = postgres(testDb.adminUrl)
+    let legacyIdField: { id: string }
+    try {
+      ;[legacyIdField] = await admin`
+        insert into entity_fields (entity_id, name, label, data_type, is_required)
+        values (${fieldsEntityId}, 'id', 'Id', 'text', false) returning id
+      `
+    } finally {
+      await admin.end()
+    }
+
+    const putRes = await api(`/api/entity-fields/${legacyIdField.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ label: 'Id modificado' })
+    })
+    expect(putRes.status).toBe(403)
+
+    const deleteRes = await api(`/api/entity-fields/${legacyIdField.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(403)
+
+    const getRes = await api(`/api/entities/${fieldsEntitySlug}/fields`)
+    const { fields } = await getRes.json()
+    expect(fields.find((f: { name: string }) => f.name === 'id')).toMatchObject({ label: 'Id' })
+  })
+
   // HU-ERD-71: el mismo 422 de "validationRules invalido", pero por el
   // camino nuevo (duplicados) - confirmado contra el servidor COMPILADO real
   // via HTTP, no solo la funcion (esa parte ya la cubre

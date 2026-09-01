@@ -64,7 +64,12 @@ export default <Partial<Config>>{
           'purple-bg': '#EDE7FB',
           'purple-text': '#6D3FC4',
           'pink-bg': '#FCE4EF',
-          'pink-text': '#C42B7A'
+          'pink-text': '#C42B7A',
+          // Pedido por el usuario (2026-09-01): badge "UUID" del campo "id"
+          // reservado (components/ModuleFieldsCard.vue) - dorado, distinto
+          // del amber/naranja ya usado por "warning" (booleano).
+          'gold-bg': '#FBF3D9',
+          'gold-text': '#8C6D14'
         }
       }
     }

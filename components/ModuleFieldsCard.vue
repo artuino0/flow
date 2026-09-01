@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, Hash, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, Hash, KeyRound, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -40,10 +40,20 @@ const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: stri
   // info-* (sin usar todavía en ningún otro badge) para Select/Multiselect.
   select: { icon: List, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Select' },
   multiselect: { icon: ListChecks, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Multiselect' },
-  tabla: { icon: Table2, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: 'Tabla' }
+  tabla: { icon: Table2, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: 'Tabla' },
+  // Reportado por el usuario (2026-09-01): la fila del campo "id" (ver
+  // "Reservado" en vez de editar/eliminar, mas abajo) mostraba el badge de su
+  // dataType real guardado (ej. "# Número", si se creo asi antes de bloquear
+  // su edicion) - conceptualmente "id" siempre es un uuid, mas alla de que
+  // dataType haya quedado guardado. badgeForField() de abajo fuerza este tipo
+  // para esa fila puntual, sin tocar el dataType real en la base.
+  uuid: { icon: KeyRound, bg: 'bg-brand-gold-bg', text: 'text-brand-gold-text', label: 'UUID' }
 }
 function badgeFor(dataType: string) {
   return TYPE_BADGE[dataType] ?? { icon: Blocks, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: dataType }
+}
+function badgeForField(field: EntityFieldMeta) {
+  return badgeFor(field.name === 'id' ? 'uuid' : field.dataType)
 }
 
 const modalOpen = ref(false)
@@ -239,14 +249,18 @@ async function confirmImpactModal() {
           <span class="truncate text-sm font-semibold text-brand-text">{{ field.label }}</span>
           <span class="truncate font-mono text-xs text-brand-text-muted">{{ field.name }}</span>
         </div>
-        <span class="flex w-[110px] shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1" :class="badgeFor(field.dataType).bg">
-          <component :is="badgeFor(field.dataType).icon" class="h-3 w-3" :class="badgeFor(field.dataType).text" :stroke-width="2" />
-          <span class="text-xs font-semibold" :class="badgeFor(field.dataType).text">{{ badgeFor(field.dataType).label }}</span>
+        <span class="flex w-[110px] shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1" :class="badgeForField(field).bg">
+          <component :is="badgeForField(field).icon" class="h-3 w-3" :class="badgeForField(field).text" :stroke-width="2" />
+          <span class="text-xs font-semibold" :class="badgeForField(field).text">{{ badgeForField(field).label }}</span>
         </span>
+        <!-- Pedido por el usuario (2026-09-01): la fila "id" no tiene sentido
+             como "Obligatorio"/"Opcional" (isRequired es una eleccion del
+             administrador; el id lo genera Postgres solo, siempre) - texto
+             fijo "Automático" para esa fila puntual. -->
         <span class="w-20 shrink-0 text-xs font-semibold" :class="field.isRequired ? 'text-brand-text-secondary' : 'text-brand-text-muted'">
-          {{ field.isRequired ? 'Obligatorio' : 'Opcional' }}
+          {{ field.name === 'id' ? 'Automático' : field.isRequired ? 'Obligatorio' : 'Opcional' }}
         </span>
-        <div class="flex shrink-0 gap-1.5">
+        <div v-if="field.name !== 'id'" class="flex shrink-0 gap-1.5">
           <button type="button" title="Editar" class="flex h-[26px] w-[26px] items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg" @click="openEdit(field)">
             <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
           </button>
@@ -260,6 +274,12 @@ async function confirmImpactModal() {
             <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
           </button>
         </div>
+        <!-- "id" es un nombre reservado (ver ProtectedFieldError en
+             moduleEntityFields.ts): un campo asi no puede editarse ni
+             eliminarse, asi que ni siquiera se muestran los botones - a
+             diferencia de los demas casos de "sin permiso" del sistema, esto
+             no depende del rol, es una propiedad del campo en si. -->
+        <span v-else title="El campo id es reservado del sistema" class="w-[62px] shrink-0 text-center text-xs text-brand-text-muted">Reservado</span>
       </div>
     </div>
 

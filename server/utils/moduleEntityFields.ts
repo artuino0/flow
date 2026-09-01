@@ -36,6 +36,19 @@ const PG_UNIQUE_VIOLATION = '23505'
 export class DuplicateFieldNameError extends Error {}
 export class EntityNotFoundError extends Error {}
 export class InvalidValidationRulesError extends Error {}
+// Reportado por el usuario (2026-09-01): un campo con name="id" ya se podia
+// crear sin ningun chequeo (la unica regla era el regex de identificador) y
+// su fila en ModuleFieldsCard.vue mostraba editar/eliminar igual que
+// cualquier otro campo - aunque no colisiona con records.id en si (los
+// valores de entity_fields viven bajo custom_data, un namespace jsonb
+// separado, ver comentario en records/[entity]/index.get.ts), sigue siendo
+// confuso e inconsistente con la respuesta ya dada al usuario de que "id" es
+// implicito/reservado. Se bloquea la creacion (fields.post.ts) y, para un
+// campo "id" que ya haya quedado creado antes de este fix, se bloquea tambien
+// editarlo/eliminarlo aca - defensa en profundidad ademas de ocultar los
+// botones en la UI (ModuleFieldsCard.vue), que por si sola no alcanza si
+// alguien pega directo a la API.
+export class ProtectedFieldError extends Error {}
 
 export interface EntityFieldSummary {
   id: string
@@ -222,6 +235,9 @@ export async function updateEntityField(
   return withTenant(tenantId, async (tx) => {
     const current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return null
+    if (current.name === 'id') {
+      throw new ProtectedFieldError('El campo "id" es un identificador reservado del sistema y no se puede editar.')
+    }
 
     const effectiveDataType = input.dataType ?? current.dataType
     const effectiveRules = input.validationRules !== undefined ? input.validationRules : current.validationRules
@@ -270,6 +286,9 @@ export async function deleteEntityField(tenantId: string, fieldId: string): Prom
   return withTenant(tenantId, async (tx) => {
     const current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return 'not-found'
+    if (current.name === 'id') {
+      throw new ProtectedFieldError('El campo "id" es un identificador reservado del sistema y no se puede eliminar.')
+    }
 
     await tx.delete(entityFields).where(eq(entityFields.id, fieldId))
     invalidateEntitySchemaCache(tenantId, current.entityId)

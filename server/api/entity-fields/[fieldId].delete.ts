@@ -1,5 +1,5 @@
 import { requireAdminRole } from '~/server/utils/rbac'
-import { deleteEntityField } from '~/server/utils/moduleEntityFields'
+import { deleteEntityField, ProtectedFieldError } from '~/server/utils/moduleEntityFields'
 
 // DELETE /api/entity-fields/:fieldId (HU-ERD-67)
 // Recurso plano - ver el comentario largo en server/utils/moduleEntityFields.ts
@@ -14,9 +14,16 @@ export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const fieldId = getRouterParam(event, 'fieldId')!
 
-  const result = await deleteEntityField(auth.tenantId, fieldId)
-  if (result === 'not-found') {
-    throw createError({ statusCode: 404, statusMessage: 'Campo no encontrado' })
+  try {
+    const result = await deleteEntityField(auth.tenantId, fieldId)
+    if (result === 'not-found') {
+      throw createError({ statusCode: 404, statusMessage: 'Campo no encontrado' })
+    }
+    return { deleted: true, id: fieldId }
+  } catch (err) {
+    if (err instanceof ProtectedFieldError) {
+      throw createError({ statusCode: 403, statusMessage: err.message })
+    }
+    throw err
   }
-  return { deleted: true, id: fieldId }
 })
