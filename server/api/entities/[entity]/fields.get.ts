@@ -3,6 +3,7 @@ import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
 import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/detailLayout'
+import { resolveListLayout } from '~/server/utils/listLayout'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
 //
@@ -48,5 +49,14 @@ export default defineEventHandler(async (event) => {
   const inverseRelations = await withTenant(auth.tenantId, (tx) => computeInverseRelations(tx, auth.tenantId, entity.slug))
   const detailLayout = resolveDetailLayout(entity.detailLayout, fields.map((f) => f.name), inverseRelations)
 
-  return { entity, fields, permissions, inverseRelations, detailLayout }
+  // HU-ERD-75: mismo criterio - resuelto aca para que el listado real
+  // (pages/registros/:entity/index.vue) y el configurador (paso "Diseño del
+  // listado") lean siempre el mismo layout ya reconciliado. Los "filtrables"
+  // son exactamente los campos Select/Multiselect (unicos con un operador de
+  // filtro real hoy, HU-ERD-73) - filterFields de listLayout nunca puede
+  // exceder este conjunto (criterio de aceptacion explicito de la HU).
+  const filterableFieldNames = fields.filter((f) => f.dataType === 'select' || f.dataType === 'multiselect').map((f) => f.name)
+  const listLayout = resolveListLayout(entity.listLayout, fields.map((f) => f.name), filterableFieldNames)
+
+  return { entity, fields, permissions, inverseRelations, detailLayout, listLayout }
 })

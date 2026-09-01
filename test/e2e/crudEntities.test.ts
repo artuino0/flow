@@ -1693,3 +1693,222 @@ describe('e2e: HU-ERD-74 (Diseño del detalle - relationEntity, inverseRelations
     expect(html).toContain('Diseño del detalle')
   })
 })
+
+describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtros y orden por defecto)', () => {
+  let pedidosLLSlug: string
+  let pedidosLLId: string
+
+  beforeAll(async () => {
+    pedidosLLSlug = 'pedidos-listlayout-e2e'
+    const entityRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Pedidos ListLayout E2E', slug: pedidosLLSlug })
+    })
+    expect(entityRes.status).toBe(201)
+    const entity = await entityRes.json()
+    pedidosLLId = entity.id
+
+    const nombreRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'nombre', label: 'Nombre', dataType: 'text' })
+    })
+    expect(nombreRes.status).toBe(201)
+
+    const montoRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'monto', label: 'Monto', dataType: 'number' })
+    })
+    expect(montoRes.status).toBe(201)
+
+    const prioridadRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'prioridad',
+        label: 'Prioridad',
+        dataType: 'select',
+        validationRules: { options: [{ value: 'alta', label: 'Alta', color: 'warning' }, { value: 'baja', label: 'Baja', color: 'neutral' }] }
+      })
+    })
+    expect(prioridadRes.status).toBe(201)
+
+    const etiquetasRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'etiquetas',
+        label: 'Etiquetas',
+        dataType: 'multiselect',
+        validationRules: { options: [{ value: 'bug', label: 'Bug', color: 'error' }] }
+      })
+    })
+    expect(etiquetasRes.status).toBe(201)
+
+    for (const [nombre, monto] of [['Bajo', 100], ['Medio', 200], ['Alto', 300]] as const) {
+      const res = await api(`/api/records/${pedidosLLSlug}`, {
+        method: 'POST',
+        body: JSON.stringify({ customData: { nombre, monto, prioridad: 'alta' } })
+      })
+      expect(res.status).toBe(201)
+    }
+  }, 30_000)
+
+  it('sin listLayout guardado, GET .../fields devuelve el default: todas las columnas visibles, TODOS los Select/Multiselect como filtro, sin orden por defecto (AC: no rompe compatibilidad)', async () => {
+    const res = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.listLayout.columns.map((c: { name: string }) => c.name)).toEqual(['nombre', 'monto', 'prioridad', 'etiquetas'])
+    expect(body.listLayout.columns.every((c: { visible: boolean }) => c.visible)).toBe(true)
+    expect(body.listLayout.filterFields.sort()).toEqual(['etiquetas', 'prioridad'])
+    expect(body.listLayout.defaultSort).toBeNull()
+  })
+
+  it('PUT /api/entities/:id con un listLayout lo persiste, y GET .../fields lo devuelve tal cual (round-trip)', async () => {
+    const layout = {
+      columns: [
+        { name: 'monto', visible: true },
+        { name: 'nombre', visible: true },
+        { name: 'prioridad', visible: false },
+        { name: 'etiquetas', visible: false }
+      ],
+      filterFields: ['prioridad'],
+      defaultSort: { field: 'monto', dir: 'asc' }
+    }
+    const putRes = await api(`/api/entities/${pedidosLLId}`, { method: 'PUT', body: JSON.stringify({ listLayout: layout }) })
+    expect(putRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.listLayout).toEqual(layout)
+  })
+
+  it('un listLayout con forma invalida (viola el schema strict) es rechazado (400 - mismo criterio que detailLayout en este mismo endpoint, HU-ERD-74)', async () => {
+    const res = await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ listLayout: { columns: [{ name: 'monto' }], filterFields: [], defaultSort: null } })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('un filterFields guardado con un campo que no es Select/Multiselect real se descarta al leer (AC explicito: nunca un campo que el backend no puede filtrar)', async () => {
+    const putRes = await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        listLayout: {
+          columns: [{ name: 'nombre', visible: true }, { name: 'monto', visible: true }, { name: 'prioridad', visible: true }, { name: 'etiquetas', visible: true }],
+          filterFields: ['prioridad', 'nombre'],
+          defaultSort: null
+        }
+      })
+    })
+    expect(putRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.listLayout.filterFields).toEqual(['prioridad'])
+  })
+
+  it('si despues se agrega una columna nueva, el listLayout resuelto la suma al final como visible (reconciliacion, no rompe)', async () => {
+    const activoRes = await api(`/api/entities/${pedidosLLId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'activo', label: 'Activo', dataType: 'boolean' })
+    })
+    expect(activoRes.status).toBe(201)
+
+    const getRes = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const body = await getRes.json()
+    const names = body.listLayout.columns.map((c: { name: string }) => c.name)
+    expect(names[names.length - 1]).toBe('activo')
+    expect(body.listLayout.columns.find((c: { name: string }) => c.name === 'activo').visible).toBe(true)
+
+    // un campo Select/Multiselect nuevo, en cambio, NO se agrega solo a
+    // filterFields (lista curada explicitamente, ver server/utils/listLayout.ts)
+    const urgenteRes = await api(`/api/entities/${pedidosLLId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'urgencia', label: 'Urgencia', dataType: 'select', validationRules: { options: [{ value: 'si', label: 'Si' }] } })
+    })
+    expect(urgenteRes.status).toBe(201)
+    const getRes2 = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const body2 = await getRes2.json()
+    expect(body2.listLayout.filterFields).not.toContain('urgencia')
+  })
+
+  it('si la columna referenciada en un defaultSort guardado se borra, el listLayout resuelto vuelve a defaultSort=null (no rompe)', async () => {
+    const fieldsRes = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const activoField = (await fieldsRes.json()).fields.find((f: { name: string }) => f.name === 'activo')
+
+    await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        listLayout: { columns: [], filterFields: [], defaultSort: { field: 'activo', dir: 'desc' } }
+      })
+    })
+    const deleteRes = await api(`/api/entity-fields/${activoField.id}`, { method: 'DELETE' })
+    expect(deleteRes.status).toBe(200)
+
+    const getRes = await api(`/api/entities/${pedidosLLSlug}/fields`)
+    const body = await getRes.json()
+    expect(body.listLayout.defaultSort).toBeNull()
+  })
+
+  it('SSR: /registros/:entity respeta el orden por defecto configurado (monto ascendente) sin pasar sortBy en la URL', async () => {
+    await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        listLayout: {
+          columns: [
+            { name: 'monto', visible: true },
+            { name: 'nombre', visible: true },
+            { name: 'prioridad', visible: false },
+            { name: 'etiquetas', visible: false },
+            { name: 'activo', visible: false },
+            { name: 'urgencia', visible: false }
+          ],
+          filterFields: [],
+          defaultSort: { field: 'monto', dir: 'asc' }
+        }
+      })
+    })
+
+    const res = await fetch(`${baseUrl}/registros/${pedidosLLSlug}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    const iBajo = html.indexOf('Bajo')
+    const iMedio = html.indexOf('Medio')
+    const iAlto = html.indexOf('Alto')
+    expect(iBajo).toBeGreaterThan(-1)
+    expect(iMedio).toBeGreaterThan(-1)
+    expect(iAlto).toBeGreaterThan(-1)
+    expect(iBajo).toBeLessThan(iMedio)
+    expect(iMedio).toBeLessThan(iAlto)
+  })
+
+  it('SSR: /registros/:entity muestra solo las columnas visibles configuradas, en el orden configurado (Monto antes que Nombre, Prioridad ausente)', async () => {
+    const res = await fetch(`${baseUrl}/registros/${pedidosLLSlug}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    const iMonto = html.indexOf('Monto')
+    const iNombre = html.indexOf('Nombre')
+    expect(iMonto).toBeGreaterThan(-1)
+    expect(iNombre).toBeGreaterThan(-1)
+    expect(iMonto).toBeLessThan(iNombre)
+    // "Prioridad" SI aparece en el HTML (el payload de hidratacion __NUXT_DATA__
+    // serializa TODOS los campos, visibles u ocultos - eso es correcto, no un
+    // bug) - lo que hay que confirmar es que no aparece como encabezado de
+    // columna, es decir, dentro del <thead> de la tabla.
+    const theadHtml = html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/)?.[1] ?? ''
+    expect(theadHtml).not.toContain('Prioridad')
+  })
+
+  it('SSR: /registros/:entity no muestra el botón "Filtros" cuando listLayout.filterFields quedó vacío, aunque la entidad tenga campos Select/Multiselect (AC: filtros ofrecidos = subconjunto elegido, no automático)', async () => {
+    const res = await fetch(`${baseUrl}/registros/${pedidosLLSlug}`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).not.toContain('Filtros')
+  })
+
+  it('SSR: pages/modulos/[id]/editar.vue renderiza el indicador de 4 pasos, incluido el nuevo paso "Diseño del listado"', async () => {
+    const res = await fetch(`${baseUrl}/modulos/${pedidosLLId}/editar`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Diseño del listado')
+  })
+})

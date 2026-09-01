@@ -13,17 +13,17 @@
 // vacio - se puede borrar despues desde /modulos si no se quiere, igual que
 // cualquier otro modulo sin registros.
 import { ArrowRight, Blocks, Check, ChevronRight } from '@lucide/vue'
-import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
+import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
 
 const router = useRouter()
 
-// HU-ERD-74: tercer paso "Diseño del detalle" (Screen/Diseño del Detalle del
-// .pen - el mismo asistente ahora tiene 3 pasos, un 4to "Diseño del listado"
-// queda para HU-ERD-75, todavia no implementada). "Guardar diseño" en este
-// paso 3 es el fin del asistente por ahora (no hay paso 4 al que avanzar).
-const step = ref<'basica' | 'campos' | 'detalle'>('basica')
+// HU-ERD-74/75: asistente de 4 pasos (Screen/Diseño del Detalle + Screen/Table
+// Builder del .pen). "Guardar diseño" del paso 3 ("Diseño del detalle") ya no
+// termina el asistente - avanza al paso 4 ("Diseño del listado"), que es el
+// que ahora cierra el flujo.
+const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
 
 const name = ref('')
 const slug = ref('')
@@ -49,13 +49,20 @@ const entityId = ref<string | null>(null)
 const fields = ref<EntityFieldMeta[]>([])
 const inverseRelations = ref<InverseRelation[]>([])
 const detailLayout = ref<DetailLayout>({ properties: [], relations: [], showActivity: false })
+const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
 
 async function loadFields() {
   if (!slug.value) return
-  const res = await $fetch<{ fields: EntityFieldMeta[]; inverseRelations: InverseRelation[]; detailLayout: DetailLayout }>(`/api/entities/${slug.value}/fields`)
+  const res = await $fetch<{
+    fields: EntityFieldMeta[]
+    inverseRelations: InverseRelation[]
+    detailLayout: DetailLayout
+    listLayout: ListLayout
+  }>(`/api/entities/${slug.value}/fields`)
   fields.value = res.fields
   inverseRelations.value = res.inverseRelations
   detailLayout.value = res.detailLayout
+  listLayout.value = res.listLayout
 }
 
 const savingDetailLayout = ref(false)
@@ -66,11 +73,29 @@ async function onSaveDetailLayout() {
   savingDetailLayout.value = true
   try {
     await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { detailLayout: detailLayout.value } })
-    router.push('/modulos')
+    step.value = 'listado'
   } catch (err: any) {
     detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
   } finally {
     savingDetailLayout.value = false
+  }
+}
+
+// HU-ERD-75: cuarto y ultimo paso del asistente - "Guardar diseño" acá si
+// termina el flujo (vuelve a /modulos, como hacia el paso 3 antes de esta HU).
+const savingListLayout = ref(false)
+const listLayoutError = ref<string | null>(null)
+async function onSaveListLayout() {
+  if (!entityId.value) return
+  listLayoutError.value = null
+  savingListLayout.value = true
+  try {
+    await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { listLayout: listLayout.value } })
+    router.push('/modulos')
+  } catch (err: any) {
+    listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
+  } finally {
+    savingListLayout.value = false
   }
 }
 
@@ -100,7 +125,9 @@ async function onContinue() {
       <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
       <NuxtLink to="/modulos" class="text-brand-text-secondary hover:underline">Módulos</NuxtLink>
       <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
-      <span class="font-bold text-brand-text">{{ step === 'basica' ? 'Nuevo módulo' : step === 'campos' ? 'Campos' : 'Diseño del detalle' }}</span>
+      <span class="font-bold text-brand-text">
+        {{ step === 'basica' ? 'Nuevo módulo' : step === 'campos' ? 'Campos' : step === 'detalle' ? 'Diseño del detalle' : 'Diseño del listado' }}
+      </span>
     </div>
 
     <template v-if="step === 'basica'">
@@ -123,6 +150,11 @@ async function onContinue() {
         <div class="flex items-center gap-2">
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">3</span>
           <span class="text-sm font-semibold text-brand-text-muted">Diseño del detalle</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">4</span>
+          <span class="text-sm font-semibold text-brand-text-muted">Diseño del listado</span>
         </div>
       </div>
 
@@ -235,6 +267,11 @@ async function onContinue() {
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">3</span>
           <span class="text-sm font-semibold text-brand-text-muted">Diseño del detalle</span>
         </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">4</span>
+          <span class="text-sm font-semibold text-brand-text-muted">Diseño del listado</span>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
@@ -295,11 +332,84 @@ async function onContinue() {
           <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">3</span>
           <span class="text-sm font-bold text-brand-text">Diseño del detalle</span>
         </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-brand-border text-[13px] font-bold text-brand-text-muted">4</span>
+          <span class="text-sm font-semibold text-brand-text-muted">Diseño del listado</span>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
         <RecordDetailView :entity-slug="slug" :entity-name="name" :fields="fields" :layout="detailLayout" :inverse-relations="inverseRelations" :record="null" />
+      </div>
+    </template>
+
+    <!-- HU-ERD-75: paso 4, "Diseño del listado" (Table Builder) - ver
+         components/ModuleListLayoutCard.vue (configurador) y
+         components/ModuleListPreviewCard.vue (vista previa, reusa
+         DynamicTable.vue, el MISMO componente del listado real). -->
+    <template v-else-if="step === 'listado' && entityId">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex h-[38px] w-[38px] items-center justify-center rounded bg-brand-blue-bg">
+            <Blocks class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center gap-2">
+              <span class="text-[15px] font-bold text-brand-text">{{ name }}</span>
+              <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ slug }}</span>
+            </div>
+            <p class="text-sm text-brand-text-secondary">Configurá qué columnas se muestran en el listado, qué filtros están disponibles y el orden por defecto</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <NuxtLink to="/modulos" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
+          <button
+            type="button"
+            :disabled="savingListLayout"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSaveListLayout"
+          >
+            <Check class="h-4 w-4" :stroke-width="1.75" />
+            {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
+          </button>
+        </div>
+      </div>
+
+      <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
+
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+            <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
+          </span>
+          <span class="text-sm font-bold text-brand-text">Información básica</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+            <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
+          </span>
+          <span class="text-sm font-bold text-brand-text">Campos</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+            <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
+          </span>
+          <span class="text-sm font-bold text-brand-text">Diseño del detalle</span>
+        </div>
+        <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
+        <div class="flex items-center gap-2">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">4</span>
+          <span class="text-sm font-bold text-brand-text">Diseño del listado</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+        <ModuleListLayoutCard v-model="listLayout" :fields="fields" />
+        <ModuleListPreviewCard :entity-slug="slug" :entity-name="name" :fields="fields" :list-layout="listLayout" />
       </div>
     </template>
   </div>

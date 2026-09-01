@@ -11,6 +11,7 @@
 // un buscador general para cualquier listado - sumar eso sin que la HU lo
 // pida seria alcance extra, no algo de esta HU puntual.
 import { Filter, Plus, X } from '@lucide/vue'
+import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
 
@@ -20,17 +21,44 @@ const slug = route.params.entity as string
 const { data: meta, pending: metaPending, error: metaError } = await useEntityFields(slug)
 
 const page = ref(1)
-const sortBy = ref('createdAt')
-const sortDir = ref<'asc' | 'desc'>('desc')
+// HU-ERD-75: orden por defecto del "Diseño del listado" (Table Builder) si el
+// modulo tiene uno configurado - resuelto por el servidor (resolveListLayout,
+// null cuando no hay configuracion propia), asi que sin listLayout guardado
+// esto sigue siendo exactamente createdAt/desc como antes de esta HU.
+const sortBy = ref(meta.value?.listLayout.defaultSort?.field ?? 'createdAt')
+const sortDir = ref<'asc' | 'desc'>(meta.value?.listLayout.defaultSort?.dir ?? 'desc')
 
-// HU-ERD-73: panel de Filtros (Screen/List Pedidos - Filtro Select del .pen)
-// - un solo filtro activo a la vez (mismo alcance que el backend, ver el
-// comentario en server/api/records/[entity]/index.get.ts), solo sobre
-// campos Select/Multiselect (los unicos con un conjunto fijo de valores
-// conocidos - un filtro "es alguno de" sobre texto libre no tiene sentido
-// aca). Las etiquetas y colores salen siempre de field.validationRules.options,
-// nunca hardcodeados (criterio de aceptacion explicito de la HU).
-const filterableFields = computed(() => (meta.value?.fields ?? []).filter((f) => f.dataType === 'select' || f.dataType === 'multiselect'))
+// HU-ERD-75: las columnas visibles y su orden salen del "Diseño del listado"
+// (listLayout.columns, ya resuelto/reconciliado contra los campos reales por
+// el servidor) - sin listLayout guardado, resolveListLayout() devuelve todos
+// los campos visibles en el orden de entity_fields, exactamente el
+// comportamiento anterior a esta HU (criterio de aceptacion explicito: sin
+// romper compatibilidad para Clientes/Empresas/Empleados).
+const visibleFields = computed<EntityFieldMeta[]>(() => {
+  const layout = meta.value?.listLayout
+  const allFields = meta.value?.fields ?? []
+  if (!layout) return allFields
+  const byName = new Map(allFields.map((f) => [f.name, f]))
+  return layout.columns
+    .filter((c) => c.visible)
+    .map((c) => byName.get(c.name))
+    .filter((f): f is EntityFieldMeta => !!f)
+})
+
+// HU-ERD-73/75: panel de Filtros (Screen/List Pedidos - Filtro Select del
+// .pen) - un solo filtro activo a la vez (mismo alcance que el backend, ver
+// el comentario en server/api/records/[entity]/index.get.ts), solo sobre
+// campos Select/Multiselect que ademas esten en listLayout.filterFields (la
+// lista de filtros "ofrecidos" del Table Builder - ya reconciliada contra
+// los campos reales por el servidor, HU-ERD-75). Sin listLayout guardado,
+// filterFields default es TODOS los Select/Multiselect (mismo comportamiento
+// que HU-ERD-73 sin esta HU encima). Las etiquetas y colores salen siempre de
+// field.validationRules.options, nunca hardcodeados (criterio de aceptacion
+// explicito de HU-ERD-73).
+const filterableFields = computed(() => {
+  const offeredNames = new Set(meta.value?.listLayout.filterFields ?? [])
+  return (meta.value?.fields ?? []).filter((f) => (f.dataType === 'select' || f.dataType === 'multiselect') && offeredNames.has(f.name))
+})
 
 const appliedFilterField = ref<string | null>(null)
 const appliedFilterValues = ref<string[]>([])
@@ -219,10 +247,13 @@ async function onDelete(id: string) {
     <template v-else-if="meta && recordsData">
       <p v-if="deleteError" class="text-sm text-brand-error-text">{{ deleteError }}</p>
       <p v-if="meta.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavia no tiene campos configurados.</p>
+      <p v-else-if="visibleFields.length === 0" class="text-sm text-brand-text-muted">
+        Todas las columnas están ocultas en el diseño del listado de este módulo.
+      </p>
       <DynamicTable
         v-else
         :entity-slug="slug"
-        :fields="meta.fields"
+        :fields="visibleFields"
         :rows="recordsData.data"
         :page="recordsData.page"
         :page-size="recordsData.pageSize"

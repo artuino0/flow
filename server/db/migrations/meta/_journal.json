@@ -120,6 +120,13 @@
       "when": 1788210271346,
       "tag": "0016_erd74_entities_detail_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788211689348,
+      "tag": "0017_erd75_entities_list_layout",
+      "breakpoints": true
     }
   ]
 }

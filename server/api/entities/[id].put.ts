@@ -2,8 +2,10 @@ import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { updateEntity } from '~/server/utils/moduleEntities'
 import { detailLayoutSchema } from '~/server/utils/detailLayout'
+import { listLayoutSchema } from '~/server/utils/listLayout'
 
-// PUT /api/entities/:id { name?, description?, detailLayout? } (HU-ERD-66, detailLayout HU-ERD-74)
+// PUT /api/entities/:id { name?, description?, detailLayout?, listLayout? }
+// (HU-ERD-66, detailLayout HU-ERD-74, listLayout HU-ERD-75)
 // Edita nombre/descripcion de un modulo existente. El slug NO se puede
 // cambiar aca a proposito - ya se usa en URLs (/registros/:slug) y en el
 // endpoint de campos (GET /api/entities/:slug/fields, HU-ERD-23); renombrarlo
@@ -11,9 +13,11 @@ import { detailLayoutSchema } from '~/server/utils/detailLayout'
 const bodySchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio').optional(),
   description: z.string().trim().min(1).nullable().optional(),
-  // HU-ERD-74: null explicito borra el layout guardado (vuelve al orden por
-  // defecto, ver resolveDetailLayout()); undefined (omitido) no lo toca.
-  detailLayout: detailLayoutSchema.nullable().optional()
+  // HU-ERD-74/75: null explicito borra el layout guardado (vuelve al orden
+  // por defecto, ver resolveDetailLayout()/resolveListLayout()); undefined
+  // (omitido) no lo toca.
+  detailLayout: detailLayoutSchema.nullable().optional(),
+  listLayout: listLayoutSchema.nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {

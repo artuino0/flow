@@ -20,6 +20,15 @@ export const entities = pgTable('entities', {
   // Tabla/Select (ERD-68): vive en una columna jsonb de entities, no en una
   // tabla de layout aparte.
   detailLayout: jsonb('detail_layout'),
+  // HU-ERD-75: configuracion del "Diseño del listado" (Table Builder) - que
+  // columnas se muestran y en que orden, que campos Select/Multiselect se
+  // ofrecen como filtro, y el orden por defecto. Null = sin configurar todavia
+  // -> el listado se comporta exactamente como antes de esta HU (todas las
+  // columnas, todos los campos Select/Multiselect como filtro, sin orden por
+  // defecto propio) - criterio de aceptacion explicito: no rompe compatibilidad
+  // para Clientes/Empresas/Empleados. Ver server/utils/listLayout.ts. Misma
+  // decision de "sin tabla nueva" que detailLayout (ERD-74) y Tabla/Select (ERD-68).
+  listLayout: jsonb('list_layout'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

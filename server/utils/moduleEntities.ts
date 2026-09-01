@@ -23,6 +23,9 @@ export interface EntitySummary {
   // Opcional: listEntities() (HU-ERD-69) no lo selecciona - el listado de
   // modulos no necesita el layout de cada uno, solo create/updateEntity si.
   detailLayout?: unknown
+  // HU-ERD-75: mismo criterio que detailLayout de arriba - guardado tal cual,
+  // resuelto por resolveListLayout() (server/utils/listLayout.ts).
+  listLayout?: unknown
 }
 
 // Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
@@ -135,20 +138,28 @@ export async function createEntity(
       })
     }
 
-    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description, detailLayout: entity.detailLayout }
+    return {
+      id: entity.id,
+      slug: entity.slug,
+      name: entity.name,
+      description: entity.description,
+      detailLayout: entity.detailLayout,
+      listLayout: entity.listLayout
+    }
   })
 }
 
 export async function updateEntity(
   tenantId: string,
   entityId: string,
-  input: { name?: string; description?: string | null; detailLayout?: unknown }
+  input: { name?: string; description?: string | null; detailLayout?: unknown; listLayout?: unknown }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
+    if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
 
     const [entity] = await tx
       .update(entities)
@@ -157,7 +168,14 @@ export async function updateEntity(
       .returning()
 
     if (!entity) return null
-    return { id: entity.id, slug: entity.slug, name: entity.name, description: entity.description, detailLayout: entity.detailLayout }
+    return {
+      id: entity.id,
+      slug: entity.slug,
+      name: entity.name,
+      description: entity.description,
+      detailLayout: entity.detailLayout,
+      listLayout: entity.listLayout
+    }
   })
 }
 

@@ -14,6 +14,10 @@ export interface ResolvedEntity {
   // (ver abajo) para que fields.get.ts pueda resolver el detailLayout real,
   // no siempre el default.
   detailLayout?: unknown
+  // HU-ERD-75: mismo motivo que detailLayout de arriba - incluida desde el
+  // primer commit de esta HU (la de detailLayout se agrego recien en ERD-74
+  // tras un bug real encontrado por tests e2e; se aplica la leccion aca).
+  listLayout?: unknown
 }
 
 export interface PermissionResult {
@@ -59,7 +63,13 @@ export async function requirePermission(
       // GET /api/entities/:entity/fields terminaba resolviendo SIEMPRE el
       // layout por defecto porque entity.detailLayout era undefined - bug
       // real encontrado via test e2e, no solo un TS gap).
-      .select({ id: entities.id, slug: entities.slug, name: entities.name, detailLayout: entities.detailLayout })
+      .select({
+        id: entities.id,
+        slug: entities.slug,
+        name: entities.name,
+        detailLayout: entities.detailLayout,
+        listLayout: entities.listLayout
+      })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))
       .limit(1)

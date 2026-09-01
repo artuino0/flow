@@ -48,12 +48,30 @@ export interface InverseRelation {
   fieldLabel: string
 }
 
+// HU-ERD-75: "Diseño del listado" (Table Builder) - ver server/utils/listLayout.ts
+// para la logica real (default + reconciliacion). Mismo criterio que
+// DetailLayout: el frontend solo consume el resultado YA resuelto.
+export interface ListLayoutColumn {
+  name: string
+  visible: boolean
+}
+export interface ListLayoutDefaultSort {
+  field: string
+  dir: 'asc' | 'desc'
+}
+export interface ListLayout {
+  columns: ListLayoutColumn[]
+  filterFields: string[]
+  defaultSort: ListLayoutDefaultSort | null
+}
+
 export interface EntityFieldsResponse {
   entity: EntityMeta
   fields: EntityFieldMeta[]
   permissions: EntityPermissions
   inverseRelations: InverseRelation[]
   detailLayout: DetailLayout
+  listLayout: ListLayout
 }
 
 export function useEntityFields(slug: string) {

@@ -14,6 +14,8 @@
 // el ícono propio por tipo de dato (TYPE_BADGE de ModuleFieldsCard.vue no
 // está exportado) - una etiqueta de texto simple alcanza para este contexto,
 // donde lo que importa es el orden/visibilidad, no reconocer el tipo a simple vista.
+// HU-ERD-75: el mapa de etiquetas por tipo se extrajo a utils/fieldTypeLabels.ts
+// (ahora compartido con ModuleListLayoutCard.vue).
 import { ChevronDown } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
 
@@ -26,18 +28,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: DetailLayout]
 }>()
-
-const TYPE_LABEL: Record<string, string> = {
-  text: 'Texto',
-  number: 'Número',
-  boolean: 'Booleano',
-  date: 'Fecha',
-  json: 'JSON',
-  relation: 'Relación',
-  select: 'Select',
-  multiselect: 'Multiselect',
-  tabla: 'Tabla'
-}
 
 function fieldMeta(name: string): EntityFieldMeta | undefined {
   return props.fields.find((f) => f.name === name)
@@ -102,7 +92,7 @@ function toggleActivity() {
           <input type="checkbox" :checked="prop.visible" class="h-3.5 w-3.5 shrink-0" @change="togglePropertyVisible(prop.name)" />
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ fieldMeta(prop.name)?.label ?? prop.name }}</span>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">
-            {{ TYPE_LABEL[fieldMeta(prop.name)?.dataType ?? ''] ?? fieldMeta(prop.name)?.dataType ?? '?' }}
+            {{ fieldTypeLabel(fieldMeta(prop.name)?.dataType) }}
           </span>
           <div class="flex shrink-0 gap-0.5">
             <button type="button" title="Mover arriba" :disabled="index === 0" class="flex h-6 w-6 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg disabled:opacity-30" @click="moveProperty(index, -1)">

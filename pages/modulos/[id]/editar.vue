@@ -22,8 +22,10 @@
 // clickeable en las dos direcciones, no solo hacia adelante.
 //
 // HU-ERD-74 suma el paso 3 "Diseño del detalle" con el mismo criterio.
+// HU-ERD-75 suma el paso 4 "Diseño del listado" (Table Builder), tambien
+// clickeable libremente como los otros tres.
 import { Blocks, Check } from '@lucide/vue'
-import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
+import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
 
@@ -38,7 +40,7 @@ const route = useRoute()
 const router = useRouter()
 const moduleId = route.params.id as string
 
-const step = ref<'basica' | 'campos' | 'detalle'>('basica')
+const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
 
 // No existe GET /api/entities/:id puntual - se resuelve del listado ya
 // existente (GET /api/entities, HU-ERD-69) en vez de sumar otro endpoint
@@ -90,6 +92,7 @@ const { data: fieldsData, refresh: refreshFields } = await useFetch<{
   fields: EntityFieldMeta[]
   inverseRelations: InverseRelation[]
   detailLayout: DetailLayout
+  listLayout: ListLayout
 }>(
   () => `/api/entities/${currentModule.value?.slug ?? ''}/fields`,
   {
@@ -129,6 +132,31 @@ async function onSaveDetailLayout() {
     detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
   } finally {
     savingDetailLayout.value = false
+  }
+}
+
+// HU-ERD-75: paso 4 "Diseño del listado" - mismo criterio que el paso 3 de
+// arriba (borrador local sincronizado desde el layout ya resuelto por el
+// servidor, guardado explicito via "Guardar diseño").
+const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
+watchEffect(() => {
+  if (fieldsData.value) listLayout.value = fieldsData.value.listLayout
+})
+
+const savingListLayout = ref(false)
+const listLayoutError = ref<string | null>(null)
+const listLayoutSaved = ref(false)
+async function onSaveListLayout() {
+  listLayoutError.value = null
+  listLayoutSaved.value = false
+  savingListLayout.value = true
+  try {
+    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value } })
+    listLayoutSaved.value = true
+  } catch (err: any) {
+    listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
+  } finally {
+    savingListLayout.value = false
   }
 }
 </script>
@@ -188,6 +216,14 @@ async function onSaveDetailLayout() {
             :class="step === 'detalle' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
           >3</span>
           <span class="text-sm font-bold" :class="step === 'detalle' ? 'text-brand-text' : 'text-brand-text-secondary'">Diseño del detalle</span>
+        </button>
+        <div class="h-px w-20 bg-brand-border" />
+        <button type="button" class="flex items-center gap-2" @click="step = 'listado'">
+          <span
+            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
+            :class="step === 'listado' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+          >4</span>
+          <span class="text-sm font-bold" :class="step === 'listado' ? 'text-brand-text' : 'text-brand-text-secondary'">Diseño del listado</span>
         </button>
       </div>
 
@@ -262,7 +298,7 @@ async function onSaveDetailLayout() {
       <!-- HU-ERD-74: paso 3 - ver components/ModuleDetailLayoutCard.vue
            (configurador) y components/RecordDetailView.vue (vista previa en
            vivo, el mismo componente que renderiza la ficha real). -->
-      <template v-else>
+      <template v-else-if="step === 'detalle'">
         <p v-if="detailLayoutError" class="text-sm text-brand-error-text">{{ detailLayoutError }}</p>
         <p v-if="detailLayoutSaved" class="text-sm text-brand-success-text">Diseño del detalle guardado correctamente.</p>
         <div class="flex justify-end">
@@ -284,6 +320,33 @@ async function onSaveDetailLayout() {
             :layout="detailLayout"
             :inverse-relations="inverseRelations"
             :record="null"
+          />
+        </div>
+      </template>
+
+      <!-- HU-ERD-75: paso 4 - ver components/ModuleListLayoutCard.vue
+           (configurador) y components/ModuleListPreviewCard.vue (vista previa,
+           reusa DynamicTable.vue, el mismo componente del listado real). -->
+      <template v-else>
+        <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
+        <p v-if="listLayoutSaved" class="text-sm text-brand-success-text">Diseño del listado guardado correctamente.</p>
+        <div class="flex justify-end">
+          <button
+            type="button"
+            :disabled="savingListLayout"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSaveListLayout"
+          >
+            {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
+          </button>
+        </div>
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+          <ModuleListLayoutCard v-model="listLayout" :fields="fields" />
+          <ModuleListPreviewCard
+            :entity-slug="currentModule.slug"
+            :entity-name="currentModule.name"
+            :fields="fields"
+            :list-layout="listLayout"
           />
         </div>
       </template>
