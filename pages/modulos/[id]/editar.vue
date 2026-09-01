@@ -27,6 +27,11 @@
 // HU-ERD-74 suma el paso 3 "Diseño del detalle" con el mismo criterio.
 // HU-ERD-75 suma el paso 4 "Diseño del listado" (Table Builder), tambien
 // clickeable libremente como los otros tres.
+//
+// HU-ERD-77 suma la pestaña "Relaciones" (administracion de
+// relation_definitions, ver components/ModuleRelationsCard.vue para el
+// detalle de diseno - revisado en Pencil antes de construir, sin mock fiel
+// para esta version simple, decision explicita del usuario 2026-09-01).
 import { Trash2 } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
@@ -58,6 +63,7 @@ interface ModuleDetail {
 const TABS = [
   { key: 'basica', label: 'Información general' },
   { key: 'campos', label: 'Campos' },
+  { key: 'relaciones', label: 'Relaciones' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
   { key: 'preview', label: 'Vista previa' }
@@ -79,6 +85,11 @@ const { data, pending, error: fetchError, refresh } = await useFetch<{ entities:
 })
 
 const currentModule = computed(() => data.value?.entities.find((m) => m.id === moduleId) ?? null)
+
+// HU-ERD-77: opciones para el select "Entidad relacionada" de
+// ModuleRelationsCard.vue - reusa el mismo listado de modulos ya cargado
+// arriba (GET /api/entities), sin sumar otro fetch aparte solo para esto.
+const entityOptions = computed(() => (data.value?.entities ?? []).map((m) => ({ id: m.id, name: m.name })))
 
 const name = ref('')
 const description = ref('')
@@ -399,6 +410,12 @@ async function onSaveListLayout() {
           <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
         </div>
+      </template>
+
+      <!-- HU-ERD-77: pestaña "Relaciones" - administra relation_definitions
+           de este modulo (ver components/ModuleRelationsCard.vue). -->
+      <template v-else-if="step === 'relaciones'">
+        <ModuleRelationsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :entity-options="entityOptions" />
       </template>
 
       <!-- HU-ERD-74: paso 3 - ver components/ModuleDetailLayoutCard.vue
