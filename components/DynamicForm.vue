@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // HU-ERD-23: Form Builder dinamico - renderiza un input por cada entity_field
 // segun su dataType/validationRules, sin desarrollo especifico por formulario.
-// Tipos soportados: text (+ enum), number, boolean, date, json, relation
-// (ERD-7/17), tabla (ERD-72, delegado a DynamicTableField.vue) y
-// select/multiselect (ERD-73, delegado a DynamicSelectField.vue) -
-// ambos demasiado complejos (dropdown propio, chips, autocomplete) para
-// vivir inline en este archivo.
+// Tipos soportados: text (+ enum), number, boolean, date, json, tabla
+// (ERD-72, delegado a DynamicTableField.vue), select/multiselect (ERD-73,
+// delegado a DynamicSelectField.vue) y relation (ERD-7/17, buscador con
+// autocomplete delegado a DynamicRelationField.vue - ver comentario largo
+// ahi, 2026-09-01) - todos demasiado complejos (dropdown propio, chips,
+// autocomplete) para vivir inline en este archivo.
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 const props = defineProps<{
@@ -163,17 +164,13 @@ defineExpose({ validateAll })
         @update:model-value="(rows) => setValue(field.name, rows)"
       />
 
-      <!-- relation: id de otro record (uuid) -->
-      <input
+      <!-- relation: id de otro record - buscador con autocomplete, ver components/DynamicRelationField.vue -->
+      <DynamicRelationField
         v-else-if="field.dataType === 'relation'"
-        :id="`field-${field.name}`"
-        type="text"
+        :field="field"
+        :model-value="valueFor(field.name)"
         :disabled="disabled"
-        placeholder="uuid del registro relacionado"
-        class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
-        :value="displayValue(field.name)"
-        @input="onInput(field, ($event.target as HTMLInputElement).value)"
+        @update:model-value="(value) => setValue(field.name, value)"
       />
 
       <!-- tipo desconocido: fallback texto -->

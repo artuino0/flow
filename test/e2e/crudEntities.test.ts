@@ -2480,3 +2480,154 @@ describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso p
     expect(html).toContain('Activo')
   })
 })
+
+// Flujo Recepcion -> Empaque -> Embarque (pedido directo del usuario,
+// 2026-09-01, ver DOCS/Flujo_Recepcion_Empaque_Embarque.md) - via
+// scripts/seedEmpaque.mjs (mismo patron que scripts/seed.mjs del modulo CRM,
+// probado arriba). Reusa el server/tenant/admin ya levantados en el beforeAll
+// de HU-ERD-30. Cubre lo que este trabajo agrego de verdad: los campos
+// relation con relationEntity encadenan tres entidades nuevas end-to-end
+// (creacion de records + el mismo GET /api/records/:entity?search= que
+// consume components/DynamicRelationField.vue para el autocomplete) y la
+// relacion inversa se calcula sola en la ficha de detalle de la entidad
+// destino (server/utils/detailLayout.ts, HU-ERD-74).
+describe('e2e: flujo Recepcion -> Empaque -> Embarque (scripts/seedEmpaque.mjs)', () => {
+  const SEED_EMPAQUE_SCRIPT = path.resolve(PROJECT_ROOT, 'scripts/seedEmpaque.mjs')
+
+  beforeAll(() => {
+    execFileSync('node', [SEED_EMPAQUE_SCRIPT, TENANT_ID], {
+      cwd: PROJECT_ROOT,
+      env: { ...process.env, APP_DATABASE_URL: testDb.appUrl },
+      stdio: 'pipe'
+    })
+  }, 30_000)
+
+  it('las 5 entidades quedan creadas, con permiso CRUD completo del rol Administrador', async () => {
+    const permsRes = await api(`/api/roles/${adminRoleId}/permissions`)
+    const { permissions } = await permsRes.json()
+    for (const slug of ['productores', 'cultivos', 'recepciones', 'empaques', 'embarques']) {
+      expect(permissions.find((p: { entitySlug: string }) => p.entitySlug === slug)).toMatchObject({
+        canRead: true,
+        canCreate: true,
+        canUpdate: true,
+        canDelete: true
+      })
+    }
+  })
+
+  it('GET /api/nav/entities incluye los 5 modulos nuevos - el menu no necesito ningun cambio manual en AppNav.vue', async () => {
+    const res = await api('/api/nav/entities')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const slugs = body.entities.map((e: { slug: string }) => e.slug)
+    expect(slugs).toEqual(expect.arrayContaining(['productores', 'cultivos', 'recepciones', 'empaques', 'embarques']))
+  })
+
+  it('flujo completo: Productor + Cultivo -> Recepcion -> Empaque -> Embarque, con campos relation encadenados', async () => {
+    const productorRes = await api('/api/records/productores', {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Rancho El Aguacate' } })
+    })
+    expect(productorRes.status).toBe(201)
+    const productor = await productorRes.json()
+
+    const cultivoRes = await api('/api/records/cultivos', {
+      method: 'POST',
+      body: JSON.stringify({ customData: { nombre: 'Aguacate Hass' } })
+    })
+    expect(cultivoRes.status).toBe(201)
+    const cultivo = await cultivoRes.json()
+
+    const recepcionRes = await api('/api/records/recepciones', {
+      method: 'POST',
+      body: JSON.stringify({
+        customData: {
+          fecha: '2026-09-01',
+          productor: productor.id,
+          cultivo: cultivo.id,
+          kilos_recibidos: 1200
+        }
+      })
+    })
+    expect(recepcionRes.status).toBe(201)
+    const recepcion = await recepcionRes.json()
+    expect(recepcion.customData).toMatchObject({ productor: productor.id, cultivo: cultivo.id })
+
+    // customData con una relacion apuntando a un uuid que no es un record real
+    // sigue siendo forma valida de uuid (el schema Zod dinamico, ERD-17, solo
+    // exige forma - no existe integridad referencial para 'relation' simple,
+    // a diferencia de record_relations/ERD-10) - documentado tambien en
+    // DOCS/Flujo_Recepcion_Empaque_Embarque.md.
+    const embarqueRes = await api('/api/records/embarques', {
+      method: 'POST',
+      body: JSON.stringify({ customData: { fecha: '2026-09-05', destino_mercado: 'estados_unidos', cliente: 'Fresh Import Co.' } })
+    })
+    expect(embarqueRes.status).toBe(201)
+    const embarque = await embarqueRes.json()
+
+    const empaqueRes = await api('/api/records/empaques', {
+      method: 'POST',
+      body: JSON.stringify({
+        customData: {
+          fecha: '2026-09-02',
+          recepcion: recepcion.id,
+          clasificacion: 'primera',
+          kilos_empacados: 900,
+          kilos_merma: 50,
+          embarque: embarque.id
+        }
+      })
+    })
+    expect(empaqueRes.status).toBe(201)
+    const empaque = await empaqueRes.json()
+    expect(empaque.customData).toMatchObject({ recepcion: recepcion.id, embarque: embarque.id, clasificacion: 'primera' })
+
+    // El mismo endpoint que consume DynamicRelationField.vue para el
+    // autocomplete (GET /api/records/:entity?search=...) - confirma que un
+    // productor recien creado es encontrable por texto libre.
+    const searchRes = await api(`/api/records/productores?search=${encodeURIComponent('El Aguacate')}`)
+    expect(searchRes.status).toBe(200)
+    const searchBody = await searchRes.json()
+    expect(searchBody.data.some((r: { id: string }) => r.id === productor.id)).toBe(true)
+
+    // Relacion inversa calculada sola (HU-ERD-74): desde la ficha de una
+    // Recepcion, se ve el Empaque que la referencia - sin que nadie la haya
+    // configurado a mano.
+    const recepcionFieldsRes = await api('/api/entities/recepciones/fields')
+    const recepcionFields = await recepcionFieldsRes.json()
+    expect(recepcionFields.inverseRelations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entitySlug: 'empaques', fieldName: 'recepcion' })])
+    )
+
+    const embarqueFieldsRes = await api('/api/entities/embarques/fields')
+    const embarqueFields = await embarqueFieldsRes.json()
+    expect(embarqueFields.inverseRelations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entitySlug: 'empaques', fieldName: 'embarque' })])
+    )
+  })
+
+  it('customData invalido (clasificacion fuera de las opciones configuradas) es rechazado (422)', async () => {
+    const recepcionRes = await api('/api/records/recepciones', {
+      method: 'POST',
+      body: JSON.stringify({ customData: { fecha: '2026-09-01', productor: randomUUID(), cultivo: randomUUID(), kilos_recibidos: 10 } })
+    })
+    const recepcion = await recepcionRes.json()
+
+    const res = await api('/api/records/empaques', {
+      method: 'POST',
+      body: JSON.stringify({
+        customData: { fecha: '2026-09-02', recepcion: recepcion.id, clasificacion: 'no-existe', kilos_empacados: 10 }
+      })
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('SSR: /registros/recepciones/nuevo (F5 completo) renderiza el formulario con el buscador de relacion, no el estado de error', async () => {
+    const res = await fetch(`${baseUrl}/registros/recepciones/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).not.toContain('No se pudo cargar la definicion de esta entidad')
+    expect(html).toContain('Productor')
+    expect(html).toContain('Buscar productor')
+  })
+})
