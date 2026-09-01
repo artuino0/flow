@@ -134,10 +134,17 @@ try {
       `
 
       let created = 0
-      for (const field of fields) {
+      // sort_order = indice en el array `fields` ("el organizador", pedido
+      // del usuario 2026-09-01) - el orden en que estan escritos def.fields
+      // arriba en este archivo ya es el orden de exhibicion pretendido; sin
+      // esto, un tenant nuevo quedaria con sort_order=0 en todos los campos
+      // (default de la columna) y el orden real dependeria del desempate por
+      // created_at, fragil si dos inserts caen en el mismo milisegundo.
+      for (let i = 0; i < fields.length; i++) {
+        const field = fields[i]
         const result = await tx`
-          insert into entity_fields (entity_id, name, label, data_type, validation_rules, is_required)
-          values (${entity.id}, ${field.name}, ${field.label}, ${field.dataType}, ${sql.json(field.validationRules)}, ${field.isRequired})
+          insert into entity_fields (entity_id, name, label, data_type, validation_rules, is_required, sort_order)
+          values (${entity.id}, ${field.name}, ${field.label}, ${field.dataType}, ${sql.json(field.validationRules)}, ${field.isRequired}, ${i})
           on conflict (entity_id, name) do nothing
           returning id
         `

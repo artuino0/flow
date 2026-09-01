@@ -461,7 +461,24 @@ function onSubmit() {
       </div>
 
       <div class="flex flex-col gap-5 p-5">
+        <!-- Pedido por el usuario (2026-09-01): el primer campo a escribir
+             debe ser el nombre visible del campo, no el nombre tecnico - la
+             logica de auto-generado (onFieldLabelInput -> slugifyIdentifier,
+             ver el comentario junto a nameTouched mas arriba) ya funcionaba
+             asi desde el fix del bug de ERD-70; solo faltaba que el ORDEN
+             VISUAL de las dos columnas del grid reflejara ese flujo (antes
+             "Nombre técnico" aparecia primero, a la izquierda). -->
         <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label for="field-label" class="text-[13px] font-semibold text-brand-text">Etiqueta visible</label>
+            <input
+              id="field-label"
+              :value="form.label"
+              type="text"
+              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              @input="onFieldLabelInput(($event.target as HTMLInputElement).value)"
+            />
+          </div>
           <div class="flex flex-col gap-1.5">
             <label for="field-name" class="text-[13px] font-semibold text-brand-text">Nombre técnico</label>
             <input
@@ -474,16 +491,6 @@ function onSubmit() {
             />
             <p v-if="nameError" class="text-xs text-brand-error-text">{{ nameError }}</p>
             <p v-else class="text-xs text-brand-text-muted">{{ mode === 'edit' ? 'No se puede cambiar una vez creado.' : 'Se completa automáticamente a partir de la etiqueta; puede ajustarse si hace falta.' }}</p>
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <label for="field-label" class="text-[13px] font-semibold text-brand-text">Etiqueta visible</label>
-            <input
-              id="field-label"
-              :value="form.label"
-              type="text"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              @input="onFieldLabelInput(($event.target as HTMLInputElement).value)"
-            />
           </div>
         </div>
 

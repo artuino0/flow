@@ -54,6 +54,20 @@ export const entityFields = pgTable('entity_fields', {
   dataType: text('data_type').notNull(), // text | number | boolean | date | json | relation ...
   validationRules: jsonb('validation_rules').notNull().default({}),
   isRequired: boolean('is_required').notNull().default(false),
+  // Pedido por el usuario (2026-09-01): "el organizador" - orden en que se
+  // muestran los campos, tanto en la tarjeta "Campos del módulo"
+  // (ModuleFieldsCard.vue) como en el formulario real de crear/editar
+  // (DynamicForm.vue, que itera fields en el mismo orden que devuelve
+  // GET /api/entities/:entity/fields) y en la vista previa. Antes de esta
+  // columna el orden era implicito (createdAt, sin forma de reordenar).
+  // 0-based, unico por entidad (no hay constraint de unicidad en la base a
+  // proposito - simplifica reordenar sin transacciones de "hueco" - el orden
+  // real siempre se recalcula secuencial en reorderEntityFields()
+  // (server/utils/moduleEntityFields.ts) y en createEntityField() al agregar
+  // un campo nuevo al final). La migracion (0019) hace el backfill de los
+  // campos ya existentes con ROW_NUMBER() sobre su createdAt actual, para no
+  // alterar el orden que ya tenian.
+  sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

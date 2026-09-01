@@ -49,6 +49,12 @@ export class InvalidValidationRulesError extends Error {}
 // botones en la UI (ModuleFieldsCard.vue), que por si sola no alcanza si
 // alguien pega directo a la API.
 export class ProtectedFieldError extends Error {}
+// Pedido por el usuario (2026-09-01): "el organizador" (reordenar campos) -
+// reorderEntityFields() exige que `order` sea EXACTAMENTE el conjunto de ids
+// de campos de la entidad, sin faltantes ni sobrantes ni repetidos (para no
+// dejar sortOrder en un estado parcial/inconsistente si el frontend manda
+// algo desincronizado, ej. por una pestaña vieja abierta en otra sesion).
+export class InvalidFieldOrderError extends Error {}
 
 export interface EntityFieldSummary {
   id: string
@@ -58,6 +64,7 @@ export interface EntityFieldSummary {
   dataType: string
   validationRules: unknown
   isRequired: boolean
+  sortOrder: number
 }
 
 function toSummary(row: typeof entityFields.$inferSelect): EntityFieldSummary {
@@ -68,7 +75,8 @@ function toSummary(row: typeof entityFields.$inferSelect): EntityFieldSummary {
     label: row.label,
     dataType: row.dataType,
     validationRules: row.validationRules,
-    isRequired: row.isRequired
+    isRequired: row.isRequired,
+    sortOrder: row.sortOrder
   }
 }
 
@@ -93,6 +101,7 @@ async function findFieldInTenant(tx: Tx, tenantId: string, fieldId: string): Pro
       dataType: entityFields.dataType,
       validationRules: entityFields.validationRules,
       isRequired: entityFields.isRequired,
+      sortOrder: entityFields.sortOrder,
       createdAt: entityFields.createdAt,
       updatedAt: entityFields.updatedAt
     })
@@ -156,7 +165,12 @@ function assertValidationRules(dataType: string, validationRules: unknown): void
 export async function listEntityFields(tenantId: string, entityId: string): Promise<EntityFieldSummary[]> {
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
-    const rows = await tx.select().from(entityFields).where(eq(entityFields.entityId, entityId)).orderBy(entityFields.createdAt)
+    // sortOrder primero ("el organizador", ver comentario en el schema);
+    // createdAt como desempate (dos campos nunca deberian compartir
+    // sortOrder en la practica, pero createEntityField()/reorderEntityFields()
+    // de abajo no lo garantizan con una constraint de base - un desempate
+    // estable evita que el orden "salte" sin razon si eso llegara a pasar).
+    const rows = await tx.select().from(entityFields).where(eq(entityFields.entityId, entityId)).orderBy(entityFields.sortOrder, entityFields.createdAt)
     return rows.map(toSummary)
   })
 }
@@ -175,6 +189,16 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
 
+    // "El organizador" (pedido del usuario, 2026-09-01): un campo nuevo se
+    // agrega siempre al final - mismo criterio que detailLayout.properties
+    // (ERD-74) y listLayout.columns (ERD-75), que tambien suman un campo
+    // nuevo al final de lo ya configurado en vez de al principio.
+    const [{ value: maxSortOrder }] = await tx
+      .select({ value: sql<number>`coalesce(max(${entityFields.sortOrder}), -1)` })
+      .from(entityFields)
+      .where(eq(entityFields.entityId, entityId))
+    const nextSortOrder = maxSortOrder + 1
+
     let row: typeof entityFields.$inferSelect
     try {
       ;[row] = await tx
@@ -185,7 +209,8 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
           label: input.label,
           dataType: input.dataType,
           validationRules: input.validationRules ?? {},
-          isRequired: input.isRequired
+          isRequired: input.isRequired,
+          sortOrder: nextSortOrder
         })
         .returning()
     } catch (err) {
@@ -293,5 +318,43 @@ export async function deleteEntityField(tenantId: string, fieldId: string): Prom
     await tx.delete(entityFields).where(eq(entityFields.id, fieldId))
     invalidateEntitySchemaCache(tenantId, current.entityId)
     return 'deleted'
+  })
+}
+
+/**
+ * "El organizador" (pedido del usuario, 2026-09-01): guarda un nuevo orden
+ * para TODOS los campos de una entidad de una sola vez - `order` es la lista
+ * completa de fieldIds en el orden deseado (posicion en el array = nuevo
+ * sortOrder, 0-based). Se exige que sea EXACTAMENTE el conjunto de campos
+ * existentes (mismo tamaño, sin duplicados, sin ids ajenos) para no dejar
+ * sortOrder en un estado parcial si el frontend manda una lista
+ * desincronizada (ej. una pestaña vieja con un campo ya borrado en otra).
+ *
+ * A diferencia de update/deleteEntityField (resueltos por fieldId propio, sin
+ * necesitar entityId en la URL - ver comentario largo arriba en este
+ * archivo), reordenar SI necesita el entityId explicito: no alcanza con "el
+ * campo tal", hace falta saber contra que conjunto completo de campos
+ * validar `order`. No se marca entity_field_history ni is_dirty aca - el
+ * orden no es parte de la "forma" del campo que esos mecanismos versionan
+ * (ver metadataShapeChanged en ModuleFieldsCard.vue), asi que reordenar no
+ * afecta la validacion de records existentes.
+ */
+export async function reorderEntityFields(tenantId: string, entityId: string, order: string[]): Promise<EntityFieldSummary[]> {
+  return withTenant(tenantId, async (tx) => {
+    await assertEntityInTenant(tx, tenantId, entityId)
+
+    const existing = await tx.select({ id: entityFields.id }).from(entityFields).where(eq(entityFields.entityId, entityId))
+    const existingIds = new Set(existing.map((f) => f.id))
+    const orderIds = new Set(order)
+    if (order.length !== existing.length || orderIds.size !== order.length || !order.every((id) => existingIds.has(id))) {
+      throw new InvalidFieldOrderError('El orden debe incluir exactamente los campos actuales del modulo, sin repetidos ni faltantes')
+    }
+
+    for (let i = 0; i < order.length; i++) {
+      await tx.update(entityFields).set({ sortOrder: i, updatedAt: new Date() }).where(eq(entityFields.id, order[i]))
+    }
+
+    const rows = await tx.select().from(entityFields).where(eq(entityFields.entityId, entityId)).orderBy(entityFields.sortOrder, entityFields.createdAt)
+    return rows.map(toSummary)
   })
 }

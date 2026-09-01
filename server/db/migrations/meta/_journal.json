@@ -134,6 +134,13 @@
       "when": 1788231681105,
       "tag": "0018_erd_editar_modulo_is_active",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788234873854,
+      "tag": "0019_entity_fields_sort_order",
+      "breakpoints": true
     }
   ]
 }

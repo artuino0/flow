@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, Hash, KeyRound, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -190,12 +190,105 @@ async function runFieldDelete(fieldId: string) {
   deleteError.value = null
   deletingId.value = fieldId
   try {
-    await $fetch(`/api/entity-fields/${fieldId}`, { method: 'DELETE' })
+    // Nitro tipa $fetch por PATRON de ruta - desde que existe el sibling
+    // ESTATICO /api/entity-fields/reorder (put-only, "el organizador",
+    // 2026-09-01), el template literal `/api/entity-fields/${fieldId}`
+    // matchea AMBOS `/api/entity-fields/:fieldId` (get/put/delete) y
+    // `/api/entity-fields/reorder` (put) a nivel de tipos - typescript no
+    // sabe que fieldId nunca sera literalmente "reorder" - y el metodo
+    // permitido queda angostado a la INTERSECCION de ambos (solo "put"), lo
+    // que rompe este DELETE real en tiempo de compilacion (no en runtime: el
+    // router real si distingue "reorder" de un uuid sin problema). Se
+    // widening la url a `string` para que $fetch use su firma generica en
+    // vez de la sobrecarga por ruta - mismo problema no aplica a
+    // fetchAffectedRecords()/submitFieldUpdate() de arriba porque GET (sin
+    // method explicito) y PUT si caen dentro de esa interseccion.
+    const url: string = `/api/entity-fields/${fieldId}`
+    await $fetch(url, { method: 'DELETE' })
     emit('changed')
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el campo'
   } finally {
     deletingId.value = null
+  }
+}
+
+// "El organizador" (pedido del usuario, 2026-09-01): reordenar campos con
+// drag-and-drop real (feedback explicito: nada de botones ↑/↓ - a diferencia
+// del builder de Opciones/Columnas de FieldFormModal.vue, que si usa ese
+// patron mas simple porque ahi el orden es un borrador local que recien se
+// persiste al guardar el campo entero). Drag-and-drop NATIVO del navegador
+// (draggable + eventos drag*), sin sumar ninguna libreria: la lista es chica
+// y de un solo nivel, no hace falta mas que eso.
+//
+// `dropIndicator` guarda sobre que fila esta el cursor y si soltaria ANTES o
+// DESPUES de ella (mitad superior/inferior de la fila, calculado en
+// onDragOver) - la linea naranja del template se dibuja ahi, apuntando
+// exactamente donde caeria el campo si se suelta ahora.
+//
+// Cada campo ya existe como su propia fila en la base, asi que soltar
+// dispara de inmediato PUT /api/entity-fields/reorder con el array completo
+// de ids en el nuevo orden (mismo criterio de "guardado inmediato" que ya
+// usan onSubmit/onDelete de arriba).
+const reorderError = ref<string | null>(null)
+const reordering = ref(false)
+const draggingIndex = ref<number | null>(null)
+const dropIndicator = ref<{ index: number; position: 'before' | 'after' } | null>(null)
+
+function onDragStart(index: number, event: DragEvent) {
+  draggingIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    // Requerido por Firefox para que dragstart no se cancele - el contenido
+    // en si no se usa (el estado real vive en draggingIndex).
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function onDragOverRow(index: number, event: DragEvent) {
+  if (draggingIndex.value === null) return
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const position = event.clientY - rect.top < rect.height / 2 ? 'before' : 'after'
+  dropIndicator.value = { index, position }
+}
+
+function onDragLeaveRow(index: number) {
+  if (dropIndicator.value?.index === index) dropIndicator.value = null
+}
+
+function onDragEnd() {
+  draggingIndex.value = null
+  dropIndicator.value = null
+}
+
+async function onDrop() {
+  const from = draggingIndex.value
+  const indicator = dropIndicator.value
+  draggingIndex.value = null
+  dropIndicator.value = null
+  if (from === null || !indicator) return
+
+  // La posicion "despues de la fila X" en la lista ORIGINAL no es la misma
+  // posicion de destino en el array una vez que se saca el campo arrastrado
+  // de su lugar viejo - si el origen esta antes del destino, todo lo que
+  // queda entre medio se corre un lugar hacia atras.
+  let to = indicator.position === 'after' ? indicator.index + 1 : indicator.index
+  if (from < to) to -= 1
+  if (to === from) return
+
+  const order = props.fields.map((f) => f.id)
+  const [movedId] = order.splice(from, 1)
+  order.splice(to, 0, movedId)
+
+  reorderError.value = null
+  reordering.value = true
+  try {
+    await $fetch('/api/entity-fields/reorder', { method: 'PUT', body: { entityId: props.entityId, order } })
+    emit('changed')
+  } catch (err: any) {
+    reorderError.value = err?.data?.statusMessage || 'No se pudo reordenar los campos'
+  } finally {
+    reordering.value = false
   }
 }
 
@@ -240,11 +333,33 @@ async function confirmImpactModal() {
     <p v-if="deleteError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">
       {{ deleteError }}
     </p>
+    <p v-if="reorderError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">
+      {{ reorderError }}
+    </p>
 
     <p v-if="fields.length === 0" class="p-6 text-center text-sm text-brand-text-muted">Todavía no agregaste ningún campo.</p>
 
     <div v-else class="flex flex-col divide-y divide-brand-border-light">
-      <div v-for="field in fields" :key="field.id" class="flex items-center gap-3 px-5 py-3">
+      <div
+        v-for="(field, index) in fields"
+        :key="field.id"
+        class="relative flex items-center gap-3 px-5 py-3 transition-opacity"
+        :class="draggingIndex === index ? 'opacity-40' : ''"
+        :draggable="!reordering"
+        @dragstart="onDragStart(index, $event)"
+        @dragover.prevent="onDragOverRow(index, $event)"
+        @dragleave="onDragLeaveRow(index)"
+        @drop.prevent="onDrop"
+        @dragend="onDragEnd"
+      >
+        <!-- "El organizador" (pedido del usuario, 2026-09-01): drag-and-drop
+             real (nativo del navegador, sin libreria) - la linea naranja
+             marca EXACTAMENTE donde caeria el campo si se suelta ahora
+             (arriba o abajo de esta fila, segun en que mitad este el cursor,
+             calculado en onDragOverRow). -->
+        <div v-if="dropIndicator && dropIndicator.index === index && dropIndicator.position === 'before'" class="absolute inset-x-0 top-0 h-0.5 rounded-full bg-brand-orange" />
+        <div v-if="dropIndicator && dropIndicator.index === index && dropIndicator.position === 'after'" class="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-brand-orange" />
+        <GripVertical class="h-4 w-4 shrink-0 cursor-grab text-brand-text-muted active:cursor-grabbing" :stroke-width="1.75" />
         <div class="flex min-w-0 flex-1 flex-col">
           <span class="truncate text-sm font-semibold text-brand-text">{{ field.label }}</span>
           <span class="truncate font-mono text-xs text-brand-text-muted">{{ field.name }}</span>

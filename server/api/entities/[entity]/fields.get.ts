@@ -32,7 +32,14 @@ export default defineEventHandler(async (event) => {
       })
       .from(entityFields)
       .where(eq(entityFields.entityId, entity.id))
-      .orderBy(entityFields.createdAt)
+      // "El organizador" (pedido del usuario, 2026-09-01) - mismo criterio de
+      // orden que listEntityFields() (server/utils/moduleEntityFields.ts):
+      // sortOrder primero, createdAt como desempate estable. Esta es la
+      // fuente real que consumen ModuleFieldsCard.vue (el editor en si),
+      // DynamicForm.vue (formulario real de crear/editar) y ModulePreviewCard.vue
+      // (vista previa) - reordenar cambia el orden en los tres lugares a la
+      // vez, no solo en el editor.
+      .orderBy(entityFields.sortOrder, entityFields.createdAt)
   )
 
   // HU-ERD-24: se agregan los 4 flags de permiso ademas de canRead (ya

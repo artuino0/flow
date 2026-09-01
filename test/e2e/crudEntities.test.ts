@@ -732,6 +732,84 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
     expect(dupColumnsRes.status).toBe(422)
   })
 
+  // "El organizador" - pedido del usuario (2026-09-01) tras ver la lista de
+  // campos de un modulo sin forma de reordenarlos. Entidad propia (no
+  // fieldsEntityId, que ya acumula campos de otros tests de este describe)
+  // para poder verificar el orden exacto sin interferencia.
+  it('PUT /api/entity-fields/reorder cambia el orden real (GET /api/entities/:slug/fields lo refleja), valida el set completo de ids, y un campo nuevo se agrega al final', async () => {
+    const reorderSlug = 'reorder-e2e'
+    const entityRes = await api('/api/entities', { method: 'POST', body: JSON.stringify({ name: 'Reorder E2E', slug: reorderSlug }) })
+    expect(entityRes.status).toBe(201)
+    const entity = await entityRes.json()
+
+    const names = ['primero', 'segundo', 'tercero']
+    const created: Array<{ id: string }> = []
+    for (const name of names) {
+      const res = await api(`/api/entities/${entity.id}/fields`, { method: 'POST', body: JSON.stringify({ name, label: name, dataType: 'text' }) })
+      expect(res.status).toBe(201)
+      created.push(await res.json())
+    }
+
+    const initialRes = await api(`/api/entities/${reorderSlug}/fields`)
+    const initialFields = (await initialRes.json()).fields
+    expect(initialFields.map((f: { name: string }) => f.name)).toEqual(names)
+
+    const newOrder = [created[2].id, created[1].id, created[0].id]
+    const reorderRes = await api('/api/entity-fields/reorder', { method: 'PUT', body: JSON.stringify({ entityId: entity.id, order: newOrder }) })
+    expect(reorderRes.status).toBe(200)
+
+    const afterRes = await api(`/api/entities/${reorderSlug}/fields`)
+    const afterFields = (await afterRes.json()).fields
+    expect(afterFields.map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero'])
+
+    const missingIdRes = await api('/api/entity-fields/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ entityId: entity.id, order: [created[0].id, created[1].id] })
+    })
+    expect(missingIdRes.status).toBe(422)
+
+    const dupIdRes = await api('/api/entity-fields/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ entityId: entity.id, order: [created[0].id, created[0].id, created[1].id] })
+    })
+    expect(dupIdRes.status).toBe(422)
+
+    const foreignIdRes = await api('/api/entity-fields/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ entityId: entity.id, order: [created[0].id, created[1].id, randomUUID()] })
+    })
+    expect(foreignIdRes.status).toBe(422)
+
+    const notFoundRes = await api('/api/entity-fields/reorder', { method: 'PUT', body: JSON.stringify({ entityId: randomUUID(), order: newOrder }) })
+    expect(notFoundRes.status).toBe(404)
+
+    const noAuthRes = await fetch(`${baseUrl}/api/entity-fields/reorder`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entityId: entity.id, order: newOrder })
+    })
+    expect(noAuthRes.status).toBe(401)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entity-fields/reorder`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: fieldsNonAdminCookie },
+      body: JSON.stringify({ entityId: entity.id, order: newOrder })
+    })
+    expect(nonAdminRes.status).toBe(403)
+
+    // Un campo nuevo se agrega al final (sortOrder = max+1), no al principio
+    // ni en sortOrder=0 - mismo criterio que detailLayout.properties/
+    // listLayout.columns (ERD-74/75) al sumar un campo nuevo.
+    const newFieldRes = await api(`/api/entities/${entity.id}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'cuarto', label: 'Cuarto', dataType: 'text' })
+    })
+    expect(newFieldRes.status).toBe(201)
+    const finalRes = await api(`/api/entities/${reorderSlug}/fields`)
+    const finalFields = (await finalRes.json()).fields
+    expect(finalFields.map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero', 'cuarto'])
+  })
+
   it('PUT fields/:fieldId cambia dataType, escribe entity_field_history y deja los records existentes is_dirty (revalidacion perezosa real vuelve a validarlos en su proximo GET)', async () => {
     const createRes = await api(`/api/entities/${fieldsEntityId}/fields`, {
       method: 'POST',
