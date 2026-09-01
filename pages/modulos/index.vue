@@ -4,9 +4,14 @@
 // real de Screen/Listado Modulos en ERPDinamico.pen (revisado con las
 // herramientas de Pencil, no inferido de otra pantalla del repo): breadcrumb,
 // toolbar con buscador + boton "Crear modulo", tabla Modulo/Registros/Campos/
-// Creado/Acciones. La columna "Estado" (Publicado/Borrador) del diseno se
-// omite a proposito - no existe como concepto en `entities` hoy (ver
-// listEntities() en server/utils/moduleEntities.ts).
+// Creado/Acciones.
+//
+// Rediseno "Editar Módulo" (2026-09-01): la columna "Estado" (Publicado/
+// Borrador en el diseno original de esta pantalla, que no tenia mock propio
+// actualizado) ya NO se omite - ahora existe un concepto real de "modulo
+// activo/inactivo" (entities.is_active, ver comentario largo en
+// server/db/schema.ts), asi que se agrega como badge Activo/Inactivo
+// (mismo look que el badge del header de pages/modulos/[id]/editar.vue).
 //
 // "Crear modulo" y "Editar" navegan a paginas dedicadas (pages/modulos/nuevo.vue,
 // pages/modulos/[id]/editar.vue) en vez de un panel/card en esta misma
@@ -24,6 +29,7 @@ interface ModuleRow {
   slug: string
   name: string
   description: string | null
+  isActive: boolean
   createdAt: string
   recordCount: number
   fieldCount: number
@@ -122,6 +128,7 @@ async function onDelete(module: ModuleRow) {
           <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
               <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Módulo</th>
+              <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Estado</th>
               <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">Registros</th>
               <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">Campos</th>
               <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Creado</th>
@@ -140,6 +147,12 @@ async function onDelete(module: ModuleRow) {
                     <span class="text-xs text-brand-text-muted">/{{ module.slug }}</span>
                   </div>
                 </div>
+              </td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                  :class="module.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+                >{{ module.isActive ? 'Activo' : 'Inactivo' }}</span>
               </td>
               <td class="px-4 py-3 text-right text-brand-text">{{ module.recordCount }}</td>
               <td class="px-4 py-3 text-right text-brand-text">{{ module.fieldCount }}</td>

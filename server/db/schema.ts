@@ -11,6 +11,15 @@ export const entities = pgTable('entities', {
   slug: text('slug').notNull(),
   description: text('description'),
   isSystem: boolean('is_system').notNull().default(false),
+  // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, 2026-09-01):
+  // switch "Módulo activo" - true por defecto (todo modulo existente antes de
+  // esta columna sigue activo, sin migracion de datos aparte). Cuando esta en
+  // false, requirePermission() (server/utils/rbac.ts) bloquea con 403 el
+  // acceso a records/campos de esta entidad para cualquier rol NO
+  // administrador (roles.isSystem) - un administrador siempre puede seguir
+  // viendo/editando el modulo (para poder reactivarlo). No borra ni oculta
+  // datos, solo bloquea el acceso mientras esta apagado.
+  isActive: boolean('is_active').notNull().default(true),
   // HU-ERD-74: configuracion del "Diseño del detalle" (que propiedades y
   // relaciones inversas se muestran en la ficha de un registro, en que orden,
   // y si se muestra la linea de tiempo de actividad). Null = sin configurar

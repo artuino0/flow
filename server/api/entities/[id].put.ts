@@ -4,8 +4,9 @@ import { updateEntity } from '~/server/utils/moduleEntities'
 import { detailLayoutSchema } from '~/server/utils/detailLayout'
 import { listLayoutSchema } from '~/server/utils/listLayout'
 
-// PUT /api/entities/:id { name?, description?, detailLayout?, listLayout? }
-// (HU-ERD-66, detailLayout HU-ERD-74, listLayout HU-ERD-75)
+// PUT /api/entities/:id { name?, description?, isActive?, detailLayout?, listLayout? }
+// (HU-ERD-66, detailLayout HU-ERD-74, listLayout HU-ERD-75, isActive:
+// rediseno "Editar Módulo" - ver comentario largo en server/db/schema.ts)
 // Edita nombre/descripcion de un modulo existente. El slug NO se puede
 // cambiar aca a proposito - ya se usa en URLs (/registros/:slug) y en el
 // endpoint de campos (GET /api/entities/:slug/fields, HU-ERD-23); renombrarlo
@@ -13,6 +14,7 @@ import { listLayoutSchema } from '~/server/utils/listLayout'
 const bodySchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio').optional(),
   description: z.string().trim().min(1).nullable().optional(),
+  isActive: z.boolean().optional(),
   // HU-ERD-74/75: null explicito borra el layout guardado (vuelve al orden
   // por defecto, ver resolveDetailLayout()/resolveListLayout()); undefined
   // (omitido) no lo toca.

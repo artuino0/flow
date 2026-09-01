@@ -117,6 +117,16 @@ interface ColumnDraft {
   readonly: boolean
 }
 
+// Bug real reportado por el usuario (2026-09-01): "agrego campos y no hace
+// nada" - el boton "Agregar campo" se queda deshabilitado en silencio
+// (canSubmit exige form.name no vacio) si el usuario solo completa "Etiqueta
+// visible" sin tocar "Nombre técnico" - a diferencia del builder de Opciones
+// (onOptionLabelInput) y del de Columnas (onColumnLabelInput), que SI
+// auto-generan el nombre tecnico desde la etiqueta. Se corrige con el mismo
+// patron nameTouched/slugifyIdentifier ya usado ahi, aplicado ahora tambien
+// al campo principal (name/label) del formulario.
+const nameTouched = ref(false)
+
 const form = reactive({
   name: '',
   label: '',
@@ -202,6 +212,7 @@ watch(
     const rules = (field?.validationRules ?? {}) as Record<string, unknown>
     form.name = field?.name ?? ''
     form.label = field?.label ?? ''
+    nameTouched.value = !!field?.name
     form.dataType = field?.dataType ?? 'text'
     form.isRequired = field?.isRequired ?? false
     form.minLength = typeof rules.minLength === 'number' ? rules.minLength : null
@@ -248,6 +259,15 @@ watch(
   },
   { immediate: true }
 )
+
+function onFieldLabelInput(value: string) {
+  form.label = value
+  if (!nameTouched.value) form.name = slugifyIdentifier(value)
+}
+function onFieldNameInput(value: string) {
+  nameTouched.value = true
+  form.name = value
+}
 
 function selectDataType(value: string) {
   if (value === 'select') {
@@ -437,21 +457,23 @@ function onSubmit() {
             <label for="field-name" class="text-[13px] font-semibold text-brand-text">Nombre técnico</label>
             <input
               id="field-name"
-              v-model="form.name"
+              :value="form.name"
               type="text"
               :disabled="mode === 'edit'"
               class="w-full rounded border border-brand-border px-3 py-[9px] font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-bg disabled:text-brand-text-muted"
+              @input="onFieldNameInput(($event.target as HTMLInputElement).value)"
             />
             <p v-if="nameError" class="text-xs text-brand-error-text">{{ nameError }}</p>
-            <p v-else class="text-xs text-brand-text-muted">{{ mode === 'edit' ? 'No se puede cambiar una vez creado.' : 'Sin espacios, usado en la API' }}</p>
+            <p v-else class="text-xs text-brand-text-muted">{{ mode === 'edit' ? 'No se puede cambiar una vez creado.' : 'Se completa automáticamente a partir de la etiqueta; puede ajustarse si hace falta.' }}</p>
           </div>
           <div class="flex flex-col gap-1.5">
             <label for="field-label" class="text-[13px] font-semibold text-brand-text">Etiqueta visible</label>
             <input
               id="field-label"
-              v-model="form.label"
+              :value="form.label"
               type="text"
               class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              @input="onFieldLabelInput(($event.target as HTMLInputElement).value)"
             />
           </div>
         </div>

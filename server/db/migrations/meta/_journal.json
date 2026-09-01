@@ -127,6 +127,13 @@
       "when": 1788211689348,
       "tag": "0017_erd75_entities_list_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788231681105,
+      "tag": "0018_erd_editar_modulo_is_active",
+      "breakpoints": true
     }
   ]
 }

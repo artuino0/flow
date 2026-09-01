@@ -24,7 +24,7 @@
 // HU-ERD-74 suma el paso 3 "Diseño del detalle" con el mismo criterio.
 // HU-ERD-75 suma el paso 4 "Diseño del listado" (Table Builder), tambien
 // clickeable libremente como los otros tres.
-import { Blocks, Check } from '@lucide/vue'
+import { Blocks, Trash2 } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -34,18 +34,40 @@ interface ModuleDetail {
   slug: string
   name: string
   description: string | null
+  // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, revisado con las
+  // herramientas de Pencil antes de este cambio) - switch "Módulo activo".
+  isActive: boolean
 }
+
+// Rediseno "Editar Módulo": el indicador de 4 pasos con circulos se
+// reemplaza por una barra de pestañas (Tab/Active - Tab/Default del .pen),
+// con una 5ta pestaña "Vista previa" que no existia antes. Se mantienen las
+// mismas 5 secciones/claves internas de siempre (name/description/isActive
+// en "basica", ModuleFieldsCard en "campos", los mismos configuradores de
+// ERD-74/75 en "detalle"/"listado") - el rediseno solo cambia la NAVEGACION
+// entre ellas, no su contenido ni su forma de guardar. El .pen solo dibuja 3
+// pestañas (Información general/Campos/Vista previa, sin "Diseño del
+// detalle" ni "Diseño del listado" propias) - se agregan esas 2 como
+// pestañas mas siguiendo el mismo look, decision confirmada con el usuario.
+const TABS = [
+  { key: 'basica', label: 'Información general' },
+  { key: 'campos', label: 'Campos' },
+  { key: 'detalle', label: 'Diseño del detalle' },
+  { key: 'listado', label: 'Diseño del listado' },
+  { key: 'preview', label: 'Vista previa' }
+] as const
+type StepKey = (typeof TABS)[number]['key']
 
 const route = useRoute()
 const router = useRouter()
 const moduleId = route.params.id as string
 
-const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
+const step = ref<StepKey>('basica')
 
 // No existe GET /api/entities/:id puntual - se resuelve del listado ya
 // existente (GET /api/entities, HU-ERD-69) en vez de sumar otro endpoint
 // solo para esto.
-const { data, pending, error: fetchError } = await useFetch<{ entities: ModuleDetail[] }>('/api/entities', {
+const { data, pending, error: fetchError, refresh } = await useFetch<{ entities: ModuleDetail[] }>('/api/entities', {
   key: 'modulos-list',
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
@@ -54,10 +76,12 @@ const currentModule = computed(() => data.value?.entities.find((m) => m.id === m
 
 const name = ref('')
 const description = ref('')
+const isActive = ref(true)
 watchEffect(() => {
   if (currentModule.value) {
     name.value = currentModule.value.name
     description.value = currentModule.value.description ?? ''
+    isActive.value = currentModule.value.isActive
   }
 })
 
@@ -72,13 +96,36 @@ async function onSave() {
   try {
     await $fetch(`/api/entities/${moduleId}`, {
       method: 'PUT',
-      body: { name: name.value, description: description.value || null }
+      body: { name: name.value, description: description.value || null, isActive: isActive.value }
     })
     saved.value = true
+    await refresh()
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudo guardar el módulo'
   } finally {
     saving.value = false
+  }
+}
+
+// Rediseno "Editar Módulo": "Zona de peligro" (Card Danger del .pen) - mismo
+// mecanismo de borrado que pages/modulos/index.vue (DELETE /api/entities/:id,
+// bloqueado con 409 si el modulo tiene records - HU-ERD-66), ahora tambien
+// disponible desde la propia pagina de edicion, no solo desde el listado.
+const deleteError = ref<string | null>(null)
+const deleting = ref(false)
+async function onDeleteModule() {
+  if (!currentModule.value) return
+  if (!confirm(`Eliminar el modulo "${currentModule.value.name}"? Esta accion no se puede deshacer.`)) return
+
+  deleteError.value = null
+  deleting.value = true
+  try {
+    await $fetch(`/api/entities/${moduleId}`, { method: 'DELETE' })
+    await router.push('/modulos')
+  } catch (err: any) {
+    deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el módulo'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -182,105 +229,144 @@ async function onSaveListLayout() {
           <Blocks class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
         </div>
         <div class="flex flex-col">
-          <span class="text-[15px] font-bold text-brand-text">{{ currentModule.name }}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[15px] font-bold text-brand-text">{{ currentModule.name }}</span>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-semibold"
+              :class="currentModule.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+            >{{ currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
+          </div>
           <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ currentModule.slug }}</span>
         </div>
       </div>
 
-      <!-- Indicador de pasos - mismo look que pages/modulos/nuevo.vue, pero
-           clickeable en las dos direcciones (el modulo ya existe completo,
-           no hay "paso bloqueado"). Solo UN paso se muestra por vez. -->
-      <div class="flex items-center gap-3">
-        <button type="button" class="flex items-center gap-2" @click="step = 'basica'">
-          <span
-            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
-            :class="step === 'basica' ? 'bg-brand-orange text-white' : 'bg-brand-success-text text-white'"
-          >
-            <Check v-if="step !== 'basica'" class="h-3.5 w-3.5" :stroke-width="2.5" />
-            <template v-else>1</template>
-          </span>
-          <span class="text-sm font-bold" :class="step === 'basica' ? 'text-brand-text' : 'text-brand-text-secondary'">Información básica</span>
-        </button>
-        <div class="h-px w-20 bg-brand-border" />
-        <button type="button" class="flex items-center gap-2" @click="step = 'campos'">
-          <span
-            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
-            :class="step === 'campos' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
-          >2</span>
-          <span class="text-sm font-bold" :class="step === 'campos' ? 'text-brand-text' : 'text-brand-text-secondary'">Campos</span>
-        </button>
-        <div class="h-px w-20 bg-brand-border" />
-        <button type="button" class="flex items-center gap-2" @click="step = 'detalle'">
-          <span
-            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
-            :class="step === 'detalle' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
-          >3</span>
-          <span class="text-sm font-bold" :class="step === 'detalle' ? 'text-brand-text' : 'text-brand-text-secondary'">Diseño del detalle</span>
-        </button>
-        <div class="h-px w-20 bg-brand-border" />
-        <button type="button" class="flex items-center gap-2" @click="step = 'listado'">
-          <span
-            class="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[13px] font-bold"
-            :class="step === 'listado' ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
-          >4</span>
-          <span class="text-sm font-bold" :class="step === 'listado' ? 'text-brand-text' : 'text-brand-text-secondary'">Diseño del listado</span>
+      <!-- Rediseno "Editar Módulo" (Tab/Active - Tab/Default del .pen,
+           revisado con las herramientas de Pencil): barra de pestañas en vez
+           del indicador de pasos con circulos anterior - todas siempre
+           clickeables (el modulo ya existe completo, no hay "paso
+           bloqueado"). Solo UNA pestaña se muestra por vez. -->
+      <div class="flex gap-8 border-b border-brand-border-light">
+        <button
+          v-for="tab in TABS"
+          :key="tab.key"
+          type="button"
+          class="flex flex-col items-center gap-2.5 pb-2.5 pt-1"
+          @click="step = tab.key"
+        >
+          <span class="text-sm" :class="step === tab.key ? 'font-bold text-brand-orange' : 'font-semibold text-brand-text-secondary'">{{ tab.label }}</span>
+          <span class="h-0.5 w-full rounded-full" :class="step === tab.key ? 'bg-brand-orange' : 'bg-transparent'" />
         </button>
       </div>
 
       <template v-if="step === 'basica'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-            <div class="border-b border-brand-border-light p-5">
-              <h2 class="text-[15px] font-bold text-brand-text">Información básica</h2>
+          <div class="flex flex-col gap-5">
+            <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+              <div class="border-b border-brand-border-light p-5">
+                <h2 class="text-[15px] font-bold text-brand-text">Información del módulo</h2>
+              </div>
+              <div class="flex flex-col gap-4 p-5">
+                <div class="flex flex-col gap-1.5">
+                  <label for="modulo-name" class="text-[13px] font-semibold text-brand-text">Nombre <span class="text-brand-error-text">*</span></label>
+                  <input
+                    id="modulo-name"
+                    v-model="name"
+                    type="text"
+                    required
+                    class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  />
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <label for="modulo-description" class="text-[13px] font-semibold text-brand-text">Descripción</label>
+                  <textarea
+                    id="modulo-description"
+                    v-model="description"
+                    rows="2"
+                    class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  />
+                </div>
+
+                <!-- Rediseno "Editar Módulo": el "Slug" pasa a llamarse "Ruta"
+                     (mismo dato, mismo criterio de solo-lectura de siempre -
+                     ya se usa en URLs /registros/:slug y en
+                     GET /api/entities/:slug/fields, HU-ERD-23). -->
+                <div class="flex flex-col gap-1.5">
+                  <label for="modulo-slug" class="text-[13px] font-semibold text-brand-text">Ruta</label>
+                  <input
+                    id="modulo-slug"
+                    :value="`/${currentModule.slug}`"
+                    type="text"
+                    disabled
+                    class="w-full rounded border border-brand-border bg-brand-bg px-3 py-[9px] font-mono text-sm text-brand-text-muted"
+                  />
+                  <p class="text-xs text-brand-text-muted">La ruta no se puede editar una vez creado el módulo.</p>
+                </div>
+
+                <div class="h-px bg-brand-border-light" />
+
+                <!-- Rediseno "Editar Módulo": switch "Módulo activo" (Switch
+                     Row del .pen) - se guarda junto con el resto de esta
+                     tarjeta via "Guardar cambios" (no es un toggle
+                     inmediato); el bloqueo real para roles NO administrador
+                     lo aplica requirePermission() (server/utils/rbac.ts). -->
+                <div class="flex items-center justify-between">
+                  <div class="flex flex-col gap-0.5">
+                    <p class="text-sm font-semibold text-brand-text">Módulo activo</p>
+                    <p class="text-xs text-brand-text-muted">Los usuarios podrán ver y usar este módulo</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors"
+                    :class="isActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
+                    @click="isActive = !isActive"
+                  >
+                    <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+                  </button>
+                </div>
+              </div>
+
+              <p v-if="saveError" class="mx-5 mb-2 text-sm text-brand-error-text">{{ saveError }}</p>
+              <p v-if="saved" class="mx-5 mb-2 text-sm text-brand-success-text">Módulo guardado correctamente.</p>
+
+              <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
+                <NuxtLink to="/modulos" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
+                <button
+                  type="button"
+                  :disabled="saving || !name"
+                  class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  @click="onSave"
+                >
+                  {{ saving ? 'Guardando...' : 'Guardar cambios' }}
+                </button>
+              </div>
             </div>
-            <div class="flex flex-col gap-4 p-5">
-              <div class="flex flex-col gap-1.5">
-                <label for="modulo-name" class="text-[13px] font-semibold text-brand-text">Nombre <span class="text-brand-error-text">*</span></label>
-                <input
-                  id="modulo-name"
-                  v-model="name"
-                  type="text"
-                  required
-                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-                />
+
+            <!-- Rediseno "Editar Módulo": "Zona de peligro" (Card Danger del
+                 .pen) - mismo mecanismo de borrado que pages/modulos/index.vue
+                 (DELETE /api/entities/:id, bloqueado con 409 si el modulo
+                 tiene records, HU-ERD-66), ahora disponible tambien desde
+                 aca, no solo desde el listado. -->
+            <div class="flex flex-col rounded-lg border border-brand-error-text/30 bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+              <div class="border-b border-brand-error-text/30 p-5">
+                <h2 class="text-[15px] font-bold text-brand-error-text">Zona de peligro</h2>
               </div>
-
-              <div class="flex flex-col gap-1.5">
-                <label for="modulo-slug" class="text-[13px] font-semibold text-brand-text">Slug</label>
-                <input
-                  id="modulo-slug"
-                  :value="currentModule.slug"
-                  type="text"
-                  disabled
-                  class="w-full rounded border border-brand-border bg-brand-bg px-3 py-[9px] font-mono text-sm text-brand-text-muted"
-                />
-                <p class="text-xs text-brand-text-muted">El slug no se puede cambiar una vez creado el módulo.</p>
+              <div class="flex items-center justify-between gap-4 p-5">
+                <div class="flex flex-col gap-0.5">
+                  <p class="text-sm font-semibold text-brand-text">Eliminar módulo</p>
+                  <p class="text-xs text-brand-text-muted">Esta acción no se puede deshacer. Se eliminarán todos los registros de {{ currentModule.name }}.</p>
+                </div>
+                <button
+                  type="button"
+                  :disabled="deleting"
+                  class="flex shrink-0 items-center gap-1.5 rounded border border-brand-error-text bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
+                  @click="onDeleteModule"
+                >
+                  <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
+                  {{ deleting ? 'Eliminando...' : 'Eliminar módulo' }}
+                </button>
               </div>
-
-              <div class="flex flex-col gap-1.5">
-                <label for="modulo-description" class="text-[13px] font-semibold text-brand-text">Descripción</label>
-                <textarea
-                  id="modulo-description"
-                  v-model="description"
-                  rows="2"
-                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-                />
-              </div>
-            </div>
-
-            <p v-if="saveError" class="mx-5 mb-2 text-sm text-brand-error-text">{{ saveError }}</p>
-            <p v-if="saved" class="mx-5 mb-2 text-sm text-brand-success-text">Módulo guardado correctamente.</p>
-
-            <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-              <NuxtLink to="/modulos" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
-              <button
-                type="button"
-                :disabled="saving || !name"
-                class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-                @click="onSave"
-              >
-                {{ saving ? 'Guardando...' : 'Guardar cambios' }}
-              </button>
+              <p v-if="deleteError" class="mx-5 mb-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
             </div>
           </div>
 
@@ -324,10 +410,10 @@ async function onSaveListLayout() {
         </div>
       </template>
 
-      <!-- HU-ERD-75: paso 4 - ver components/ModuleListLayoutCard.vue
+      <!-- HU-ERD-75: paso "Diseño del listado" - ver components/ModuleListLayoutCard.vue
            (configurador) y components/ModuleListPreviewCard.vue (vista previa,
            reusa DynamicTable.vue, el mismo componente del listado real). -->
-      <template v-else>
+      <template v-else-if="step === 'listado'">
         <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
         <p v-if="listLayoutSaved" class="text-sm text-brand-success-text">Diseño del listado guardado correctamente.</p>
         <div class="flex justify-end">
@@ -348,6 +434,19 @@ async function onSaveListLayout() {
             :fields="fields"
             :list-layout="listLayout"
           />
+        </div>
+      </template>
+
+      <!-- Rediseno "Editar Módulo": pestaña "Vista previa" (Tab Vista Previa
+           del .pen) - sin mock propio en el archivo (las 2 pantallas
+           revisadas solo muestran "Información general"/"Campos" activas),
+           asi que se interpreta como el mismo ModulePreviewCard de siempre
+           pero a ancho completo, en vez de compartir columna con un
+           configurador - le da a la vista previa el foco central que su
+           nombre de pestaña promete. -->
+      <template v-else>
+        <div class="mx-auto w-full max-w-[480px]">
+          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
         </div>
       </template>
     </template>

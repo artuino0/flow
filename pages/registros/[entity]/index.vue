@@ -241,7 +241,9 @@ async function onDelete(id: string) {
     </div>
 
     <p v-if="metaPending || recordsPending" class="text-sm text-brand-text-muted">Cargando...</p>
-    <p v-else-if="metaError" class="text-sm text-brand-error-text">No se pudo cargar la definicion de esta entidad.</p>
+    <p v-else-if="metaError" class="text-sm text-brand-error-text">
+      {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
+    </p>
     <p v-else-if="recordsError" class="text-sm text-brand-error-text">No se pudieron cargar los registros.</p>
 
     <template v-else-if="meta && recordsData">

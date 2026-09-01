@@ -17,6 +17,9 @@ export interface EntitySummary {
   slug: string
   name: string
   description: string | null
+  // Rediseno "Editar Módulo" (ver comentario largo en server/db/schema.ts) -
+  // switch "Módulo activo". true por defecto.
+  isActive: boolean
   // HU-ERD-74: guardado tal cual (sin resolver contra entity_fields reales) -
   // la resolucion con defaults/reconciliacion vive en resolveDetailLayout()
   // (server/utils/detailLayout.ts), consumida por GET /api/entities/:entity/fields.
@@ -55,14 +58,21 @@ export interface EntityListItem extends EntitySummary {
  * tenant_id/RLS propio (ver moduleEntityFields.ts) - se filtra explicitamente
  * por los ids de entities ya resueltos para este tenant, no por RLS.
  *
- * El diseno tambien trae una columna "Estado" (badge Publicado/Borrador) que
- * no existe como concepto en `entities` hoy - se dejo afuera a proposito,
- * no se inventa el dato ni se agrega un campo nuevo sin una HU que lo pida.
+ * Incluye isActive (rediseno "Editar Módulo", ver comentario largo en
+ * server/db/schema.ts) para que el badge Activo/Inactivo de la columna
+ * "Estado" del listado tenga el dato real, no inventado.
  */
 export async function listEntities(tenantId: string): Promise<EntityListItem[]> {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
-      .select({ id: entities.id, slug: entities.slug, name: entities.name, description: entities.description, createdAt: entities.createdAt })
+      .select({
+        id: entities.id,
+        slug: entities.slug,
+        name: entities.name,
+        description: entities.description,
+        isActive: entities.isActive,
+        createdAt: entities.createdAt
+      })
       .from(entities)
       .where(eq(entities.tenantId, tenantId))
       .orderBy(entities.name)
@@ -143,6 +153,7 @@ export async function createEntity(
       slug: entity.slug,
       name: entity.name,
       description: entity.description,
+      isActive: entity.isActive,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }
@@ -152,12 +163,13 @@ export async function createEntity(
 export async function updateEntity(
   tenantId: string,
   entityId: string,
-  input: { name?: string; description?: string | null; detailLayout?: unknown; listLayout?: unknown }
+  input: { name?: string; description?: string | null; isActive?: boolean; detailLayout?: unknown; listLayout?: unknown }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
+    if (input.isActive !== undefined) setValues.isActive = input.isActive
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
 
@@ -173,6 +185,7 @@ export async function updateEntity(
       slug: entity.slug,
       name: entity.name,
       description: entity.description,
+      isActive: entity.isActive,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }

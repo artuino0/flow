@@ -10,6 +10,8 @@ export interface ResolvedEntity {
   id: string
   slug: string
   name: string
+  // Rediseno "Editar Módulo" - ver comentario largo en server/db/schema.ts.
+  isActive?: boolean
   // HU-ERD-74: incluida explicitamente en el select() de requirePermission()
   // (ver abajo) para que fields.get.ts pueda resolver el detailLayout real,
   // no siempre el default.
@@ -67,26 +69,44 @@ export async function requirePermission(
         id: entities.id,
         slug: entities.slug,
         name: entities.name,
+        isActive: entities.isActive,
         detailLayout: entities.detailLayout,
         listLayout: entities.listLayout
       })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))
       .limit(1)
-    if (!entity) return { entity: null, allowed: false }
+    if (!entity) return { entity: null, allowed: false, inactive: false }
+
+    // Rediseno "Editar Módulo" (switch "Módulo activo", ver comentario largo
+    // en server/db/schema.ts): un modulo desactivado queda invisible/inusable
+    // para cualquier rol NO administrador - se corta ACA, antes de mirar
+    // role_entity_permissions, porque este es el chequeo central que ya
+    // atraviesan fields.get.ts y el CRUD entero de records (ver usos de
+    // requirePermission()). Un administrador (roles.isSystem) sigue teniendo
+    // acceso completo aunque el modulo este apagado - lo necesita para poder
+    // reactivarlo o seguir administrandolo.
+    const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, auth.roleId!)).limit(1)
+    const isAdmin = Boolean(role?.isSystem)
+    if (!entity.isActive && !isAdmin) {
+      return { entity, allowed: false, inactive: true }
+    }
 
     const [perm] = await tx
       .select()
       .from(roleEntityPermissions)
       .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entity.id)))
       .limit(1)
-    if (!perm) return { entity, allowed: false }
+    if (!perm) return { entity, allowed: false, inactive: false }
 
-    return { entity, allowed: Boolean(perm[action]) }
+    return { entity, allowed: Boolean(perm[action]), inactive: false }
   })
 
   if (!result.entity) {
     throw createError({ statusCode: 404, statusMessage: `Entidad "${entitySlug}" no existe` })
+  }
+  if (result.inactive) {
+    throw createError({ statusCode: 403, statusMessage: `El modulo "${entitySlug}" esta desactivado` })
   }
   if (!result.allowed) {
     throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre "${entitySlug}"` })

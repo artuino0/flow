@@ -1140,7 +1140,12 @@ describe('e2e: HU-ERD-70 (Asistente Crear Módulo - paso 2 de campos + reutiliza
     const res = await fetch(`${baseUrl}/modulos/${wizardModuleId}/editar`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Información básica')
+    // Rediseno "Editar Módulo" (2026-09-01): la card de este paso paso a
+    // llamarse "Información del módulo" (antes "Información básica", ver
+    // Screen/Editar Módulo del .pen) - la pestaña activa sigue diciendo
+    // "Información general" en la barra de arriba (chequeado aca tambien).
+    expect(html).toContain('Información del módulo')
+    expect(html).toContain('Información general')
     expect(html).toContain('id="modulo-slug"')
     expect(html).not.toContain('Campos del módulo')
 
@@ -2017,5 +2022,114 @@ describe('e2e: HU-ERD-76 (Advertencia al editar/eliminar un campo con datos exis
     const putRes = await api(`/api/entity-fields/${montoFieldId}`, { method: 'PUT', body: JSON.stringify({ label: 'Monto total (ARS)' }) })
     expect(putRes.status).toBe(200)
     expect((await putRes.json()).label).toBe('Monto total (ARS)')
+  })
+})
+
+// Rediseno "Editar Módulo" (2026-09-01, feedback directo del usuario -
+// bug real "agrego campos y no hace nada" + Screen/Editar Módulo y
+// Screen/Editar Módulo - Campos actualizadas en el .pen, revisadas con las
+// herramientas de Pencil antes de este cambio): switch "Módulo activo"
+// (entities.is_active) bloqueado en requirePermission() para roles NO
+// administrador, barra de pestañas (reemplaza el indicador de pasos con
+// circulos), campo "Ruta" (ex "Slug"), y "Zona de peligro" (eliminar modulo
+// desde la propia pagina de edicion, mismo endpoint que pages/modulos/index.vue).
+//
+// El bug de FieldFormModal.vue (auto-slug de "Nombre técnico" desde
+// "Etiqueta visible", boton "Agregar campo" que quedaba deshabilitado en
+// silencio si el usuario no tocaba el nombre tecnico a mano) es logica
+// puramente client-side dentro de un <script setup> de un SFC - este repo no
+// tiene infraestructura de test de componentes (ni @vue/test-utils ni un DOM
+// simulado, ver package.json) para montarlo y disparar eventos de input
+// reales; se valida por typecheck + build + revision de codigo (mismo patron
+// ya seguido, no un test nuevo).
+describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso para roles no-admin, Zona de peligro, pestañas)', () => {
+  const REDESIGN_NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const REDESIGN_NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let redesignNonAdminCookie: string
+  let vendedorRoleId: string
+  let redesignEntityId: string
+  let redesignEntitySlug: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: REDESIGN_NON_ADMIN_EMAIL, password: REDESIGN_NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    redesignNonAdminCookie = extractCookie(loginRes)
+
+    const rolesRes = await api('/api/roles')
+    const { roles } = await rolesRes.json()
+    vendedorRoleId = roles.find((r: { name: string }) => r.name === 'Vendedor').id
+
+    redesignEntitySlug = 'rediseno-editar-modulo-e2e'
+    const entityRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Rediseno Editar Modulo E2E', slug: redesignEntitySlug })
+    })
+    expect(entityRes.status).toBe(201)
+    const entity = await entityRes.json()
+    redesignEntityId = entity.id
+    expect(entity.isActive).toBe(true)
+
+    // Vendedor (no-admin) no tiene ningun permiso otorgado por defecto sobre
+    // un modulo nuevo (solo el rol Administrador se auto-otorga CRUD al
+    // crearlo, HU-ERD-66) - se le concede canRead explicitamente para poder
+    // probar el bloqueo por "modulo inactivo" (y no confundirlo con un 403
+    // por falta de permiso, que es un caso YA cubierto por HU-ERD-15).
+    const grantRes = await api(`/api/roles/${vendedorRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions: [{ entityId: redesignEntityId, canRead: true, canCreate: false, canUpdate: false, canDelete: false }] })
+    })
+    expect(grantRes.status).toBe(200)
+  }, 30_000)
+
+  it('un modulo activo (default) es accesible para un rol no-admin con canRead otorgado', async () => {
+    const res = await fetch(`${baseUrl}/api/entities/${redesignEntitySlug}/fields`, { headers: { cookie: redesignNonAdminCookie } })
+    expect(res.status).toBe(200)
+  })
+
+  it('PUT /api/entities/:id { isActive: false } lo desactiva, y bloquea con 403 el acceso a fields/records para el rol no-admin (aunque tenga canRead otorgado)', async () => {
+    const putRes = await api(`/api/entities/${redesignEntityId}`, { method: 'PUT', body: JSON.stringify({ isActive: false }) })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).isActive).toBe(false)
+
+    const fieldsRes = await fetch(`${baseUrl}/api/entities/${redesignEntitySlug}/fields`, { headers: { cookie: redesignNonAdminCookie } })
+    expect(fieldsRes.status).toBe(403)
+    expect((await fieldsRes.json()).statusMessage).toContain('desactivado')
+
+    const recordsRes = await fetch(`${baseUrl}/api/records/${redesignEntitySlug}`, { headers: { cookie: redesignNonAdminCookie } })
+    expect(recordsRes.status).toBe(403)
+  })
+
+  it('un administrador sigue teniendo acceso completo a un modulo desactivado (para poder reactivarlo)', async () => {
+    const res = await api(`/api/entities/${redesignEntitySlug}/fields`)
+    expect(res.status).toBe(200)
+  })
+
+  it('reactivar el modulo (isActive: true) restaura el acceso del rol no-admin', async () => {
+    const putRes = await api(`/api/entities/${redesignEntityId}`, { method: 'PUT', body: JSON.stringify({ isActive: true }) })
+    expect(putRes.status).toBe(200)
+
+    const fieldsRes = await fetch(`${baseUrl}/api/entities/${redesignEntitySlug}/fields`, { headers: { cookie: redesignNonAdminCookie } })
+    expect(fieldsRes.status).toBe(200)
+  })
+
+  it('SSR: pages/modulos/[id]/editar.vue renderiza la barra de pestañas nueva (incluidas Diseño del detalle/Diseño del listado/Vista previa), el campo "Ruta" y la Zona de peligro', async () => {
+    const res = await fetch(`${baseUrl}/modulos/${redesignEntityId}/editar`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    for (const label of ['Información general', 'Campos', 'Diseño del detalle', 'Diseño del listado', 'Vista previa', 'Ruta', 'Módulo activo', 'Zona de peligro', 'Eliminar módulo']) {
+      expect(html).toContain(label)
+    }
+  })
+
+  it('SSR: pages/modulos/index.vue muestra la columna "Estado" con el badge Activo/Inactivo real de cada modulo', async () => {
+    const res = await fetch(`${baseUrl}/modulos`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Estado')
+    expect(html).toContain('Activo')
   })
 })
