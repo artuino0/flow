@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, count, eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, roleEntityPermissions, roles } from '~/server/db/schema'
+import { entities, roleEntityPermissions, roles, users } from '~/server/db/schema'
 
 // HU-ERD-33: logica de la pantalla de gestion de roles y permisos, separada
 // de los endpoints (mismo patron que dashboardMetrics.ts/HU-ERD-31) para
@@ -8,10 +8,24 @@ import { entities, roleEntityPermissions, roles } from '~/server/db/schema'
 
 type Tx = typeof db
 
+// Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
+// Mismo criterio de traducir errores de Postgres a HTTP que moduleEntities.ts
+// (HU-ERD-66, DuplicateSlugError) - roles_tenant_name_unique (schema.ts) es
+// el analogo de entities_tenant_slug_unique para roles.
+const PG_UNIQUE_VIOLATION = '23505'
+
+export class DuplicateRoleNameError extends Error {}
+
 export interface RoleSummary {
   id: string
   name: string
   isSystem: boolean
+  // Rediseno "pantalla unica" (ver comentario largo en pages/roles/index.vue)
+  // - el diseno real en Pencil (Role Selector, nodo CW5XH) muestra "N
+  // usuarios" bajo cada rol, tanto en el selector como en su panel
+  // desplegable. Cuenta users.role_id = roles.id (users.roleId es nullable -
+  // un usuario sin rol asignado no cuenta para ninguno).
+  userCount: number
 }
 
 export interface EntityPermissionRow {
@@ -25,7 +39,10 @@ export interface EntityPermissionRow {
 }
 
 export interface RolePermissionsResult {
-  role: RoleSummary
+  // Sin userCount: GET/PUT .../permissions no lo necesita (la pantalla ya
+  // lo tiene por el listado de roles cargado aparte) y evitar el join extra
+  // ahi mantiene loadRolePermissions() liviano.
+  role: { id: string; name: string; isSystem: boolean }
   permissions: EntityPermissionRow[]
 }
 
@@ -38,13 +55,54 @@ export interface PermissionUpdate {
 }
 
 export async function listRoles(tenantId: string): Promise<RoleSummary[]> {
-  return withTenant(tenantId, (tx) =>
-    tx
+  return withTenant(tenantId, async (tx) => {
+    const roleRows = await tx
       .select({ id: roles.id, name: roles.name, isSystem: roles.isSystem })
       .from(roles)
       .where(eq(roles.tenantId, tenantId))
       .orderBy(roles.name)
-  )
+
+    // users no tiene RLS propio (no hay tenant_id en su WHERE explicito aca
+    // porque el join por roleId ya lo acota a roles de este tenant) - mismo
+    // criterio de "acotar por los ids ya resueltos del tenant, no por RLS
+    // ajeno" que fieldCount en moduleEntities.ts (HU-ERD-69).
+    const userCountRows = await tx
+      .select({ roleId: users.roleId, value: count() })
+      .from(users)
+      .where(eq(users.tenantId, tenantId))
+      .groupBy(users.roleId)
+    const userCountByRoleId = new Map(userCountRows.map((r) => [r.roleId, r.value]))
+
+    return roleRows.map((role) => ({ ...role, userCount: userCountByRoleId.get(role.id) ?? 0 }))
+  })
+}
+
+/**
+ * Crea un rol nuevo (isSystem=false siempre - el rol de sistema del tenant
+ * se crea una unica vez en el alta del tenant, HU-ERD-61, nunca desde aca).
+ * Sin permisos iniciales sobre ninguna entidad: loadRolePermissions() ya
+ * devuelve false por defecto para toda entidad sin fila propia en
+ * role_entity_permissions, asi que no hace falta insertar nada mas aca -
+ * el administrador los habilita despues desde la Permission Matrix.
+ *
+ * roles_tenant_name_unique (schema.ts) evita nombres duplicados dentro del
+ * tenant - mismo criterio de traducir el unique_violation de Postgres a un
+ * error propio que DuplicateSlugError en moduleEntities.ts (HU-ERD-66).
+ */
+export async function createRole(tenantId: string, name: string): Promise<RoleSummary> {
+  return withTenant(tenantId, async (tx) => {
+    let role: typeof roles.$inferSelect
+    try {
+      ;[role] = await tx.insert(roles).values({ tenantId, name, isSystem: false }).returning()
+    } catch (err) {
+      const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
+      if (code === PG_UNIQUE_VIOLATION) {
+        throw new DuplicateRoleNameError(`Ya existe un rol con el nombre "${name}"`)
+      }
+      throw err
+    }
+    return { id: role.id, name: role.name, isSystem: role.isSystem, userCount: 0 }
+  })
 }
 
 /**

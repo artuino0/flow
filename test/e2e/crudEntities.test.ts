@@ -351,18 +351,25 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     })
   })
 
-  it('SSR: /roles y /roles/:id (F5 completo) renderizan contenido real, no el estado de error', async () => {
-    const listRes = await fetch(`${baseUrl}/roles`, { headers: { cookie: authCookie } })
-    expect(listRes.status).toBe(200)
-    const listHtml = await listRes.text()
-    expect(listHtml).toContain('Administrador')
-    expect(listHtml).not.toContain('No se pudo cargar el listado de roles')
+  // Rediseno "pantalla unica" (2026-09-01, ver comentario largo en
+  // pages/roles/index.vue) - ya no existe pages/roles/[id].vue: la misma
+  // pantalla /roles resuelve el rol seleccionado via ?role=<id> (o el primero
+  // en orden alfabetico si no viene), con el Role Selector y la Permission
+  // Matrix inline en SSR completo (sin esperar a hidratacion).
+  it('SSR: /roles (F5 completo) renderiza el Role Selector y la Permission Matrix del rol seleccionado, no el estado de error', async () => {
+    const defaultRes = await fetch(`${baseUrl}/roles`, { headers: { cookie: authCookie } })
+    expect(defaultRes.status).toBe(200)
+    const defaultHtml = await defaultRes.text()
+    expect(defaultHtml).toContain('Roles y Permisos')
+    expect(defaultHtml).toContain('Rol seleccionado')
+    expect(defaultHtml).not.toContain('No se pudieron cargar los roles')
 
-    const editRes = await fetch(`${baseUrl}/roles/${adminRoleId}`, { headers: { cookie: authCookie } })
-    expect(editRes.status).toBe(200)
-    const editHtml = await editRes.text()
-    expect(editHtml).toContain('Clientes')
-    expect(editHtml).not.toContain('No se pudo cargar este rol')
+    const roleRes = await fetch(`${baseUrl}/roles?role=${adminRoleId}`, { headers: { cookie: authCookie } })
+    expect(roleRes.status).toBe(200)
+    const roleHtml = await roleRes.text()
+    expect(roleHtml).toContain('Administrador')
+    expect(roleHtml).toContain('Clientes')
+    expect(roleHtml).not.toContain('No se pudieron cargar los permisos de este rol')
   })
 
   it('GET /api/roles sin cookie es 401, y PUT con un entityId de otro tenant es rechazado (404)', async () => {
@@ -376,6 +383,37 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
       })
     })
     expect(putRes.status).toBe(404)
+  })
+
+  // Rediseno "pantalla unica" (2026-09-01) - POST /api/roles cierra el hueco
+  // funcional detectado al revisar esta pantalla contra el diseno real en
+  // Pencil (boton "Crear rol" del Toolbar): antes no existia forma alguna de
+  // dar de alta un rol nuevo. El chequeo de 403 con un rol no-admin vive en
+  // el describe de HU-ERD-66 mas abajo (ahi ya existe nonAdminCookie).
+  it('POST /api/roles crea un rol sin permisos iniciales; sin cookie es 401; nombre duplicado es 409', async () => {
+    const createRes = await api('/api/roles', { method: 'POST', body: JSON.stringify({ name: 'Cobranzas' }) })
+    expect(createRes.status).toBe(201)
+    const created = await createRes.json()
+    expect(created.role).toMatchObject({ name: 'Cobranzas', isSystem: false, userCount: 0 })
+
+    const listRes = await api('/api/roles')
+    const listBody = await listRes.json()
+    expect(listBody.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.role.id, name: 'Cobranzas' })]))
+
+    const permsRes = await api(`/api/roles/${created.role.id}/permissions`)
+    const permsBody = await permsRes.json()
+    expect(permsBody.permissions.length).toBeGreaterThan(0)
+    expect(permsBody.permissions.every((p: { canRead: boolean }) => p.canRead === false)).toBe(true)
+
+    const dupeRes = await api('/api/roles', { method: 'POST', body: JSON.stringify({ name: 'Cobranzas' }) })
+    expect(dupeRes.status).toBe(409)
+
+    const noAuthRes = await fetch(`${baseUrl}/api/roles`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Otro' })
+    })
+    expect(noAuthRes.status).toBe(401)
   })
 
   // HU-ERD-34: dashboard interno OLAP. OLAP_ETL_ENABLED=false en este e2e (ver
@@ -486,6 +524,19 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
       body: JSON.stringify({ name: 'Proyectos', slug: 'proyectos' })
     })
     expect(nonAdminRes.status).toBe(403)
+  })
+
+  // Rediseno "pantalla unica" de Roles y Permisos (2026-09-01) - el chequeo de
+  // 401/409 de POST /api/roles vive en el describe de arriba (HU-ERD-30);
+  // este es solo el 403 con rol no-admin, que necesita nonAdminCookie (ya
+  // seteado en el beforeAll de este describe).
+  it('POST /api/roles con un rol no-admin es 403', async () => {
+    const res = await fetch(`${baseUrl}/api/roles`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: nonAdminCookie },
+      body: JSON.stringify({ name: 'Otro rol' })
+    })
+    expect(res.status).toBe(403)
   })
 
   it('POST /api/entities crea el modulo (admin) y el rol Administrador queda con CRUD completo de inmediato', async () => {

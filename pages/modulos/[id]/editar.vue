@@ -1,7 +1,10 @@
 <script setup lang="ts">
-// HU-ERD-69/HU-ERD-70: edicion de un modulo (entity) - pagina dedicada, mismo
-// patron que pages/roles/[id].vue. El slug es inmutable a proposito (ya se
-// usa en URLs /registros/:slug y en GET /api/entities/:slug/fields).
+// HU-ERD-69/HU-ERD-70: edicion de un modulo (entity) - pagina dedicada con
+// ruta propia (patron estandar de edicion en el repo para entidades que si
+// tienen ruta individual; pages/roles/index.vue NO sigue este patron a
+// proposito - ver el comentario largo ahi, es una pantalla unica por diseno).
+// El slug es inmutable a proposito (ya se usa en URLs /registros/:slug y en
+// GET /api/entities/:slug/fields).
 //
 // HU-ERD-70 extiende esta pagina para administrar los campos del modulo
 // reusando EXACTAMENTE los mismos componentes que el paso 2 del asistente

@@ -16,8 +16,8 @@
 // "Crear modulo" y "Editar" navegan a paginas dedicadas (pages/modulos/nuevo.vue,
 // pages/modulos/[id]/editar.vue) en vez de un panel/card en esta misma
 // pantalla - el diseno no trae ningun formulario inline aca, y el patron ya
-// establecido en el repo para editar es una pagina propia (pages/roles/[id].vue).
-// Son formularios deliberadamente minimos (nombre/slug/descripcion); el
+// establecido en el repo para editar es una pagina propia (pages/modulos/[id]/editar.vue
+// mismo, ver arriba). Son formularios deliberadamente minimos (nombre/slug/descripcion); el
 // asistente completo con vista previa en vivo es HU-ERD-70, todavia sin
 // implementar.
 import { Blocks, ChevronRight, Search, Settings2, Trash2 } from '@lucide/vue'

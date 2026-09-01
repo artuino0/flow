@@ -5,7 +5,8 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 import type {
   listRoles as ListRoles,
   getRolePermissions as GetRolePermissions,
-  setRolePermissions as SetRolePermissions
+  setRolePermissions as SetRolePermissions,
+  createRole as CreateRole
 } from '../../server/utils/rolePermissions'
 
 // HU-ERD-33: prueba server/utils/rolePermissions.ts contra un Postgres real
@@ -22,6 +23,11 @@ let admin: postgres.Sql
 let listRoles: typeof ListRoles
 let getRolePermissions: typeof GetRolePermissions
 let setRolePermissions: typeof SetRolePermissions
+let createRole: typeof CreateRole
+// DuplicateRoleNameError es una clase (valor en runtime, no solo tipo) - se
+// resuelve con el mismo import() dinamico que las funciones de arriba, ya
+// que el modulo entero depende de APP_DATABASE_URL estar seteado primero.
+let DuplicateRoleNameError: new (message?: string) => Error
 
 let roleA: string
 let clientesEntityA: string
@@ -49,7 +55,7 @@ beforeAll(async () => {
   entityB = b.clientesId
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ listRoles, getRolePermissions, setRolePermissions } = await import('../../server/utils/rolePermissions'))
+  ;({ listRoles, getRolePermissions, setRolePermissions, createRole, DuplicateRoleNameError } = await import('../../server/utils/rolePermissions'))
 }, 60_000)
 
 afterAll(async () => {
@@ -63,6 +69,36 @@ describe('rolePermissions (Postgres real)', () => {
     expect(roles).toHaveLength(1)
     expect(roles[0].id).toBe(roleA)
     expect(roles[0].name).toBe('Vendedor')
+    // Sin usuarios seedeados todavia en este punto de la suite.
+    expect(roles[0].userCount).toBe(0)
+  })
+
+  // Rediseno "pantalla unica" (2026-09-01, ver comentario largo en
+  // pages/roles/index.vue) - userCount es el dato nuevo que consume el Role
+  // Selector del diseno ("N usuarios" bajo cada rol).
+  it('listRoles cuenta los usuarios de cada rol (users.role_id), sin contar los de otro tenant ni los sin rol', async () => {
+    const [otherRole] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_A}, 'Soporte', false) returning id`
+    const passwordHash = 'hash-de-prueba'
+
+    // 2 usuarios en roleA, 1 en el rol nuevo, 1 sin rol (role_id null) - todos
+    // en TENANT_A. Mas 1 usuario en TENANT_B con el MISMO nombre de rol
+    // conceptual, para confirmar que no se mezcla entre tenants.
+    await admin`insert into users (tenant_id, role_id, email, password_hash) values
+      (${TENANT_A}, ${roleA}, 'user1@a.test', ${passwordHash}),
+      (${TENANT_A}, ${roleA}, 'user2@a.test', ${passwordHash}),
+      (${TENANT_A}, ${otherRole.id}, 'user3@a.test', ${passwordHash}),
+      (${TENANT_A}, null, 'user4@a.test', ${passwordHash})`
+
+    const roles = await listRoles(TENANT_A)
+    const vendedor = roles.find((r) => r.id === roleA)
+    const soporte = roles.find((r) => r.id === otherRole.id)
+    expect(vendedor!.userCount).toBe(2)
+    expect(soporte!.userCount).toBe(1)
+
+    // Limpieza - no debe afectar al resto de la suite (que asume 1 solo rol
+    // en TENANT_A en las pruebas de mas abajo, ya escritas antes de esta).
+    await admin`delete from users where tenant_id = ${TENANT_A}`
+    await admin`delete from roles where id = ${otherRole.id}`
   })
 
   it('getRolePermissions devuelve false por defecto para entidades sin fila en role_entity_permissions', async () => {
@@ -137,5 +173,43 @@ describe('rolePermissions (Postgres real)', () => {
       { entityId: clientesEntityA, canRead: true, canCreate: true, canUpdate: true, canDelete: true }
     ])
     expect(result).toBeNull()
+  })
+
+  // Rediseno "pantalla unica" (2026-09-01) - createRole() cierra el hueco
+  // funcional detectado al comparar la pantalla contra el diseno real en
+  // Pencil (boton "Crear rol" del Toolbar, nodo b5saUd): antes de esto no
+  // habia forma alguna de dar de alta un rol nuevo, ni en el frontend ni en
+  // el backend.
+  describe('createRole', () => {
+    it('crea un rol sin permisos iniciales sobre ninguna entidad', async () => {
+      const role = await createRole(TENANT_A, 'Contabilidad')
+      expect(role.name).toBe('Contabilidad')
+      expect(role.isSystem).toBe(false)
+      expect(role.userCount).toBe(0)
+
+      // Aparece en listRoles()...
+      const roles = await listRoles(TENANT_A)
+      expect(roles.find((r) => r.id === role.id)).toMatchObject({ name: 'Contabilidad', userCount: 0 })
+
+      // ...y sus permisos son false por defecto para toda entidad del tenant
+      // (mismo criterio que un rol viejo sin filas propias en
+      // role_entity_permissions - no hace falta insertar nada al crearlo).
+      const perms = await getRolePermissions(TENANT_A, role.id)
+      expect(perms!.permissions.length).toBeGreaterThan(0)
+      for (const p of perms!.permissions) {
+        expect(p).toMatchObject({ canRead: false, canCreate: false, canUpdate: false, canDelete: false })
+      }
+    })
+
+    it('rechaza un nombre de rol duplicado dentro del mismo tenant (DuplicateRoleNameError)', async () => {
+      await createRole(TENANT_A, 'Marketing')
+      await expect(createRole(TENANT_A, 'Marketing')).rejects.toBeInstanceOf(DuplicateRoleNameError)
+    })
+
+    it('permite el mismo nombre de rol en tenants distintos', async () => {
+      const roleInA = await createRole(TENANT_A, 'Finanzas')
+      const roleInB = await createRole(TENANT_B, 'Finanzas')
+      expect(roleInA.id).not.toBe(roleInB.id)
+    })
   })
 })
