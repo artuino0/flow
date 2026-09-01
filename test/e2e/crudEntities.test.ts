@@ -1912,3 +1912,110 @@ describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtro
     expect(html).toContain('Diseño del listado')
   })
 })
+
+// HU-ERD-76: GET /api/entity-fields/:fieldId (mismo recurso plano de
+// HU-ERD-67, diferenciado por verbo HTTP - ver el comentario largo en
+// server/utils/moduleEntityFields.ts sobre por que NO se agrego un segmento
+// nuevo como .../impact) - conteo real de records que ya usan la clave de
+// este campo en custom_data, consumido por el modal de advertencia antes de
+// confirmar una edicion/borrado riesgoso (componentes/FieldImpactWarningModal.vue
+// + ModuleFieldsCard.vue). El modal en si es una capa de UI que no se puede
+// probar por HTTP; lo que este describe cubre es el contrato real que ese
+// modal consume, y que el flujo de escritura real (PUT/DELETE, is_dirty,
+// entity_field_history - ya probado en HU-ERD-67) sigue siendo exactamente
+// el mismo por debajo, sin una ruta alternativa de guardado.
+describe('e2e: HU-ERD-76 (Advertencia al editar/eliminar un campo con datos existentes - GET /api/entity-fields/:fieldId con affectedRecords)', () => {
+  const IMPACT_NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const IMPACT_NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let impactNonAdminCookie: string
+  let impactEntityId: string
+  let impactEntitySlug: string
+  let montoFieldId: string
+  let etiquetaFieldId: string
+
+  beforeAll(async () => {
+    // El usuario no-admin ya existe (creado en el describe de HU-ERD-66) -
+    // solo hace falta loguear, mismo patron que HU-ERD-67.
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: IMPACT_NON_ADMIN_EMAIL, password: IMPACT_NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    impactNonAdminCookie = extractCookie(loginRes)
+
+    impactEntitySlug = 'impacto-campos-e2e'
+    const entityRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Impacto Campos E2E', slug: impactEntitySlug })
+    })
+    expect(entityRes.status).toBe(201)
+    impactEntityId = (await entityRes.json()).id
+
+    const montoRes = await api(`/api/entities/${impactEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'monto', label: 'Monto total', dataType: 'number' })
+    })
+    expect(montoRes.status).toBe(201)
+    montoFieldId = (await montoRes.json()).id
+
+    // "etiqueta" queda SIN ningun record que la use - sirve para probar el
+    // caso affectedRecords === 0 (campo publicado, pero todavia sin datos).
+    const etiquetaRes = await api(`/api/entities/${impactEntityId}/fields`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'etiqueta', label: 'Etiqueta', dataType: 'text' })
+    })
+    expect(etiquetaRes.status).toBe(201)
+    etiquetaFieldId = (await etiquetaRes.json()).id
+  }, 30_000)
+
+  it('GET /api/entity-fields/:fieldId sin cookie es 401, y con un rol no-admin es 403', async () => {
+    const noAuthRes = await fetch(`${baseUrl}/api/entity-fields/${montoFieldId}`)
+    expect(noAuthRes.status).toBe(401)
+
+    const nonAdminRes = await fetch(`${baseUrl}/api/entity-fields/${montoFieldId}`, { headers: { cookie: impactNonAdminCookie } })
+    expect(nonAdminRes.status).toBe(403)
+  })
+
+  it('GET /api/entity-fields/:fieldId con un id inexistente es 404', async () => {
+    const res = await api(`/api/entity-fields/${randomUUID()}`)
+    expect(res.status).toBe(404)
+  })
+
+  it('un campo recien publicado, todavia sin records que lo usen, devuelve affectedRecords: 0', async () => {
+    const res = await api(`/api/entity-fields/${etiquetaFieldId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toMatchObject({ id: etiquetaFieldId, name: 'etiqueta', dataType: 'text', affectedRecords: 0 })
+  })
+
+  it('affectedRecords cuenta SOLO los records que ya tienen una clave para ese campo en custom_data - no records de otro campo, no records de otra entidad (conteo siempre server-side)', async () => {
+    // 3 records que SI usan "monto"...
+    for (const monto of [100, 200, 300]) {
+      const res = await api(`/api/records/${impactEntitySlug}`, { method: 'POST', body: JSON.stringify({ customData: { monto } }) })
+      expect(res.status).toBe(201)
+    }
+    // ...y 1 record que solo usa "etiqueta" (no debe sumar al conteo de "monto").
+    const soloEtiquetaRes = await api(`/api/records/${impactEntitySlug}`, { method: 'POST', body: JSON.stringify({ customData: { etiqueta: 'x' } }) })
+    expect(soloEtiquetaRes.status).toBe(201)
+
+    const montoImpact = await api(`/api/entity-fields/${montoFieldId}`)
+    expect((await montoImpact.json()).affectedRecords).toBe(3)
+
+    const etiquetaImpact = await api(`/api/entity-fields/${etiquetaFieldId}`)
+    expect((await etiquetaImpact.json()).affectedRecords).toBe(1)
+  })
+
+  it('GET es de solo lectura: llamarlo varias veces no cambia el conteo ni escribe en entity_field_history (el modal es una capa de confirmacion, no una ruta alternativa de guardado)', async () => {
+    const first = await api(`/api/entity-fields/${montoFieldId}`)
+    const second = await api(`/api/entity-fields/${montoFieldId}`)
+    expect((await first.json()).affectedRecords).toBe((await second.json()).affectedRecords)
+
+    // El PUT real (HU-ERD-67) sigue siendo el UNICO camino que versiona el
+    // campo - confirma que pasar antes por GET (como hace el modal) no lo
+    // reemplaza ni lo duplica: sigue devolviendo 200 y el dataType nuevo.
+    const putRes = await api(`/api/entity-fields/${montoFieldId}`, { method: 'PUT', body: JSON.stringify({ label: 'Monto total (ARS)' }) })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).label).toBe('Monto total (ARS)')
+  })
+})

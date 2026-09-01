@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, count, eq, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, entityFieldHistory, entityFields } from '~/server/db/schema'
+import { entities, entityFieldHistory, entityFields, records } from '~/server/db/schema'
 import { getValidationRulesSchema, invalidateEntitySchemaCache } from '~/server/utils/dynamicSchema'
 
 // HU-ERD-67: logica de "campos de un modulo" (entity_fields) como metadatos
@@ -88,6 +88,44 @@ async function findFieldInTenant(tx: Tx, tenantId: string, fieldId: string): Pro
     .where(and(eq(entityFields.id, fieldId), eq(entities.tenantId, tenantId)))
     .limit(1)
   return row ?? null
+}
+
+export interface EntityFieldImpact extends EntityFieldSummary {
+  affectedRecords: number
+}
+
+/**
+ * HU-ERD-76: cuenta cuantos records de la entidad dueña de este campo ya
+ * tienen una clave para el (en custom_data, jsonb) - usado por el modal de
+ * advertencia antes de confirmar una edicion/borrado que puede afectar datos
+ * existentes (Screen/Advertencia - Editar Campo con Datos del .pen).
+ *
+ * El conteo se calcula SIEMPRE server-side (criterio de aceptacion explicito
+ * de la HU - "nunca estimado en el frontend") con el operador jsonb `?`
+ * ("existe esta clave de nivel superior"), que usa el mismo indice GIN ya
+ * existente en records.custom_data (migracion inicial, ERD-9) sin necesidad
+ * de un indice nuevo.
+ *
+ * Expuesta via GET /api/entity-fields/:fieldId (mismo recurso PLANO que
+ * PUT/DELETE, HU-ERD-67) a proposito: agregar un GET al mismo path terminal
+ * es solo una diferenciacion por verbo HTTP (sin riesgo), a diferencia de
+ * agregar un segmento nuevo despues de :fieldId (ej. /api/entity-fields/:fieldId/impact),
+ * que hubiera reproducido el bug real de enrutamiento de Nitro/rou3 ya
+ * documentado arriba en este archivo (mezclar, bajo el mismo prefijo, un
+ * path que TERMINA en :fieldId con otro que CONTINUA con mas segmentos).
+ */
+export async function getEntityFieldImpact(tenantId: string, fieldId: string): Promise<EntityFieldImpact | null> {
+  return withTenant(tenantId, async (tx) => {
+    const current = await findFieldInTenant(tx, tenantId, fieldId)
+    if (!current) return null
+
+    const [{ value: affectedRecords }] = await tx
+      .select({ value: count() })
+      .from(records)
+      .where(and(eq(records.entityId, current.entityId), sql`${records.customData} ? ${current.name}`))
+
+    return { ...toSummary(current), affectedRecords }
+  })
 }
 
 /** Valida validationRules contra la forma esperada para dataType (ERD-17: misma fuente de verdad que buildFieldType). */

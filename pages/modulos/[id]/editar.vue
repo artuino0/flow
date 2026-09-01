@@ -290,7 +290,7 @@ async function onSaveListLayout() {
 
       <template v-else-if="step === 'campos'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleFieldsCard :entity-id="currentModule.id" :fields="fields" @changed="loadFields" />
+          <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
         </div>
       </template>
