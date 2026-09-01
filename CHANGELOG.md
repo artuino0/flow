@@ -1,5 +1,13 @@
 # Changelog
 
+### [0.47.0] - 2026-09-01
+#### [add]
+- Pedido directo del usuario: "Screen/Roles y Permisos - Nuevo Rol, checa esto" - revisión puntual de ese mock (separado del `Screen/Roles y Permisos` general ya revisado en la 0.45.0) encontró un segundo hueco funcional: el modal real "Crear nuevo rol" trae una sección opcional **"Copiar permisos de"** que la primera versión del modal (0.45.0) no tenía - hasta ahora todo rol nuevo arrancaba siempre sin ningún permiso.
+- Backend: `createRole(tenantId, name, copyFromRoleId?)` (`server/utils/rolePermissions.ts`) acepta un rol de referencia opcional del mismo tenant; si se pasa, copia sus filas de `role_entity_permissions` (solo las que tengan al menos un flag en `true`) al rol recién creado, y devuelve `copiedPermissionCount` (suma de flags `true` copiados). El rol de referencia se valida ANTES de crear el rol nuevo (`ReferenceRoleNotFoundError`, 404) para no dejar un rol huérfano si el id no existe o es de otro tenant. `POST /api/roles` extiende su body con `copyFromRoleId` (uuid opcional).
+- Frontend: modal "Crear rol" de `pages/roles/index.vue` reescrito para ser fiel al diseño - título "Crear nuevo rol" + subtítulo, botón de cerrar (X), campo "Nombre del rol" con su texto de ayuda ("Así lo van a ver los usuarios al asignarlo"), y la nueva sección "Copiar permisos de (opcional)" con un selector (mismo patrón sin librería que el Role Selector de la 0.45.0) que muestra en vivo cuántos permisos se copiarán del rol elegido (`GET /api/roles/:id/permissions`, contando flags `true`), antes de crear nada.
+- Validado con la técnica ya establecida (rsync a directorio local): `npx nuxt typecheck` limpio, `npx nuxt build` OK, suite completa **242/242** - 4 casos nuevos: integración (`test/integration/rolePermissions.test.ts`, describe `createRole`) para la copia real de permisos con conteo correcto, sin `copyFromRoleId` sigue arrancando en blanco, y `ReferenceRoleNotFoundError` con un id inexistente o de otro tenant (sin crear el rol); e2e (`test/e2e/crudEntities.test.ts`) para `POST /api/roles` con `copyFromRoleId` válido (permisos copiados + conteo) y con uno inexistente (404).
+- Sin ticket Jira formal para este trabajo (mismo hilo ad-hoc que 0.45.x, esta vez a partir de un pedido explícito de revisar un mock puntual de Pencil no revisado antes).
+
 ### [0.46.0] - 2026-09-01
 #### [add]
 - Pedido directo del usuario: "lo que sigue, dos cosas, ocupo un selector de iconos, para poder elegir el icono que usara el modulo, se puede editar, y ademas el menu aun no renderisa las entidades" - implementa de punta a punta ERD-43/ERD-44 (listado de entidades filtrado por permiso, menú lateral dinámico) más un campo `entities.icon` net-new, sin ticket Jira propio.

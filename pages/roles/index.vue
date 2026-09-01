@@ -18,7 +18,7 @@
 // borradas) por esta unica ruta. selectedRoleId es puramente client-side
 // (con la excepcion del valor inicial, tomado de ?role= en la URL si viene) -
 // no hay ruta dedicada por rol, tal cual el diseno.
-import { Check, ChevronDown, Plus, Search, ShieldCheck } from '@lucide/vue'
+import { Check, ChevronDown, Copy, Plus, Search, ShieldCheck, X } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -169,8 +169,60 @@ const creating = ref(false)
 function openCreateModal() {
   createName.value = ''
   createError.value = null
+  copyFromRoleId.value = null
+  copySelectorOpen.value = false
+  copyPermCount.value = null
   createOpen.value = true
 }
+
+// --- "Copiar permisos de (opcional)" (rediseno "Nuevo Rol", 2026-09-01,
+// "checa esto" sobre Screen/Roles y Permisos - Nuevo Rol - hueco encontrado:
+// el modal real deja arrancar un rol nuevo copiando los permisos de uno ya
+// existente, en vez de siempre en blanco). Selector manual sin libreria,
+// mismo patron que el Role Selector de mas arriba, pero sin buscador (el
+// diseno no lo trae aca) - la lista de roles ya es la misma `roles` que
+// alimenta al Role Selector, no hace falta pedirla de nuevo.
+const copyFromRoleId = ref<string | null>(null)
+const copySelectorOpen = ref(false)
+const copyFromRole = computed(() => roles.value.find((r) => r.id === copyFromRoleId.value) ?? null)
+
+// Cantidad de flags de permiso (true) del rol elegido para copiar - se pide
+// bajo demanda con GET /api/roles/:id/permissions (mismo endpoint que ya usa
+// la Permission Matrix) en vez de sumar un campo nuevo a GET /api/roles: no
+// hace falta cargar esto para roles que nunca se eligen como referencia.
+const copyPermCount = ref<number | null>(null)
+const copyPermCountLoading = ref(false)
+
+async function selectCopyFromRole(roleId: string | null) {
+  copyFromRoleId.value = roleId
+  copySelectorOpen.value = false
+  copyPermCount.value = null
+  if (!roleId) return
+  copyPermCountLoading.value = true
+  try {
+    const result = await $fetch<RolePermissionsResponse>(`/api/roles/${roleId}/permissions`)
+    copyPermCount.value = result.permissions.reduce(
+      (total, p) => total + [p.canRead, p.canCreate, p.canUpdate, p.canDelete].filter(Boolean).length,
+      0
+    )
+  } catch {
+    // Si falla, simplemente no se muestra el texto de ayuda con el conteo -
+    // el envio del formulario igual manda copyFromRoleId y el backend hace
+    // la copia real; esto es solo la vista previa del numero.
+    copyPermCount.value = null
+  } finally {
+    copyPermCountLoading.value = false
+  }
+}
+
+const copySelectorRef = ref<HTMLElement | null>(null)
+function onCopySelectorDocumentClick(event: MouseEvent) {
+  if (copySelectorOpen.value && copySelectorRef.value && !copySelectorRef.value.contains(event.target as Node)) {
+    copySelectorOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onCopySelectorDocumentClick))
+onUnmounted(() => document.removeEventListener('click', onCopySelectorDocumentClick))
 
 async function onCreateRole() {
   const name = createName.value.trim()
@@ -181,7 +233,10 @@ async function onCreateRole() {
   createError.value = null
   creating.value = true
   try {
-    const result = await $fetch<{ role: RoleRow }>('/api/roles', { method: 'POST', body: { name } })
+    const result = await $fetch<{ role: RoleRow }>('/api/roles', {
+      method: 'POST',
+      body: { name, copyFromRoleId: copyFromRoleId.value }
+    })
     await refreshRoles()
     selectRole(result.role.id)
     createOpen.value = false
@@ -331,22 +386,84 @@ async function onCreateRole() {
     </template>
 
     <div v-if="createOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div class="flex w-full max-w-[420px] flex-col rounded-lg bg-brand-surface shadow-xl">
-        <div class="border-b border-brand-border-light p-5">
-          <h2 class="text-[15px] font-bold text-brand-text">Crear rol</h2>
+      <div class="flex w-full max-w-[440px] flex-col rounded-lg bg-brand-surface shadow-xl">
+        <div class="relative border-b border-brand-border-light p-5">
+          <h2 class="text-[15px] font-bold text-brand-text">Crear nuevo rol</h2>
+          <p class="mt-1 text-sm text-brand-text-secondary">Define el nombre y, si quieres, parte de los permisos de otro rol</p>
+          <button
+            type="button"
+            title="Cerrar"
+            class="absolute right-5 top-5 flex h-7 w-7 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg"
+            @click="createOpen = false"
+          >
+            <X class="h-4 w-4" :stroke-width="1.75" />
+          </button>
         </div>
-        <div class="flex flex-col gap-1.5 p-5">
-          <label for="new-role-name" class="text-xs font-semibold text-brand-text-secondary">Nombre del rol</label>
-          <input
-            id="new-role-name"
-            v-model="createName"
-            type="text"
-            placeholder="Ej. Contabilidad"
-            class="rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
-            @keydown.enter="onCreateRole"
-          />
-          <p v-if="createError" class="text-sm text-brand-error-text">{{ createError }}</p>
+
+        <div class="flex flex-col gap-5 p-5">
+          <div class="flex flex-col gap-1.5">
+            <label for="new-role-name" class="text-xs font-semibold text-brand-text-secondary">Nombre del rol</label>
+            <input
+              id="new-role-name"
+              v-model="createName"
+              type="text"
+              placeholder="Supervisor de ventas"
+              class="rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
+              @keydown.enter="onCreateRole"
+            />
+            <p class="text-xs text-brand-text-muted">Así lo van a ver los usuarios al asignarlo</p>
+            <p v-if="createError" class="text-sm text-brand-error-text">{{ createError }}</p>
+          </div>
+
+          <div ref="copySelectorRef" class="relative flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-brand-text-secondary">Copiar permisos de (opcional)</label>
+            <button
+              type="button"
+              class="flex items-center justify-between rounded border border-brand-border bg-brand-surface px-3 py-2"
+              @click="copySelectorOpen = !copySelectorOpen"
+            >
+              <span class="flex items-center gap-2">
+                <Copy class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+                <span class="text-sm" :class="copyFromRole ? 'text-brand-text' : 'text-brand-text-muted'">
+                  {{ copyFromRole?.name ?? 'Ninguno (empezar en blanco)' }}
+                </span>
+              </span>
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+            </button>
+
+            <div
+              v-if="copySelectorOpen"
+              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[240px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_#33475B33]"
+            >
+              <button
+                type="button"
+                class="flex items-center justify-between rounded px-2.5 py-2 text-left text-sm"
+                :class="!copyFromRoleId ? 'bg-brand-sidebar-active-bg font-bold text-brand-blue' : 'font-medium text-brand-text hover:bg-brand-bg'"
+                @click="selectCopyFromRole(null)"
+              >
+                Ninguno (empezar en blanco)
+                <Check v-if="!copyFromRoleId" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
+              </button>
+              <button
+                v-for="role in roles"
+                :key="role.id"
+                type="button"
+                class="flex items-center justify-between rounded px-2.5 py-2 text-left text-sm"
+                :class="role.id === copyFromRoleId ? 'bg-brand-sidebar-active-bg font-bold text-brand-blue' : 'font-medium text-brand-text hover:bg-brand-bg'"
+                @click="selectCopyFromRole(role.id)"
+              >
+                {{ role.name }}
+                <Check v-if="role.id === copyFromRoleId" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
+              </button>
+            </div>
+
+            <p v-if="copyPermCountLoading" class="text-xs text-brand-text-muted">Calculando permisos a copiar...</p>
+            <p v-else-if="copyFromRole && copyPermCount !== null" class="text-xs text-brand-text-muted">
+              Se copiarán los {{ copyPermCount }} permisos de {{ copyFromRole.name }} como punto de partida. Podrás editarlos después.
+            </p>
+          </div>
         </div>
+
         <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
           <button type="button" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="createOpen = false">
             Cancelar
@@ -354,9 +471,10 @@ async function onCreateRole() {
           <button
             type="button"
             :disabled="creating"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onCreateRole"
           >
+            <Plus class="h-4 w-4" :stroke-width="1.75" />
             {{ creating ? 'Creando...' : 'Crear rol' }}
           </button>
         </div>

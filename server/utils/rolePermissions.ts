@@ -15,6 +15,7 @@ type Tx = typeof db
 const PG_UNIQUE_VIOLATION = '23505'
 
 export class DuplicateRoleNameError extends Error {}
+export class ReferenceRoleNotFoundError extends Error {}
 
 export interface RoleSummary {
   id: string
@@ -77,20 +78,54 @@ export async function listRoles(tenantId: string): Promise<RoleSummary[]> {
   })
 }
 
+export interface CreateRoleResult extends RoleSummary {
+  // Rediseno "Nuevo Rol" (2026-09-01, "checa esto" sobre
+  // Screen/Roles y Permisos - Nuevo Rol en el .pen): cantidad de flags de
+  // permiso (true) copiados del rol de referencia, si se paso copyFromRoleId -
+  // 0 si no se copio nada. Es el numero que el modal muestra de vuelta
+  // ("Se copiaron los N permisos de <rol>") una vez creado.
+  copiedPermissionCount: number
+}
+
 /**
  * Crea un rol nuevo (isSystem=false siempre - el rol de sistema del tenant
  * se crea una unica vez en el alta del tenant, HU-ERD-61, nunca desde aca).
- * Sin permisos iniciales sobre ninguna entidad: loadRolePermissions() ya
- * devuelve false por defecto para toda entidad sin fila propia en
- * role_entity_permissions, asi que no hace falta insertar nada mas aca -
- * el administrador los habilita despues desde la Permission Matrix.
+ *
+ * Rediseno "Nuevo Rol" (2026-09-01): revisando Screen/Roles y Permisos -
+ * Nuevo Rol en el .pen (pedido del usuario: "checa esto") se encontro que el
+ * modal real de creacion tiene una seccion "Copiar permisos de (opcional)" -
+ * sin ella, todo rol nuevo arrancaba SIEMPRE sin ningun permiso, obligando a
+ * marcar la Permission Matrix entera a mano incluso para roles muy parecidos
+ * a uno ya existente (ej. "Ventas Junior" calcado de "Ventas"). copyFromRoleId
+ * es opcional - sin el, se mantiene el comportamiento anterior (sin permisos
+ * iniciales; loadRolePermissions() ya devuelve false por defecto para toda
+ * entidad sin fila propia en role_entity_permissions).
+ *
+ * El rol de referencia se valida ANTES de crear el rol nuevo (ReferenceRoleNotFoundError,
+ * 404 en el endpoint) para no dejar un rol huerfano si el id no existe o es
+ * de otro tenant. Solo se copian filas con AL MENOS un flag en true - una
+ * fila toda-false no aporta nada y ademas asi copiedPermissionCount (suma de
+ * flags true) coincide exactamente con lo que se inserta.
  *
  * roles_tenant_name_unique (schema.ts) evita nombres duplicados dentro del
  * tenant - mismo criterio de traducir el unique_violation de Postgres a un
  * error propio que DuplicateSlugError en moduleEntities.ts (HU-ERD-66).
  */
-export async function createRole(tenantId: string, name: string): Promise<RoleSummary> {
+export async function createRole(tenantId: string, name: string, copyFromRoleId?: string | null): Promise<CreateRoleResult> {
   return withTenant(tenantId, async (tx) => {
+    let sourcePerms: (typeof roleEntityPermissions.$inferSelect)[] = []
+    if (copyFromRoleId) {
+      const [sourceRole] = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(and(eq(roles.id, copyFromRoleId), eq(roles.tenantId, tenantId)))
+        .limit(1)
+      if (!sourceRole) {
+        throw new ReferenceRoleNotFoundError('El rol de referencia no existe')
+      }
+      sourcePerms = await tx.select().from(roleEntityPermissions).where(eq(roleEntityPermissions.roleId, copyFromRoleId))
+    }
+
     let role: typeof roles.$inferSelect
     try {
       ;[role] = await tx.insert(roles).values({ tenantId, name, isSystem: false }).returning()
@@ -101,7 +136,24 @@ export async function createRole(tenantId: string, name: string): Promise<RoleSu
       }
       throw err
     }
-    return { id: role.id, name: role.name, isSystem: role.isSystem, userCount: 0 }
+
+    let copiedPermissionCount = 0
+    for (const p of sourcePerms) {
+      const flags = [p.canRead, p.canCreate, p.canUpdate, p.canDelete]
+      const trueCount = flags.filter(Boolean).length
+      if (trueCount === 0) continue
+      await tx.insert(roleEntityPermissions).values({
+        roleId: role.id,
+        entityId: p.entityId,
+        canRead: p.canRead,
+        canCreate: p.canCreate,
+        canUpdate: p.canUpdate,
+        canDelete: p.canDelete
+      })
+      copiedPermissionCount += trueCount
+    }
+
+    return { id: role.id, name: role.name, isSystem: role.isSystem, userCount: 0, copiedPermissionCount }
   })
 }
 

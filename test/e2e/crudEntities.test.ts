@@ -416,6 +416,50 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(noAuthRes.status).toBe(401)
   })
 
+  // Rediseno "Nuevo Rol" (2026-09-01, "checa esto" sobre
+  // Screen/Roles y Permisos - Nuevo Rol) - copyFromRoleId cierra el segundo
+  // hueco encontrado en esa misma pantalla: la seccion opcional "Copiar
+  // permisos de" del modal real, que la primera version de POST /api/roles
+  // no contemplaba.
+  it('POST /api/roles con copyFromRoleId copia los permisos del rol de referencia; con un id inexistente es 404', async () => {
+    const sourceRes = await api('/api/roles', { method: 'POST', body: JSON.stringify({ name: 'Ventas Origen E2E' }) })
+    const source = (await sourceRes.json()).role
+
+    const permsRes = await api(`/api/roles/${source.id}/permissions`)
+    const { permissions } = await permsRes.json()
+    const clientesEntityId = permissions.find((p: { entitySlug: string }) => p.entitySlug === 'clientes').entityId
+
+    await api(`/api/roles/${source.id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        permissions: [{ entityId: clientesEntityId, canRead: true, canCreate: true, canUpdate: false, canDelete: false }]
+      })
+    })
+
+    const copyRes = await api('/api/roles', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Ventas Copia E2E', copyFromRoleId: source.id })
+    })
+    expect(copyRes.status).toBe(201)
+    const copied = (await copyRes.json()).role
+    expect(copied.copiedPermissionCount).toBe(2)
+
+    const copiedPermsRes = await api(`/api/roles/${copied.id}/permissions`)
+    const copiedPerms = (await copiedPermsRes.json()).permissions
+    expect(copiedPerms.find((p: { entityId: string }) => p.entityId === clientesEntityId)).toMatchObject({
+      canRead: true,
+      canCreate: true,
+      canUpdate: false,
+      canDelete: false
+    })
+
+    const badRefRes = await api('/api/roles', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Nunca Se Crea E2E', copyFromRoleId: randomUUID() })
+    })
+    expect(badRefRes.status).toBe(404)
+  })
+
   // HU-ERD-34: dashboard interno OLAP. OLAP_ETL_ENABLED=false en este e2e (ver
   // env del server arriba), asi que fact_eventos queda vacio para este tenant -
   // el chequeo es que la pantalla renderiza bien el estado "sin eventos" (y el

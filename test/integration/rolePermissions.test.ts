@@ -28,6 +28,7 @@ let createRole: typeof CreateRole
 // resuelve con el mismo import() dinamico que las funciones de arriba, ya
 // que el modulo entero depende de APP_DATABASE_URL estar seteado primero.
 let DuplicateRoleNameError: new (message?: string) => Error
+let ReferenceRoleNotFoundError: new (message?: string) => Error
 
 let roleA: string
 let clientesEntityA: string
@@ -55,7 +56,9 @@ beforeAll(async () => {
   entityB = b.clientesId
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ listRoles, getRolePermissions, setRolePermissions, createRole, DuplicateRoleNameError } = await import('../../server/utils/rolePermissions'))
+  ;({ listRoles, getRolePermissions, setRolePermissions, createRole, DuplicateRoleNameError, ReferenceRoleNotFoundError } = await import(
+    '../../server/utils/rolePermissions'
+  ))
 }, 60_000)
 
 afterAll(async () => {
@@ -210,6 +213,50 @@ describe('rolePermissions (Postgres real)', () => {
       const roleInA = await createRole(TENANT_A, 'Finanzas')
       const roleInB = await createRole(TENANT_B, 'Finanzas')
       expect(roleInA.id).not.toBe(roleInB.id)
+    })
+
+    // Rediseno "Nuevo Rol" (2026-09-01, "checa esto" sobre
+    // Screen/Roles y Permisos - Nuevo Rol) - copyFromRoleId cierra el
+    // segundo hueco encontrado en esa misma pantalla: la seccion opcional
+    // "Copiar permisos de" del modal real.
+    it('copyFromRoleId copia los permisos del rol de referencia y devuelve copiedPermissionCount', async () => {
+      const source = await createRole(TENANT_A, 'Ventas Origen')
+      await setRolePermissions(TENANT_A, source.id, [
+        { entityId: clientesEntityA, canRead: true, canCreate: true, canUpdate: false, canDelete: false },
+        { entityId: empresasEntityA, canRead: true, canCreate: false, canUpdate: false, canDelete: false }
+      ])
+
+      const created = await createRole(TENANT_A, 'Ventas Copia', source.id)
+      expect(created.copiedPermissionCount).toBe(3)
+
+      const perms = await getRolePermissions(TENANT_A, created.id)
+      expect(perms!.permissions.find((p) => p.entityId === clientesEntityA)).toMatchObject({
+        canRead: true,
+        canCreate: true,
+        canUpdate: false,
+        canDelete: false
+      })
+      expect(perms!.permissions.find((p) => p.entityId === empresasEntityA)).toMatchObject({ canRead: true, canCreate: false })
+    })
+
+    it('sin copyFromRoleId (o null) el rol se crea sin permisos, con copiedPermissionCount 0', async () => {
+      const role = await createRole(TENANT_A, 'Sin Copia', null)
+      expect(role.copiedPermissionCount).toBe(0)
+      const perms = await getRolePermissions(TENANT_A, role.id)
+      for (const p of perms!.permissions) {
+        expect(p).toMatchObject({ canRead: false, canCreate: false, canUpdate: false, canDelete: false })
+      }
+    })
+
+    it('copyFromRoleId de un rol inexistente o de otro tenant lanza ReferenceRoleNotFoundError, sin crear el rol', async () => {
+      await expect(createRole(TENANT_A, 'Nombre Nunca Usado', randomUUID())).rejects.toBeInstanceOf(ReferenceRoleNotFoundError)
+      const rolesAfterBadId = await listRoles(TENANT_A)
+      expect(rolesAfterBadId.find((r) => r.name === 'Nombre Nunca Usado')).toBeUndefined()
+
+      const roleBId = (await listRoles(TENANT_B))[0].id
+      await expect(createRole(TENANT_A, 'Otro Nombre Nunca Usado', roleBId)).rejects.toBeInstanceOf(ReferenceRoleNotFoundError)
+      const rolesAfterOtherTenantId = await listRoles(TENANT_A)
+      expect(rolesAfterOtherTenantId.find((r) => r.name === 'Otro Nombre Nunca Usado')).toBeUndefined()
     })
   })
 })
