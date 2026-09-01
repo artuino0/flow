@@ -74,7 +74,7 @@ function setDefaultSortDir(dir: 'asc' | 'desc') {
   <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
     <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
       <h2 class="text-[15px] font-bold text-brand-text">Listado de registros</h2>
-      <p class="text-sm text-brand-text-secondary">Elegí las columnas, filtros disponibles y el orden por defecto</p>
+      <p class="text-sm text-brand-text-secondary">Elige las columnas, filtros disponibles y el orden por defecto</p>
     </div>
 
     <div class="flex flex-col gap-5 p-5">

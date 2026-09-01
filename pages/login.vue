@@ -60,7 +60,7 @@ async function onSubmit() {
       <form class="flex w-full max-w-[380px] flex-col gap-5" @submit.prevent="onSubmit">
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Iniciar sesión</h2>
-          <p class="mt-1 text-sm text-brand-text-secondary">Ingresá con las credenciales de tu organización</p>
+          <p class="mt-1 text-sm text-brand-text-secondary">Ingresa con las credenciales de tu organización</p>
         </div>
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">

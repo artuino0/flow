@@ -77,7 +77,7 @@ function toggleActivity() {
   <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
     <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
       <h2 class="text-[15px] font-bold text-brand-text">Ficha del registro</h2>
-      <p class="text-sm text-brand-text-secondary">Elegí qué se muestra en la ficha y reordená con las flechas</p>
+      <p class="text-sm text-brand-text-secondary">Elige qué se muestra en la ficha y reordena con las flechas</p>
     </div>
 
     <div class="flex flex-col gap-5 p-5">

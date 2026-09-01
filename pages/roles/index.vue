@@ -198,7 +198,7 @@ async function onCreateRole() {
     <div class="flex items-center justify-between">
       <div class="flex flex-col gap-1">
         <h1 class="text-[22px] font-bold text-brand-text">Roles y Permisos</h1>
-        <p class="text-sm text-brand-text-secondary">Definí qué puede ver, crear, editar o eliminar cada rol en cada entidad</p>
+        <p class="text-sm text-brand-text-secondary">Define qué puede ver, crear, editar o eliminar cada rol en cada entidad</p>
       </div>
       <button
         type="button"
@@ -217,7 +217,7 @@ async function onCreateRole() {
 
     <template v-else>
       <p v-if="roles.length === 0" class="text-sm text-brand-text-muted">
-        Este tenant todavía no tiene roles. Creá el primero con "Crear rol".
+        Este tenant todavía no tiene roles. Crea el primero con "Crear rol".
       </p>
 
       <template v-else>
