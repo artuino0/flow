@@ -21,6 +21,7 @@
 // asistente completo con vista previa en vivo es HU-ERD-70, todavia sin
 // implementar.
 import { Blocks, ChevronRight, Search, Settings2, Trash2 } from '@lucide/vue'
+import { moduleIconComponent } from '~/utils/moduleIcons'
 
 definePageMeta({ layout: 'default' })
 
@@ -33,6 +34,11 @@ interface ModuleRow {
   createdAt: string
   recordCount: number
   fieldCount: number
+  // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
+  // comentario largo en server/db/schema.ts. Null hasta que se elija uno
+  // (components/IconPicker.vue, desde "Editar módulo") - moduleIconComponent()
+  // cae al icono generico "blocks" en ese caso.
+  icon: string | null
 }
 
 const { data, pending, error: fetchError, refresh } = await useFetch<{ entities: ModuleRow[] }>('/api/entities', {
@@ -140,7 +146,7 @@ async function onDelete(module: ModuleRow) {
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-brand-blue-bg">
-                    <Blocks class="h-4 w-4 text-brand-blue" :stroke-width="1.75" />
+                    <component :is="moduleIconComponent(module.icon)" class="h-4 w-4 text-brand-blue" :stroke-width="1.75" />
                   </div>
                   <div class="flex flex-col">
                     <span class="font-semibold text-brand-text">{{ module.name }}</span>

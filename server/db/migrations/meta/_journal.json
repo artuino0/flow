@@ -141,6 +141,13 @@
       "when": 1788234873854,
       "tag": "0019_entity_fields_sort_order",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788272971055,
+      "tag": "0020_entities_icon",
+      "breakpoints": true
     }
   ]
 }

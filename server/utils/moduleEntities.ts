@@ -20,6 +20,9 @@ export interface EntitySummary {
   // Rediseno "Editar Módulo" (ver comentario largo en server/db/schema.ts) -
   // switch "Módulo activo". true por defecto.
   isActive: boolean
+  // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
+  // comentario largo en server/db/schema.ts. Null hasta que se elija uno.
+  icon: string | null
   // HU-ERD-74: guardado tal cual (sin resolver contra entity_fields reales) -
   // la resolucion con defaults/reconciliacion vive en resolveDetailLayout()
   // (server/utils/detailLayout.ts), consumida por GET /api/entities/:entity/fields.
@@ -71,6 +74,7 @@ export async function listEntities(tenantId: string): Promise<EntityListItem[]> 
         name: entities.name,
         description: entities.description,
         isActive: entities.isActive,
+        icon: entities.icon,
         createdAt: entities.createdAt
       })
       .from(entities)
@@ -111,14 +115,14 @@ export async function listEntities(tenantId: string): Promise<EntityListItem[]> 
  */
 export async function createEntity(
   tenantId: string,
-  input: { name: string; slug: string; description: string | null }
+  input: { name: string; slug: string; description: string | null; icon?: string | null }
 ): Promise<EntitySummary> {
   return withTenant(tenantId, async (tx) => {
     let entity: typeof entities.$inferSelect
     try {
       ;[entity] = await tx
         .insert(entities)
-        .values({ tenantId, name: input.name, slug: input.slug, description: input.description })
+        .values({ tenantId, name: input.name, slug: input.slug, description: input.description, icon: input.icon ?? null })
         .returning()
     } catch (err) {
       // drizzle-orm >=0.36 envuelve el error del driver "postgres" en un
@@ -154,6 +158,7 @@ export async function createEntity(
       name: entity.name,
       description: entity.description,
       isActive: entity.isActive,
+      icon: entity.icon,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }
@@ -163,13 +168,21 @@ export async function createEntity(
 export async function updateEntity(
   tenantId: string,
   entityId: string,
-  input: { name?: string; description?: string | null; isActive?: boolean; detailLayout?: unknown; listLayout?: unknown }
+  input: {
+    name?: string
+    description?: string | null
+    isActive?: boolean
+    icon?: string | null
+    detailLayout?: unknown
+    listLayout?: unknown
+  }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
     if (input.isActive !== undefined) setValues.isActive = input.isActive
+    if (input.icon !== undefined) setValues.icon = input.icon
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
 
@@ -186,9 +199,66 @@ export async function updateEntity(
       name: entity.name,
       description: entity.description,
       isActive: entity.isActive,
+      icon: entity.icon,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }
+  })
+}
+
+export interface NavEntity {
+  id: string
+  slug: string
+  name: string
+  icon: string | null
+  canRead: boolean
+  canCreate: boolean
+  canUpdate: boolean
+  canDelete: boolean
+}
+
+/**
+ * ERD-43/ERD-44: entidades visibles para CUALQUIER usuario autenticado (no
+ * admin-only como listEntities(), que es la pantalla de administracion de
+ * modulos) - para armar el menu dinamico (components/AppNav.vue) sin
+ * hardcodear ninguna lista de modulos, y decidir que acciones mostrar en cada
+ * uno sin adivinar (mismos 4 flags que getPermissionFlags(), HU-ERD-24).
+ *
+ * Filtra a role_entity_permissions.can_read = true del rol del usuario -
+ * mismo criterio de permiso que requirePermission()/requireAdminRole(). Un
+ * modulo desactivado (isActive=false) se excluye tambien para cualquier rol
+ * NO administrador, aunque tenga canRead=true, porque igual quedaria
+ * bloqueado con 403 al entrar (mismo chequeo que requirePermission()) - no
+ * tiene sentido un link de menu que lleva a una pantalla bloqueada. Un
+ * administrador (roles.isSystem) sigue viendo el modulo igual, para poder
+ * reactivarlo.
+ */
+export async function listVisibleEntities(tenantId: string, roleId: string): Promise<NavEntity[]> {
+  return withTenant(tenantId, async (tx) => {
+    const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, roleId)).limit(1)
+    const isAdmin = Boolean(role?.isSystem)
+
+    const rows = await tx
+      .select({
+        id: entities.id,
+        slug: entities.slug,
+        name: entities.name,
+        icon: entities.icon,
+        isActive: entities.isActive,
+        canRead: roleEntityPermissions.canRead,
+        canCreate: roleEntityPermissions.canCreate,
+        canUpdate: roleEntityPermissions.canUpdate,
+        canDelete: roleEntityPermissions.canDelete
+      })
+      .from(entities)
+      .innerJoin(
+        roleEntityPermissions,
+        and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId))
+      )
+      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true)))
+      .orderBy(entities.name)
+
+    return rows.filter((r) => isAdmin || r.isActive).map(({ isActive: _isActive, ...rest }) => rest)
   })
 }
 

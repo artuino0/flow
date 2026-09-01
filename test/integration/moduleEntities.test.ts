@@ -7,6 +7,7 @@ import type {
   updateEntity as UpdateEntity,
   deleteEntity as DeleteEntity,
   listEntities as ListEntities,
+  listVisibleEntities as ListVisibleEntities,
   DuplicateSlugError as DuplicateSlugErrorType
 } from '../../server/utils/moduleEntities'
 
@@ -24,6 +25,7 @@ let createEntity: typeof CreateEntity
 let updateEntity: typeof UpdateEntity
 let deleteEntity: typeof DeleteEntity
 let listEntities: typeof ListEntities
+let listVisibleEntities: typeof ListVisibleEntities
 let DuplicateSlugError: typeof DuplicateSlugErrorType
 
 let adminRoleA: string
@@ -40,7 +42,9 @@ beforeAll(async () => {
   await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_B}, 'Administrador', true)`
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ createEntity, updateEntity, deleteEntity, listEntities, DuplicateSlugError } = await import('../../server/utils/moduleEntities'))
+  ;({ createEntity, updateEntity, deleteEntity, listEntities, listVisibleEntities, DuplicateSlugError } = await import(
+    '../../server/utils/moduleEntities'
+  ))
 }, 60_000)
 
 afterAll(async () => {
@@ -153,5 +157,62 @@ describe('moduleEntities (Postgres real)', () => {
     const result = await listEntities(tenantCounts)
     expect(result.find((e) => e.slug === 'con-datos')).toMatchObject({ recordCount: 2, fieldCount: 1 })
     expect(result.find((e) => e.slug === 'vacio')).toMatchObject({ recordCount: 0, fieldCount: 0 })
+  })
+
+  // ERD-43/ERD-44 (2026-09-01, pedido directo del usuario: "el menu aun no
+  // renderisa las entidades") - listVisibleEntities() es la fuente real de
+  // GET /api/nav/entities (components/AppNav.vue). No usa requireAdminRole -
+  // filtra por role_entity_permissions.can_read del rol pedido, y por
+  // isActive para roles no-admin.
+  describe('listVisibleEntities', () => {
+    it('devuelve solo los modulos con canRead=true del rol pedido, con el icono real', async () => {
+      const tenant = randomUUID()
+      await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Nav')`
+      const [vendedor] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Vendedor', false) returning id`
+
+      const visible = await createEntity(tenant, { name: 'Visible', slug: 'visible', description: null, icon: 'Warehouse' })
+      const oculto = await createEntity(tenant, { name: 'Oculto', slug: 'oculto', description: null })
+
+      await admin`
+        insert into role_entity_permissions (role_id, entity_id, can_read, can_create, can_update, can_delete)
+        values (${vendedor.id}, ${visible.id}, true, false, true, false)
+      `
+      await admin`
+        insert into role_entity_permissions (role_id, entity_id, can_read, can_create, can_update, can_delete)
+        values (${vendedor.id}, ${oculto.id}, false, false, false, false)
+      `
+
+      const result = await listVisibleEntities(tenant, vendedor.id)
+      expect(result).toEqual([
+        { id: visible.id, slug: 'visible', name: 'Visible', icon: 'Warehouse', canRead: true, canCreate: false, canUpdate: true, canDelete: false }
+      ])
+    })
+
+    it('un rol admin (isSystem=true) ve un modulo inactivo igual; un rol no-admin con canRead no lo ve', async () => {
+      const tenant = randomUUID()
+      await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Nav Inactivo')`
+      const [adminRole] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Administrador', true) returning id`
+      const [vendedor] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Vendedor', false) returning id`
+
+      const entity = await createEntity(tenant, { name: 'Inactivo', slug: 'inactivo', description: null })
+      await admin`
+        insert into role_entity_permissions (role_id, entity_id, can_read, can_create, can_update, can_delete)
+        values (${vendedor.id}, ${entity.id}, true, false, false, false)
+      `
+      await updateEntity(tenant, entity.id, { isActive: false })
+
+      expect((await listVisibleEntities(tenant, vendedor.id)).map((r) => r.slug)).toEqual([])
+      // El admin ya tiene CRUD auto-otorgado por createEntity() - sigue viendolo.
+      expect((await listVisibleEntities(tenant, adminRole.id)).map((r) => r.slug)).toEqual(['inactivo'])
+    })
+
+    it('devuelve [] para un rol sin ningun permiso otorgado', async () => {
+      const tenant = randomUUID()
+      await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Nav Vacio')`
+      const [vendedor] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Vendedor', false) returning id`
+      await createEntity(tenant, { name: 'Sin permiso', slug: 'sin-permiso', description: null })
+
+      expect(await listVisibleEntities(tenant, vendedor.id)).toEqual([])
+    })
   })
 })

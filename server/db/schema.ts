@@ -38,6 +38,20 @@ export const entities = pgTable('entities', {
   // para Clientes/Empresas/Empleados. Ver server/utils/listLayout.ts. Misma
   // decision de "sin tabla nueva" que detailLayout (ERD-74) y Tabla/Select (ERD-68).
   listLayout: jsonb('list_layout'),
+  // Pedido directo del usuario (2026-09-01): "un selector de iconos, para
+  // poder elegir el icono que usara el modulo, se puede editar" - primero se
+  // implemento con un set curado de 24 iconos, pero el mismo dia el usuario
+  // pidio el catalogo completo con buscador ("me imaginaba... todos los
+  // iconos y un buscador"). Guarda el nombre canonico PascalCase de
+  // @lucide/vue (ej. "Building2", "UserRound" - MODULE_ICON_KEYS en
+  // server/utils/moduleIcons.ts, validado contra el catalogo completo del
+  // paquete, no cualquier string libre). Null = sin elegir todavia -> el
+  // frontend cae al icono generico "Blocks" (moduleIconComponent(),
+  // utils/moduleIcons.ts), igual que hoy antes de esta columna. La migracion
+  // de esta columna hace backfill de 'Users'/'Building2'/'UserRound' para
+  // clientes/empresas/empleados (los 3 modulos base de scripts/seed.mjs) para
+  // no perder el icono que ya tenian hardcodeado en components/AppNav.vue.
+  icon: text('icon'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

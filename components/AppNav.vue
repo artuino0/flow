@@ -1,58 +1,62 @@
 <script setup lang="ts">
-// HU-ERD-21: placeholder estatico del menu lateral. HU-ERD-44 lo reemplaza
-// por un listado dinamico armado desde GET /api/entities (ERD-43), filtrado
-// por lo que el usuario puede leer (canRead por entidad).
+// HU-ERD-21: placeholder estatico original del menu lateral.
 //
-// HU-ERD-32: mientras tanto, agrega los links del modulo CRM/Directorio
-// Central (Clientes/Empresas/Empleados, HU-ERD-25) resolviendolos punto a
-// punto contra GET /api/entities/:slug/fields (HU-ERD-23/24) - el mismo
-// endpoint que ya usan las paginas genericas para permisos. Ese endpoint
-// tira 403 si el rol no tiene canRead y 404 si la entidad no existe todavia
-// para el tenant (ej. no se corrio scripts/seed.mjs) - en ambos casos el link
-// simplemente no se muestra, en vez de llevar a una pantalla rota. Esto NO es
-// el menu dinamico generico de HU-ERD-44 (esa es para CUALQUIER entidad); es
-// especifico de las 3 entidades de este modulo.
+// ERD-43/ERD-44 (2026-09-01, pedido directo del usuario: "el menu aun no
+// renderisa las entidades"): reemplaza el bloque anterior de HU-ERD-32 (que
+// solo resolvia punto a punto las 3 entidades hardcodeadas del modulo
+// CRM/Directorio Central - Clientes/Empresas/Empleados) por un listado
+// GENERICO armado desde GET /api/nav/entities (server/utils/moduleEntities.ts,
+// listVisibleEntities()) - CUALQUIER modulo creado desde el Constructor de
+// Módulos (HU-ERD-65+) aparece aca solo, sin tocar este archivo, apenas el
+// rol del usuario tenga canRead sobre el. Ese endpoint ya filtra por permiso
+// y excluye modulos inactivos para roles no-admin (mismo criterio que
+// requirePermission()) - aca no hay logica de permisos propia, solo se pinta
+// lo que el backend ya decidio que es visible.
+//
+// Icono por modulo: entities.icon (pedido directo del usuario, mismo dia -
+// "un selector de iconos... se puede editar", ver components/IconPicker.vue)
+// resuelto via moduleIconComponent() (utils/moduleIcons.ts), con fallback al
+// icono generico "blocks" para modulos sin icono elegido todavia.
 //
 // Diseno Pencil: look de "Sidebar Item" (icono + label, activo con fondo +
 // borde izquierdo azul) y titulos de seccion en mayusculas, igual que
-// Screen/Dashboard, Screen/List Clientes, etc. del .pen.
-import { LayoutDashboard, Users, Building2, UserRound, Folder, ShieldCheck, Settings, Blocks } from '@lucide/vue'
-import type { Component } from 'vue'
+// Screen/Dashboard, Screen/List Clientes, etc. del .pen. El .pen no dibuja un
+// mock de la seccion de modulos con MAS de 3 items (no existia el concepto de
+// modulo custom cuando se diseño el Sidebar) - se mantiene el mismo look de
+// seccion ya establecido, con el titulo "MÓDULOS" (el nombre real de la
+// epica, ERD-65) en vez de "DIRECTORIO" (ese nombre era especifico del CRM
+// hardcodeado que este cambio retira).
+import { LayoutDashboard, ShieldCheck, Settings, Blocks } from '@lucide/vue'
+import { moduleIconComponent } from '~/utils/moduleIcons'
 
-interface CrmEntry {
+interface NavEntity {
   slug: string
-  label: string
+  name: string
+  icon: string | null
 }
 
-const CRM_ENTRIES: CrmEntry[] = [
-  { slug: 'clientes', label: 'Clientes' },
-  { slug: 'empresas', label: 'Empresas' },
-  { slug: 'empleados', label: 'Empleados' }
-]
-
-const CRM_ICONS: Record<string, Component> = {
-  clientes: Users,
-  empresas: Building2,
-  empleados: UserRound
-}
-
-function iconFor(slug: string): Component {
-  return CRM_ICONS[slug] ?? Folder
-}
-
-const { data: crmLinks } = await useAsyncData('appnav-crm-links', async () => {
+const { data: navEntitiesData } = await useAsyncData('appnav-modules', async () => {
   // Igual que useAuth.ts (HU-ERD-22): en SSR, $fetch a una ruta interna no
   // reenvia sola la cookie httpOnly de la request original - hay que pasarla
-  // a mano, o las 3 llamadas dan 401 en el primer render y el menu queda
-  // vacio hasta la proxima navegacion.
+  // a mano, o el menu queda vacio hasta la proxima navegacion. Cualquier
+  // error (401 sin sesion, 403 sin rol) se trata como "sin modulos visibles"
+  // en vez de romper el layout - mismo criterio de "no rompe" que el resto
+  // de esta pantalla (isAdmin de abajo usa el mismo patron).
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
-  const results = await Promise.allSettled(
-    CRM_ENTRIES.map((entry) => $fetch(`/api/entities/${entry.slug}/fields`, { headers }).then(() => entry))
-  )
-  return results
-    .filter((r): r is PromiseFulfilledResult<CrmEntry> => r.status === 'fulfilled')
-    .map((r) => r.value)
+  try {
+    return await $fetch<{ entities: NavEntity[] }>('/api/nav/entities', { headers })
+  } catch {
+    return { entities: [] }
+  }
 })
+
+const moduleItems = computed(() =>
+  (navEntitiesData.value?.entities ?? []).map((entity) => ({
+    label: entity.name,
+    to: `/registros/${entity.slug}`,
+    icon: moduleIconComponent(entity.icon)
+  }))
+)
 
 // HU-ERD-33: seccion "Administracion" (Roles y permisos, Ajustes),
 // visible solo si GET /api/roles no tira 403 (requiere rol administrador,
@@ -79,9 +83,6 @@ const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
 // condicionarla a isAdmin/appConfig como antes. La pantalla en si sigue
 // respetando FEATURE_DASHBOARD (HU-ERD-35) puertas adentro (pages/index.vue).
 const items = computed(() => [{ label: 'Tablero', to: '/', icon: LayoutDashboard }])
-const crmItems = computed(() =>
-  (crmLinks.value ?? []).map((entry) => ({ label: entry.label, to: `/registros/${entry.slug}`, icon: iconFor(entry.slug) }))
-)
 // "Ajustes" es un placeholder (pages/ajustes/index.vue) - se reserva el
 // lugar en el menu a pedido del usuario; el alcance real es una HU aparte.
 // "Modulos" (HU-ERD-69) usa el mismo guard que ya prueba isAdmin arriba
@@ -120,10 +121,10 @@ function isActive(to: string): boolean {
       </NuxtLink>
     </div>
 
-    <div v-if="crmItems.length" class="flex flex-col gap-px">
-      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">DIRECTORIO</p>
+    <div v-if="moduleItems.length" class="flex flex-col gap-px">
+      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">MÓDULOS</p>
       <NuxtLink
-        v-for="item in crmItems"
+        v-for="item in moduleItems"
         :key="item.to"
         :to="item.to"
         class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"

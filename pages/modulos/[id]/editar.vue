@@ -27,7 +27,7 @@
 // HU-ERD-74 suma el paso 3 "Diseño del detalle" con el mismo criterio.
 // HU-ERD-75 suma el paso 4 "Diseño del listado" (Table Builder), tambien
 // clickeable libremente como los otros tres.
-import { Blocks, Trash2 } from '@lucide/vue'
+import { Trash2 } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -40,6 +40,9 @@ interface ModuleDetail {
   // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, revisado con las
   // herramientas de Pencil antes de este cambio) - switch "Módulo activo".
   isActive: boolean
+  // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
+  // comentario largo en server/db/schema.ts.
+  icon: string | null
 }
 
 // Rediseno "Editar Módulo": el indicador de 4 pasos con circulos se
@@ -80,11 +83,13 @@ const currentModule = computed(() => data.value?.entities.find((m) => m.id === m
 const name = ref('')
 const description = ref('')
 const isActive = ref(true)
+const icon = ref<string | null>(null)
 watchEffect(() => {
   if (currentModule.value) {
     name.value = currentModule.value.name
     description.value = currentModule.value.description ?? ''
     isActive.value = currentModule.value.isActive
+    icon.value = currentModule.value.icon
   }
 })
 
@@ -99,7 +104,7 @@ async function onSave() {
   try {
     await $fetch(`/api/entities/${moduleId}`, {
       method: 'PUT',
-      body: { name: name.value, description: description.value || null, isActive: isActive.value }
+      body: { name: name.value, description: description.value || null, isActive: isActive.value, icon: icon.value }
     })
     saved.value = true
     await refresh()
@@ -228,9 +233,11 @@ async function onSaveListLayout() {
 
     <template v-else>
       <div class="flex items-center gap-3">
-        <div class="flex h-[38px] w-[38px] items-center justify-center rounded bg-brand-blue-bg">
-          <Blocks class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
-        </div>
+        <!-- Pedido directo del usuario (2026-09-01): selector de icono
+             editable - ver comentario largo en components/IconPicker.vue.
+             Guarda junto con el resto de esta pestaña via "Guardar cambios",
+             no es un cambio inmediato. -->
+        <IconPicker v-model="icon" />
         <div class="flex flex-col">
           <div class="flex items-center gap-2">
             <span class="text-[15px] font-bold text-brand-text">{{ currentModule.name }}</span>

@@ -52,6 +52,12 @@ const entityDefs = [
   {
     slug: 'clientes',
     name: 'Clientes',
+    // Icono editable (pedido directo del usuario, 2026-09-01) - nombre
+    // canonico PascalCase de @lucide/vue (catalogo completo, ver
+    // server/utils/moduleIcons.ts/utils/moduleIcons.ts). Mismos 3 iconos que
+    // ya usaba hardcodeados components/AppNav.vue antes de que el menu se
+    // armara dinamicamente desde GET /api/nav/entities.
+    icon: 'Users',
     fields: [
       { name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true, validationRules: { maxLength: 120 } },
       { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { pattern: EMAIL_REGEX_SRC } },
@@ -71,6 +77,7 @@ const entityDefs = [
   {
     slug: 'empresas',
     name: 'Empresas',
+    icon: 'Building2',
     fields: [
       { name: 'razon_social', label: 'Razon social', dataType: 'text', isRequired: true, validationRules: { maxLength: 150 } },
       { name: 'rfc', label: 'RFC', dataType: 'text', isRequired: false, validationRules: { pattern: RFC_REGEX_SRC } },
@@ -85,6 +92,7 @@ const entityDefs = [
   {
     slug: 'empleados',
     name: 'Empleados',
+    icon: 'UserRound',
     fields: [
       { name: 'nombre_completo', label: 'Nombre completo', dataType: 'text', isRequired: true, validationRules: { maxLength: 150 } },
       { name: 'puesto', label: 'Puesto', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } },
@@ -125,8 +133,8 @@ try {
       const fields = perfil === 'agro' ? [...def.fields, ...def.agroFields] : def.fields
 
       await tx`
-        insert into entities (tenant_id, name, slug)
-        values (${tenantId}, ${def.name}, ${def.slug})
+        insert into entities (tenant_id, name, slug, icon)
+        values (${tenantId}, ${def.name}, ${def.slug}, ${def.icon})
         on conflict (tenant_id, slug) do nothing
       `
       const [entity] = await tx`

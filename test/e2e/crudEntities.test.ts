@@ -604,6 +604,46 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
     expect(notFoundRes.status).toBe(404)
   })
 
+  // Pedido directo del usuario (2026-09-01): "un selector de iconos... se
+  // puede editar" - el icono ya no es texto libre, valida contra el catalogo
+  // completo de @lucide/vue (MODULE_ICON_KEY_SET, server/utils/moduleIcons.ts).
+  it('POST /api/entities con un icon valido lo persiste; con un icon invalido devuelve 400', async () => {
+    const validRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Con Icono', slug: 'con-icono-e2e', icon: 'Warehouse' })
+    })
+    expect(validRes.status).toBe(201)
+    expect((await validRes.json()).icon).toBe('Warehouse')
+
+    const invalidRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Icono Invalido', slug: 'icono-invalido-e2e', icon: 'no-existe-este-icono' })
+    })
+    // Mismo criterio que cualquier otro body invalido validado con Zod en
+    // este repo (readValidatedBody(...).parse) - 400, no 422.
+    expect(invalidRes.status).toBe(400)
+  })
+
+  it('PUT /api/entities/:id cambia el icon; null lo limpia (vuelve al generico "Blocks" en el frontend)', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Icono Editable', slug: 'icono-editable-e2e', icon: 'Truck' })
+    })
+    const entity = await createRes.json()
+    expect(entity.icon).toBe('Truck')
+
+    const putRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ icon: 'Handshake' }) })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).icon).toBe('Handshake')
+
+    const clearRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ icon: null }) })
+    expect(clearRes.status).toBe(200)
+    expect((await clearRes.json()).icon).toBeNull()
+
+    const invalidPutRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ icon: 'icono-que-no-existe' }) })
+    expect(invalidPutRes.status).toBe(400)
+  })
+
   it('DELETE /api/entities/:id borra un modulo sin records, pero 409 si tiene records', async () => {
     const createRes = await api('/api/entities', {
       method: 'POST',
@@ -631,6 +671,99 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
       headers: { cookie: nonAdminCookie }
     })
     expect(nonAdminRes.status).toBe(403)
+  })
+})
+
+// ERD-43/ERD-44 (2026-09-01, pedido directo del usuario: "el menu aun no
+// renderisa las entidades") - GET /api/nav/entities, la fuente real de
+// components/AppNav.vue. Reusa el usuario Vendedor (no-admin) ya creado en el
+// beforeAll de HU-ERD-66 (mismo email/password) - solo vuelve a loguearse,
+// no crea un usuario nuevo.
+describe('e2e: ERD-43/44 (GET /api/nav/entities - menu dinamico filtrado por permiso)', () => {
+  const NAV_NON_ADMIN_EMAIL = 'vendedor@e2e.test'
+  const NAV_NON_ADMIN_PASSWORD = 'e2e-password-1234'
+  let navNonAdminCookie: string
+  let navVendedorRoleId: string
+  let navVisibleEntityId: string
+  let navOcultoEntitySlug: string
+  let navInactivoEntitySlug: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: TENANT_ID, email: NAV_NON_ADMIN_EMAIL, password: NAV_NON_ADMIN_PASSWORD })
+    })
+    expect(loginRes.status).toBe(200)
+    navNonAdminCookie = extractCookie(loginRes)
+
+    const rolesRes = await api('/api/roles')
+    const { roles } = await rolesRes.json()
+    navVendedorRoleId = roles.find((r: { name: string }) => r.name === 'Vendedor').id
+
+    // Visible: canRead otorgado a Vendedor, activo (default).
+    const visibleRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Nav Visible E2E', slug: 'nav-visible-e2e', icon: 'Warehouse' })
+    })
+    const visibleEntity = await visibleRes.json()
+    navVisibleEntityId = visibleEntity.id
+    const grantRes = await api(`/api/roles/${navVendedorRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions: [{ entityId: navVisibleEntityId, canRead: true, canCreate: false, canUpdate: true, canDelete: false }] })
+    })
+    expect(grantRes.status).toBe(200)
+
+    // Oculto: sin permiso otorgado a Vendedor (solo el admin lo tiene, por el
+    // auto-grant de createEntity()) - debe quedar afuera de su listado.
+    navOcultoEntitySlug = 'nav-oculto-e2e'
+    await api('/api/entities', { method: 'POST', body: JSON.stringify({ name: 'Nav Oculto E2E', slug: navOcultoEntitySlug }) })
+
+    // Inactivo: canRead otorgado a Vendedor, pero isActive=false - igual
+    // quedaria bloqueado con 403 al entrar, asi que tampoco debe listarse
+    // para un rol no-admin (si para un admin, que puede reactivarlo).
+    navInactivoEntitySlug = 'nav-inactivo-e2e'
+    const inactivoRes = await api('/api/entities', { method: 'POST', body: JSON.stringify({ name: 'Nav Inactivo E2E', slug: navInactivoEntitySlug }) })
+    const inactivoEntity = await inactivoRes.json()
+    await api(`/api/roles/${navVendedorRoleId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        permissions: [
+          { entityId: navVisibleEntityId, canRead: true, canCreate: false, canUpdate: true, canDelete: false },
+          { entityId: inactivoEntity.id, canRead: true, canCreate: false, canUpdate: false, canDelete: false }
+        ]
+      })
+    })
+    await api(`/api/entities/${inactivoEntity.id}`, { method: 'PUT', body: JSON.stringify({ isActive: false }) })
+  }, 30_000)
+
+  it('sin cookie es 401', async () => {
+    const res = await fetch(`${baseUrl}/api/nav/entities`)
+    expect(res.status).toBe(401)
+  })
+
+  it('un rol no-admin solo ve los modulos con canRead=true y activos, con sus flags de permiso y el icono real', async () => {
+    const res = await fetch(`${baseUrl}/api/nav/entities`, { headers: { cookie: navNonAdminCookie } })
+    expect(res.status).toBe(200)
+    const { entities } = await res.json()
+    const slugs = entities.map((e: { slug: string }) => e.slug)
+
+    expect(slugs).toContain('nav-visible-e2e')
+    expect(slugs).not.toContain(navOcultoEntitySlug)
+    expect(slugs).not.toContain(navInactivoEntitySlug)
+
+    const visible = entities.find((e: { slug: string }) => e.slug === 'nav-visible-e2e')
+    expect(visible).toMatchObject({ icon: 'Warehouse', canRead: true, canCreate: false, canUpdate: true, canDelete: false })
+  })
+
+  it('un administrador ve todos los modulos visibles, incluidos los inactivos (para poder reactivarlos)', async () => {
+    const res = await api('/api/nav/entities')
+    expect(res.status).toBe(200)
+    const { entities } = await res.json()
+    const slugs = entities.map((e: { slug: string }) => e.slug)
+    expect(slugs).toContain('nav-visible-e2e')
+    expect(slugs).toContain(navOcultoEntitySlug)
+    expect(slugs).toContain(navInactivoEntitySlug)
   })
 })
 
