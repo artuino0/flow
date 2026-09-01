@@ -4,6 +4,7 @@ import { db, withTenant } from '~/server/db'
 import { tenants, users } from '~/server/db/schema'
 import { AUTH_COOKIE_MAX_AGE_SECONDS, AUTH_COOKIE_NAME, verifyPassword, signAuthToken } from '~/server/utils/auth'
 import { getAppMode } from '~/server/utils/appConfig'
+import { checkLoginRateLimit, clearLoginRateLimit, recordFailedLoginAttempt } from '~/server/utils/rateLimit'
 
 // MVP (modo "saas"): el cliente indica el tenant explicitamente (tenantId).
 // Cuando exista resolucion por subdominio/dominio, este endpoint deberia
@@ -52,6 +53,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Credenciales invalidas' })
   }
 
+  // HU-ERD-83 (parte 1): limite de intentos fallidos por cuenta (tenant+email),
+  // no por IP - el vector que importa aca es "alguien probando contraseñas
+  // contra ESTA cuenta puntual" (fuerza bruta/credential stuffing), no cuanto
+  // trafico general manda una IP. Se chequea ANTES de tocar la base/bcrypt
+  // (mas barato) y se registra el intento SOLO si termina en credenciales
+  // invalidas (ver mas abajo) - un usuario legitimo que loguea bien nunca
+  // acumula intentos.
+  const rateLimitKey = `${tenantId}:${body.email.toLowerCase()}`
+  const rateLimitStatus = checkLoginRateLimit(rateLimitKey)
+  if (rateLimitStatus.blocked) {
+    setResponseHeader(event, 'Retry-After', rateLimitStatus.retryAfterSeconds)
+    throw createError({
+      statusCode: 429,
+      statusMessage: `Demasiados intentos fallidos. Vuelve a intentar en ${Math.ceil(rateLimitStatus.retryAfterSeconds / 60)} minuto(s)`
+    })
+  }
+
   const user = await withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select()
@@ -62,13 +80,17 @@ export default defineEventHandler(async (event) => {
   })
 
   if (!user || !user.isActive) {
+    recordFailedLoginAttempt(rateLimitKey)
     throw createError({ statusCode: 401, statusMessage: 'Credenciales invalidas' })
   }
 
   const valid = await verifyPassword(body.password, user.passwordHash)
   if (!valid) {
+    recordFailedLoginAttempt(rateLimitKey)
     throw createError({ statusCode: 401, statusMessage: 'Credenciales invalidas' })
   }
+
+  clearLoginRateLimit(rateLimitKey)
 
   const token = signAuthToken(
     { sub: user.id, tenantId: user.tenantId, roleId: user.roleId },
