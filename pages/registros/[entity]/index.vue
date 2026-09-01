@@ -10,7 +10,14 @@
 // (ERD-73) solo pide el panel de Filtros para campos Select/Multiselect, no
 // un buscador general para cualquier listado - sumar eso sin que la HU lo
 // pida seria alcance extra, no algo de esta HU puntual.
-import { Filter, Plus, X } from '@lucide/vue'
+//
+// ERD-80 (2026-09-01): boton "Importar" agregado al toolbar, junto a "Crear
+// nuevo" (mismo permiso canCreate) - lleva a pages/registros/:entity/importar.vue.
+// No hay mock de Pencil para esta pantalla (revisado antes de construir,
+// pencil-antes-de-frontend: no existe ningun Screen/Importar en el .pen) -
+// se construyo siguiendo el mismo lenguaje visual ya establecido en el resto
+// del Constructor de Modulos.
+import { Filter, Plus, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -222,6 +229,14 @@ async function onDelete(id: string) {
             </div>
           </div>
         </div>
+        <NuxtLink
+          v-if="meta?.permissions?.canCreate"
+          :to="`/registros/${slug}/importar`"
+          class="flex items-center gap-1.5 rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
+        >
+          <Upload class="h-4 w-4" :stroke-width="1.75" />
+          Importar
+        </NuxtLink>
         <NuxtLink
           v-if="meta?.permissions?.canCreate"
           :to="`/registros/${slug}/nuevo`"
