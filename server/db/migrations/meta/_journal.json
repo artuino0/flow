@@ -176,6 +176,20 @@
       "when": 1788367102560,
       "tag": "0024_erd84_user_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788369383154,
+      "tag": "0025_erd47_triggers_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788369383155,
+      "tag": "0026_triggers_rls",
+      "breakpoints": true
     }
   ]
 }

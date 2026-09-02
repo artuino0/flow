@@ -258,6 +258,81 @@ export const files = pgTable('files', {
   entityIdx: index('files_entity_idx').on(table.entityId)
 }))
 
+// ---- HU-ERD-47: motor de triggers configurable por el usuario (Épica ERD-46,
+// Automatización y Reportería con IA). Regla (triggers) + acciones
+// (trigger_actions) + auditoría de ejecución (trigger_logs). `condition` y
+// `config` son JSONB: un DSL declarativo evaluado por server/utils (ERD-48),
+// nunca código ejecutable (eval/similares) - riesgo de inyección descartado
+// por diseño, no por sanitización.
+
+export const triggers = pgTable('triggers', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // on_create | on_update | on_delete | on_transition (ERD-53) - texto simple,
+  // no un pgEnum de Postgres: mismo criterio que entity_fields.data_type
+  // (KNOWN_DATA_TYPES en dynamicSchema.ts) - agregar un evento nuevo no debe
+  // requerir una migración de esquema, solo extender la validación Zod.
+  triggerEvent: text('trigger_event').notNull(),
+  // DSL declarativo: {field, operator, value} combinables con AND/OR (ERD-48
+  // define la forma exacta y la valida). Default {} = "sin condición todavía"
+  // (trigger recién creado, aún no configurado) - NO se confunde con "siempre
+  // dispara": ERD-48 trata un condition vacío/sin campo como inválido, no
+  // como verdadero.
+  condition: jsonb('condition').notNull().default({}),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('triggers_tenant_idx').on(table.tenantId),
+  entityIdx: index('triggers_entity_idx').on(table.entityId)
+}))
+
+// trigger_actions: tenantId denormalizado a propósito (no solo resoluble via
+// trigger_id -> triggers.tenant_id) para que la RLS de ESTA tabla filtre
+// directo por tenant_id, tal como pide el criterio de aceptación de ERD-47
+// ("RLS ... en las tres tablas") - mismo criterio que record_relations
+// denormaliza tenant_id en vez de resolverlo siempre via relation_definitions.
+export const triggerActions = pgTable('trigger_actions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  triggerId: uuid('trigger_id').notNull().references(() => triggers.id, { onDelete: 'cascade' }),
+  actionType: text('action_type').notNull(), // webhook | email | update_field (ERD-49)
+  config: jsonb('config').notNull().default({}),
+  executionOrder: integer('execution_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('trigger_actions_tenant_idx').on(table.tenantId),
+  triggerIdx: index('trigger_actions_trigger_idx').on(table.triggerId)
+}))
+
+// trigger_logs: auditoría de cada intento de ejecución de una acción
+// (ERD-49). recordId con onDelete 'set null' (no 'cascade' como el resto de
+// esta sección) a propósito: un log de ejecución es auditoría - debe
+// sobrevivir aunque el record que lo originó se borre después, mismo
+// criterio que un log de acceso no desaparece si el recurso auditado se
+// borra. Índice compuesto (status, created_at) para el barrido de
+// reintentos (ERD-49: recorre 'retrying' ordenado por antigüedad).
+export const triggerLogs = pgTable('trigger_logs', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  triggerId: uuid('trigger_id').notNull().references(() => triggers.id, { onDelete: 'cascade' }),
+  recordId: uuid('record_id').references(() => records.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('success'), // success | failed | retrying | dead_letter
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  requestPayload: jsonb('request_payload'),
+  responseStatus: integer('response_status'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('trigger_logs_tenant_idx').on(table.tenantId),
+  triggerIdx: index('trigger_logs_trigger_idx').on(table.triggerId),
+  statusCreatedIdx: index('trigger_logs_status_created_idx').on(table.status, table.createdAt)
+}))
+
 // ---- Dominio OLAP (HU-ERD-27): esquema en estrella para analitica ----
 // El ETL que puebla estas tablas a partir del dominio transaccional
 // (records/entities) es HU-ERD-28, todavia no implementado - aca solo se

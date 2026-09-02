@@ -1,5 +1,16 @@
 # Changelog
 
+### [0.55.0] - 2026-09-02
+#### [add]
+- ERD-47 (Esquema de triggers personalizados) - primer ticket de la épica ERD-46 (Automatización y Reportería con IA), a pedido directo del usuario ("primero quiero asegurarme de que todo funciona pero creo que es mejor empezar automatización y reportes deben ser parte funcional"). Antes de arrancar se corrió una validación completa del repo (no solo lo último entregado): `nuxt typecheck` limpio y suite **204/204** (contando los 7 tests nuevos de esta HU) - sin regresiones.
+- Tres tablas nuevas (migración `0025_erd47_triggers_schema` + RLS `0026_triggers_rls`, mismo patrón que `0010_users_rls`/`0022_files_rls`): `triggers` (regla: entidad, evento `on_create/on_update/on_delete/on_transition`, `condition` JSONB), `trigger_actions` (`webhook/email/update_field`, `config` JSONB, `execution_order`) y `trigger_logs` (auditoría de cada intento: `status`, `attempt_count`, `last_error`, payload/respuesta). `condition`/`config` son JSONB con un DSL declarativo (la evaluación real es ERD-48, todavía no construida) - nunca código ejecutable, riesgo de inyección descartado por diseño.
+- `trigger_actions`/`trigger_logs` denormalizan `tenant_id` propio (no solo resoluble vía `trigger_id -> triggers.tenant_id`) para que la policy RLS de cada tabla filtre directo, tal como pide el criterio de aceptación de la HU ("RLS ... en las tres tablas") - mismo criterio que `record_relations` ya usa frente a `relation_definitions`.
+- `trigger_logs.record_id` con `onDelete: 'set null'` (no `'cascade'` como el resto del esquema): un log de ejecución es auditoría y debe sobrevivir aunque el record que lo originó se borre después. Índice compuesto `(status, created_at)` para el barrido de reintentos que construirá ERD-49.
+- Validado con un test de esquema nuevo (`test/integration/triggersSchema.test.ts`, 7 casos contra Postgres real, conectado como `erp_app` sin privilegios - mismo criterio que `rlsTenantIsolation.test.ts`, ERD-29): RLS habilitada y forzada en las tres tablas, aislamiento cruzado de tenant en insert/select, rechazo de un `tenant_id` ajeno bajo la policy, FK de `entity_id` contra una entidad inexistente, cascada real al borrar la entidad dueña de un trigger, `record_id` en null (no borrado) al borrar el record auditado, y existencia del índice compuesto.
+- Sin backend ni frontend todavía (a propósito, alcance exacto de ERD-47) - `server/utils/triggers.ts`, el evaluador de condiciones y los endpoints de administración quedan para ERD-48 (evaluación) y ERD-51 (UI), en curso.
+- `npx nuxt build` compiló cliente y servidor SSR sin errores; el empaquetado de Nitro no completó dentro del límite del sandbox (misma limitación de todas las entregas de esta sesión).
+- Pendiente para el usuario: `npm run db:migrate` local para aplicar las migraciones `0025`/`0026`.
+
 ### [0.54.0] - 2026-09-02
 #### [add]
 - ERD-84 (Gestión de usuarios: invitar, listar y administrar accesos - `Screen/Usuarios`) - cierra el gap documentado desde la 0.51.0: hasta esta HU no existía ningún endpoint bajo `/api/users` ni forma de crear un usuario desde la UI (solo `scripts/seed*.mjs`). Creado y trabajado a pedido directo del usuario ("créalo y trabájalo").
