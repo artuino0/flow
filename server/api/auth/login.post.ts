@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { tenants, users } from '~/server/db/schema'
-import { AUTH_COOKIE_MAX_AGE_SECONDS, AUTH_COOKIE_NAME, verifyPassword, signAuthToken } from '~/server/utils/auth'
+import { verifyPassword, signPendingTotpToken, issueSessionCookies } from '~/server/utils/auth'
 import { getAppMode } from '~/server/utils/appConfig'
 import { checkLoginRateLimit, clearLoginRateLimit, recordFailedLoginAttempt } from '~/server/utils/rateLimit'
 
@@ -90,22 +90,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Credenciales invalidas' })
   }
 
+  // HU-ERD-83 (parte 2): si el usuario tiene 2FA activo, la contraseña
+  // correcta NO alcanza para abrir sesion - se emite un token intermedio de
+  // 5 min (nunca en cookie, el cliente lo guarda solo en memoria durante el
+  // paso 2) y el login recien se completa (issueSessionCookies) en
+  // POST /api/auth/login/totp con un codigo TOTP valido. El rate limit ya se
+  // limpio arriba porque la CONTRASEÑA fue correcta - un codigo TOTP
+  // incorrecto despues se limita aparte (ver login/totp.post.ts), no
+  // comparte contador con intentos de contraseña.
+  if (user.totpEnabled) {
+    clearLoginRateLimit(rateLimitKey)
+    const tempToken = signPendingTotpToken({ sub: user.id, tenantId: user.tenantId }, config.jwtSecret as string)
+    return { ok: true, requiresTotp: true, tempToken }
+  }
+
   clearLoginRateLimit(rateLimitKey)
 
-  const token = signAuthToken(
-    { sub: user.id, tenantId: user.tenantId, roleId: user.roleId },
-    config.jwtSecret as string
-  )
+  // HU-ERD-22/83: almacenamiento seguro del JWT - cookies httpOnly (no
+  // accesibles desde JS, mitiga robo por XSS), no se devuelve ningun token
+  // crudo en el body.
+  issueSessionCookies(event, { sub: user.id, tenantId: user.tenantId, roleId: user.roleId }, config.jwtSecret as string)
 
-  // HU-ERD-22: almacenamiento seguro del JWT - cookie httpOnly (no accesible
-  // desde JS, mitiga robo por XSS), no se devuelve el token crudo en el body.
-  setCookie(event, AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: AUTH_COOKIE_MAX_AGE_SECONDS
-  })
-
-  return { ok: true }
+  return { ok: true, requiresTotp: false }
 })

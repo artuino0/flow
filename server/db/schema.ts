@@ -201,6 +201,14 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name'),
   isActive: boolean('is_active').notNull().default(true),
+  // HU-ERD-83 (parte 2): 2FA por TOTP (RFC 6238). totpSecret queda guardado
+  // apenas se inicia la configuracion (POST /api/auth/totp/setup) pero
+  // totpEnabled sigue en false hasta que el usuario confirma un codigo real
+  // generado por su app autenticadora (POST /api/auth/totp/verify) - evita
+  // que un setup a medias (usuario nunca escaneo el QR) deje la cuenta con
+  // 2FA "activado" pero sin forma de generar codigos validos.
+  totpSecret: text('totp_secret'),
+  totpEnabled: boolean('totp_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

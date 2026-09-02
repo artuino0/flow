@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
   const profile = await withTenant(auth.tenantId, async (tx) => {
     const [u] = await tx
-      .select({ email: users.email, fullName: users.fullName })
+      .select({ email: users.email, fullName: users.fullName, totpEnabled: users.totpEnabled })
       .from(users)
       .where(eq(users.id, auth.sub))
       .limit(1)
@@ -25,6 +25,10 @@ export default defineEventHandler(async (event) => {
     tenantId: auth.tenantId,
     roleId: auth.roleId,
     email: profile?.email ?? null,
-    fullName: profile?.fullName ?? null
+    fullName: profile?.fullName ?? null,
+    // HU-ERD-83 (parte 2): usado por pages/mi-cuenta.vue para saber si
+    // mostrar "Activar 2FA" o "Desactivar 2FA" sin tener que llamar a otro
+    // endpoint solo para eso.
+    totpEnabled: profile?.totpEnabled ?? false
   }
 })

@@ -8,7 +8,7 @@ import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/ut
 // HU-ERD-35: /api/config es publica (sin auth) - login.vue la necesita ANTES
 // de autenticarse (para saber si mostrar el campo "Organizacion" en modo
 // "dedicated"), y el modo/feature flags no son informacion sensible.
-const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/config'])
+const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/login/totp', '/api/auth/logout', '/api/auth/refresh', '/api/config'])
 
 export default defineEventHandler((event) => {
   const path = getRequestURL(event).pathname
@@ -25,7 +25,18 @@ export default defineEventHandler((event) => {
   }
 
   try {
-    event.context.auth = verifyAuthToken(token, config.jwtSecret as string)
+    const payload = verifyAuthToken(token, config.jwtSecret as string)
+    // HU-ERD-83 (parte 2): un token "totp-pending" (server/utils/auth.ts) se
+    // firma con el MISMO secreto que una sesion real - sin este chequeo,
+    // pasaria `verifyAuthToken` sin problema y quedaria disponible como
+    // sesion valida en cualquier endpoint autenticado durante su ventana de
+    // 5 minutos, sin haber completado el segundo factor todavia. Solo sirve
+    // para POST /api/auth/login/totp (que lo verifica el mismo, no pasa por
+    // este middleware porque no requiere sesion previa).
+    if ((payload as unknown as { purpose?: string }).purpose === 'totp-pending') {
+      throw new Error('Token pendiente de 2FA, no es una sesion valida')
+    }
+    event.context.auth = payload
   } catch {
     throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
   }

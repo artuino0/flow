@@ -13,6 +13,13 @@ import { Boxes, Bell, LogOut, ChevronDown, PanelLeftClose } from '@lucide/vue'
 
 const { user, logout } = useAuth()
 
+// HU-ERD-83 (parte 2): sesion deslizante + aviso de inactividad - ver
+// composables/useIdleTimeout.ts. Solo tiene sentido en el layout autenticado
+// (login.vue usa layout: false).
+const { showWarning, countdown, confirmActive } = useIdleTimeout(async () => {
+  await onLogout('inactividad')
+})
+
 const initials = computed(() => {
   const source = user.value?.fullName || user.value?.email || ''
   const parts = source.trim().split(/\s+/).filter(Boolean)
@@ -21,9 +28,9 @@ const initials = computed(() => {
   return (parts[0][0] + parts[1][0]).toUpperCase()
 })
 
-async function onLogout() {
+async function onLogout(reason?: 'inactividad') {
   await logout()
-  await navigateTo('/login')
+  await navigateTo(reason ? `/login?reason=${reason}` : '/login')
 }
 </script>
 
@@ -48,24 +55,27 @@ async function onLogout() {
 
         <div class="h-6 w-px bg-brand-border-light" />
 
-        <div class="flex items-center gap-2">
+        <NuxtLink to="/mi-cuenta" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg">
           <div class="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-brand-blue-bg">
             <span class="text-xs font-bold text-brand-blue">{{ initials }}</span>
           </div>
           <span v-if="user" class="text-sm font-semibold text-brand-text">{{ user.fullName || user.email }}</span>
           <ChevronDown class="h-[15px] w-[15px] text-brand-text-muted" :stroke-width="2" />
-        </div>
+        </NuxtLink>
 
         <button
           type="button"
           class="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
-          @click="onLogout"
+          @click="onLogout()"
         >
           <LogOut class="h-4 w-4" :stroke-width="2" />
           Salir
         </button>
       </div>
     </header>
+
+    <!-- HU-ERD-83 (parte 2): ver composables/useIdleTimeout.ts -->
+    <InactivityWarningModal v-if="showWarning" :countdown="countdown" @confirm="confirmActive" />
 
     <div class="flex flex-1">
       <aside class="hidden w-60 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface sm:flex">
