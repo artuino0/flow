@@ -3,6 +3,7 @@ import { requirePermission } from '~/server/utils/rbac'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
 import { records } from '~/server/db/schema'
+import { fireTriggersForRecord } from '~/server/utils/triggers'
 
 // POST /api/records/:entity { customData } (HU-ERD-16)
 // customData se valida en dos pasos: forma basica de objeto aca, y despues
@@ -33,6 +34,11 @@ export default defineEventHandler(async (event) => {
       .returning()
     return r
   })
+
+  // HU-ERD-48: sin `await` a proposito - se dispara DESPUES de que el insert
+  // ya se confirmo arriba, nunca agrega latencia ni puede convertirse en un
+  // error de esta respuesta (fireTriggersForRecord atrapa sus propios errores).
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_create', row.customData as Record<string, unknown>)
 
   setResponseStatus(event, 201)
   return row

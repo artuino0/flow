@@ -4,6 +4,7 @@ import { requirePermission } from '~/server/utils/rbac'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
 import { records } from '~/server/db/schema'
+import { fireTriggersForRecord } from '~/server/utils/triggers'
 
 // PUT /api/records/:entity/:id { customData } (HU-ERD-16)
 // Igual que en el create, customData se revalida contra el schema Zod
@@ -43,5 +44,10 @@ export default defineEventHandler(async (event) => {
   if (!row) {
     throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   }
+
+  // HU-ERD-48: mismo criterio "fire-and-forget" que el create - ver comentario
+  // largo en index.post.ts.
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.customData as Record<string, unknown>)
+
   return row
 })
