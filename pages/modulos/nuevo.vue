@@ -276,7 +276,7 @@ async function onContinue() {
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         <ModuleFieldsCard :entity-id="entityId" :entity-name="name" :fields="fields" @changed="loadFields" />
-        <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+        <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="entityId ?? undefined" />
       </div>
     </template>
 

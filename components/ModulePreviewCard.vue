@@ -9,10 +9,19 @@
 import { Eye, ListPlus } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
-defineProps<{
+const props = defineProps<{
   moduleName: string
   moduleDescription?: string | null
   fields: EntityFieldMeta[]
+  // HU-ERD-78: opcional (a diferencia del requerido en DynamicForm.vue)
+  // porque en pages/modulos/nuevo.vue paso 1 ("basica") esta card se
+  // renderiza ANTES de que el modulo exista (todavia no hay POST
+  // /api/entities) - no hay entityId real que pasar. No es un problema:
+  // el formulario aca siempre esta disabled y previewData nunca tiene un
+  // valor cargado, asi que DynamicFileField nunca llega a necesitar el id
+  // (ni dispara upload ni fetch de metadata). Se pasa '' como fallback
+  // solo para satisfacer el tipo de DynamicForm.vue.
+  entityId?: string
 }>()
 
 const previewData = ref<Record<string, unknown>>({})
@@ -35,7 +44,7 @@ const previewData = ref<Record<string, unknown>>({})
         <ListPlus class="h-5 w-5 text-brand-text-muted" :stroke-width="1.75" />
         <p class="text-xs text-brand-text-muted">Los campos del formulario se agregarán en el siguiente paso</p>
       </div>
-      <DynamicForm v-else :fields="fields" :model-value="previewData" disabled />
+      <DynamicForm v-else :fields="fields" :model-value="previewData" :entity-id="props.entityId ?? ''" disabled />
     </div>
   </div>
 </template>

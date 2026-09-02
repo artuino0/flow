@@ -3,3 +3,6 @@ node_modules
 .output
 .env
 .DS_Store
+# HU-ERD-78: archivos subidos por usuarios (dataType 'file') - almacenamiento
+# en disco local, ver server/utils/fileStorage.ts. Nunca se commitean.
+/uploads

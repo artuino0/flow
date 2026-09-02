@@ -49,7 +49,7 @@ async function onSubmit() {
       </p>
 
       <form v-else class="mt-4 flex flex-col gap-4" @submit.prevent="onSubmit">
-        <DynamicForm ref="formRef" v-model="formValues" :fields="data.fields" :disabled="submitting" />
+        <DynamicForm ref="formRef" v-model="formValues" :fields="data.fields" :entity-id="data.entity.id" :disabled="submitting" />
 
         <p v-if="submitError" class="text-sm text-brand-error-text">{{ submitError }}</p>
 

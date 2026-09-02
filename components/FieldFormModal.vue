@@ -38,7 +38,7 @@
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
 import { computed, reactive, ref, watch } from 'vue'
-import { Braces, Calendar, Check, ChevronDown, GripVertical, Hash, Link2, List, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, GripVertical, Hash, Link2, List, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -76,7 +76,12 @@ const TYPE_OPTIONS: TypeOption[] = [
   { value: 'json', label: 'JSON', icon: Braces },
   { value: 'relation', label: 'Relación', icon: Link2 },
   { value: 'select', label: 'Select', icon: List },
-  { value: 'tabla', label: 'Tabla', icon: Table2 }
+  { value: 'tabla', label: 'Tabla', icon: Table2 },
+  // HU-ERD-78: sin referencia en el picker del .pen (revisado antes de
+  // construir - ningun Screen del diseño menciona "archivo"/"adjunto") -
+  // mismo patron visual que la tarjeta de "Tabla" de arriba (HU-ERD-68),
+  // tambien sin mock propio en su momento.
+  { value: 'file', label: 'Archivo', icon: Paperclip }
 ]
 
 // HU-ERD-71: mismas 7 paletas de color de marca que TYPE_BADGE

@@ -69,7 +69,13 @@ export default <Partial<Config>>{
           // reservado (components/ModuleFieldsCard.vue) - dorado, distinto
           // del amber/naranja ya usado por "warning" (booleano).
           'gold-bg': '#FBF3D9',
-          'gold-text': '#8C6D14'
+          'gold-text': '#8C6D14',
+          // HU-ERD-78: badge del dataType "Archivo" (ModuleFieldsCard.vue) -
+          // todos los demas pares de color ya estaban tomados por otro tipo
+          // de dato (error-bg/error-text quedan reservados para estados de
+          // error de verdad en toda la app, nunca se reusan como badge).
+          'indigo-bg': '#E0E7FF',
+          'indigo-text': '#4338CA'
         }
       }
     }

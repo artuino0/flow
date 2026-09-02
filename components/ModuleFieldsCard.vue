@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -41,6 +41,9 @@ const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: stri
   select: { icon: List, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Select' },
   multiselect: { icon: ListChecks, bg: 'bg-brand-info-bg', text: 'text-brand-info-text', label: 'Multiselect' },
   tabla: { icon: Table2, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: 'Tabla' },
+  // HU-ERD-78: sin badge propio en el .pen (tipo nuevo, sin mock) - mismo
+  // criterio que select/multiselect/tabla de arriba.
+  file: { icon: Paperclip, bg: 'bg-brand-indigo-bg', text: 'text-brand-indigo-text', label: 'Archivo' },
   // Reportado por el usuario (2026-09-01): la fila del campo "id" (ver
   // "Reservado" en vez de editar/eliminar, mas abajo) mostraba el badge de su
   // dataType real guardado (ej. "# Número", si se creo asi antes de bloquear

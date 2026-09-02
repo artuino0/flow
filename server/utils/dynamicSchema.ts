@@ -44,7 +44,11 @@ function fingerprint(rows: EntityFieldRow[]): string {
 // con producto/cantidad/precio) y 'select'/'multiselect' (badges de estado),
 // segun el diseño de datos de DOCS/Diseno_Pantallas_Faltantes_Fase2.md. Sin
 // tablas nuevas: todo vive en validation_rules (jsonb ya existente).
-export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect'] as const
+// HU-ERD-78 suma 'file' (adjunto - almacenamiento en disco local, ver
+// server/utils/fileStorage.ts) - se guarda como z.string().uuid() en
+// custom_data, EXACTO el mismo criterio que 'relation': una referencia (aca,
+// al id de la fila en la tabla files) en vez del valor real embebido.
+export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file'] as const
 export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
 
 // Tipos permitidos para una columna dentro de un campo 'tabla' - deliberadamente
@@ -149,7 +153,12 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   relation: z.object({ relationEntity: z.string().min(1).optional() }).strict(),
   tabla: tableColumnsSchema,
   select: selectOptionsSchema,
-  multiselect: selectOptionsSchema
+  multiselect: selectOptionsSchema,
+  // HU-ERD-78: sin reglas propias en esta primera entrega (limite de tamaño
+  // y allowlist de mimeType quedan fijos en server/utils/fileStorage.ts, no
+  // configurables por campo todavia) - z.object({}).strict() documenta la
+  // intencion explicitamente, igual que 'boolean'/'json' de arriba.
+  file: z.object({}).strict()
 }
 
 /** Devuelve el schema Zod de validationRules para un dataType conocido, o null si no se reconoce. */
@@ -226,6 +235,13 @@ export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
       // registro destino coincida con el esperado por la relacion) la valida
       // el trigger fn_validate_record_relation (ERD-10) sobre record_relations,
       // no este schema; aca solo se exige forma de uuid.
+      base = z.string().uuid()
+      break
+    case 'file':
+      // Referencia a una fila de la tabla files (HU-ERD-78) - mismo criterio
+      // que 'relation' de arriba: solo se exige forma de uuid aca, la
+      // existencia real y el permiso sobre esa fila los valida
+      // GET/DELETE /api/files/:id en el momento de servir/borrar el archivo.
       base = z.string().uuid()
       break
     case 'tabla': {

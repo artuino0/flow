@@ -401,14 +401,14 @@ async function onSaveListLayout() {
             </div>
           </div>
 
-          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
         </div>
       </template>
 
       <template v-else-if="step === 'campos'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
-          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
         </div>
       </template>
 
@@ -483,7 +483,7 @@ async function onSaveListLayout() {
            nombre de pestaña promete. -->
       <template v-else>
         <div class="mx-auto w-full max-w-[480px]">
-          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" />
+          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
         </div>
       </template>
     </template>

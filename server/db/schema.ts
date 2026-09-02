@@ -207,6 +207,35 @@ export const users = pgTable('users', {
   tenantEmailUnique: uniqueIndex('users_tenant_email_unique').on(table.tenantId, table.email)
 }))
 
+// files: metadatos de archivos subidos para el dataType 'file' (HU-ERD-78).
+// El archivo en si vive en disco local (server/utils/fileStorage.ts,
+// STORAGE_KEY = ruta relativa dentro del directorio de uploads), NO en esta
+// tabla ni en Postgres - decision explicita (2026-09-01, AskUserQuestion al
+// usuario): almacenamiento en disco del propio servidor para esta primera
+// entrega, no S3/blob storage, para no sumar credenciales/infraestructura
+// nueva. entityId (no recordId): un archivo se sube ANTES de que el record
+// exista (flujo "nuevo registro" - el id del record recien se genera al
+// guardar), asi que la unica referencia posible en el momento de subir es la
+// entidad destino, no un record puntual - el vinculo real al record queda en
+// customData[fieldName] = files.id (mismo patron que dataType 'relation'
+// referencia un uuid de otro record). Limitacion conocida: un archivo subido
+// y nunca guardado en ningun record queda "huerfano" en disco - sin job de
+// limpieza en esta entrega (documentado, no un descuido).
+export const files = pgTable('files', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  storageKey: text('storage_key').notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('files_tenant_idx').on(table.tenantId),
+  entityIdx: index('files_entity_idx').on(table.entityId)
+}))
+
 // ---- Dominio OLAP (HU-ERD-27): esquema en estrella para analitica ----
 // El ETL que puebla estas tablas a partir del dominio transaccional
 // (records/entities) es HU-ERD-28, todavia no implementado - aca solo se

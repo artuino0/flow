@@ -3,15 +3,22 @@
 // segun su dataType/validationRules, sin desarrollo especifico por formulario.
 // Tipos soportados: text (+ enum), number, boolean, date, json, tabla
 // (ERD-72, delegado a DynamicTableField.vue), select/multiselect (ERD-73,
-// delegado a DynamicSelectField.vue) y relation (ERD-7/17, buscador con
+// delegado a DynamicSelectField.vue), relation (ERD-7/17, buscador con
 // autocomplete delegado a DynamicRelationField.vue - ver comentario largo
-// ahi, 2026-09-01) - todos demasiado complejos (dropdown propio, chips,
-// autocomplete) para vivir inline en este archivo.
+// ahi, 2026-09-01) y file (ERD-78, subida/descarga delegada a
+// DynamicFileField.vue) - todos demasiado complejos (dropdown propio, chips,
+// autocomplete, subida de archivos) para vivir inline en este archivo.
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
   modelValue: Record<string, unknown>
+  // HU-ERD-78: requerido por DynamicFileField.vue (POST /api/files?entityId=...
+  // necesita saber a que entidad se sube el archivo, ANTES de que el record
+  // exista - ver comentario largo en server/db/schema.ts). Todas las paginas
+  // que usan DynamicForm.vue ya resuelven la entidad completa (useEntityFields),
+  // asi que pasar su id es directo.
+  entityId: string
   disabled?: boolean
 }>()
 
@@ -169,6 +176,16 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'relation'"
         :field="field"
         :model-value="valueFor(field.name)"
+        :disabled="disabled"
+        @update:model-value="(value) => setValue(field.name, value)"
+      />
+
+      <!-- file: HU-ERD-78, ver components/DynamicFileField.vue -->
+      <DynamicFileField
+        v-else-if="field.dataType === 'file'"
+        :field="field"
+        :model-value="valueFor(field.name)"
+        :entity-id="entityId"
         :disabled="disabled"
         @update:model-value="(value) => setValue(field.name, value)"
       />
