@@ -1187,6 +1187,7 @@ describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
         APP_DATABASE_URL: dedicatedDb.appUrl,
         JWT_SECRET: 'e2e-dedicated-secret',
         OLAP_ETL_ENABLED: 'false',
+        TRIGGER_RETRY_ENABLED: 'false',
         NODE_ENV: 'test',
         APP_MODE: 'dedicated',
         FEATURE_DASHBOARD: 'false'

@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
 
   // HU-ERD-48: mismo criterio "fire-and-forget" que el create - ver comentario
   // largo en index.post.ts.
-  fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.customData as Record<string, unknown>)
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.id, row.customData as Record<string, unknown>)
 
   return row
 })

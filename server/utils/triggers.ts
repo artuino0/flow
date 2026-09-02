@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { entityFields, triggerLogs, triggers } from '~/server/db/schema'
 import { logger } from '~/server/utils/logger'
+import { executeTriggerActions } from '~/server/utils/triggerActions'
 
 // HU-ERD-48: motor de evaluacion de condiciones de triggers (ERD-47), sin
 // ejecucion de codigo arbitrario. `condition` es un DSL declarativo JSON -
@@ -208,19 +209,39 @@ export async function evaluateTriggersForRecord(
  * evaluateTriggersForRecord() SIN esperar su resultado (fire-and-forget) y
  * nunca deja que un error se escape - un fallo aca jamas debe convertirse en
  * un 500 para el cliente que solo estaba creando/editando/borrando un
- * record. Los matches todavia no HACEN nada (ERD-49 construye la ejecucion
- * real de trigger_actions) - por ahora solo quedan logueados via logger.info
- * para poder confirmar en desarrollo que el motor los esta detectando.
+ * record. Para cada trigger que matchea, dispara ademas executeTriggerActions()
+ * (HU-ERD-49: webhook firmado / update_field validado / trigger_logs) -
+ * tambien sin await, en paralelo, cada uno con su propio catch: un webhook
+ * caido de UN trigger nunca debe impedir que los demas triggers matcheados
+ * se ejecuten.
  */
-export function fireTriggersForRecord(tenantId: string, entityId: string, event: TriggerEventName, customData: Record<string, unknown>): void {
+export function fireTriggersForRecord(
+  tenantId: string,
+  entityId: string,
+  event: TriggerEventName,
+  recordId: string,
+  customData: Record<string, unknown>
+): void {
   evaluateTriggersForRecord(tenantId, entityId, event, customData)
     .then((result) => {
-      if (result.matched.length > 0) {
-        logger.info('triggers matched (ejecución pendiente de ERD-49)', {
-          tenantId,
-          entityId,
-          event,
-          matched: result.matched.map((m) => m.id)
+      if (result.matched.length === 0) return
+
+      logger.info('triggers matched', {
+        tenantId,
+        entityId,
+        event,
+        matched: result.matched.map((m) => m.id)
+      })
+
+      for (const matched of result.matched) {
+        executeTriggerActions(tenantId, entityId, matched.id, matched.name, recordId, event, customData).catch((err) => {
+          logger.error('fallo ejecutando acciones de trigger', {
+            tenantId,
+            entityId,
+            triggerId: matched.id,
+            event,
+            error: err instanceof Error ? err.message : String(err)
+          })
         })
       }
     })

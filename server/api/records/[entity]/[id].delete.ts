@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   // HU-ERD-48: mismo criterio "fire-and-forget" que create/update - el
   // customData evaluado es el del record YA borrado (la unica version que
   // existe en este punto).
-  fireTriggersForRecord(auth.tenantId, entity.id, 'on_delete', row.customData as Record<string, unknown>)
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_delete', row.id, row.customData as Record<string, unknown>)
 
   return { deleted: true, id: row.id }
 })

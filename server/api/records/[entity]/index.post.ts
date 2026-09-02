@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
   // HU-ERD-48: sin `await` a proposito - se dispara DESPUES de que el insert
   // ya se confirmo arriba, nunca agrega latencia ni puede convertirse en un
   // error de esta respuesta (fireTriggersForRecord atrapa sus propios errores).
-  fireTriggersForRecord(auth.tenantId, entity.id, 'on_create', row.customData as Record<string, unknown>)
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_create', row.id, row.customData as Record<string, unknown>)
 
   setResponseStatus(event, 201)
   return row
