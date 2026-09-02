@@ -5,6 +5,7 @@ import { withTenant, db } from '~/server/db'
 import { records, tenants, triggers, triggerActions, triggerLogs } from '~/server/db/schema'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { logger } from '~/server/utils/logger'
+import { escapeHtml, sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
 
 // HU-ERD-49: ejecucion real de las acciones de un trigger que matcheo
 // (ERD-48 solo resolvia QUE triggers disparan, nunca ejecutaba nada). Se
@@ -29,6 +30,8 @@ export interface TriggerActionRow {
 // sin que una clave extra rompa una accion ya configurada.
 const webhookConfigSchema = z.object({ url: z.string().url(), secret: z.string().min(1).optional() }).passthrough()
 const updateFieldConfigSchema = z.object({ field: z.string().min(1), value: z.any() }).passthrough()
+// HU-ERD-50: to/subject/body admiten plantilla ({{campo}}, ver interpolateTemplate())
+const emailConfigSchema = z.object({ to: z.string().min(1), subject: z.string().min(1), body: z.string().min(1) }).passthrough()
 
 interface ActionOutcome {
   ok: boolean
@@ -40,9 +43,39 @@ interface ActionOutcome {
   error?: string
 }
 
+/** Snapshot de UN disparo de trigger - lo que se firma/manda al webhook y lo que queda en trigger_logs.request_payload para reusar tal cual en los reintentos. */
+export interface TriggerPayload {
+  trigger: { id: string; name: string }
+  event: string
+  record: { id: string; data: Record<string, unknown> }
+  firedAt: string
+}
+
 /** Firma HMAC-SHA256 del body crudo (mismo texto que se manda en el POST) - HU-ERD-49. */
 function signPayload(rawBody: string, secret: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('hex')
+}
+
+/**
+ * Interpola `{{campo}}` dentro de un texto (asunto/cuerpo/destinatario de la
+ * accion "email", HU-ERD-50) contra el customData del record que disparo el
+ * trigger. Pura y exportada (mismo criterio que buildFieldType() en
+ * dynamicSchema.ts, ERD-17/29) para poder testearla sin Postgres.
+ *
+ * Cada valor interpolado se escapa con escapeHtml() (mismo escapado que ya
+ * usa el correo de invitacion de ERD-84) ANTES de insertarse en el texto -
+ * el "campo" de un record es dato del usuario, nunca codigo/markup de
+ * confianza (misma logica de sanitizacion que el resto del sistema aplica a
+ * cualquier valor de usuario insertado en HTML). Un campo ausente en el
+ * record se interpola como cadena vacia (no revienta la plantilla).
+ */
+export function interpolateTemplate(template: string, data: Record<string, unknown>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, fieldName: string) => {
+    const value = data[fieldName]
+    if (value === undefined || value === null) return ''
+    const asString = typeof value === 'string' ? value : JSON.stringify(value)
+    return escapeHtml(asString)
+  })
 }
 
 /**
@@ -129,6 +162,45 @@ async function runUpdateFieldAction(tenantId: string, entityId: string, recordId
   })
 }
 
+/**
+ * Accion email: envia `config.subject`/`config.body` (HTML) a `config.to`,
+ * los tres interpolados contra el customData del record que disparo el
+ * trigger (interpolateTemplate(), con escapado - HU-ERD-50). Reusa
+ * server/utils/mailer.ts (SMTP configurado por variables de entorno, ERD-84)
+ * en vez de un proveedor de terceros - mismo criterio de "sin dependencia
+ * externa obligatoria" que pide la HU.
+ *
+ * Un SMTP sin configurar, o un "to" interpolado que no da un correo valido,
+ * son fallos PERMANENTES (config o datos del record que no van a cambiar
+ * solos entre un intento y el siguiente). Un error real de SMTP (conexion,
+ * autenticacion, timeout del propio servidor) es transitorio - mismo
+ * criterio de reintento que un webhook caido.
+ */
+async function runEmailAction(config: unknown, data: Record<string, unknown>): Promise<ActionOutcome> {
+  const parsed = emailConfigSchema.safeParse(config)
+  if (!parsed.success) {
+    return { ok: false, retryable: false, error: 'Configuración de email inválida (faltan "to"/"subject"/"body")' }
+  }
+
+  const to = interpolateTemplate(parsed.data.to, data)
+  const subject = interpolateTemplate(parsed.data.subject, data)
+  const html = interpolateTemplate(parsed.data.body, data)
+
+  if (!z.string().email().safeParse(to).success) {
+    return { ok: false, retryable: false, error: `El destinatario interpolado no es un correo válido: "${to}"` }
+  }
+
+  try {
+    await sendPlainEmail({ to, subject, html })
+    return { ok: true, retryable: false }
+  } catch (err) {
+    if (err instanceof SmtpNotConfiguredError) {
+      return { ok: false, retryable: false, error: err.message }
+    }
+    return { ok: false, retryable: true, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 async function fetchOrderedActions(tenantId: string, triggerId: string): Promise<TriggerActionRow[]> {
   return withTenant(tenantId, (tx) =>
     tx
@@ -152,8 +224,11 @@ async function runActionsPipeline(
   entityId: string,
   recordId: string | null,
   actions: TriggerActionRow[],
-  rawBody: string
+  payload: TriggerPayload
 ): Promise<{ anyFailed: boolean; anyRetryable: boolean; lastError?: string; lastResponseStatus?: number }> {
+  const rawBody = JSON.stringify(payload)
+  const templateData = payload.record?.data ?? {}
+
   let anyFailed = false
   let anyRetryable = false
   let lastError: string | undefined
@@ -167,9 +242,11 @@ async function runActionsPipeline(
       outcome = recordId
         ? await runUpdateFieldAction(tenantId, entityId, recordId, action.config)
         : { ok: false, retryable: false, error: 'El registro ya no existe' }
+    } else if (action.actionType === 'email') {
+      outcome = await runEmailAction(action.config, templateData)
     } else {
-      // ERD-50 (accion 'email') y otros tipos futuros: hasta que existan,
-      // marcados como fallo permanente explicito - nunca silencioso.
+      // Tipos futuros: hasta que existan, marcados como fallo permanente
+      // explicito - nunca silencioso.
       outcome = { ok: false, retryable: false, error: `Tipo de acción "${action.actionType}" todavía no implementado` }
     }
 
@@ -218,8 +295,7 @@ export async function executeTriggerActions(
     return
   }
 
-  const rawBody = JSON.stringify(payload)
-  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, entityId, recordId, actions, rawBody)
+  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, entityId, recordId, actions, payload)
   const status = resolveStatus(anyFailed, anyRetryable, 1)
 
   await withTenant(tenantId, (tx) =>
@@ -262,10 +338,10 @@ export async function retryTriggerLog(tenantId: string, logId: string): Promise<
   }
 
   const actions = await fetchOrderedActions(tenantId, trigger.id)
-  const rawBody = JSON.stringify(log.requestPayload ?? {})
+  const payload = (log.requestPayload ?? { trigger: { id: trigger.id, name: trigger.name }, event: '', record: { id: log.recordId ?? '', data: {} }, firedAt: '' }) as TriggerPayload
   const attemptCount = log.attemptCount + 1
 
-  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, trigger.entityId, log.recordId, actions, rawBody)
+  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, trigger.entityId, log.recordId, actions, payload)
   const status = resolveStatus(anyFailed, anyRetryable, attemptCount)
 
   await withTenant(tenantId, (tx) =>

@@ -20,6 +20,17 @@ import nodemailer from 'nodemailer'
 
 export class SmtpNotConfiguredError extends Error {}
 
+/**
+ * Escape HTML minimo (&, <, >) - compartido por cualquier lugar que arme un
+ * correo HTML con datos que no controlamos (nombre de usuario, valores de un
+ * record, etc.). Exportado (HU-ERD-50) para que server/utils/triggerActions.ts
+ * lo reuse al interpolar variables de un record en la plantilla de la accion
+ * "email", en vez de duplicar la misma regla de escapado.
+ */
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 interface SmtpConfig {
   host: string
   port: number
@@ -89,7 +100,7 @@ export interface InvitationEmailParams {
 export function buildInvitationEmailHtml(params: InvitationEmailParams & { inviteUrl: string }): string {
   const { tenantName, inviterName, roleName, inviteUrl, to } = params
   const year = new Date().getFullYear()
-  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const escape = escapeHtml
 
   return `<!doctype html>
 <html lang="es">
@@ -146,12 +157,7 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
   const smtp = readSmtpConfig()
   const inviteUrl = `${getAppBaseUrl()}/invitacion/${params.token}`
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.port === 465,
-    auth: { user: smtp.user, pass: smtp.password }
-  })
+  const transporter = createTransporter(smtp)
 
   await transporter.sendMail({
     from: smtp.from,
@@ -159,4 +165,32 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
     subject: `Te invitaron a unirte a ${params.tenantName} en ERP Dinámico`,
     html: buildInvitationEmailHtml({ ...params, inviteUrl })
   })
+}
+
+function createTransporter(smtp: SmtpConfig) {
+  return nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.password }
+  })
+}
+
+export interface PlainEmailParams {
+  to: string
+  subject: string
+  html: string
+}
+
+/**
+ * Envio de correo generico (sin plantilla propia) - HU-ERD-50, usado por la
+ * accion "email" de un trigger (server/utils/triggerActions.ts), que arma su
+ * propio HTML interpolando variables del record. Misma configuracion SMTP
+ * que sendInvitationEmail() (ERD-84) - lanza SmtpNotConfiguredError si falta
+ * alguna variable de entorno, nunca un fallback silencioso.
+ */
+export async function sendPlainEmail(params: PlainEmailParams): Promise<void> {
+  const smtp = readSmtpConfig()
+  const transporter = createTransporter(smtp)
+  await transporter.sendMail({ from: smtp.from, to: params.to, subject: params.subject, html: params.html })
 }
