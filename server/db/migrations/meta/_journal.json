@@ -169,6 +169,13 @@
       "when": 1788313681798,
       "tag": "0023_erd83_totp",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788367102560,
+      "tag": "0024_erd84_user_invitations",
+      "breakpoints": true
     }
   ]
 }

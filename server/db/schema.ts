@@ -209,6 +209,20 @@ export const users = pgTable('users', {
   // 2FA "activado" pero sin forma de generar codigos validos.
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').notNull().default(false),
+  // HU-ERD-84: invitacion por correo. Un usuario invitado se inserta con
+  // isActive=false, passwordHash = hash de un valor aleatorio que nunca se
+  // entrega a nadie (passwordHash es NOT NULL, no hay forma de dejarlo vacio)
+  // e invitationTokenHash/invitationExpiresAt con el estado real de la
+  // invitacion. Se guarda el HASH del token (sha256), nunca el token crudo -
+  // mismo criterio que passwordHash: si la base se filtra, no alcanza para
+  // aceptar la invitacion. El token crudo solo existe en el correo enviado.
+  // "Invitación pendiente" (Screen/Usuarios del .pen) = invitationTokenHash
+  // no nulo y invitationExpiresAt en el futuro; isActive=false es el gate
+  // real que impide login (server/api/auth/login.post.ts) mientras tanto -
+  // invitationTokenHash/invitationExpiresAt son solo para resolver el token
+  // de aceptacion, no una segunda fuente de verdad sobre si puede loguear.
+  invitationTokenHash: text('invitation_token_hash'),
+  invitationExpiresAt: timestamp('invitation_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

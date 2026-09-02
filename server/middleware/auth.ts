@@ -8,7 +8,17 @@ import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/ut
 // HU-ERD-35: /api/config es publica (sin auth) - login.vue la necesita ANTES
 // de autenticarse (para saber si mostrar el campo "Organizacion" en modo
 // "dedicated"), y el modo/feature flags no son informacion sensible.
-const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/login/totp', '/api/auth/logout', '/api/auth/refresh', '/api/config'])
+const PUBLIC_PATHS = new Set([
+  '/api/health',
+  '/api/auth/login',
+  '/api/auth/login/totp',
+  '/api/auth/logout',
+  '/api/auth/refresh',
+  '/api/config',
+  // HU-ERD-84: aceptar una invitacion pasa el token en el body (no una
+  // sesion) - el invitado todavia no tiene cuenta activa para autenticarse.
+  '/api/users/accept-invitation'
+])
 
 export default defineEventHandler((event) => {
   const path = getRequestURL(event).pathname

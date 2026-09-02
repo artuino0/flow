@@ -26,7 +26,7 @@
 // seccion ya establecido, con el titulo "MÓDULOS" (el nombre real de la
 // epica, ERD-65) en vez de "DIRECTORIO" (ese nombre era especifico del CRM
 // hardcodeado que este cambio retira).
-import { LayoutDashboard, ShieldCheck, Settings, Blocks } from '@lucide/vue'
+import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 
 interface NavEntity {
@@ -94,6 +94,9 @@ const adminItems = computed(() => {
   if (!isAdmin.value) return []
   return [
     { label: 'Módulos', to: '/modulos', icon: Blocks },
+    // HU-ERD-84: "Usuarios" (Screen/Usuarios del .pen) - mismo guard que el
+    // resto de Administracion, gestionar accesos es una accion de admin.
+    { label: 'Usuarios', to: '/usuarios', icon: Users },
     { label: 'Roles y permisos', to: '/roles', icon: ShieldCheck },
     { label: 'Ajustes', to: '/ajustes', icon: Settings }
   ]
