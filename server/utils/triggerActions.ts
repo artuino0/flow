@@ -27,11 +27,14 @@ export interface TriggerActionRow {
 
 // Config esperada por tipo de accion (JSONB de trigger_actions.config, ERD-47).
 // .passthrough(): config puede crecer a futuro (ej. headers custom de webhook)
-// sin que una clave extra rompa una accion ya configurada.
-const webhookConfigSchema = z.object({ url: z.string().url(), secret: z.string().min(1).optional() }).passthrough()
-const updateFieldConfigSchema = z.object({ field: z.string().min(1), value: z.any() }).passthrough()
+// sin que una clave extra rompa una accion ya configurada. Exportados desde
+// HU-ERD-51 para que server/utils/triggerAdmin.ts valide la config al
+// crear/editar una accion desde la UI de administracion, en vez de dejar que
+// una config invalida solo se descubra en el primer disparo real.
+export const webhookConfigSchema = z.object({ url: z.string().url(), secret: z.string().min(1).optional() }).passthrough()
+export const updateFieldConfigSchema = z.object({ field: z.string().min(1), value: z.any() }).passthrough()
 // HU-ERD-50: to/subject/body admiten plantilla ({{campo}}, ver interpolateTemplate())
-const emailConfigSchema = z.object({ to: z.string().min(1), subject: z.string().min(1), body: z.string().min(1) }).passthrough()
+export const emailConfigSchema = z.object({ to: z.string().min(1), subject: z.string().min(1), body: z.string().min(1) }).passthrough()
 
 interface ActionOutcome {
   ok: boolean
@@ -315,17 +318,28 @@ export async function executeTriggerActions(
 }
 
 /**
- * Reintenta un trigger_logs existente en status 'retrying' (llamado desde el
- * job de node-cron, server/plugins/trigger-retries.ts). Reusa el
- * request_payload guardado en el intento original - nunca vuelve a leer el
+ * Reintenta un trigger_logs existente (llamado desde el job de node-cron,
+ * server/plugins/trigger-retries.ts, SIN `options.force` - solo actua sobre
+ * status 'retrying', respetando el backoff ya calculado por el caller). Reusa
+ * el request_payload guardado en el intento original - nunca vuelve a leer el
  * record (que pudo cambiar desde entonces): el reintento es "reenviar lo
  * mismo que ya se decidió disparar", no "recalcular con datos nuevos".
+ *
+ * `options.force` (HU-ERD-51, "botón de reintento manual" desde la UI de
+ * administración de triggers): permite reintentar tambien un log en 'failed'
+ * o 'dead_letter' - un administrador que ya corrigio la causa (ej. arreglo la
+ * URL del webhook, completo el SMTP) necesita poder forzar un reintento sin
+ * esperar a que el job automatico lo levante (que de por si NUNCA toca esos
+ * dos estados). Un log 'success' nunca se reintenta, con o sin force - no hay
+ * nada que reintentar.
  */
-export async function retryTriggerLog(tenantId: string, logId: string): Promise<void> {
+export async function retryTriggerLog(tenantId: string, logId: string, options: { force?: boolean } = {}): Promise<void> {
   const [log] = await withTenant(tenantId, (tx) =>
     tx.select().from(triggerLogs).where(and(eq(triggerLogs.id, logId), eq(triggerLogs.tenantId, tenantId))).limit(1)
   )
-  if (!log || log.status !== 'retrying') return
+  if (!log) return
+  if (log.status === 'success') return
+  if (log.status !== 'retrying' && !options.force) return
 
   const [trigger] = await withTenant(tenantId, (tx) =>
     tx.select({ id: triggers.id, name: triggers.name, entityId: triggers.entityId }).from(triggers).where(eq(triggers.id, log.triggerId)).limit(1)
