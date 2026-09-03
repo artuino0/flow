@@ -26,7 +26,7 @@
 // seccion ya establecido, con el titulo "MÓDULOS" (el nombre real de la
 // epica, ERD-65) en vez de "DIRECTORIO" (ese nombre era especifico del CRM
 // hardcodeado que este cambio retira).
-import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap } from '@lucide/vue'
+import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap, Library } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 
 interface NavEntity {
@@ -94,6 +94,15 @@ const adminItems = computed(() => {
   if (!isAdmin.value) return []
   return [
     { label: 'Módulos', to: '/modulos', icon: Blocks },
+    // ERD-86: "Catálogos" - modulos de tipo dimension (Cultivo, Productor,
+    // Clientes/Empresas/Empleados) ya no aparecen en la seccion "MÓDULOS"
+    // dinamica de arriba (listVisibleEntities() ahora filtra a moduleKind=
+    // 'hecho', ver comentario largo en server/db/schema.ts) - se administran
+    // desde aca. Sin mock propio en el .pen (confirmado listando los
+    // Screen/* existentes) - reusa Screen/Listado Módulos, ver comentario
+    // largo en components/ModuleWizard.vue. Mismo guard que el resto de
+    // Administracion.
+    { label: 'Catálogos', to: '/catalogos', icon: Library },
     // HU-ERD-51: "Automatización" (Screen/Triggers del .pen, disenada para
     // esta HU - no existia antes ningun mock, revisado/creado con las
     // herramientas de Pencil antes de este cambio). Mismo guard que el resto

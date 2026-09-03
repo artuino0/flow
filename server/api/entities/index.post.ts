@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
-import { createEntity, DuplicateSlugError, SLUG_PATTERN } from '~/server/utils/moduleEntities'
+import { createEntity, DuplicateSlugError, MODULE_KINDS, SLUG_PATTERN } from '~/server/utils/moduleEntities'
 import { MODULE_ICON_KEY_SET } from '~/server/utils/moduleIcons'
 
-// POST /api/entities { name, slug, description?, icon? } (HU-ERD-66; icon:
-// pedido directo del usuario 2026-09-01, ver comentario largo en
+// POST /api/entities { name, slug, description?, icon?, moduleKind? } (HU-ERD-66;
+// icon: pedido directo del usuario 2026-09-01, ver comentario largo en
 // server/db/schema.ts) - crea un modulo nuevo. Solo Administrador
 // (requireAdminRole, HU-ERD-61) - hasta esta HU, la unica forma de dar de
 // alta un modulo era scripts/seed.mjs (HU-ERD-25) o SQL directo.
@@ -29,7 +29,12 @@ const bodySchema = z.object({
     .string()
     .refine((v) => MODULE_ICON_KEY_SET.has(v), { message: 'Icono invalido' })
     .nullable()
-    .optional()
+    .optional(),
+  // ERD-86: enviado por el wizard segun desde donde se creo el modulo
+  // (pages/modulos/nuevo.vue vs pages/catalogos/nuevo.vue) - nunca elegido a
+  // mano por el usuario en el formulario. Omitido -> 'hecho' (default del
+  // schema), ver comentario largo en server/db/schema.ts.
+  moduleKind: z.enum(MODULE_KINDS).optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -41,7 +46,8 @@ export default defineEventHandler(async (event) => {
       name: body.name,
       slug: body.slug,
       description: body.description ?? null,
-      icon: body.icon ?? null
+      icon: body.icon ?? null,
+      moduleKind: body.moduleKind
     })
     setResponseStatus(event, 201)
     return entity

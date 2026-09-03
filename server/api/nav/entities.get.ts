@@ -18,8 +18,13 @@ import { listVisibleEntities } from '~/server/utils/moduleEntities'
 // mantiene consistente con como se comporta CUALQUIER otro endpoint
 // autenticado de esta app (dashboard, roles, etc.), no una excepcion sola
 // para este caso.
+// ERD-86: 'hecho' fijo - la seccion dinamica "MÓDULOS" de AppNav.vue es
+// exclusivamente para modulos transaccionales; los catalogos
+// (moduleKind='dimension') se administran aparte desde Administracion >
+// Catalogos, nunca aparecen en este menu (ver comentario largo en
+// server/utils/moduleEntities.ts, listVisibleEntities()).
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const entities = await listVisibleEntities(auth.tenantId, auth.roleId!)
+  const entities = await listVisibleEntities(auth.tenantId, auth.roleId!, 'hecho')
   return { entities }
 })

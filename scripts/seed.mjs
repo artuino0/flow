@@ -132,9 +132,13 @@ try {
     for (const def of entityDefs) {
       const fields = perfil === 'agro' ? [...def.fields, ...def.agroFields] : def.fields
 
+      // ERD-86: 'dimension' explicito - Clientes/Empresas/Empleados son
+      // catalogos de referencia (se consultan, no se crean a diario), van a
+      // Administracion > Catalogos, no al menu principal. Ver comentario
+      // largo en server/db/schema.ts (entities.module_kind).
       await tx`
-        insert into entities (tenant_id, name, slug, icon)
-        values (${tenantId}, ${def.name}, ${def.slug}, ${def.icon})
+        insert into entities (tenant_id, name, slug, icon, module_kind)
+        values (${tenantId}, ${def.name}, ${def.slug}, ${def.icon}, 'dimension')
         on conflict (tenant_id, slug) do nothing
       `
       const [entity] = await tx`

@@ -12,6 +12,10 @@ type Tx = typeof db
 
 export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
+// ERD-86: ver comentario largo en server/db/schema.ts (entities.moduleKind).
+export const MODULE_KINDS = ['hecho', 'dimension'] as const
+export type ModuleKind = (typeof MODULE_KINDS)[number]
+
 export interface EntitySummary {
   id: string
   slug: string
@@ -20,6 +24,9 @@ export interface EntitySummary {
   // Rediseno "Editar Módulo" (ver comentario largo en server/db/schema.ts) -
   // switch "Módulo activo". true por defecto.
   isActive: boolean
+  // ERD-86: 'hecho' (menu principal) o 'dimension' (Administracion > Catalogos) -
+  // ver comentario largo en server/db/schema.ts.
+  moduleKind: ModuleKind
   // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
   // comentario largo en server/db/schema.ts. Null hasta que se elija uno.
   icon: string | null
@@ -64,8 +71,12 @@ export interface EntityListItem extends EntitySummary {
  * Incluye isActive (rediseno "Editar Módulo", ver comentario largo en
  * server/db/schema.ts) para que el badge Activo/Inactivo de la columna
  * "Estado" del listado tenga el dato real, no inventado.
+ *
+ * ERD-86: moduleKind opcional filtra a 'hecho' (pages/modulos/index.vue) o
+ * 'dimension' (pages/catalogos/index.vue, nueva) - mismo endpoint y misma
+ * funcion para ambas pantallas, solo cambia el filtro.
  */
-export async function listEntities(tenantId: string): Promise<EntityListItem[]> {
+export async function listEntities(tenantId: string, moduleKind?: ModuleKind): Promise<EntityListItem[]> {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select({
@@ -75,10 +86,11 @@ export async function listEntities(tenantId: string): Promise<EntityListItem[]> 
         description: entities.description,
         isActive: entities.isActive,
         icon: entities.icon,
+        moduleKind: entities.moduleKind,
         createdAt: entities.createdAt
       })
       .from(entities)
-      .where(eq(entities.tenantId, tenantId))
+      .where(moduleKind ? and(eq(entities.tenantId, tenantId), eq(entities.moduleKind, moduleKind)) : eq(entities.tenantId, tenantId))
       .orderBy(entities.name)
 
     if (rows.length === 0) return []
@@ -100,6 +112,7 @@ export async function listEntities(tenantId: string): Promise<EntityListItem[]> 
 
     return rows.map((r) => ({
       ...r,
+      moduleKind: r.moduleKind as ModuleKind,
       recordCount: recordCountByEntity.get(r.id) ?? 0,
       fieldCount: fieldCountByEntity.get(r.id) ?? 0
     }))
@@ -112,17 +125,28 @@ export async function listEntities(tenantId: string): Promise<EntityListItem[]> 
  * patron que scripts/seed.mjs (HU-ERD-25): sin esto, el modulo quedaria
  * creado pero inaccesible para cualquier rol, incluido el administrador que
  * lo acaba de crear.
+ *
+ * ERD-86: moduleKind default 'hecho' (columna default en el schema) - el
+ * asistente de /catalogos manda 'dimension' explicito, el de /modulos no
+ * manda nada (usa el default). El usuario nunca lo elige a mano.
  */
 export async function createEntity(
   tenantId: string,
-  input: { name: string; slug: string; description: string | null; icon?: string | null }
+  input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind }
 ): Promise<EntitySummary> {
   return withTenant(tenantId, async (tx) => {
     let entity: typeof entities.$inferSelect
     try {
       ;[entity] = await tx
         .insert(entities)
-        .values({ tenantId, name: input.name, slug: input.slug, description: input.description, icon: input.icon ?? null })
+        .values({
+          tenantId,
+          name: input.name,
+          slug: input.slug,
+          description: input.description,
+          icon: input.icon ?? null,
+          ...(input.moduleKind ? { moduleKind: input.moduleKind } : {})
+        })
         .returning()
     } catch (err) {
       // drizzle-orm >=0.36 envuelve el error del driver "postgres" en un
@@ -159,6 +183,7 @@ export async function createEntity(
       description: entity.description,
       isActive: entity.isActive,
       icon: entity.icon,
+      moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }
@@ -200,6 +225,7 @@ export async function updateEntity(
       description: entity.description,
       isActive: entity.isActive,
       icon: entity.icon,
+      moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout
     }
@@ -232,8 +258,14 @@ export interface NavEntity {
  * tiene sentido un link de menu que lleva a una pantalla bloqueada. Un
  * administrador (roles.isSystem) sigue viendo el modulo igual, para poder
  * reactivarlo.
+ *
+ * ERD-86: moduleKind filtra ademas por tipo de modulo - components/AppNav.vue
+ * (seccion dinamica "MÓDULOS") pide 'hecho' explicito: los catalogos
+ * (moduleKind='dimension') dejan de aparecer en el menu principal, solo se
+ * administran desde Administracion > Catalogos (pages/catalogos/index.vue,
+ * pantalla admin-only via listEntities(), no esta funcion).
  */
-export async function listVisibleEntities(tenantId: string, roleId: string): Promise<NavEntity[]> {
+export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind: ModuleKind): Promise<NavEntity[]> {
   return withTenant(tenantId, async (tx) => {
     const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, roleId)).limit(1)
     const isAdmin = Boolean(role?.isSystem)
@@ -255,7 +287,7 @@ export async function listVisibleEntities(tenantId: string, roleId: string): Pro
         roleEntityPermissions,
         and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId))
       )
-      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true)))
+      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true), eq(entities.moduleKind, moduleKind)))
       .orderBy(entities.name)
 
     return rows.filter((r) => isAdmin || r.isActive).map(({ isActive: _isActive, ...rest }) => rest)

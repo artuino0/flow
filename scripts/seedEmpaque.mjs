@@ -63,6 +63,9 @@ const entityDefs = [
     slug: 'productores',
     name: 'Productores',
     icon: 'Contact',
+    // ERD-86: catalogo de referencia (se consulta al capturar una Recepcion,
+    // no se crea a diario) - ver comentario largo en server/db/schema.ts.
+    moduleKind: 'dimension',
     fields: [
       { name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true, validationRules: { maxLength: 150 } },
       { name: 'identificacion', label: 'Identificación fiscal', dataType: 'text', isRequired: false, validationRules: { maxLength: 40 } },
@@ -73,6 +76,8 @@ const entityDefs = [
     slug: 'cultivos',
     name: 'Cultivos',
     icon: 'Sprout',
+    // ERD-86: catalogo de referencia, mismo motivo que 'productores' arriba.
+    moduleKind: 'dimension',
     fields: [
       { name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true, validationRules: { maxLength: 100 } },
       { name: 'variedad', label: 'Variedad', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } }
@@ -163,9 +168,12 @@ try {
     adminRoleFound = Boolean(adminRole)
 
     for (const def of entityDefs) {
+      // ERD-86: def.moduleKind ?? 'hecho' - recepciones/empaques/embarques no
+      // lo declaran (son transaccionales, el default de la columna ya es
+      // 'hecho'), solo productores/cultivos lo fuerzan a 'dimension'.
       await tx`
-        insert into entities (tenant_id, name, slug, icon)
-        values (${tenantId}, ${def.name}, ${def.slug}, ${def.icon})
+        insert into entities (tenant_id, name, slug, icon, module_kind)
+        values (${tenantId}, ${def.name}, ${def.slug}, ${def.icon}, ${def.moduleKind ?? 'hecho'})
         on conflict (tenant_id, slug) do nothing
       `
       const [entity] = await tx`

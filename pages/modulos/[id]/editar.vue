@@ -48,6 +48,10 @@ interface ModuleDetail {
   // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
   // comentario largo en server/db/schema.ts.
   icon: string | null
+  // ERD-86: solo para decidir a donde vuelve "Cancelar"/"Volver al listado"/
+  // el borrado (/modulos o /catalogos) - nunca se edita desde aca (ver
+  // comentario largo en server/db/schema.ts, no viaja en el PUT de onSave()).
+  moduleKind: 'hecho' | 'dimension'
 }
 
 // Rediseno "Editar Módulo": el indicador de 4 pasos con circulos se
@@ -79,12 +83,26 @@ const step = ref<StepKey>('basica')
 // No existe GET /api/entities/:id puntual - se resuelve del listado ya
 // existente (GET /api/entities, HU-ERD-69) en vez de sumar otro endpoint
 // solo para esto.
+//
+// ERD-86: key propia 'entities-all-list' (SIN filtro de moduleKind) - esta
+// pagina edita tanto modulos (moduleKind='hecho', entrada desde /modulos)
+// como catalogos (moduleKind='dimension', entrada desde /catalogos), y
+// entityOptions de abajo (select "Entidad relacionada" de
+// ModuleRelationsCard.vue) necesita ver TODAS las entidades sin importar el
+// tipo. Si usara la misma key 'modulos-list' que pages/modulos/index.vue
+// (que ahora filtra a moduleKind=hecho), useFetch podria reusar ese payload
+// cacheado y no encontrar un catalogo abierto desde /catalogos.
 const { data, pending, error: fetchError, refresh } = await useFetch<{ entities: ModuleDetail[] }>('/api/entities', {
-  key: 'modulos-list',
+  key: 'entities-all-list',
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
 
 const currentModule = computed(() => data.value?.entities.find((m) => m.id === moduleId) ?? null)
+
+// ERD-86: a donde vuelven "Cancelar"/"Volver al listado" y el redirect tras
+// borrar - segun el tipo real del modulo que se esta editando, no siempre
+// /modulos (un catalogo abierto desde /catalogos debe volver ahi).
+const listBackTo = computed(() => (currentModule.value?.moduleKind === 'dimension' ? '/catalogos' : '/modulos'))
 
 // HU-ERD-77: opciones para el select "Entidad relacionada" de
 // ModuleRelationsCard.vue - reusa el mismo listado de modulos ya cargado
@@ -140,7 +158,7 @@ async function onDeleteModule() {
   deleting.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, { method: 'DELETE' })
-    await router.push('/modulos')
+    await router.push(listBackTo.value)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el módulo'
   } finally {
@@ -233,7 +251,7 @@ async function onSaveListLayout() {
       <h1 class="text-[22px] font-bold text-brand-text">
         Editar módulo{{ currentModule ? ` - ${currentModule.name}` : '' }}
       </h1>
-      <NuxtLink to="/modulos" class="text-sm font-semibold text-brand-text-secondary hover:underline">Volver al listado</NuxtLink>
+      <NuxtLink :to="listBackTo" class="text-sm font-semibold text-brand-text-secondary hover:underline">Volver al listado</NuxtLink>
     </div>
 
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
@@ -361,7 +379,7 @@ async function onSaveListLayout() {
               <p v-if="saved" class="mx-5 mb-2 text-sm text-brand-success-text">Módulo guardado correctamente.</p>
 
               <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-                <NuxtLink to="/modulos" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
+                <NuxtLink :to="listBackTo" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
                 <button
                   type="button"
                   :disabled="saving || !name"

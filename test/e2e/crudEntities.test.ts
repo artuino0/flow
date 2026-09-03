@@ -2516,12 +2516,29 @@ describe('e2e: flujo Recepcion -> Empaque -> Embarque (scripts/seedEmpaque.mjs)'
     }
   })
 
-  it('GET /api/nav/entities incluye los 5 modulos nuevos - el menu no necesito ningun cambio manual en AppNav.vue', async () => {
+  it('GET /api/nav/entities incluye los 3 modulos transaccionales - el menu no necesito ningun cambio manual en AppNav.vue', async () => {
     const res = await api('/api/nav/entities')
     expect(res.status).toBe(200)
     const body = await res.json()
     const slugs = body.entities.map((e: { slug: string }) => e.slug)
-    expect(slugs).toEqual(expect.arrayContaining(['productores', 'cultivos', 'recepciones', 'empaques', 'embarques']))
+    // ERD-86: productores/cultivos son moduleKind='dimension' (scripts/seedEmpaque.mjs) -
+    // ya NO aparecen en el menu principal, solo recepciones/empaques/embarques (hecho).
+    expect(slugs).toEqual(expect.arrayContaining(['recepciones', 'empaques', 'embarques']))
+    expect(slugs).not.toContain('productores')
+    expect(slugs).not.toContain('cultivos')
+  })
+
+  it('ERD-86: GET /api/entities?moduleKind=dimension incluye productores/cultivos - se administran desde Catálogos, no desde Módulos', async () => {
+    const catalogosRes = await api('/api/entities?moduleKind=dimension')
+    expect(catalogosRes.status).toBe(200)
+    const catalogosSlugs = (await catalogosRes.json()).entities.map((e: { slug: string }) => e.slug)
+    expect(catalogosSlugs).toEqual(expect.arrayContaining(['productores', 'cultivos']))
+    expect(catalogosSlugs).not.toContain('recepciones')
+
+    const modulosRes = await api('/api/entities?moduleKind=hecho')
+    const modulosSlugs = (await modulosRes.json()).entities.map((e: { slug: string }) => e.slug)
+    expect(modulosSlugs).toEqual(expect.arrayContaining(['recepciones', 'empaques', 'embarques']))
+    expect(modulosSlugs).not.toContain('productores')
   })
 
   it('flujo completo: Productor + Cultivo -> Recepcion -> Empaque -> Embarque, con campos relation encadenados', async () => {

@@ -52,6 +52,23 @@ export const entities = pgTable('entities', {
   // clientes/empresas/empleados (los 3 modulos base de scripts/seed.mjs) para
   // no perder el icono que ya tenian hardcodeado en components/AppNav.vue.
   icon: text('icon'),
+  // ERD-86: distingue modulos "hecho" (transaccionales - Recepcion, Empaque,
+  // Embarque - se usan a diario, van en el menu principal) de "dimension"
+  // (catalogos de referencia - Clientes, Cultivo, Productor - se crean poco,
+  // solo se consultan; viven en Administracion > Catalogos para no saturar
+  // el menu con muchos catalogos, pedido directo del usuario: "imagina tener
+  // 20 catalogos en el menu"). Texto plano validado por Zod en los endpoints
+  // (ADMIN_MODULE_KINDS en moduleEntities.ts), mismo criterio que
+  // triggers.trigger_event/action_type - sin CHECK constraint propio. Default
+  // 'hecho' para que ningun modulo existente cambie de comportamiento hasta
+  // que la migracion de esta HU los reclasifique explicitamente.
+  //
+  // Deliberadamente NO editable desde "Editar Módulo" (ni PUT /api/entities/:id
+  // lo acepta): se fija una sola vez, segun si el modulo se crea desde
+  // /modulos o desde /catalogos (mismo asistente, dos puntos de entrada) - si
+  // un modulo queda mal clasificado hay que recrearlo, decision explicita del
+  // usuario para mantener esto simple.
+  moduleKind: text('module_kind').notNull().default('hecho'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

@@ -182,7 +182,7 @@ describe('moduleEntities (Postgres real)', () => {
         values (${vendedor.id}, ${oculto.id}, false, false, false, false)
       `
 
-      const result = await listVisibleEntities(tenant, vendedor.id)
+      const result = await listVisibleEntities(tenant, vendedor.id, 'hecho')
       expect(result).toEqual([
         { id: visible.id, slug: 'visible', name: 'Visible', icon: 'Warehouse', canRead: true, canCreate: false, canUpdate: true, canDelete: false }
       ])
@@ -201,9 +201,9 @@ describe('moduleEntities (Postgres real)', () => {
       `
       await updateEntity(tenant, entity.id, { isActive: false })
 
-      expect((await listVisibleEntities(tenant, vendedor.id)).map((r) => r.slug)).toEqual([])
+      expect((await listVisibleEntities(tenant, vendedor.id, 'hecho')).map((r) => r.slug)).toEqual([])
       // El admin ya tiene CRUD auto-otorgado por createEntity() - sigue viendolo.
-      expect((await listVisibleEntities(tenant, adminRole.id)).map((r) => r.slug)).toEqual(['inactivo'])
+      expect((await listVisibleEntities(tenant, adminRole.id, 'hecho')).map((r) => r.slug)).toEqual(['inactivo'])
     })
 
     it('devuelve [] para un rol sin ningun permiso otorgado', async () => {
@@ -212,7 +212,57 @@ describe('moduleEntities (Postgres real)', () => {
       const [vendedor] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Vendedor', false) returning id`
       await createEntity(tenant, { name: 'Sin permiso', slug: 'sin-permiso', description: null })
 
-      expect(await listVisibleEntities(tenant, vendedor.id)).toEqual([])
+      expect(await listVisibleEntities(tenant, vendedor.id, 'hecho')).toEqual([])
+    })
+  })
+
+  // ERD-86: modulos "hecho" (transaccionales, van al menu principal) vs
+  // "dimension" (catalogos, van a Administracion > Catalogos) - ver
+  // comentario largo en server/db/schema.ts.
+  describe('moduleKind (ERD-86)', () => {
+    it('createEntity sin moduleKind explicito queda en "hecho" (default de la columna)', async () => {
+      const entity = await createEntity(TENANT_A, { name: 'Default Kind', slug: 'default-kind', description: null })
+      expect(entity.moduleKind).toBe('hecho')
+    })
+
+    it('createEntity con moduleKind="dimension" lo persiste tal cual', async () => {
+      const entity = await createEntity(TENANT_A, { name: 'Un Catalogo', slug: 'un-catalogo', description: null, moduleKind: 'dimension' })
+      expect(entity.moduleKind).toBe('dimension')
+    })
+
+    it('updateEntity ignora un moduleKind en el input (no es editable) - keys desconocidas no rompen el parse en el endpoint, pero la funcion tampoco lo acepta en su tipo', async () => {
+      const entity = await createEntity(TENANT_A, { name: 'Fijo', slug: 'fijo', description: null, moduleKind: 'dimension' })
+      const updated = await updateEntity(TENANT_A, entity.id, { name: 'Fijo Renombrado' })
+      expect(updated?.moduleKind).toBe('dimension')
+    })
+
+    it('listEntities(tenantId, moduleKind) filtra por tipo - pages/modulos/index.vue vs pages/catalogos/index.vue', async () => {
+      const tenant = randomUUID()
+      await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Kinds')`
+
+      await createEntity(tenant, { name: 'Recepciones', slug: 'recepciones-k', description: null })
+      await createEntity(tenant, { name: 'Cultivos', slug: 'cultivos-k', description: null, moduleKind: 'dimension' })
+
+      expect((await listEntities(tenant, 'hecho')).map((e) => e.slug)).toEqual(['recepciones-k'])
+      expect((await listEntities(tenant, 'dimension')).map((e) => e.slug)).toEqual(['cultivos-k'])
+      expect((await listEntities(tenant)).map((e) => e.slug).sort()).toEqual(['cultivos-k', 'recepciones-k'])
+    })
+
+    it('listVisibleEntities(tenantId, roleId, moduleKind) excluye los catalogos del menu principal', async () => {
+      const tenant = randomUUID()
+      await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Nav Kinds')`
+      const [vendedor] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Vendedor', false) returning id`
+
+      const hecho = await createEntity(tenant, { name: 'Recepciones', slug: 'recepciones-nav', description: null })
+      const catalogo = await createEntity(tenant, { name: 'Cultivos', slug: 'cultivos-nav', description: null, moduleKind: 'dimension' })
+
+      await admin`
+        insert into role_entity_permissions (role_id, entity_id, can_read, can_create, can_update, can_delete)
+        values (${vendedor.id}, ${hecho.id}, true, true, true, true), (${vendedor.id}, ${catalogo.id}, true, true, true, true)
+      `
+
+      expect((await listVisibleEntities(tenant, vendedor.id, 'hecho')).map((r) => r.slug)).toEqual(['recepciones-nav'])
+      expect((await listVisibleEntities(tenant, vendedor.id, 'dimension')).map((r) => r.slug)).toEqual(['cultivos-nav'])
     })
   })
 })
