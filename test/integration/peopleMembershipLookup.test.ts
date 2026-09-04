@@ -17,6 +17,13 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 // (migracion 0031) + withPerson() (server/db/index.ts), contra un Postgres
 // real conectado como erp_app (no superusuario - Postgres bypassea RLS para
 // superusuarios sin importar FORCE ROW LEVEL SECURITY).
+//
+// Tambien prueba el bug SIMETRICO encontrado despues (mismo dia): agregar
+// una segunda policy permissive a `users` significa que CUALQUIER consulta a
+// `users` ahora depende de que AMBOS GUCs (app.tenant_id y app.person_id)
+// esten en un estado que no reviente el cast a uuid - no solo el que esa
+// consulta puntual necesita. withTenant() tenia que resetear app.person_id
+// exactamente igual que withPerson() ya reseteaba app.tenant_id.
 
 const TENANT_ID = '33333333-3333-3333-3333-333333333333'
 const OTHER_TENANT_ID = '44444444-4444-4444-4444-444444444444'
@@ -128,5 +135,44 @@ describe('fix: policy self_membership_lookup_users (migracion 0031) + withPerson
         )
       )
     ).rejects.toThrow()
+  })
+})
+
+// Bug simetrico real, encontrado en produccion (2026-09-04) DESPUES del fix
+// de arriba: agregar self_membership_lookup_users tiene un costo que no
+// alcanza con pagar solo en withPerson(). Los tests de "fix" de arriba ya
+// corrieron varios asPerson() sobre esta misma conexion (max:1) - eso deja
+// app.person_id en '' para el resto de la sesion (mismo hallazgo, GUC
+// distinto). GET /api/auth/me y POST /api/auth/refresh son withTenant()
+// comunes, con tenant conocido, que jamas deberian enterarse de que existe
+// una segunda policy sobre `users` - pero como Postgres evalua AMBAS
+// policies permissive (OR) y la de self_membership_lookup_users revienta con
+// el cast de '' a uuid, la consulta entera falla igual. Por eso withTenant()
+// (server/db/index.ts) tambien resetea app.person_id a un uuid inofensivo,
+// simetrico a lo que withPerson() ya hacia con app.tenant_id.
+describe('bug simetrico + fix: withTenant() tambien debe resetear app.person_id', () => {
+  it('sin ese reset, un SELECT tenant-scoped normal en la conexion ya envenenada por withPerson() lanza el mismo cast a uuid (reproduce GET /api/auth/me)', async () => {
+    await expect(
+      app.begin(async (tx) => {
+        await tx.unsafe(`select set_config('app.tenant_id', '${TENANT_ID}', true)`)
+        // A proposito NO se resetea app.person_id aca - version "sin el fix".
+        return tx.unsafe(`select id from users where id = '${userId}'`)
+      })
+    ).rejects.toThrow(/invalid input syntax for type uuid/)
+  })
+
+  it('con el reset simetrico (como el withTenant() real), la misma consulta funciona pese a la conexion envenenada', async () => {
+    async function asTenant<T>(tenantId: string, fn: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
+      const result = await app.begin(async (tx) => {
+        await tx.unsafe(`select set_config('app.person_id', '00000000-0000-0000-0000-000000000000', true)`)
+        await tx.unsafe(`select set_config('app.tenant_id', '${tenantId}', true)`)
+        return fn(tx)
+      })
+      return result as T
+    }
+
+    const rows = await asTenant(TENANT_ID, (tx) => tx.unsafe(`select id from users where id = '${userId}'`))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe(userId)
   })
 })

@@ -15,6 +15,12 @@ const client = postgres(connectionString)
 
 export const db = drizzle(client, { schema })
 
+// uuid que nunca es un id real (ni de tenant ni de persona) - se usa para
+// "apagar" a proposito la OTRA policy de `users` cuando withTenant()/
+// withPerson() solo necesitan que aplique UNA de las dos. Ver el comentario
+// largo de withPerson() mas abajo para el porque.
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+
 /**
  * Corre `fn` dentro de una transaccion con `app.tenant_id` seteado via
  * set_config(), para que las politicas RLS filtren por ese tenant.
@@ -25,6 +31,21 @@ export async function withTenant<T>(
   fn: (tx: typeof db) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
+    // Bug real, encontrado en produccion (2026-09-04) DESPUES de agregar
+    // self_membership_lookup_users (migracion 0031): esa policy nueva sobre
+    // `users` mira current_setting('app.person_id', true)::uuid. Si esta
+    // MISMA conexion pooled corrio withPerson() en un request anterior, ese
+    // GUC queda en '' (no NULL) para el resto de la sesion - mismo hallazgo
+    // documentado en test/integration/rlsTenantIsolation.test.ts, aplicado
+    // ahora al OTRO GUC. Sin resetearlo aca, un endpoint tan basico como
+    // GET /api/auth/me (una consulta a `users` comun, con tenant conocido,
+    // que nunca debería enterarse de que existe una segunda policy) revienta
+    // con "invalid input syntax for type uuid" - Postgres evalua ambas
+    // policies permissive (OR) y una excepcion en cualquiera de las dos hace
+    // fallar la consulta entera. Se resetea a NIL_UUID (nunca matchea
+    // ninguna persona real) para que self_membership_lookup_users evalue
+    // limpio a "false" en vez de reventar.
+    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true)`)
     await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`)
     return fn(tx as unknown as typeof db)
   })
@@ -65,7 +86,7 @@ export async function withPerson<T>(
     // error. Por eso tambien se resetea app.tenant_id aca, a un uuid valido
     // que nunca coincide con ningun tenant real, para que esa otra policy
     // evalue limpio a "false" en vez de reventar.
-    await tx.execute(sql`select set_config('app.tenant_id', '00000000-0000-0000-0000-000000000000', true)`)
+    await tx.execute(sql`select set_config('app.tenant_id', ${NIL_UUID}, true)`)
     await tx.execute(sql`select set_config('app.person_id', ${personId}, true)`)
     return fn(tx as unknown as typeof db)
   })
