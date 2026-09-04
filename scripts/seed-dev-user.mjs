@@ -46,6 +46,9 @@ try {
     values (${tenantId}, ${orgName}, ${slug})
   `
 
+  let personId
+  let reusedExistingPerson = false
+
   await sql.begin(async (tx) => {
     // Mismo mecanismo que withTenant() (server/db/index.ts): setea
     // app.tenant_id para que las politicas RLS (HU-ERD-12) permitan el insert
@@ -60,15 +63,31 @@ try {
       returning id
     `
 
-    const [person] = await tx`
-      insert into people (email, password_hash, full_name)
-      values (${email}, ${passwordHash}, ${fullName})
-      returning id
-    `
+    // HU multi-organizacion (2026-09-04): people.email es unico GLOBAL - re-
+    // correr este script con el mismo correo ya no puede simplemente volver a
+    // insertar en `people` (fallaria con "duplicate key"). Si la persona ya
+    // existe (de una corrida anterior, o porque la migracion 0030 la trajo de
+    // datos viejos), se reusa su id y solo se agrega la membresia nueva en
+    // este tenant - mismo criterio que el camino "existing" de inviteUser()
+    // (server/utils/users.ts). Esto es justo lo que faltaba cuando se
+    // encontro una persona con 0 membresias: existia en `people` pero nunca
+    // habia quedado ligada a ningun tenant.
+    const [existingPerson] = await tx`select id from people where email = ${email}`
+    if (existingPerson) {
+      personId = existingPerson.id
+      reusedExistingPerson = true
+    } else {
+      const [person] = await tx`
+        insert into people (email, password_hash, full_name)
+        values (${email}, ${passwordHash}, ${fullName})
+        returning id
+      `
+      personId = person.id
+    }
 
     await tx`
       insert into users (tenant_id, person_id, role_id, is_active)
-      values (${tenantId}, ${person.id}, ${role.id}, true)
+      values (${tenantId}, ${personId}, ${role.id}, true)
     `
   })
 
@@ -77,7 +96,11 @@ try {
   console.log('  Organizacion:             ', orgName)
   console.log('  Organizacion (tenantId): ', tenantId)
   console.log('  Correo:                  ', email)
-  console.log('  Contrasena:               ', password)
+  if (reusedExistingPerson) {
+    console.log('  (la persona ya existia - se reutilizo, la contrasena NO cambio)')
+  } else {
+    console.log('  Contrasena:               ', password)
+  }
   console.log('')
   console.log('El login (HU multi-organizacion) ya no pide organizacion - solo correo y contrasena.')
 } finally {
