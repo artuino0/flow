@@ -18,7 +18,7 @@
 // borradas) por esta unica ruta. selectedRoleId es puramente client-side
 // (con la excepcion del valor inicial, tomado de ?role= en la URL si viene) -
 // no hay ruta dedicada por rol, tal cual el diseno.
-import { Check, ChevronDown, Copy, Plus, Search, ShieldCheck, X } from '@lucide/vue'
+import { ArrowRight, Blocks, Check, ChevronDown, Copy, Plus, Search, ShieldCheck, X } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -337,7 +337,29 @@ async function onCreateRole() {
             (Configuración general, esta misma pantalla), que depende del rol en sí, no de estos checkboxes.
           </p>
 
-          <p v-if="rows.length === 0" class="text-sm text-brand-text-muted">Este tenant todavía no tiene entidades configuradas.</p>
+          <!-- Screen/Roles y Permisos - Vacío del .pen ("checa esto" del
+          usuario, 2026-09-03): antes era solo texto plano - este es el
+          estado vacío real (icono + heading + subtítulo + CTA "Ir a
+          Módulos"), para cuando el tenant todavía no tiene ningún módulo
+          sobre el que configurar permisos. -->
+          <div v-if="rows.length === 0" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg">
+              <Blocks class="h-7 w-7 text-brand-text-muted" :stroke-width="1.75" />
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <p class="text-[15px] font-bold text-brand-text">No hay módulos para asignar permisos</p>
+              <p class="max-w-[360px] text-center text-sm text-brand-text-muted">
+                Crea al menos un módulo para poder configurar sus permisos por rol.
+              </p>
+            </div>
+            <NuxtLink
+              to="/modulos"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            >
+              Ir a Módulos
+              <ArrowRight class="h-4 w-4" :stroke-width="1.75" />
+            </NuxtLink>
+          </div>
 
           <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
             <table class="min-w-full text-sm">

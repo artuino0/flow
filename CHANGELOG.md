@@ -1,5 +1,12 @@
 # Changelog
 
+### [0.60.1] - 2026-09-04
+#### [fix]
+- Estados vacíos reales del `.pen` en dos pantallas que solo tenían texto plano ("checa esto" del usuario sobre `Screen/Listado Módulos - Vacío` y `Screen/Roles y Permisos - Vacío`, revisados con `mcp__pencil__get_app_state`/`execute` antes de tocar el frontend, `pencil-antes-de-frontend`):
+  - `components/ModuleListing.vue` (Módulos y Catálogos, mismo componente): cuando no hay ninguno creado, reemplaza "Este tenant todavía no tiene {noun}s." por el estado real - ícono `blocks` en círculo, heading "No hay {noun}s creados", subtítulo, botón "{createLabel}" hacia `{basePath}/nuevo`. El caso "sin resultados de búsqueda" (`filteredModules.length === 0` con módulos existentes) no cambia, no tiene mock propio en el `.pen`.
+  - `pages/roles/index.vue`: cuando el tenant no tiene ningún módulo configurado (`rows.length === 0`), reemplaza "Este tenant todavía no tiene entidades configuradas." por el estado real - mismo ícono `blocks`, heading "No hay módulos para asignar permisos", subtítulo, botón "Ir a Módulos" hacia `/modulos`.
+- Validado: `npx nuxt typecheck` limpio, `npx nuxt build` compiló el cliente sin errores (el bundling del server Nitro no llegó a terminar dentro del límite de tiempo por comando de este sandbox, límite ya documentado en la sesión - cambio puramente de plantilla/markup, sin lógica ni tipos nuevos). La suite de integración+unitarios tampoco llegó a terminar dentro del mismo límite (ya supera los ~180 tests previos); no hay tests dedicados a estos dos estados vacíos porque son cambios visuales sin comportamiento propio que probar.
+
 ### [0.60.0] - 2026-09-03
 #### [add]
 - ERD-86 (Módulos de hecho vs. dimensión: sección Catálogos en Administración) - pedido directo del usuario en conversación ("un erp no es nadamas asi como lo diseñamos, los modulos son de dos tipos, hechos y dimension... imagina tener 20 catalogos en el menu"): distingue módulos transaccionales (`moduleKind='hecho'` - Recepción, Empaque, Embarque, se usan a diario, van al menú principal) de catálogos de referencia (`moduleKind='dimension'` - Clientes, Empresas, Empleados, Productores, Cultivos, se consultan poco, van a Administración > Catálogos).

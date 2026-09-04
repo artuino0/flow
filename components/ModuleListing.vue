@@ -8,7 +8,7 @@
 // propias (/modulos, /catalogos - cada una con su entrada de menu y su
 // titulo de pestaña) pero con el MISMO componente por dentro, mismo criterio
 // que components/ModuleWizard.vue para el asistente.
-import { Blocks, ChevronRight, Eye, Search, Settings2, Trash2 } from '@lucide/vue'
+import { Blocks, ChevronRight, Eye, Plus, Search, Settings2, Trash2 } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
 
@@ -125,7 +125,29 @@ async function onDelete(module: ModuleRow) {
         {{ deleteError }}
       </p>
 
-      <p v-if="data.entities.length === 0" class="text-sm text-brand-text-muted">Este tenant todavía no tiene {{ noun }}s.</p>
+      <!-- Screen/Listado Módulos - Vacío del .pen ("checa esto" del usuario,
+      2026-09-03): antes era solo texto plano, este es el estado vacío real
+      (icono + heading + subtítulo + CTA), reusado tal cual para Catálogos
+      con noun/createLabel/basePath (mismo criterio que el resto del
+      componente). -->
+      <div v-if="data.entities.length === 0" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg">
+          <Blocks class="h-7 w-7 text-brand-text-muted" :stroke-width="1.75" />
+        </div>
+        <div class="flex flex-col items-center gap-1.5">
+          <p class="text-[15px] font-bold text-brand-text">No hay {{ noun }}s creados</p>
+          <p class="max-w-[360px] text-center text-sm text-brand-text-muted">
+            Crea tu primer {{ noun }} para empezar a modelar entidades personalizadas de tu negocio.
+          </p>
+        </div>
+        <NuxtLink
+          :to="`${basePath}/nuevo`"
+          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+        >
+          <Plus class="h-4 w-4" :stroke-width="1.75" />
+          {{ createLabel }}
+        </NuxtLink>
+      </div>
       <p v-else-if="filteredModules.length === 0" class="text-sm text-brand-text-muted">Ningún {{ noun }} coincide con "{{ search }}".</p>
 
       <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
