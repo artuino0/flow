@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
-import { db } from '~/server/db'
+import { db, withPerson } from '~/server/db'
 import { people, tenants, users } from '~/server/db/schema'
 import { issueSessionCookies, signPendingOrgToken } from '~/server/utils/auth'
 
@@ -12,6 +12,18 @@ import { issueSessionCookies, signPendingOrgToken } from '~/server/utils/auth'
 // no tiene tenant_id/RLS (mismo criterio que `tenants`, ver el comentario
 // largo en server/db/schema.ts), asi que leerla directo con `db` no esquiva
 // ningun aislamiento - simplemente no hay ninguno que aplicar aca.
+//
+// `users` (la membresia) es distinto: SI tiene RLS, con FORCE ROW LEVEL
+// SECURITY (migracion 0010) - leerla con `db` directo, sin ningun contexto,
+// no "esquiva" el aislamiento, lo GATILLA: la policy exige
+// current_setting('app.tenant_id', true)::uuid = tenant_id, y sin tenant
+// conocido eso nunca es true (0 filas siempre, o un error de cast a uuid en
+// una conexion pooled que ya uso set_config antes - bug real, encontrado en
+// produccion, arreglado en la migracion 0031). listActiveMembershipsForPerson
+// y findActiveMembership usan withPerson() (server/db/index.ts) en vez de
+// `db` para esto: setea app.person_id, que la policy self_membership_lookup_users
+// (migracion 0031) usa para permitir ver, de forma angosta, las PROPIAS
+// membresias de esa persona en cualquier tenant - sin necesitar bypass de RLS.
 
 export interface PersonRow {
   id: string
@@ -70,18 +82,19 @@ export interface MembershipOption {
  * loguear ahi, mismo criterio que el login de un solo tenant ya aplicaba.
  */
 export async function listActiveMembershipsForPerson(personId: string): Promise<MembershipOption[]> {
-  const rows = await db
-    .select({
-      userId: users.id,
-      tenantId: users.tenantId,
-      tenantName: tenants.name,
-      roleId: users.roleId
-    })
-    .from(users)
-    .innerJoin(tenants, eq(tenants.id, users.tenantId))
-    .where(and(eq(users.personId, personId), eq(users.isActive, true)))
-    .orderBy(tenants.name)
-  return rows
+  return withPerson(personId, (tx) =>
+    tx
+      .select({
+        userId: users.id,
+        tenantId: users.tenantId,
+        tenantName: tenants.name,
+        roleId: users.roleId
+      })
+      .from(users)
+      .innerJoin(tenants, eq(tenants.id, users.tenantId))
+      .where(and(eq(users.personId, personId), eq(users.isActive, true)))
+      .orderBy(tenants.name)
+  )
 }
 
 /**
@@ -91,12 +104,14 @@ export async function listActiveMembershipsForPerson(personId: string): Promise<
  * angosto que listActiveMembershipsForPerson (evita traer las demas).
  */
 export async function findActiveMembership(personId: string, tenantId: string): Promise<{ userId: string; roleId: string | null } | null> {
-  const [row] = await db
-    .select({ userId: users.id, roleId: users.roleId })
-    .from(users)
-    .where(and(eq(users.personId, personId), eq(users.tenantId, tenantId), eq(users.isActive, true)))
-    .limit(1)
-  return row ?? null
+  const rows = await withPerson(personId, (tx) =>
+    tx
+      .select({ userId: users.id, roleId: users.roleId })
+      .from(users)
+      .where(and(eq(users.personId, personId), eq(users.tenantId, tenantId), eq(users.isActive, true)))
+      .limit(1)
+  )
+  return rows[0] ?? null
 }
 
 export type LoginResolution =

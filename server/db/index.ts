@@ -29,3 +29,44 @@ export async function withTenant<T>(
     return fn(tx as unknown as typeof db)
   })
 }
+
+/**
+ * Corre `fn` dentro de una transaccion con `app.person_id` seteado via
+ * set_config(), para que la policy self_membership_lookup_users (migracion
+ * 0031) permita leer en `users` las membresias de ESA persona, en cualquier
+ * tenant, sin conocer todavia cual es "el" tenant - el unico caso de uso
+ * real es la resolucion de identidad del login (server/utils/peopleAuth.ts),
+ * que es por definicion cross-tenant. Sin esto, `users` (FORCE ROW LEVEL
+ * SECURITY, migracion 0010) filtra TODAS las filas ante cualquier consulta
+ * que no pase por withTenant() ni por aca - ver el comentario largo en la
+ * migracion 0031 para el bug real que esto arregla.
+ *
+ * NUNCA usar para nada mas: la policy que esto habilita es de solo SELECT y
+ * solo deja ver las membresias del propio `personId`, nunca las de otra
+ * persona.
+ */
+export async function withPerson<T>(
+  personId: string,
+  fn: (tx: typeof db) => Promise<T>
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    // Hallazgo real, encontrado escribiendo el test de esta funcion
+    // (test/integration/peopleMembershipLookup.test.ts): no alcanza con
+    // setear SOLO app.person_id. `users` sigue teniendo la policy
+    // tenant_isolation_users (migracion 0010), y Postgres combina varias
+    // policies permissive con OR evaluando AMBAS expresiones - si esta
+    // conexion pooled ya uso set_config('app.tenant_id', ..., true) en un
+    // request ANTERIOR (cualquier withTenant() previo en la misma conexion
+    // fisica), ese GUC queda en '' (no NULL) para el resto de la sesion
+    // (mismo hallazgo que test/integration/rlsTenantIsolation.test.ts
+    // documenta), y `current_setting('app.tenant_id', true)::uuid` de
+    // tenant_isolation_users lanza "invalid input syntax for type uuid"
+    // ANTES de que la policy nueva llegue a aplicar - el OR no evita el
+    // error. Por eso tambien se resetea app.tenant_id aca, a un uuid valido
+    // que nunca coincide con ningun tenant real, para que esa otra policy
+    // evalue limpio a "false" en vez de reventar.
+    await tx.execute(sql`select set_config('app.tenant_id', '00000000-0000-0000-0000-000000000000', true)`)
+    await tx.execute(sql`select set_config('app.person_id', ${personId}, true)`)
+    return fn(tx as unknown as typeof db)
+  })
+}

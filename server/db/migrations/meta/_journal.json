@@ -218,6 +218,13 @@
       "when": 1788545273846,
       "tag": "0030_erd_people_membresias",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788606000000,
+      "tag": "0031_users_self_membership_lookup",
+      "breakpoints": true
     }
   ]
 }

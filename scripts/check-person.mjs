@@ -10,6 +10,16 @@
 // Requiere que APP_DATABASE_URL (o DATABASE_URL) apunte al mismo Postgres
 // que usa la app (por defecto localhost:5433, igual que seed-dev-user.mjs).
 // No imprime password_hash ni ningun dato sensible.
+//
+// HU multi-organizacion, fix (migracion 0031): `users` tiene
+// FORCE ROW LEVEL SECURITY (migracion 0010) - un SELECT sin ningun
+// app.tenant_id/app.person_id seteado SIEMPRE devuelve 0 filas, sin importar
+// cuantas membresias existan de verdad. Este script imitaba ese mismo bug
+// (por eso durante la investigacion mostraba "membresias (0)" incluso justo
+// despues de un insert exitoso) - ahora setea app.person_id dentro de una
+// transaccion, igual que withPerson() (server/db/index.ts), para que la
+// policy self_membership_lookup_users (migracion 0031) deje ver las
+// membresias reales de esta persona.
 
 import postgres from 'postgres'
 
@@ -51,14 +61,22 @@ try {
     // Left join a tenants a proposito (no inner join, como hace
     // listActiveMembershipsForPerson) - asi se ve tambien una membresia
     // "huerfana" cuyo tenant_id ya no existe.
-    const memberships = await sql`
-      select u.id as user_id, u.tenant_id, t.name as tenant_name, u.role_id, u.is_active,
-             u.invitation_token_hash is not null as invitation_pending, u.created_at, u.updated_at
-      from users u
-      left join tenants t on t.id = u.tenant_id
-      where u.person_id = ${person.id}
-      order by u.created_at
-    `
+    //
+    // set_config('app.person_id', ...) dentro de una transaccion, igual que
+    // withPerson() - sin esto la policy self_membership_lookup_users
+    // (migracion 0031) no deja ver nada (mismo bug que este script existia
+    // justamente para diagnosticar, pero que el propio script tambien sufria).
+    const memberships = await sql.begin(async (tx) => {
+      await tx`select set_config('app.person_id', ${person.id}, true)`
+      return tx`
+        select u.id as user_id, u.tenant_id, t.name as tenant_name, u.role_id, u.is_active,
+               u.invitation_token_hash is not null as invitation_pending, u.created_at, u.updated_at
+        from users u
+        left join tenants t on t.id = u.tenant_id
+        where u.person_id = ${person.id}
+        order by u.created_at
+      `
+    })
 
     console.log(`=== membresias (${memberships.length}) ===`)
     if (memberships.length === 0) {
