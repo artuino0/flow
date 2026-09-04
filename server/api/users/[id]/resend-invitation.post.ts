@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { requireAdminRole } from '~/server/utils/rbac'
-import { withTenant } from '~/server/db'
-import { users } from '~/server/db/schema'
+import { db, withTenant } from '~/server/db'
+import { people, users } from '~/server/db/schema'
 import { InvitationNotPendingError, TargetUserNotFoundError, resendInvitation } from '~/server/utils/users'
 import { SmtpNotConfiguredError } from '~/server/utils/mailer'
 
@@ -13,10 +13,13 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Falta el id del usuario' })
 
-  const inviter = await withTenant(auth.tenantId, async (tx) => {
-    const [row] = await tx.select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, auth.sub)).limit(1)
+  const membership = await withTenant(auth.tenantId, async (tx) => {
+    const [row] = await tx.select({ personId: users.personId }).from(users).where(eq(users.id, auth.sub)).limit(1)
     return row ?? null
   })
+  const inviter = membership
+    ? (await db.select({ email: people.email, fullName: people.fullName }).from(people).where(eq(people.id, membership.personId)).limit(1))[0]
+    : null
   const inviterName = inviter?.fullName?.trim() || inviter?.email || 'Un administrador'
 
   try {

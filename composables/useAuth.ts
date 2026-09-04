@@ -17,9 +17,27 @@ export interface AuthUser {
 // cookie) y hace falta un segundo paso (loginWithTotp) con el codigo de la
 // app autenticadora. pages/login.vue usa este resultado para decidir si
 // mostrar el paso 2.
+//
+// HU multi-organizacion (2026-09-04): ademas de requiresTotp, ahora existe
+// requiresOrgSelection - la persona (email+password, y el codigo TOTP si
+// aplica) ya se validó, pero pertenece a MAS de una organización y hace
+// falta un paso extra (pendingToken + organizations) para elegir con cual
+// entrar. Nunca se piden ambas cosas a la vez en el MISMO resultado (el
+// backend resuelve TOTP primero, y recien despues - con la identidad ya
+// confirmada - decide si hay que elegir organización), pero el tipo cubre
+// las tres formas posibles de la respuesta (login directo, pedir TOTP, pedir
+// organización).
+export interface OrganizationOption {
+  tenantId: string
+  tenantName: string
+}
+
 export interface LoginResult {
   requiresTotp: boolean
+  requiresOrgSelection: boolean
   tempToken?: string
+  pendingToken?: string
+  organizations?: OrganizationOption[]
 }
 
 export function useAuth() {
@@ -57,27 +75,63 @@ export function useAuth() {
     return user.value
   }
 
-  // HU-ERD-35: tenantId es opcional - en modo "dedicated" (APP_MODE) no se le
-  // pide "Organizacion" al usuario (pages/login.vue), el backend lo resuelve
-  // solo. undefined se omite del body via JSON.stringify.
-  //
-  // HU-ERD-83 (parte 2): ya no abre sesion incondicionalmente - devuelve
-  // requiresTotp para que pages/login.vue decida si mostrar el paso 2.
-  async function login(tenantId: string | undefined, email: string, password: string): Promise<LoginResult> {
-    const result = await $fetch<{ ok: boolean; requiresTotp: boolean; tempToken?: string }>('/api/auth/login', {
+  // HU multi-organizacion (2026-09-04): ya no manda tenantId (el pedido
+  // explicito del usuario fue justamente que el login NO lo pida a fuerza en
+  // el primer paso - server/api/auth/login.post.ts resuelve la organización
+  // solo, despues de validar la identidad). requiresOrgSelection=true cuando
+  // la persona tiene mas de una organización activa - pages/login.vue
+  // decide entonces si mostrar el paso 2 (TOTP) o el paso de elegir
+  // organización, segun cual venga en true.
+  async function login(email: string, password: string): Promise<LoginResult> {
+    const result = await $fetch<{
+      ok: boolean
+      requiresTotp: boolean
+      tempToken?: string
+      requiresOrgSelection?: boolean
+      pendingToken?: string
+      organizations?: OrganizationOption[]
+    }>('/api/auth/login', {
       method: 'POST',
-      body: { tenantId, email, password }
+      body: { email, password }
     })
     if (result.requiresTotp) {
-      return { requiresTotp: true, tempToken: result.tempToken }
+      return { requiresTotp: true, requiresOrgSelection: false, tempToken: result.tempToken }
+    }
+    if (result.requiresOrgSelection) {
+      return { requiresTotp: false, requiresOrgSelection: true, pendingToken: result.pendingToken, organizations: result.organizations }
     }
     await fetchMe()
-    return { requiresTotp: false }
+    return { requiresTotp: false, requiresOrgSelection: false }
   }
 
-  /** HU-ERD-83 (parte 2): paso 2 del login cuando hay 2FA activo. */
-  async function loginWithTotp(tempToken: string, code: string): Promise<void> {
-    await $fetch('/api/auth/login/totp', { method: 'POST', body: { tempToken, code } })
+  /**
+   * HU-ERD-83 (parte 2): paso 2 del login cuando hay 2FA activo.
+   *
+   * HU multi-organizacion (2026-09-04): un codigo TOTP valido ya no abre
+   * sesion incondicionalmente - puede devolver requiresOrgSelection igual
+   * que login(), si la persona pertenece a mas de una organización.
+   */
+  async function loginWithTotp(tempToken: string, code: string): Promise<LoginResult> {
+    const result = await $fetch<{ ok: boolean; requiresOrgSelection?: boolean; pendingToken?: string; organizations?: OrganizationOption[] }>(
+      '/api/auth/login/totp',
+      { method: 'POST', body: { tempToken, code } }
+    )
+    if (result.requiresOrgSelection) {
+      return { requiresTotp: false, requiresOrgSelection: true, pendingToken: result.pendingToken, organizations: result.organizations }
+    }
+    await fetchMe()
+    return { requiresTotp: false, requiresOrgSelection: false }
+  }
+
+  /**
+   * HU multi-organizacion (2026-09-04): paso final del login cuando la
+   * persona pertenece a mas de una organización (Screen "Elegir
+   * organización", nueva - no hay diseño Pencil propio, ver el comentario en
+   * pages/login.vue). No vuelve a pedir contraseña ni codigo TOTP - el
+   * pendingToken ya prueba que se validaron.
+   */
+  async function selectOrganization(pendingToken: string, tenantId: string): Promise<void> {
+    await $fetch('/api/auth/login/select-org', { method: 'POST', body: { pendingToken, tenantId } })
     await fetchMe()
   }
 
@@ -91,5 +145,5 @@ export function useAuth() {
     user.value = null
   }
 
-  return { user, fetchMe, login, loginWithTotp, refresh, logout }
+  return { user, fetchMe, login, loginWithTotp, selectOrganization, refresh, logout }
 }

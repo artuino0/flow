@@ -243,9 +243,25 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
 // fiscal_data (jsonb) guarda datos que varian por pais (RFC/regimen fiscal en
 // Mexico) sin forzar una migracion por cada mercado nuevo - mismo patron que
 // entity_fields.validation_rules.
+// Pedido directo del usuario (2026-09-04), a partir de "no deberia pedir la
+// organizacion en el login": tenants gana `slug` (Paso 2 del wizard de
+// Registro del .pen, "Screen/Registro Paso 2 - Tu organización" - subdominio
+// propuesto a partir del nombre, ej. "acme"). Unico globalmente, NOT NULL -
+// backfill sintetico para tenants existentes (ver migracion). A proposito NO
+// implementa resolucion real de tenant por subdominio/host (ese gap ya
+// documentado en login.post.ts, "cuando exista resolucion por
+// subdominio/dominio, este endpoint deberia..." sigue sin resolverse) - por
+// ahora es solo un identificador unico mostrado en el wizard, sin logica de
+// enrutamiento por host detras.
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   name: text('name').notNull(),
+  // Default aleatorio (nunca usado por el wizard de Registro real, que
+  // siempre manda un slug propio - ver server/utils/registration.ts) para
+  // que un insert directo que no lo mencione (fixtures de test, scripts de
+  // seed existentes) siga funcionando sin tocar decenas de archivos - mismo
+  // criterio que defaultCurrency/timezone/country de abajo.
+  slug: text('slug').notNull().default(sql`'org-' || substr(gen_random_uuid()::text, 1, 8)`),
   email: text('email'),
   phone: text('phone'),
   defaultCurrency: text('default_currency').notNull().default('MXN'),
@@ -254,19 +270,45 @@ export const tenants = pgTable('tenants', {
   fiscalData: jsonb('fiscal_data').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-})
+}, (table) => ({
+  slugUnique: uniqueIndex('tenants_slug_unique').on(table.slug)
+}))
 
-// users: autenticacion propia (JWT + bcrypt), sin proveedor externo.
-// El email es unico por tenant (no global) - un mismo email puede existir en
-// distintos tenants, como espacios de trabajo independientes.
-export const users = pgTable('users', {
+// Pedido directo del usuario (2026-09-04): "la organizacion en el login no
+// debe pedirse a fuerza... siempre y cuando tuviera mas de una organizacion
+// el correo" - reveló que el modelo anterior (un email = una fila de `users`
+// por tenant, cada una con SU PROPIA contraseña) no alcanza para lo que el
+// usuario pide: una misma persona con UNA sola contraseña, que puede
+// pertenecer a (o crear) varias organizaciones. Se separa identidad de
+// membresia:
+//
+// - `people` (esta tabla, GLOBAL, sin tenant_id/RLS - mismo criterio que
+//   `tenants`): quien es la persona. Email unico GLOBALMENTE (antes era
+//   unico por tenant), contraseña unica, y el 2FA (totpSecret/totpEnabled)
+//   vive aca - es de la persona, no de la organizacion en la que este
+//   entrando.
+// - `users` (mas abajo, sigue existiendo con este nombre - "la cuenta de esa
+//   persona EN este tenant"): ya no guarda email/password_hash/full_name/
+//   totp* propios, sino `person_id` + tenant_id + role_id + is_active +
+//   estado de invitacion, exactamente igual que antes salvo por eso. El JWT
+//   de sesion (`AuthTokenPayload.sub`, server/utils/auth.ts) sigue siendo el
+//   id de ESTA fila (la membresia), no el de `people` - todo el codigo que
+//   ya resolvia "el usuario autenticado" via `eq(users.id, auth.sub)` sigue
+//   funcionando igual, solo que ahora hace falta un join a `people` para
+//   llegar a email/password/nombre/2FA (ver server/utils/changePassword.ts,
+//   server/api/auth/totp/*, server/api/auth/me.get.ts).
+//
+// Migracion de datos (0030_erd_people_membresias.sql): el mismo email podia
+// existir en varios tenants con contraseñas DISTINTAS bajo el modelo viejo
+// (valido entonces, ya no). Se fusionan por email quedandose con los datos
+// (password_hash/full_name/totp*) de la fila con `updated_at` mas reciente -
+// decision explicita del usuario ("no me importa, es solo data de prueba...
+// conservar la contraseña mas reciente"), no una regla de negocio nueva.
+export const people = pgTable('people', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
-  roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
   email: text('email').notNull(),
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name'),
-  isActive: boolean('is_active').notNull().default(true),
   // HU-ERD-83 (parte 2): 2FA por TOTP (RFC 6238). totpSecret queda guardado
   // apenas se inicia la configuracion (POST /api/auth/totp/setup) pero
   // totpEnabled sigue en false hasta que el usuario confirma un codigo real
@@ -275,13 +317,33 @@ export const users = pgTable('users', {
   // 2FA "activado" pero sin forma de generar codigos validos.
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').notNull().default(false),
-  // HU-ERD-84: invitacion por correo. Un usuario invitado se inserta con
-  // isActive=false, passwordHash = hash de un valor aleatorio que nunca se
-  // entrega a nadie (passwordHash es NOT NULL, no hay forma de dejarlo vacio)
-  // e invitationTokenHash/invitationExpiresAt con el estado real de la
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  emailUnique: uniqueIndex('people_email_unique').on(table.email)
+}))
+
+// users: la MEMBRESIA de una persona (`people`, arriba) en un tenant puntual
+// - rol, estado activo/invitacion, todo tenant-scoped con RLS como siempre.
+// Ya no es "la cuenta" completa (eso es `people` desde HU multi-organizacion,
+// 2026-09-04) - ver el comentario largo en `people` de arriba para el porque.
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
+  isActive: boolean('is_active').notNull().default(true),
+  // HU-ERD-84: invitacion por correo. Una membresia invitada (persona nueva,
+  // nunca existio antes en `people`) se inserta con isActive=false - el
+  // placeholder de contraseña ahora vive en la fila de `people` recien creada
+  // (people.passwordHash es NOT NULL, igual razon que antes) -
+  // invitationTokenHash/invitationExpiresAt con el estado real de la
   // invitacion. Se guarda el HASH del token (sha256), nunca el token crudo -
   // mismo criterio que passwordHash: si la base se filtra, no alcanza para
   // aceptar la invitacion. El token crudo solo existe en el correo enviado.
+  // Cuando la persona invitada YA existe en `people` (otro tenant), la
+  // membresia nueva se crea directamente isActive=true, sin este flujo -
+  // ver inviteUser() en server/utils/users.ts.
   // "Invitación pendiente" (Screen/Usuarios del .pen) = invitationTokenHash
   // no nulo y invitationExpiresAt en el futuro; isActive=false es el gate
   // real que impide login (server/api/auth/login.post.ts) mientras tanto -
@@ -292,7 +354,7 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
-  tenantEmailUnique: uniqueIndex('users_tenant_email_unique').on(table.tenantId, table.email)
+  tenantPersonUnique: uniqueIndex('users_tenant_person_unique').on(table.tenantId, table.personId)
 }))
 
 // files: metadatos de archivos subidos para el dataType 'file' (HU-ERD-78).

@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { requireAdminRole } from '~/server/utils/rbac'
-import { withTenant } from '~/server/db'
-import { users } from '~/server/db/schema'
+import { db, withTenant } from '~/server/db'
+import { people, users } from '~/server/db/schema'
 import { DuplicateEmailError, RoleNotFoundError, inviteUser } from '~/server/utils/users'
 import { SmtpNotConfiguredError } from '~/server/utils/mailer'
 
@@ -24,10 +24,13 @@ export default defineEventHandler(async (event) => {
   // colaborar...", copy exacto del .pen) - cae al correo si el admin todavia
   // no cargo su nombre completo (mismo fallback que layouts/default.vue usa
   // para el avatar/header).
-  const inviter = await withTenant(auth.tenantId, async (tx) => {
-    const [row] = await tx.select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, auth.sub)).limit(1)
+  const membership = await withTenant(auth.tenantId, async (tx) => {
+    const [row] = await tx.select({ personId: users.personId }).from(users).where(eq(users.id, auth.sub)).limit(1)
     return row ?? null
   })
+  const inviter = membership
+    ? (await db.select({ email: people.email, fullName: people.fullName }).from(people).where(eq(people.id, membership.personId)).limit(1))[0]
+    : null
   const inviterName = inviter?.fullName?.trim() || inviter?.email || 'Un administrador'
 
   try {

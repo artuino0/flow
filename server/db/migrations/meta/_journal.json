@@ -211,6 +211,13 @@
       "when": 1788535050935,
       "tag": "0029_erd_campo_incremental_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788545273846,
+      "tag": "0030_erd_people_membresias",
+      "breakpoints": true
     }
   ]
 }

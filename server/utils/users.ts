@@ -1,13 +1,20 @@
 import { randomBytes, createHash } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { roles, tenants, users } from '~/server/db/schema'
+import { people, roles, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
-import { sendInvitationEmail } from '~/server/utils/mailer'
+import { escapeHtml, sendInvitationEmail, sendPlainEmail } from '~/server/utils/mailer'
 
 // HU-ERD-84: logica de gestion de usuarios (listar, invitar, editar rol/estado,
 // reenviar/cancelar invitacion, aceptar invitacion) - separada de los
 // endpoints, mismo patron que rolePermissions.ts/moduleEntities.ts.
+//
+// HU multi-organizacion (2026-09-04): "Usuarios" (esta pantalla) gestiona
+// MEMBRESIAS (`users`) de un tenant puntual, no personas completas - ver el
+// comentario largo en server/db/schema.ts sobre people vs. users.
+// inviteUser() ahora tiene DOS caminos segun si el correo ya es una persona
+// conocida (en cualquier otro tenant) o no: ver su comentario propio mas
+// abajo.
 
 type Tx = typeof db
 
@@ -79,14 +86,15 @@ function parseInvitationToken(token: string): { tenantId: string } {
  * Lista los usuarios del tenant (Screen/Usuarios: columnas Usuario/Rol/Estado/
  * Acciones), con el nombre del rol resuelto (roleId puede ser null - "sin rol
  * asignado" - o apuntar a un rol ya borrado via onDelete: 'set null').
+ * email/fullName ahora viven en `people` - join desde la membresia.
  */
 export async function listUsers(tenantId: string): Promise<UserSummary[]> {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select({
         id: users.id,
-        email: users.email,
-        fullName: users.fullName,
+        email: people.email,
+        fullName: people.fullName,
         roleId: users.roleId,
         roleName: roles.name,
         isActive: users.isActive,
@@ -95,6 +103,7 @@ export async function listUsers(tenantId: string): Promise<UserSummary[]> {
         createdAt: users.createdAt
       })
       .from(users)
+      .innerJoin(people, eq(people.id, users.personId))
       .leftJoin(roles, eq(roles.id, users.roleId))
       .where(eq(users.tenantId, tenantId))
       .orderBy(users.createdAt)
@@ -123,76 +132,99 @@ export interface InviteUserResult {
 }
 
 /**
- * Invita un usuario nuevo: crea la fila en `users` con isActive=false (gate
- * real que impide login, ver comentario largo en schema.ts) y un token de
- * invitacion (se guarda el HASH, se manda el crudo por correo - mismo
- * criterio que un token de reseteo de contraseña). Envia el correo real via
- * SMTP (server/utils/mailer.ts) - si el envio falla (SMTP no configurado, o
- * cualquier error del transporte), la fila NO queda creada (todo dentro de
- * la misma withTenant) para no dejar una invitacion fantasma que nadie
- * recibio y que nadie en el listado puede reenviar de forma obvia.
+ * Invita un correo a este tenant (modal "Invitar usuario" del diseño real,
+ * Screen/Usuarios). Dos caminos segun si `email` ya es una persona conocida
+ * en CUALQUIER otro tenant (HU multi-organizacion, 2026-09-04):
+ *
+ * - Ya existe en `people`: solo se crea la membresia nueva, activa de
+ *   inmediato (`isActive: true`, sin token de invitacion ni contraseña que
+ *   fijar - la persona YA tiene contraseña, la misma en todas sus
+ *   organizaciones). Se le avisa por correo, pero de forma best-effort (si
+ *   SMTP no esta configurado o el envio falla, la membresia queda creada
+ *   igual - a diferencia del camino de abajo, este correo es una
+ *   notificacion, no el UNICO modo de que la persona pueda entrar: ya tiene
+ *   contraseña y puede loguearse y ver la organización nueva en el selector).
+ * - No existe: mismo flujo de siempre (ERD-84) - crea la persona con un
+ *   placeholder de contraseña inutilizable y la membresia con
+ *   isActive=false + token de invitacion, y el correo real (con enlace para
+ *   fijar su contraseña) es OBLIGATORIO - si el envio falla, no queda nada
+ *   creado (mismo criterio ya establecido, ver mas abajo).
  *
  * inviterFullName: nombre de quien invita (Screen/Usuarios no lo pide - lo
  * resuelve el propio endpoint del admin autenticado), usado solo en el
- * cuerpo del correo ("<Nombre> te invitó a colaborar..."), copy exacto del
- * .pen.
+ * cuerpo del correo.
  */
 export async function inviteUser(tenantId: string, email: string, roleId: string, inviterFullName: string): Promise<InviteUserResult> {
   const normalizedEmail = email.trim().toLowerCase()
-  const token = generateInvitationToken(tenantId)
-  const tokenHash = hashToken(token)
-  const expiresAt = new Date(Date.now() + INVITATION_EXPIRES_IN_MS)
 
-  const { user, tenantName, roleName } = await withTenant(tenantId, async (tx) => {
+  const outcome = await withTenant(tenantId, async (tx) => {
     const role = await assertRoleInTenant(tx, tenantId, roleId)
-
     const [tenant] = await tx.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
     const tenantName = tenant?.name ?? 'tu organización'
 
-    // Placeholder inutilizable: passwordHash es NOT NULL en el schema y no
-    // hay forma de dejarlo vacio - un hash de un valor aleatorio que nunca
-    // se entrega a nadie. isActive=false ya es el gate real de login; esto
-    // es solo para satisfacer la columna.
-    const placeholderPassword = randomBytes(24).toString('hex')
-    const placeholderHash = await hashPassword(placeholderPassword)
+    const [existingPerson] = await tx.select().from(people).where(eq(people.email, normalizedEmail)).limit(1)
 
-    let row: typeof users.$inferSelect
-    try {
-      ;[row] = await tx
-        .insert(users)
-        .values({
-          tenantId,
-          roleId,
-          email: normalizedEmail,
-          passwordHash: placeholderHash,
-          isActive: false,
-          invitationTokenHash: tokenHash,
-          invitationExpiresAt: expiresAt
-        })
-        .returning()
-    } catch (err) {
-      const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
-      if (code === PG_UNIQUE_VIOLATION) {
-        throw new DuplicateEmailError(`Ya existe un usuario con el correo "${normalizedEmail}" en este tenant`)
+    if (existingPerson) {
+      let membershipRow: typeof users.$inferSelect
+      try {
+        ;[membershipRow] = await tx.insert(users).values({ tenantId, personId: existingPerson.id, roleId, isActive: true }).returning()
+      } catch (err) {
+        const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
+        if (code === PG_UNIQUE_VIOLATION) {
+          throw new DuplicateEmailError(`"${normalizedEmail}" ya es miembro de este tenant`)
+        }
+        throw err
       }
-      throw err
+      return { kind: 'existing' as const, membershipRow, person: existingPerson, tenantName, roleName: role.name }
     }
 
-    return { user: row, tenantName, roleName: role.name }
+    // Placeholder inutilizable: people.passwordHash es NOT NULL y no hay
+    // forma de dejarlo vacio - un hash de un valor aleatorio que nunca se
+    // entrega a nadie. users.isActive=false ya es el gate real de login;
+    // esto es solo para satisfacer la columna hasta que acceptInvitation()
+    // fije la contraseña real elegida.
+    const placeholderPassword = randomBytes(24).toString('hex')
+    const placeholderHash = await hashPassword(placeholderPassword)
+    const [newPerson] = await tx.insert(people).values({ email: normalizedEmail, passwordHash: placeholderHash }).returning()
+
+    const token = generateInvitationToken(tenantId)
+    const tokenHash = hashToken(token)
+    const expiresAt = new Date(Date.now() + INVITATION_EXPIRES_IN_MS)
+
+    const [membershipRow] = await tx
+      .insert(users)
+      .values({ tenantId, personId: newPerson.id, roleId, isActive: false, invitationTokenHash: tokenHash, invitationExpiresAt: expiresAt })
+      .returning()
+
+    return { kind: 'new' as const, membershipRow, person: newPerson, tenantName, roleName: role.name, token }
   })
 
-  await sendInvitationEmail({ to: normalizedEmail, tenantName, inviterName: inviterFullName, roleName, token })
+  if (outcome.kind === 'new') {
+    await sendInvitationEmail({ to: outcome.person.email, tenantName: outcome.tenantName, inviterName: inviterFullName, roleName: outcome.roleName, token: outcome.token })
+  } else {
+    try {
+      await sendPlainEmail({
+        to: outcome.person.email,
+        subject: `Te agregaron a ${outcome.tenantName} en ERP Dinámico`,
+        html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(outcome.tenantName)} con el rol de ${escapeHtml(outcome.roleName)}. Iniciá sesión con tu contraseña habitual y vas a poder elegir esta organización.</p>`
+      })
+    } catch {
+      // Best-effort (ver comentario largo de la funcion) - la persona ya
+      // tiene contraseña propia, este correo es solo un aviso, no el unico
+      // camino para poder entrar.
+    }
+  }
 
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      roleId: user.roleId,
-      roleName,
-      isActive: user.isActive,
-      status: 'invitacion_pendiente',
-      createdAt: user.createdAt
+      id: outcome.membershipRow.id,
+      email: outcome.person.email,
+      fullName: outcome.person.fullName,
+      roleId: outcome.membershipRow.roleId,
+      roleName: outcome.roleName,
+      isActive: outcome.membershipRow.isActive,
+      status: outcome.kind === 'new' ? 'invitacion_pendiente' : 'activo',
+      createdAt: outcome.membershipRow.createdAt
     }
   }
 }
@@ -201,7 +233,7 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
  * Reenvia la invitacion (boton "Reenviar" del listado, para una invitacion
  * ya vencida o que el destinatario perdio): genera un token nuevo (invalida
  * el anterior) y una expiracion nueva de 7 dias, y vuelve a mandar el
- * correo. Solo tiene sentido sobre un usuario que TODAVIA no acepto -
+ * correo. Solo tiene sentido sobre una membresia que TODAVIA no acepto -
  * InvitationNotPendingError si ya es una cuenta activa.
  */
 export async function resendInvitation(tenantId: string, userId: string, inviterFullName: string): Promise<InviteUserResult> {
@@ -209,9 +241,9 @@ export async function resendInvitation(tenantId: string, userId: string, inviter
   const tokenHash = hashToken(token)
   const expiresAt = new Date(Date.now() + INVITATION_EXPIRES_IN_MS)
 
-  const { user, tenantName, roleName } = await withTenant(tenantId, async (tx) => {
+  const { membershipRow, person, tenantName, roleName } = await withTenant(tenantId, async (tx) => {
     const [existing] = await tx
-      .select({ id: users.id, isActive: users.isActive, invitationTokenHash: users.invitationTokenHash, roleId: users.roleId })
+      .select({ id: users.id, isActive: users.isActive, invitationTokenHash: users.invitationTokenHash, roleId: users.roleId, personId: users.personId })
       .from(users)
       .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
       .limit(1)
@@ -224,27 +256,29 @@ export async function resendInvitation(tenantId: string, userId: string, inviter
     const tenantName = tenant?.name ?? 'tu organización'
     const role = existing.roleId ? await assertRoleInTenant(tx, tenantId, existing.roleId) : { name: 'Sin rol' }
 
-    const [row] = await tx
+    const [membershipRow] = await tx
       .update(users)
       .set({ invitationTokenHash: tokenHash, invitationExpiresAt: expiresAt, updatedAt: new Date() })
       .where(eq(users.id, userId))
       .returning()
 
-    return { user: row, tenantName, roleName: role.name }
+    const [person] = await tx.select().from(people).where(eq(people.id, existing.personId)).limit(1)
+
+    return { membershipRow, person: person!, tenantName, roleName: role.name }
   })
 
-  await sendInvitationEmail({ to: user.email, tenantName, inviterName: inviterFullName, roleName, token })
+  await sendInvitationEmail({ to: person.email, tenantName, inviterName: inviterFullName, roleName, token })
 
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      roleId: user.roleId,
+      id: membershipRow.id,
+      email: person.email,
+      fullName: person.fullName,
+      roleId: membershipRow.roleId,
       roleName,
-      isActive: user.isActive,
+      isActive: membershipRow.isActive,
       status: 'invitacion_pendiente',
-      createdAt: user.createdAt
+      createdAt: membershipRow.createdAt
     }
   }
 }
@@ -255,7 +289,7 @@ export interface UpdateUserInput {
 }
 
 /**
- * Edita rol y/o estado activo de un usuario ya existente (acciones de la
+ * Edita rol y/o estado activo de una membresia ya existente (acciones de la
  * columna "Acciones" del listado). No permite tocar la propia cuenta
  * (CannotEditSelfError) - evita que un admin se quite el rol o se desactive
  * a si mismo por accidente y quede sin forma de revertirlo.
@@ -266,7 +300,7 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
   }
 
   return withTenant(tenantId, async (tx) => {
-    const [existing] = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), eq(users.tenantId, tenantId))).limit(1)
+    const [existing] = await tx.select({ id: users.id, personId: users.personId }).from(users).where(and(eq(users.id, userId), eq(users.tenantId, tenantId))).limit(1)
     if (!existing) throw new TargetUserNotFoundError(`El usuario ${userId} no existe en este tenant`)
 
     if (input.roleId) {
@@ -284,11 +318,12 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
       .returning()
 
     const roleName = row.roleId ? (await assertRoleInTenant(tx, tenantId, row.roleId)).name : null
+    const [person] = await tx.select().from(people).where(eq(people.id, existing.personId)).limit(1)
 
     return {
       id: row.id,
-      email: row.email,
-      fullName: row.fullName,
+      email: person!.email,
+      fullName: person!.fullName,
       roleId: row.roleId,
       roleName,
       isActive: row.isActive,
@@ -299,12 +334,14 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
 }
 
 /**
- * Cancela una invitacion todavia pendiente (borra la fila entera - un
- * usuario invitado que nunca acepto no tiene ningun dato propio mas alla del
- * correo/rol elegidos al invitar). InvitationNotPendingError si la cuenta ya
- * esta activa - cancelar una cuenta activa no es "cancelar invitacion", es
- * desactivar (updateUser con isActive:false), una accion distinta a
- * proposito.
+ * Cancela una invitacion todavia pendiente (borra la fila de membresia
+ * entera - no la persona, que podria tener otras membresias o ni siquiera
+ * llegar a existir en ningun otro lado si esta era su primera invitacion,
+ * en cuyo caso queda una fila de `people` huerfana con un placeholder
+ * inutilizable - aceptable, mismo costo que cualquier invitacion cancelada
+ * de siempre, y `people.email` unico global evita que alguien la reinvite
+ * con un email distinto por accidente). InvitationNotPendingError si la
+ * cuenta ya esta activa.
  */
 export async function cancelInvitation(tenantId: string, userId: string, actingUserId: string): Promise<void> {
   if (userId === actingUserId) {
@@ -333,7 +370,7 @@ export async function cancelInvitation(tenantId: string, userId: string, actingU
  * comentario largo de generateInvitationToken). Valida el token contra el
  * HASH guardado (nunca contra el crudo - mismo criterio que passwordHash) y
  * su expiracion, fija la contrasena real (ya validada contra
- * passwordPolicySchema en el endpoint) y activa la cuenta.
+ * passwordPolicySchema en el endpoint) en `people` y activa la membresia.
  */
 export async function acceptInvitation(token: string, newPassword: string, fullName?: string): Promise<{ tenantId: string }> {
   const { tenantId } = parseInvitationToken(token)
@@ -342,7 +379,7 @@ export async function acceptInvitation(token: string, newPassword: string, fullN
 
   await withTenant(tenantId, async (tx) => {
     const [row] = await tx
-      .select({ id: users.id, invitationExpiresAt: users.invitationExpiresAt })
+      .select({ id: users.id, personId: users.personId, invitationExpiresAt: users.invitationExpiresAt })
       .from(users)
       .where(and(eq(users.tenantId, tenantId), eq(users.invitationTokenHash, tokenHash)))
       .limit(1)
@@ -356,15 +393,13 @@ export async function acceptInvitation(token: string, newPassword: string, fullN
 
     await tx
       .update(users)
-      .set({
-        passwordHash,
-        isActive: true,
-        invitationTokenHash: null,
-        invitationExpiresAt: null,
-        ...(fullName ? { fullName: fullName.trim() } : {}),
-        updatedAt: new Date()
-      })
+      .set({ isActive: true, invitationTokenHash: null, invitationExpiresAt: null, updatedAt: new Date() })
       .where(eq(users.id, row.id))
+
+    await tx
+      .update(people)
+      .set({ passwordHash, ...(fullName ? { fullName: fullName.trim() } : {}), updatedAt: new Date() })
+      .where(eq(people.id, row.personId))
   })
 
   return { tenantId }

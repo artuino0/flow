@@ -107,24 +107,60 @@ export function issueSessionCookies(event: H3Event, payload: AuthTokenPayload, s
 // a un endpoint protegido comun (el middleware de auth.ts no reconoce ese
 // campo, pero igual falla al no traer un roleId con la forma esperada -
 // esta doble verificacion es la que realmente lo bloquea).
+//
+// Pedido directo del usuario (2026-09-04, HU multi-organizacion): `sub` aca
+// ahora es el id de `people` (la persona), NO el de una membresia puntual -
+// en este punto del login (contraseña ya validada, 2FA todavia no) la
+// organizacion final ni siquiera se eligio todavia (ver server/utils/
+// peopleAuth.ts y el comentario largo en server/db/schema.ts sobre people
+// vs. users). Por eso este payload YA NO lleva tenantId - antes lo llevaba
+// porque el tenant se conocia desde el paso 1 (el usuario lo tipeaba a
+// mano); ahora se resuelve recien despues del codigo TOTP, en
+// login/totp.post.ts, exactamente igual que un login sin 2FA.
 export interface PendingTotpTokenPayload {
   sub: string
-  tenantId: string
   purpose: 'totp-pending'
 }
 
 const PENDING_TOTP_EXPIRES_IN = '5m'
 
-export function signPendingTotpToken(payload: { sub: string; tenantId: string }, secret: string): string {
+export function signPendingTotpToken(payload: { sub: string }, secret: string): string {
   return jwt.sign({ ...payload, purpose: 'totp-pending' }, secret, { expiresIn: PENDING_TOTP_EXPIRES_IN })
 }
 
-export function verifyPendingTotpToken(token: string, secret: string): { sub: string; tenantId: string } {
+export function verifyPendingTotpToken(token: string, secret: string): { sub: string } {
   const decoded = jwt.verify(token, secret) as PendingTotpTokenPayload
   if (decoded.purpose !== 'totp-pending') {
     throw new Error('Token no es de tipo totp-pending')
   }
-  return { sub: decoded.sub, tenantId: decoded.tenantId }
+  return { sub: decoded.sub }
+}
+
+// Pedido directo del usuario (2026-09-04): "si hay mas de una organizacion
+// saldria un select... como un login de dos pasos". Mismo patron que el
+// token totp-pending de arriba (vida corta, nunca cookie, `purpose` propio
+// para que el middleware de auth.ts jamas lo confunda con una sesion real) -
+// se emite cuando la persona (contraseña, y 2FA si tiene, ya validados)
+// pertenece a MAS DE UNA organizacion, para que el cliente pueda pedirle
+// cual elegir sin tener que repetir contraseña/codigo TOTP en ese segundo
+// paso (POST /api/auth/login/select-org).
+export interface PendingOrgTokenPayload {
+  sub: string
+  purpose: 'org-pending'
+}
+
+const PENDING_ORG_EXPIRES_IN = '5m'
+
+export function signPendingOrgToken(payload: { sub: string }, secret: string): string {
+  return jwt.sign({ ...payload, purpose: 'org-pending' }, secret, { expiresIn: PENDING_ORG_EXPIRES_IN })
+}
+
+export function verifyPendingOrgToken(token: string, secret: string): { sub: string } {
+  const decoded = jwt.verify(token, secret) as PendingOrgTokenPayload
+  if (decoded.purpose !== 'org-pending') {
+    throw new Error('Token no es de tipo org-pending')
+  }
+  return { sub: decoded.sub }
 }
 
 export function getBearerToken(authHeader: string | undefined): string | null {

@@ -12,12 +12,20 @@ const PUBLIC_PATHS = new Set([
   '/api/health',
   '/api/auth/login',
   '/api/auth/login/totp',
+  // HU multi-organizacion (2026-09-04): igual que login/totp - recibe un
+  // token pendiente propio en el body, no una sesion.
+  '/api/auth/login/select-org',
   '/api/auth/logout',
   '/api/auth/refresh',
+  '/api/auth/register',
   '/api/config',
   // HU-ERD-84: aceptar una invitacion pasa el token en el body (no una
   // sesion) - el invitado todavia no tiene cuenta activa para autenticarse.
-  '/api/users/accept-invitation'
+  '/api/users/accept-invitation',
+  // HU multi-organizacion: Paso 2 del wizard de Registro consulta esto
+  // ANTES de que exista cuenta - publico, no filtra nada sensible (solo si
+  // un slug ya esta tomado).
+  '/api/tenants/check-slug'
 ])
 
 export default defineEventHandler((event) => {
@@ -43,8 +51,12 @@ export default defineEventHandler((event) => {
     // 5 minutos, sin haber completado el segundo factor todavia. Solo sirve
     // para POST /api/auth/login/totp (que lo verifica el mismo, no pasa por
     // este middleware porque no requiere sesion previa).
-    if ((payload as unknown as { purpose?: string }).purpose === 'totp-pending') {
-      throw new Error('Token pendiente de 2FA, no es una sesion valida')
+    //
+    // Mismo motivo exacto para "org-pending" (HU multi-organizacion,
+    // 2026-09-04): solo sirve para POST /api/auth/login/select-org.
+    const purpose = (payload as unknown as { purpose?: string }).purpose
+    if (purpose === 'totp-pending' || purpose === 'org-pending') {
+      throw new Error('Token pendiente (2FA u organizacion), no es una sesion valida')
     }
     event.context.auth = payload
   } catch {

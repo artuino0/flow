@@ -4,6 +4,8 @@ import {
   verifyAuthToken,
   signPendingTotpToken,
   verifyPendingTotpToken,
+  signPendingOrgToken,
+  verifyPendingOrgToken,
   signRefreshToken,
   verifyRefreshToken,
   resolveAuthToken,
@@ -35,10 +37,12 @@ describe('auth: access token', () => {
 
 describe('auth: totp-pending token', () => {
   it('firma y verifica, ida y vuelta', () => {
-    const token = signPendingTotpToken({ sub: 'u1', tenantId: 't1' }, SECRET)
+    // HU multi-organizacion (2026-09-04): ya no lleva tenantId - la
+    // organización todavia no se eligio en este punto del login (ver el
+    // comentario largo en server/utils/auth.ts).
+    const token = signPendingTotpToken({ sub: 'u1' }, SECRET)
     const decoded = verifyPendingTotpToken(token, SECRET)
     expect(decoded.sub).toBe('u1')
-    expect(decoded.tenantId).toBe('t1')
   })
 
   it('rechaza un access token normal presentado como si fuera totp-pending', () => {
@@ -69,8 +73,28 @@ describe('auth: refresh token', () => {
   })
 
   it('un totp-pending tampoco sirve como refresh token', () => {
-    const pendingToken = signPendingTotpToken({ sub: 'u1', tenantId: 't1' }, SECRET)
+    const pendingToken = signPendingTotpToken({ sub: 'u1' }, SECRET)
     expect(() => verifyRefreshToken(pendingToken, SECRET)).toThrow()
+  })
+})
+
+describe('auth: org-pending token', () => {
+  it('firma y verifica, ida y vuelta', () => {
+    const token = signPendingOrgToken({ sub: 'u1' }, SECRET)
+    const decoded = verifyPendingOrgToken(token, SECRET)
+    expect(decoded.sub).toBe('u1')
+  })
+
+  it('rechaza un access token normal presentado como si fuera org-pending', () => {
+    const accessToken = signAuthToken({ sub: 'u1', tenantId: 't1', roleId: null }, SECRET)
+    expect(() => verifyPendingOrgToken(accessToken, SECRET)).toThrow()
+  })
+
+  it('un totp-pending no sirve como org-pending, ni viceversa', () => {
+    const totpToken = signPendingTotpToken({ sub: 'u1' }, SECRET)
+    expect(() => verifyPendingOrgToken(totpToken, SECRET)).toThrow()
+    const orgToken = signPendingOrgToken({ sub: 'u1' }, SECRET)
+    expect(() => verifyPendingTotpToken(orgToken, SECRET)).toThrow()
   })
 })
 

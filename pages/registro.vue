@@ -1,0 +1,497 @@
+<script setup lang="ts">
+// HU multi-organizacion (2026-09-04): "Registro" - wizard de 4 pasos fiel al
+// diseño real (Screen/Registro Paso 1-4 del .pen, revisado por completo con
+// mcp__pencil__execute antes de escribir este archivo, pencil-antes-de-frontend
+// - nodos gQM6L/OQNF9/D6C1Ul/uwmVR). Crea la persona + su primera
+// organización (POST /api/auth/register, server/utils/registration.ts) y deja
+// la sesión iniciada de una vez como Administrador de esa organización.
+//
+// Simplificaciones deliberadas, documentadas (mismo criterio que el backend,
+// ver el comentario largo en server/api/auth/register.post.ts): "Tamaño del
+// equipo" (paso 2) y "Plan — Free — hasta 3 usuarios" (paso 4) son COSMETICOS
+// - se dibujan tal cual el diseño pero no existe ningún campo/backend detrás
+// (no hay sistema de facturación en esta entrega). El rol de cada invitado
+// (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
+// registerTenant() solo crea ese rol de arranque además de "Administrador",
+// así que se dibuja fijo, sin dropdown funcional.
+import { ArrowLeft, ArrowRight, Boxes, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
+
+definePageMeta({ layout: false })
+
+// HU-ERD-35: el registro público no existe en modo "dedicated" (un solo
+// cliente por deployment) - mismo gate que el backend (POST /api/auth/register
+// devuelve 403 ahí). Se resuelve en runtime via GET /api/config, igual que
+// pages/login.vue.
+const { data: appConfig } = await useDeploymentConfig()
+if (appConfig.value?.appMode === 'dedicated') {
+  await navigateTo('/login')
+}
+
+const step = ref(1)
+const loading = ref(false)
+const errorMessage = ref('')
+
+// Paso 1: "Tu cuenta"
+const fullName = ref('')
+const email = ref('')
+const password = ref('')
+const confirmPassword = ref('')
+const acceptedTerms = ref(false)
+
+const canContinueStep1 = computed(
+  () =>
+    fullName.value.trim().length > 0 &&
+    email.value.trim().length > 0 &&
+    password.value.length >= 8 &&
+    password.value === confirmPassword.value &&
+    acceptedTerms.value
+)
+
+// Paso 2: "Tu organización"
+const organizationName = ref('')
+const slug = ref('')
+const slugEditedManually = ref(false)
+const teamSizeOptions = [
+  { value: 'solo', label: 'Solo yo' },
+  { value: '2-10', label: '2–10' },
+  { value: '11-50', label: '11–50' },
+  { value: '50+', label: '50+' }
+]
+const teamSize = ref('2-10')
+
+function slugify(name: string): string {
+  // Mismo criterio que server/utils/registration.ts (slugify) - se
+  // duplica intencionalmente en el cliente para dar el feedback visual "en
+  // vivo" del diseño sin esperar un roundtrip; el servidor es la fuente de
+  // verdad real (vuelve a normalizar y valida contra TENANT_SLUG_PATTERN).
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
+}
+
+watch(organizationName, (val) => {
+  if (!slugEditedManually.value) {
+    slug.value = slugify(val)
+  }
+})
+
+function onSlugInput() {
+  slugEditedManually.value = true
+  slug.value = slugify(slug.value)
+}
+
+const slugChecking = ref(false)
+const slugAvailable = ref<boolean | null>(null)
+let slugCheckTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(slug, (val) => {
+  slugAvailable.value = null
+  if (slugCheckTimer) clearTimeout(slugCheckTimer)
+  if (!val) return
+  slugCheckTimer = setTimeout(async () => {
+    slugChecking.value = true
+    try {
+      const result = await $fetch<{ available: boolean; reason?: string }>('/api/tenants/check-slug', { query: { slug: val } })
+      slugAvailable.value = result.available
+    } catch {
+      slugAvailable.value = null
+    } finally {
+      slugChecking.value = false
+    }
+  }, 400)
+})
+
+const canContinueStep2 = computed(() => organizationName.value.trim().length > 0 && slug.value.length > 0 && slugAvailable.value !== false)
+
+// Paso 3: "Invitá a tu equipo"
+const invitees = ref<{ email: string }[]>([{ email: '' }])
+
+function addInvitee() {
+  invitees.value.push({ email: '' })
+}
+
+function removeInvitee(index: number) {
+  invitees.value.splice(index, 1)
+}
+
+// Paso 4: "Todo listo" - resultado real de POST /api/auth/register.
+const result = ref<{ tenantName: string; slug: string; invitationsSent: number } | null>(null)
+
+async function onSubmit() {
+  errorMessage.value = ''
+  loading.value = true
+  try {
+    const cleanInvitees = invitees.value
+      .map((i) => i.email.trim())
+      .filter(Boolean)
+      .map((inviteeEmail) => ({ email: inviteeEmail }))
+
+    const response = await $fetch<{ ok: boolean; tenantId: string; tenantName: string; slug: string; invitationsSent: number }>('/api/auth/register', {
+      method: 'POST',
+      body: {
+        fullName: fullName.value.trim(),
+        email: email.value.trim(),
+        password: password.value,
+        organizationName: organizationName.value.trim(),
+        slug: slug.value,
+        invitees: cleanInvitees.length ? cleanInvitees : undefined
+      }
+    })
+
+    result.value = { tenantName: response.tenantName, slug: response.slug, invitationsSent: response.invitationsSent }
+    step.value = 4
+  } catch (err: any) {
+    errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo crear tu organización.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const brandText = computed(() => {
+  switch (step.value) {
+    case 1:
+      return 'Creá tu organización y empezá a modelar tus entidades en minutos, sin escribir código.'
+    case 2:
+      return 'Cada organización vive en su propio espacio, con su URL, sus datos y sus usuarios.'
+    case 3:
+      return 'Colaborá con tu equipo: cada persona ve solo lo que su rol le permite.'
+    default:
+      return 'Ya puedes empezar a crear módulos, cargar datos e invitar a más personas cuando quieras.'
+  }
+})
+</script>
+
+<template>
+  <div class="flex min-h-screen font-sans">
+    <div
+      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
+    >
+      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
+        <Boxes class="h-[34px] w-[34px] text-white" :stroke-width="1.75" />
+      </div>
+      <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
+      <p class="w-[340px] text-[15px] text-[#DCEAF0]">{{ brandText }}</p>
+    </div>
+
+    <div class="flex flex-1 items-center justify-center bg-brand-surface px-4 py-10">
+      <!-- Paso 1: Tu cuenta -->
+      <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <template v-for="n in 4" :key="n">
+              <div
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+              >
+                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
+                <span v-else>{{ n }}</span>
+              </div>
+              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+            </template>
+          </div>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 1 de 4</p>
+        </div>
+
+        <div>
+          <h2 class="text-2xl font-bold text-brand-text">Creá tu cuenta</h2>
+          <p class="mt-1 text-sm text-brand-text-secondary">Empieza con tus datos personales. Después configuramos tu organización.</p>
+        </div>
+
+        <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
+          <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
+          <p class="text-[13px] font-medium text-brand-error-text">{{ errorMessage }}</p>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="fullName" class="text-[13px] font-semibold text-brand-text">Nombre completo</label>
+          <input
+            id="fullName"
+            v-model="fullName"
+            type="text"
+            required
+            placeholder="Artur Ramírez"
+            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="email" class="text-[13px] font-semibold text-brand-text">Correo electrónico</label>
+          <input
+            id="email"
+            v-model="email"
+            type="email"
+            required
+            autocomplete="username"
+            placeholder="arturosistemas94@gmail.com"
+            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="password" class="text-[13px] font-semibold text-brand-text">Contraseña</label>
+            <input
+              id="password"
+              v-model="password"
+              type="password"
+              required
+              autocomplete="new-password"
+              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="confirmPassword" class="text-[13px] font-semibold text-brand-text">Confirmar</label>
+            <input
+              id="confirmPassword"
+              v-model="confirmPassword"
+              type="password"
+              required
+              autocomplete="new-password"
+              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            />
+          </div>
+        </div>
+        <p class="-mt-3 text-xs text-brand-text-muted">Al menos 8 caracteres, con letras y números.</p>
+
+        <label class="flex cursor-pointer items-start gap-2">
+          <input v-model="acceptedTerms" type="checkbox" class="mt-0.5 h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
+          <span class="text-sm text-brand-text">Acepto los Términos y Condiciones y la Política de Privacidad</span>
+        </label>
+
+        <button
+          type="button"
+          :disabled="!canContinueStep1"
+          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          @click="step = 2"
+        >
+          Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
+        </button>
+
+        <p class="text-center text-[13px] text-brand-text-muted">
+          ¿Ya tienes cuenta? <NuxtLink to="/login" class="font-semibold text-brand-blue hover:underline">Iniciar sesión</NuxtLink>
+        </p>
+      </div>
+
+      <!-- Paso 2: Tu organización -->
+      <div v-else-if="step === 2" class="flex w-full max-w-[380px] flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <template v-for="n in 4" :key="n">
+              <div
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+              >
+                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
+                <span v-else>{{ n }}</span>
+              </div>
+              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+            </template>
+          </div>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 2 de 4</p>
+        </div>
+
+        <div>
+          <h2 class="text-2xl font-bold text-brand-text">Creá tu organización</h2>
+          <p class="mt-1 text-sm text-brand-text-secondary">Este será el espacio de trabajo de tu equipo, con sus propios datos.</p>
+        </div>
+
+        <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
+          <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
+          <p class="text-[13px] font-medium text-brand-error-text">{{ errorMessage }}</p>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="organizationName" class="text-[13px] font-semibold text-brand-text">Nombre de la organización</label>
+          <input
+            id="organizationName"
+            v-model="organizationName"
+            type="text"
+            required
+            placeholder="Acme Corp"
+            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="slug" class="text-[13px] font-semibold text-brand-text">Subdominio de tu organización</label>
+          <div
+            class="flex items-center gap-2 rounded border px-3 py-[9px]"
+            :class="slugAvailable === false ? 'border-brand-error-text' : slugAvailable === true ? 'border-brand-success-text' : 'border-brand-border'"
+          >
+            <input
+              id="slug"
+              v-model="slug"
+              type="text"
+              required
+              placeholder="acme"
+              class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-0"
+              @input="onSlugInput"
+            />
+            <span class="shrink-0 text-sm text-brand-text-muted">.erpdinamico.com</span>
+            <CircleCheck v-if="slugAvailable === true" class="h-4 w-4 shrink-0 text-brand-success-text" :stroke-width="2" />
+          </div>
+          <p v-if="slugAvailable === true" class="flex items-center gap-1 text-xs font-medium text-brand-success-text">
+            <CircleCheck class="h-3.5 w-3.5" :stroke-width="2" /> Disponible — tu equipo entrará por {{ slug }}.erpdinamico.com
+          </p>
+          <p v-else-if="slugAvailable === false" class="text-xs font-medium text-brand-error-text">Ese subdominio ya está en uso, probá con otro.</p>
+        </div>
+
+        <!-- Cosmetico: no hay ningun campo/backend detras (ver el comentario
+             largo al inicio del archivo). -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[13px] font-semibold text-brand-text">Tamaño del equipo</label>
+          <div class="flex gap-2">
+            <button
+              v-for="opt in teamSizeOptions"
+              :key="opt.value"
+              type="button"
+              class="flex-1 rounded border px-2 py-2 text-[13px] font-semibold"
+              :class="teamSize === opt.value ? 'border-brand-blue bg-brand-blue-bg text-brand-blue' : 'border-brand-border text-brand-text-secondary'"
+              @click="teamSize = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            type="button"
+            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-white"
+            @click="step = 1"
+          >
+            <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
+          </button>
+          <button
+            type="button"
+            :disabled="!canContinueStep2"
+            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="step = 3"
+          >
+            Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso 3: Invitá a tu equipo -->
+      <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <template v-for="n in 4" :key="n">
+              <div
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+              >
+                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
+                <span v-else>{{ n }}</span>
+              </div>
+              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+            </template>
+          </div>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 3 de 4</p>
+        </div>
+
+        <div>
+          <h2 class="text-2xl font-bold text-brand-text">Invitá a tu equipo</h2>
+          <p class="mt-1 text-sm text-brand-text-secondary">Puedes invitar ahora o hacerlo después desde Usuarios.</p>
+        </div>
+
+        <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
+          <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
+          <p class="text-[13px] font-medium text-brand-error-text">{{ errorMessage }}</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <div v-for="(invitee, idx) in invitees" :key="idx" class="flex items-center gap-2">
+            <input
+              v-model="invitee.email"
+              type="email"
+              placeholder="maria.lopez@acme.com"
+              class="min-w-0 flex-1 rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            />
+            <!-- Cosmetico: siempre "Miembro" (ver el comentario largo al inicio del archivo). -->
+            <span class="flex shrink-0 items-center gap-1 rounded border border-brand-border px-2.5 py-[9px] text-[13px] text-brand-text-secondary">
+              Miembro <ChevronDown class="h-3.5 w-3.5" :stroke-width="2" />
+            </span>
+            <button type="button" class="shrink-0 rounded p-1.5 text-brand-text-muted hover:bg-white" @click="removeInvitee(idx)">
+              <X class="h-4 w-4" :stroke-width="2" />
+            </button>
+          </div>
+        </div>
+
+        <button type="button" class="flex items-center gap-1.5 self-start text-[13px] font-semibold text-brand-blue hover:underline" @click="addInvitee">
+          <Plus class="h-3.5 w-3.5" :stroke-width="2.5" /> Agregar otro correo
+        </button>
+
+        <div class="flex gap-3">
+          <button
+            type="button"
+            :disabled="loading"
+            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            @click="step = 2"
+          >
+            <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
+          </button>
+          <button
+            type="button"
+            :disabled="loading"
+            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSubmit"
+          >
+            {{ loading ? 'Creando...' : 'Continuar' }} <ArrowRight v-if="!loading" class="h-4 w-4" :stroke-width="2" />
+          </button>
+        </div>
+
+        <button type="button" :disabled="loading" class="text-center text-[13px] text-brand-text-muted hover:underline disabled:cursor-not-allowed" @click="onSubmit">
+          Omitir por ahora
+        </button>
+      </div>
+
+      <!-- Paso 4: Todo listo -->
+      <div v-else-if="step === 4 && result" class="flex w-full max-w-[380px] flex-col gap-5">
+        <div class="flex flex-col items-center gap-3 text-center">
+          <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-success-bg">
+            <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
+          </div>
+          <h2 class="text-2xl font-bold text-brand-text">¡Tu organización está lista!</h2>
+          <p class="text-sm text-brand-text-secondary">Te enviamos un correo de confirmación a {{ email }}</p>
+        </div>
+
+        <div class="rounded bg-white">
+          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+            <Building2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="flex-1 text-[13px] text-brand-text-secondary">Organización</span>
+            <span class="text-sm font-semibold text-brand-text">{{ result.tenantName }}</span>
+          </div>
+          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+            <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="flex-1 text-[13px] text-brand-text-secondary">URL</span>
+            <span class="text-sm font-semibold text-brand-text">{{ result.slug }}.erpdinamico.com</span>
+          </div>
+          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+            <Users class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="flex-1 text-[13px] text-brand-text-secondary">Equipo</span>
+            <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones enviadas</span>
+          </div>
+          <!-- Cosmetico: no hay sistema de facturacion (ver el comentario largo al inicio del archivo). -->
+          <div class="flex items-center gap-3 px-4 py-3">
+            <Layers class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="flex-1 text-[13px] text-brand-text-secondary">Plan</span>
+            <span class="text-sm font-semibold text-brand-text">Free — hasta 3 usuarios</span>
+          </div>
+        </div>
+
+        <NuxtLink
+          to="/"
+          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover"
+        >
+          Ir al dashboard <ArrowRight class="h-4 w-4" :stroke-width="2" />
+        </NuxtLink>
+      </div>
+    </div>
+  </div>
+</template>

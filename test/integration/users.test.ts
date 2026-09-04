@@ -65,9 +65,14 @@ beforeAll(async () => {
   const [roleA] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_A}, 'Ventas', false) returning id`
   roleAId = roleA.id as string
   const [sysRole] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_A}, 'Administrador', true) returning id`
+  const [adminPerson] = await admin`
+    insert into people (email, password_hash, full_name)
+    values ('admin@acme.com', 'x', 'María García')
+    returning id
+  `
   const [adminUser] = await admin`
-    insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
-    values (${TENANT_A}, ${sysRole.id}, 'admin@acme.com', 'x', 'María García', true)
+    insert into users (tenant_id, role_id, person_id, is_active)
+    values (${TENANT_A}, ${sysRole.id}, ${adminPerson.id}, true)
     returning id
   `
   adminUserId = adminUser.id as string
@@ -151,13 +156,25 @@ describe('inviteUser (Postgres real)', () => {
     await expect(inviteUser(TENANT_A, 'maria.nueva@acme.com', roleAId, 'María García')).rejects.toBeInstanceOf(DuplicateEmailError)
   })
 
-  it('el mismo correo SÍ puede invitarse en otro tenant (unicidad es por tenant)', async () => {
+  it('el mismo correo SÍ puede invitarse en otro tenant - misma persona, membresía nueva y activa de inmediato', async () => {
+    // HU multi-organizacion (2026-09-04): la unicidad de `people.email` es
+    // GLOBAL - invitar el mismo correo a otro tenant no crea una persona
+    // nueva, crea una membresia nueva sobre la MISMA persona. Como ya tiene
+    // contraseña propia, entra por el camino "existing" de inviteUser()
+    // (activa de inmediato, sin token de invitacion).
     const result = await inviteUser(TENANT_B, 'maria.nueva@acme.com', roleBId, 'Otro Admin')
     expect(result.user.email).toBe('maria.nueva@acme.com')
+    expect(result.user.isActive).toBe(true)
+    expect(result.user.status).toBe('activo')
   })
 
   it('el usuario invitado no puede loguear todavía (isActive=false)', async () => {
-    const [row] = await admin`select is_active from users where email = 'maria.nueva@acme.com' and tenant_id = ${TENANT_A}`
+    const [row] = await admin`
+      select u.is_active as is_active
+      from users u
+      join people p on p.id = u.person_id
+      where p.email = 'maria.nueva@acme.com' and u.tenant_id = ${TENANT_A}
+    `
     expect(row.is_active).toBe(false)
   })
 })
