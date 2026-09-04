@@ -48,7 +48,17 @@ function fingerprint(rows: EntityFieldRow[]): string {
 // server/utils/fileStorage.ts) - se guarda como z.string().uuid() en
 // custom_data, EXACTO el mismo criterio que 'relation': una referencia (aca,
 // al id de la fila en la tabla files) en vez del valor real embebido.
-export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file'] as const
+//
+// 'incremental' (pedido directo del usuario, 2026-09-04): un numero correlativo
+// autogenerado, relleno con ceros a la izquierda hasta `digits` posiciones (ej.
+// 6 digitos: "003902"), opcionalmente con un prefijo de texto sacado de un campo
+// de la entidad relacionada por otro campo 'relation' propio (ej. "E003902" /
+// "N002356" - Mercado Nacional/Extranjero). El VALOR nunca lo escribe el usuario
+// ni llega en el body de POST/PUT /api/records/:entity - se genera server-side
+// (server/utils/incrementalField.ts) exactamente igual de intocable que el "id"
+// sintetico (ver fields.get.ts), pero a diferencia de "id" SI es una fila real de
+// entity_fields (necesita guardar su propia configuracion: digits/prefixSource).
+export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file', 'incremental'] as const
 export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
 
 // Tipos permitidos para una columna dentro de un campo 'tabla' - deliberadamente
@@ -158,7 +168,31 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   // y allowlist de mimeType quedan fijos en server/utils/fileStorage.ts, no
   // configurables por campo todavia) - z.object({}).strict() documenta la
   // intencion explicitamente, igual que 'boolean'/'json' de arriba.
-  file: z.object({}).strict()
+  file: z.object({}).strict(),
+  // Pedido directo del usuario (2026-09-04): `digits` es cuantos digitos
+  // numericos lleva el correlativo (sin contar el prefijo, si lo hay) - "otra
+  // cantidad / configurable por campo", confirmado con el usuario en vez de un
+  // valor fijo. `prefixSource`, si esta presente, ata el prefijo al VALOR de un
+  // campo de texto de la entidad relacionada por un campo 'relation' PROPIO de
+  // esta misma entidad (`relationField`, un name de entity_fields de esta
+  // entidad) - la validacion de que ese campo relation exista de verdad, sea de
+  // tipo 'relation', y que `sourceField` sea un campo de tipo texto real de la
+  // entidad a la que apunta, es cruzada (necesita consultar otras filas de
+  // entity_fields/entities) y por eso NO vive aca - ver
+  // assertIncrementalConfig() en moduleEntityFields.ts, unico lugar con acceso
+  // a una transaccion para resolverla.
+  incremental: z
+    .object({
+      digits: z.number().int().min(1).max(15),
+      prefixSource: z
+        .object({
+          relationField: z.string().min(1),
+          sourceField: z.string().min(1)
+        })
+        .strict()
+        .optional()
+    })
+    .strict()
 }
 
 /** Devuelve el schema Zod de validationRules para un dataType conocido, o null si no se reconoce. */
@@ -194,6 +228,20 @@ function optionValues(rules: Record<string, unknown>): string[] {
 // schema Zod desde metadatos, sin necesitar una base de datos.
 export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
   const rules = (field.validationRules ?? {}) as Record<string, unknown>
+
+  // Pedido directo del usuario (2026-09-04, "no editable, 100% automatico"):
+  // el valor de un campo 'incremental' NUNCA lo escribe el usuario - siempre lo
+  // calcula el servidor (server/utils/incrementalField.ts) antes de insertar, y
+  // se ignora/preserva (nunca se sobreescribe) en cada edicion. Por eso, a
+  // diferencia de TODOS los demas tipos, esta rama ignora field.isRequired
+  // (nunca tendria sentido pedirselo al usuario) y es la unica que retorna
+  // directo, sin pasar por el ".optional().nullable()" de mas abajo (que igual
+  // hubiera dado el mismo resultado para isRequired=false, pero seria
+  // enganoso dejarlo caer ahi como si isRequired pudiera afectarlo).
+  if (field.dataType === 'incremental') {
+    return z.string().optional().nullable()
+  }
+
   let base: z.ZodTypeAny
 
   switch (field.dataType) {

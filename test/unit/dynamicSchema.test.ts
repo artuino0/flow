@@ -186,6 +186,23 @@ describe('buildFieldType', () => {
     })
   })
 
+  // Pedido directo del usuario (2026-09-04): un campo 'incremental' nunca lo
+  // completa el usuario - buildFieldType() ignora isRequired a proposito
+  // (siempre optional/nullable), a diferencia de TODOS los demas tipos.
+  describe('incremental', () => {
+    it('siempre es optional/nullable, incluso con isRequired:true', () => {
+      const type = buildFieldType({ name: 'codigo', dataType: 'incremental', validationRules: { digits: 6 }, isRequired: true })
+      expect(type.safeParse(undefined).success).toBe(true)
+      expect(type.safeParse(null).success).toBe(true)
+      expect(type.safeParse('N000123').success).toBe(true)
+    })
+
+    it('acepta el valor generado (string) sin restricciones propias', () => {
+      const type = buildFieldType({ name: 'codigo', dataType: 'incremental', validationRules: { digits: 10 }, isRequired: false })
+      expect(type.safeParse('0000000001').success).toBe(true)
+    })
+  })
+
   describe('tipo desconocido', () => {
     it('cae a z.any()', () => {
       const type = buildFieldType({ name: 'x', dataType: 'inventado', validationRules: {}, isRequired: true })
@@ -222,6 +239,33 @@ describe('buildFieldType', () => {
         ]
       }
       expect(getValidationRulesSchema('tabla')!.safeParse(rules).success).toBe(true)
+    })
+  })
+
+  // Pedido directo del usuario (2026-09-04): forma de validationRules.digits/
+  // prefixSource - la validacion CRUZADA (que relationField/sourceField
+  // existan de verdad) vive aparte, en assertIncrementalConfig()
+  // (server/utils/moduleEntityFields.ts, cubierta en test de integracion
+  // porque necesita Postgres real).
+  describe('getValidationRulesSchema - incremental', () => {
+    it('exige digits (entero >= 1)', () => {
+      expect(getValidationRulesSchema('incremental')!.safeParse({}).success).toBe(false)
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 0 }).success).toBe(false)
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 1.5 }).success).toBe(false)
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 6 }).success).toBe(true)
+    })
+
+    it('acepta prefixSource con relationField/sourceField como strings', () => {
+      const rules = { digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'codigo' } }
+      expect(getValidationRulesSchema('incremental')!.safeParse(rules).success).toBe(true)
+    })
+
+    it('rechaza un prefixSource incompleto o con claves extra', () => {
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefixSource: { relationField: 'mercado' } }).success).toBe(false)
+      expect(
+        getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'codigo', extra: 1 } })
+          .success
+      ).toBe(false)
     })
   })
 

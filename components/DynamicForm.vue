@@ -35,7 +35,15 @@ const errors = ref<Record<string, string>>({})
 // (nunca vive en custom_data), asi que el formulario REAL de crear/editar un
 // registro nunca debe pedirlo a mano ni validarlo. Mismo filtro en
 // ModulePreviewCard.vue, que renderiza este mismo formulario en el asistente.
-const renderableFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
+//
+// Pedido directo del usuario (2026-09-04): un campo 'incremental' es "100%
+// automatico y de solo lectura, nunca editable a mano" - mismo criterio que
+// "id" de arriba (nunca se pide al usuario, nunca se manda en el submit), asi
+// que se excluye aca igual. A diferencia de "id" (nunca aparece en ningun
+// otro lado del formulario), el valor YA generado de un incremental SI se ve
+// despues, en la ficha de detalle (RecordDetailView.vue) y en el listado
+// (DynamicTable.vue) - solo no en este formulario de crear/editar.
+const renderableFields = computed(() => props.fields.filter((f) => f.name !== 'id' && f.dataType !== 'incremental'))
 
 function valueFor(name: string): unknown {
   return props.modelValue[name]

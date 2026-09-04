@@ -38,7 +38,7 @@
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
 import { computed, reactive, ref, watch } from 'vue'
-import { Braces, Calendar, Check, ChevronDown, GripVertical, Hash, Link2, List, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -55,6 +55,13 @@ const props = defineProps<{
   initialField?: FieldDraft | null
   saving?: boolean
   error?: string | null
+  // Pedido directo del usuario (2026-09-04): campos YA existentes de esta
+  // MISMA entidad (sin el "id" sintetico) - el panel de "Incremental" con
+  // prefijo necesita ofrecer, para elegir, los campos 'relation' que este
+  // modulo ya tiene configurados (no se crea uno nuevo aca). Opcional/default
+  // vacio: si no se pasa, el modo "Con prefijo de relación" queda sin
+  // opciones (el resto del modal sigue funcionando igual para los demas tipos).
+  existingFields?: EntityFieldMeta[]
 }>()
 
 const emit = defineEmits<{
@@ -81,7 +88,11 @@ const TYPE_OPTIONS: TypeOption[] = [
   // construir - ningun Screen del diseño menciona "archivo"/"adjunto") -
   // mismo patron visual que la tarjeta de "Tabla" de arriba (HU-ERD-68),
   // tambien sin mock propio en su momento.
-  { value: 'file', label: 'Archivo', icon: Paperclip }
+  { value: 'file', label: 'Archivo', icon: Paperclip },
+  // Pedido directo del usuario (2026-09-04): sin mock en el .pen (confirmado
+  // antes de construir - "incremental"/"autonumerico" no existe en ningun
+  // nodo del archivo) - mismo criterio visual que "Archivo"/"Tabla" de arriba.
+  { value: 'incremental', label: 'Incremental', icon: ListOrdered }
 ]
 
 // HU-ERD-71: mismas 7 paletas de color de marca que TYPE_BADGE
@@ -152,8 +163,41 @@ const form = reactive({
   // relation viejo sin esto sigue funcionando igual) - se usa para calcular
   // las "relaciones inversas" de otra entidad (ver server/utils/detailLayout.ts)
   // y para resolver la etiqueta del registro relacionado en la ficha de detalle.
-  relationEntity: ''
+  relationEntity: '',
+  // Pedido directo del usuario (2026-09-04): "Incremental" - digitos del
+  // correlativo (relleno con ceros a la izquierda) y, opcionalmente, un
+  // prefijo sacado de un campo de texto de la entidad relacionada por un
+  // campo 'relation' propio de este mismo modulo (ej. Mercado -> "N"/"E").
+  incrementalDigits: 6 as number | null,
+  incrementalMode: 'simple' as 'simple' | 'prefixed',
+  incrementalRelationField: '',
+  incrementalSourceField: ''
 })
+
+// Campos 'relation' propios de esta entidad, con entidad relacionada ya
+// configurada (sin eso no hay forma de saber donde buscar el prefijo) -
+// opciones del picker "Campo de relación" del modo "Con prefijo de relación".
+const ownRelationFields = computed(() => (props.existingFields ?? []).filter((f) => f.dataType === 'relation' && typeof f.validationRules?.relationEntity === 'string' && f.validationRules.relationEntity))
+
+function relationEntitySlugFor(fieldName: string): string | null {
+  const field = ownRelationFields.value.find((f) => f.name === fieldName)
+  const slug = field?.validationRules?.relationEntity
+  return typeof slug === 'string' && slug ? slug : null
+}
+
+// Campos de TEXTO (nunca "id") de la entidad relacionada por el campo de
+// relación elegido - opciones del picker "Campo de la entidad relacionada".
+const incrementalSourceFieldOptions = computed<EntityFieldMeta[]>(() => {
+  const slug = relationEntitySlugFor(form.incrementalRelationField)
+  if (!slug) return []
+  return (relatedFieldsByEntity[slug] ?? []).filter((f) => f.dataType === 'text' && f.name !== 'id')
+})
+
+function onIncrementalRelationFieldChange() {
+  form.incrementalSourceField = ''
+  const slug = relationEntitySlugFor(form.incrementalRelationField)
+  if (slug) void ensureRelatedFieldsLoaded(slug)
+}
 
 // Entidades del tenant, para el picker "Entidad relacionada" de una columna
 // tipo Tabla (HU-ERD-71) - cargadas una sola vez, bajo demanda (no todo
@@ -230,6 +274,22 @@ watch(
     form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
     if (form.dataType === 'relation') void ensureRelatedEntitiesLoaded()
 
+    // Pedido directo del usuario (2026-09-04): "Incremental".
+    const prefixSource = rules.prefixSource as { relationField?: unknown; sourceField?: unknown } | undefined
+    form.incrementalDigits = typeof rules.digits === 'number' ? rules.digits : 6
+    form.incrementalRelationField = typeof prefixSource?.relationField === 'string' ? prefixSource.relationField : ''
+    form.incrementalSourceField = typeof prefixSource?.sourceField === 'string' ? prefixSource.sourceField : ''
+    form.incrementalMode = form.incrementalRelationField ? 'prefixed' : 'simple'
+    if (form.dataType === 'incremental' && form.incrementalRelationField) {
+      // No se usa onIncrementalRelationFieldChange() aca a proposito: esa
+      // funcion resetea incrementalSourceField (pensada para cuando el
+      // usuario CAMBIA el campo de relación a mano) - aca se esta restaurando
+      // un campo ya guardado, hay que conservar form.incrementalSourceField
+      // tal cual se acaba de leer arriba.
+      const slug = relationEntitySlugFor(form.incrementalRelationField)
+      if (slug) void ensureRelatedFieldsLoaded(slug)
+    }
+
     const rawOptions = Array.isArray(rules.options) ? (rules.options as Array<{ label?: string; value?: string; color?: string }>) : []
     form.options =
       form.dataType === 'select' || form.dataType === 'multiselect'
@@ -288,6 +348,14 @@ function selectDataType(value: string) {
     if (form.columns.length === 0) form.columns = [{ name: '', label: '', type: 'text', nameTouched: false, relationEntity: '', copyFrom: '', editable: false, readonly: false }]
   }
   if (value === 'relation') void ensureRelatedEntitiesLoaded()
+  // Pedido directo del usuario (2026-09-04): "100% automatico y de solo
+  // lectura" - un campo Incremental nunca tiene sentido como "obligatorio"
+  // (el usuario jamas lo completa a mano), se fuerza a false igual que se
+  // oculta el toggle en el template.
+  if (value === 'incremental') {
+    form.isRequired = false
+    if (!form.incrementalDigits) form.incrementalDigits = 6
+  }
 }
 
 function addOption() {
@@ -390,6 +458,13 @@ function validationRulesForSubmit(): Record<string, unknown> {
           return col
         })
       }
+    case 'incremental': {
+      const rules: Record<string, unknown> = { digits: form.incrementalDigits ?? 6 }
+      if (form.incrementalMode === 'prefixed' && form.incrementalRelationField && form.incrementalSourceField) {
+        rules.prefixSource = { relationField: form.incrementalRelationField, sourceField: form.incrementalSourceField }
+      }
+      return rules
+    }
     default:
       return {}
   }
@@ -433,10 +508,17 @@ const columnsValid = computed(
     !columnsHaveDuplicateNames.value
 )
 
+const incrementalValid = computed(() => {
+  if (!form.incrementalDigits || form.incrementalDigits < 1) return false
+  if (form.incrementalMode === 'prefixed') return Boolean(form.incrementalRelationField && form.incrementalSourceField)
+  return true
+})
+
 const canSubmit = computed(() => {
   if (form.name.length === 0 || nameError.value || form.label.length === 0) return false
   if (form.dataType === 'select' || form.dataType === 'multiselect') return optionsValid.value
   if (form.dataType === 'tabla') return columnsValid.value
+  if (form.dataType === 'incremental') return incrementalValid.value
   return true
 })
 
@@ -538,7 +620,10 @@ function onSubmit() {
           </div>
         </div>
 
-        <div class="flex items-center justify-between rounded border border-brand-border-light p-3">
+        <!-- Pedido directo del usuario (2026-09-04): un campo Incremental es
+             siempre automatico - "obligatorio" no aplica (el usuario nunca lo
+             completa a mano), se oculta el toggle en vez de dejarlo confuso. -->
+        <div v-if="form.dataType !== 'incremental'" class="flex items-center justify-between rounded border border-brand-border-light p-3">
           <div class="flex flex-col gap-0.5">
             <p class="text-sm font-semibold text-brand-text">Campo obligatorio</p>
             <p class="text-xs text-brand-text-muted">El usuario no podrá guardar el registro sin completarlo</p>
@@ -790,6 +875,86 @@ function onSubmit() {
             <Plus class="h-3.5 w-3.5" :stroke-width="2" />
             Agregar columna
           </button>
+        </div>
+
+        <!-- Pedido directo del usuario (2026-09-04): "quisiera un campo nuevo
+             que sea como un incremental... 10 digitos... o un campo
+             incremental que use un campo de una relacion para completarse,
+             ej. mercado nacional/extranjero, y 6 0 con el incremental,
+             E003902 o N002356". Sin mock en el .pen (confirmado antes de
+             construir) - mismo lenguaje visual que el resto de paneles de
+             esta tarjeta (toggle de dos opciones ya usado arriba para
+             Selección única/múltiple). -->
+        <div v-else-if="form.dataType === 'incremental'" class="flex flex-col gap-3">
+          <p class="text-[13px] font-semibold text-brand-text">Configuración del correlativo</p>
+
+          <div class="flex flex-col gap-1.5">
+            <label for="incremental-digits" class="text-[13px] font-semibold text-brand-text">Cantidad de dígitos</label>
+            <input
+              id="incremental-digits"
+              v-model.number="form.incrementalDigits"
+              type="number"
+              min="1"
+              max="15"
+              class="w-full max-w-[140px] rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            />
+            <p class="text-xs text-brand-text-muted">Se rellena con ceros a la izquierda (ej. 6 dígitos: "003902").</p>
+          </div>
+
+          <div class="flex rounded border border-brand-border-light bg-brand-bg p-1">
+            <button
+              type="button"
+              class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
+              :class="form.incrementalMode === 'simple' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
+              @click="form.incrementalMode = 'simple'"
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
+              :class="form.incrementalMode === 'prefixed' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
+              @click="form.incrementalMode = 'prefixed'"
+            >
+              Con prefijo de relación
+            </button>
+          </div>
+
+          <template v-if="form.incrementalMode === 'prefixed'">
+            <p v-if="ownRelationFields.length === 0" class="text-xs text-brand-error-text">
+              Este módulo todavía no tiene ningún campo de tipo Relación configurado - agregá uno primero (con su entidad relacionada elegida) para poder usarlo como prefijo.
+            </p>
+            <template v-else>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[13px] font-semibold text-brand-text">Campo de relación</label>
+                <select
+                  v-model="form.incrementalRelationField"
+                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  @change="onIncrementalRelationFieldChange"
+                >
+                  <option value="" disabled>Elegir campo...</option>
+                  <option v-for="f in ownRelationFields" :key="f.id" :value="f.name">{{ f.label }}</option>
+                </select>
+              </div>
+
+              <div v-if="form.incrementalRelationField" class="flex flex-col gap-1.5">
+                <label class="text-[13px] font-semibold text-brand-text">Campo de la entidad relacionada (prefijo)</label>
+                <select
+                  v-model="form.incrementalSourceField"
+                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                >
+                  <option value="" disabled>Elegir campo...</option>
+                  <option v-for="f in incrementalSourceFieldOptions" :key="f.id" :value="f.name">{{ f.label }}</option>
+                </select>
+                <p v-if="incrementalSourceFieldOptions.length === 0" class="text-xs text-brand-error-text">
+                  La entidad relacionada no tiene ningún campo de texto para usar como prefijo.
+                </p>
+                <p v-else class="text-xs text-brand-text-muted">
+                  Ej. si el valor de ese campo es "N", el correlativo queda "N{{ '0'.repeat(Math.max((form.incrementalDigits ?? 6) - 1, 0)) }}1", incrementando por separado para cada valor distinto.
+                </p>
+              </div>
+            </template>
+          </template>
         </div>
 
         <p v-if="error" class="text-sm text-brand-error-text">{{ error }}</p>

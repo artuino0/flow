@@ -273,3 +273,116 @@ describe('moduleEntityFields (Postgres real)', () => {
     expect(stillThere).toBeDefined()
   })
 })
+
+// Pedido directo del usuario (2026-09-04): dataType 'incremental' - a
+// diferencia del resto de assertValidationRules() (solo FORMA, cubierto en
+// test/unit/dynamicSchema.test.ts), prefixSource necesita validacion CRUZADA
+// contra otras filas reales de entity_fields/entities (assertIncrementalConfig(),
+// ver comentario largo en moduleEntityFields.ts) - por eso vive aca, no en el
+// test unitario.
+describe('moduleEntityFields - incremental (Postgres real)', () => {
+  let entityIncremental: string
+  let entityMercado: string
+
+  beforeAll(async () => {
+    const [ent] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Recepciones Inc', 'recepciones-inc') returning id`
+    entityIncremental = ent.id as string
+    const [merc] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Mercado Inc', 'mercado-inc') returning id`
+    entityMercado = merc.id as string
+    await admin`insert into entity_fields (entity_id, name, label, data_type) values (${entityMercado}, 'codigo', 'Código', 'text')`
+  })
+
+  it('acepta un incremental "simple" (sin prefixSource)', async () => {
+    const field = await createEntityField(TENANT_A, entityIncremental, {
+      name: 'folio',
+      label: 'Folio',
+      dataType: 'incremental',
+      validationRules: { digits: 10 },
+      isRequired: false
+    })
+    expect(field.dataType).toBe('incremental')
+  })
+
+  it('acepta un incremental con prefixSource valido (campo relation propio + campo texto de la entidad relacionada)', async () => {
+    const relField = await createEntityField(TENANT_A, entityIncremental, {
+      name: 'mercado',
+      label: 'Mercado',
+      dataType: 'relation',
+      validationRules: { relationEntity: 'mercado-inc' },
+      isRequired: true
+    })
+    expect(relField.dataType).toBe('relation')
+
+    const incremental = await createEntityField(TENANT_A, entityIncremental, {
+      name: 'codigo_pieza',
+      label: 'Código de pieza',
+      dataType: 'incremental',
+      validationRules: { digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'codigo' } },
+      isRequired: false
+    })
+    expect(incremental.validationRules).toEqual({ digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'codigo' } })
+  })
+
+  it('rechaza prefixSource.relationField que no es un campo real de esta misma entidad', async () => {
+    await expect(
+      createEntityField(TENANT_A, entityIncremental, {
+        name: 'otro_incremental',
+        label: 'Otro',
+        dataType: 'incremental',
+        validationRules: { digits: 6, prefixSource: { relationField: 'no_existe', sourceField: 'codigo' } },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('rechaza prefixSource.relationField que existe pero no es de tipo Relación', async () => {
+    await createEntityField(TENANT_A, entityIncremental, { name: 'nombre_propio', label: 'Nombre', dataType: 'text', validationRules: {}, isRequired: false })
+    await expect(
+      createEntityField(TENANT_A, entityIncremental, {
+        name: 'otro_incremental_2',
+        label: 'Otro',
+        dataType: 'incremental',
+        validationRules: { digits: 6, prefixSource: { relationField: 'nombre_propio', sourceField: 'codigo' } },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('rechaza prefixSource.relationField de tipo Relación sin entidad relacionada configurada', async () => {
+    await createEntityField(TENANT_A, entityIncremental, { name: 'relacion_suelta', label: 'Relación suelta', dataType: 'relation', validationRules: {}, isRequired: false })
+    await expect(
+      createEntityField(TENANT_A, entityIncremental, {
+        name: 'otro_incremental_3',
+        label: 'Otro',
+        dataType: 'incremental',
+        validationRules: { digits: 6, prefixSource: { relationField: 'relacion_suelta', sourceField: 'codigo' } },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('rechaza prefixSource.sourceField que no es un campo de texto real de la entidad relacionada', async () => {
+    await expect(
+      createEntityField(TENANT_A, entityIncremental, {
+        name: 'otro_incremental_4',
+        label: 'Otro',
+        dataType: 'incremental',
+        validationRules: { digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'no_existe' } },
+        isRequired: false
+      })
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+
+  it('updateEntityField vuelve a validar prefixSource cuando se edita validationRules', async () => {
+    const field = await createEntityField(TENANT_A, entityIncremental, {
+      name: 'folio_editable',
+      label: 'Folio editable',
+      dataType: 'incremental',
+      validationRules: { digits: 6 },
+      isRequired: false
+    })
+    await expect(
+      updateEntityField(TENANT_A, field.id, { validationRules: { digits: 6, prefixSource: { relationField: 'no_existe', sourceField: 'codigo' } } }, null)
+    ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+})

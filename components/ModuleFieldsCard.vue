@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, ListOrdered, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -63,7 +63,14 @@ const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: stri
   // su edicion) - conceptualmente "id" siempre es un uuid, mas alla de que
   // dataType haya quedado guardado. badgeForField() de abajo fuerza este tipo
   // para esa fila puntual, sin tocar el dataType real en la base.
-  uuid: { icon: KeyRound, bg: 'bg-brand-gold-bg', text: 'text-brand-gold-text', label: 'UUID' }
+  uuid: { icon: KeyRound, bg: 'bg-brand-gold-bg', text: 'text-brand-gold-text', label: 'UUID' },
+  // Pedido directo del usuario (2026-09-04): "Incremental" - mismo par de
+  // color que "uuid" de arriba (dorado): ambos son, conceptualmente,
+  // identificadores autogenerados de solo lectura - se diferencian por icono
+  // (ListOrdered en vez de KeyRound), mismo criterio de reuso de color ya
+  // establecido entre select/multiselect (ambos "info") y text/tabla (ambos
+  // "neutral").
+  incremental: { icon: ListOrdered, bg: 'bg-brand-gold-bg', text: 'text-brand-gold-text', label: 'Incremental' }
 }
 function badgeFor(dataType: string) {
   return TYPE_BADGE[dataType] ?? { icon: Blocks, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: dataType }
@@ -424,6 +431,7 @@ async function confirmImpactModal() {
       :initial-field="editingField"
       :saving="saving"
       :error="modalError"
+      :existing-fields="realFields"
       @close="closeModal"
       @submit="onSubmit"
     />

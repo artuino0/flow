@@ -162,6 +162,61 @@ function assertValidationRules(dataType: string, validationRules: unknown): void
   }
 }
 
+/**
+ * Pedido directo del usuario (2026-09-04): valida `validationRules.prefixSource`
+ * de un campo 'incremental' - a diferencia de `assertValidationRules()` de
+ * arriba (solo forma, sin consultar la base), esto es validacion CRUZADA: que
+ * `relationField` sea de verdad un campo `dataType==='relation'` de ESTA MISMA
+ * entidad, que ese campo tenga una entidad relacionada configurada
+ * (validationRules.relationEntity, HU-ERD-74), y que `sourceField` sea de verdad
+ * un campo `dataType==='text'` de ESA entidad relacionada. Por eso necesita `tx`
+ * (no puede vivir en dynamicSchema.ts, que es sincrono y sin acceso a la base) y
+ * se llama solo cuando el dataType efectivo es 'incremental', desde dentro de la
+ * misma transaccion de createEntityField()/updateEntityField() de abajo. Sin
+ * `prefixSource` (incremental "simple"), no hay nada que validar aca.
+ */
+async function assertIncrementalConfig(tx: Tx, tenantId: string, entityId: string, validationRules: unknown): Promise<void> {
+  const rules = (validationRules ?? {}) as { prefixSource?: { relationField?: unknown; sourceField?: unknown } }
+  if (!rules.prefixSource) return
+  const relationField = rules.prefixSource.relationField
+  const sourceField = rules.prefixSource.sourceField
+  if (typeof relationField !== 'string' || typeof sourceField !== 'string') return // forma ya rechazada por assertValidationRules
+
+  const ownFields = await tx
+    .select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
+    .from(entityFields)
+    .where(eq(entityFields.entityId, entityId))
+
+  const relField = ownFields.find((f) => f.name === relationField)
+  if (!relField || relField.dataType !== 'relation') {
+    throw new InvalidValidationRulesError(`"${relationField}" no es un campo de tipo Relación de este mismo módulo`)
+  }
+
+  const relRules = (relField.validationRules ?? {}) as Record<string, unknown>
+  const relationEntitySlug = typeof relRules.relationEntity === 'string' ? relRules.relationEntity : null
+  if (!relationEntitySlug) {
+    throw new InvalidValidationRulesError(`El campo de relación "${relationField}" todavía no tiene una entidad relacionada configurada`)
+  }
+
+  const [targetEntity] = await tx
+    .select({ id: entities.id })
+    .from(entities)
+    .where(and(eq(entities.tenantId, tenantId), eq(entities.slug, relationEntitySlug)))
+    .limit(1)
+  if (!targetEntity) {
+    throw new InvalidValidationRulesError(`La entidad relacionada "${relationEntitySlug}" no existe`)
+  }
+
+  const [sourceFieldRow] = await tx
+    .select({ id: entityFields.id })
+    .from(entityFields)
+    .where(and(eq(entityFields.entityId, targetEntity.id), eq(entityFields.name, sourceField), eq(entityFields.dataType, 'text')))
+    .limit(1)
+  if (!sourceFieldRow) {
+    throw new InvalidValidationRulesError(`"${sourceField}" no es un campo de texto válido de la entidad relacionada`)
+  }
+}
+
 export async function listEntityFields(tenantId: string, entityId: string): Promise<EntityFieldSummary[]> {
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
@@ -188,6 +243,9 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
 
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
+    if (input.dataType === 'incremental') {
+      await assertIncrementalConfig(tx, tenantId, entityId, input.validationRules)
+    }
 
     // "El organizador" (pedido del usuario, 2026-09-01): un campo nuevo se
     // agrega siempre al final - mismo criterio que detailLayout.properties
@@ -267,6 +325,9 @@ export async function updateEntityField(
     const effectiveDataType = input.dataType ?? current.dataType
     const effectiveRules = input.validationRules !== undefined ? input.validationRules : current.validationRules
     assertValidationRules(effectiveDataType, effectiveRules)
+    if (effectiveDataType === 'incremental') {
+      await assertIncrementalConfig(tx, tenantId, current.entityId, effectiveRules)
+    }
 
     const changesMetadataShape =
       (input.dataType !== undefined && input.dataType !== current.dataType) ||

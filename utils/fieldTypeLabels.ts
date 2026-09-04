@@ -14,7 +14,10 @@ export const FIELD_TYPE_LABEL: Record<string, string> = {
   relation: 'Relación',
   select: 'Select',
   multiselect: 'Multiselect',
-  tabla: 'Tabla'
+  tabla: 'Tabla',
+  // Pedido directo del usuario (2026-09-04): "Incremental" - mismo criterio
+  // que el resto del mapa (etiqueta de texto simple, sin icono/color propio).
+  incremental: 'Incremental'
 }
 
 export function fieldTypeLabel(dataType: string | undefined): string {

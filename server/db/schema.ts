@@ -1,6 +1,6 @@
 // Esquema dinamico del Motor ERP (dominio OLTP).
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 // entities: define los objetos/modulos del sistema (ej. Clientes, Facturas, Productores).
@@ -131,6 +131,40 @@ export const entityFieldHistory = pgTable('entity_field_history', {
   changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
   changedBy: uuid('changed_by')
 })
+
+// entity_field_counters: ultimo valor emitido por (entity_field_id, prefix) para
+// campos dataType='incremental' (pedido directo del usuario, 2026-09-04: "quisiera
+// un campo nuevo que sea como un incremental... por ejemplo 10 digitos donde vaya
+// incrementando en 1... o un campo incremental que use un campo de una relacion
+// para completarse, por ejemplo... mercado, nacional o extranjero, y 6 0 con el
+// incremental en los numeros E003902 o N002356" - ver validationRules del campo
+// en server/utils/dynamicSchema.ts: { digits, prefixSource? }).
+//
+// `prefix` es '' para un incremental "simple" (sin relacion) - un solo contador
+// para todo el campo. Con relacion (prefixSource), CADA valor distinto del campo
+// de texto elegido en la entidad relacionada lleva su PROPIO contador
+// independiente (confirmado con el usuario: "un contador por cada valor de
+// prefijo", no uno global compartido) - por eso la fila real es
+// (entity_field_id, prefix real, ej. 'N'/'E'), nunca (entity_field_id) solo.
+//
+// bigint (no integer): 10 digitos pedidos por el usuario en el caso simple ya
+// excede el rango de integer de Postgres (~2.147 millones); mode:'number' porque
+// el rango real (hasta 10^15) sigue muy por debajo del limite seguro de un
+// number de JS (2^53).
+//
+// Igual que entity_fields (ver comentario largo en moduleEntityFields.ts), SIN
+// tenant_id/RLS propio - toda funcion que la toca resuelve primero, por join,
+// que el entity_field (y su entity dueña) sean del tenant autenticado (ver
+// server/utils/incrementalField.ts).
+export const entityFieldCounters = pgTable('entity_field_counters', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  entityFieldId: uuid('entity_field_id').notNull().references(() => entityFields.id, { onDelete: 'cascade' }),
+  prefix: text('prefix').notNull().default(''),
+  lastValue: bigint('last_value', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  fieldPrefixUnique: uniqueIndex('entity_field_counters_field_prefix_unique').on(table.entityFieldId, table.prefix)
+}))
 
 // records: almacenamiento generico de cualquier registro de cualquier entidad.
 // custom_data (JSONB) guarda los valores segun entity_fields; is_dirty marca
