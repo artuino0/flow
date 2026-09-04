@@ -74,8 +74,17 @@ async function onLogout(reason?: 'inactividad') {
       </div>
     </header>
 
-    <!-- HU-ERD-83 (parte 2): ver composables/useIdleTimeout.ts -->
-    <InactivityWarningModal v-if="showWarning" :countdown="countdown" @confirm="confirmActive" />
+    <!-- HU-ERD-83 (parte 2): ver composables/useIdleTimeout.ts. "Cerrar
+    sesión" (rediseño del modal, ver InactivityWarningModal.vue) es una
+    salida deliberada del usuario, no un cierre automatico por timeout - no
+    manda reason=inactividad como sí hace onTimeout(). -->
+    <InactivityWarningModal
+      v-if="showWarning"
+      :countdown="countdown"
+      :total="WARNING_DURATION_SECONDS"
+      @confirm="confirmActive"
+      @logout="onLogout()"
+    />
 
     <div class="flex flex-1">
       <aside class="hidden w-60 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface sm:flex">

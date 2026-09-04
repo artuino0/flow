@@ -1,5 +1,13 @@
 # Changelog
 
+### [0.60.2] - 2026-09-04
+#### [fix]
+- Modal de aviso de inactividad rehecho fiel a `Screen/Modal - Sesión por Inactividad` del `.pen` ("checa esto" del usuario, 2026-09-03): cuando se construyó HU-ERD-83 (parte 2) el diseño no tenía mock propio para este modal (documentado en el código) y se armó a mano siguiendo el lenguaje visual de otro modal existente; ahora el `.pen` sí tiene el mock real y difiere en varios puntos:
+  - `components/InactivityWarningModal.vue`: paleta de error (roja, `$error-bg`/`$error-text`) en vez de warning (amarilla); ícono `clock-alert`; título "Sesión por inactividad" y subtítulo "Cerraremos tu sesión por seguridad." (antes "¿Seguís ahí?"/"Tu sesión está por cerrarse por inactividad."); la caja de texto plana con el conteo se reemplaza por un anillo circular SVG de cuenta regresiva (`stroke-dasharray`/`stroke-dashoffset` sobre `countdown/total`, mismo criterio que un donut chart) con el número grande al centro.
+  - Nuevo botón "Cerrar sesión" (antes el modal solo dejaba "Seguir conectado", sin ninguna forma explícita de cerrar sesión desde el propio aviso) - nuevo evento `logout` que `layouts/default.vue` conecta a `onLogout()` sin `reason=inactividad` (es una salida deliberada del usuario, no el cierre automático por timeout).
+  - `composables/useIdleTimeout.ts` exporta `WARNING_DURATION_SECONDS` (ya existía como constante interna) para que el modal reciba el total real como prop `total` y calcule el porcentaje del anillo, en vez de asumir 60 fijo.
+- Validado: `npx nuxt typecheck` limpio, `npx nuxt build` compiló el cliente sin errores (mismo límite de tiempo del sandbox ya documentado para el bundling del server Nitro y para la suite completa de vitest, que ya no termina dentro de los ~178s por comando - no hay tests dedicados a este modal, es un cambio visual sin lógica de negocio propia más allá del cálculo del anillo, que es puramente derivado de props ya cubiertas por el tipado).
+
 ### [0.60.1] - 2026-09-04
 #### [fix]
 - Estados vacíos reales del `.pen` en dos pantallas que solo tenían texto plano ("checa esto" del usuario sobre `Screen/Listado Módulos - Vacío` y `Screen/Roles y Permisos - Vacío`, revisados con `mcp__pencil__get_app_state`/`execute` antes de tocar el frontend, `pencil-antes-de-frontend`):

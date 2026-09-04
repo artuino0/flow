@@ -18,6 +18,14 @@ const WARNING_DURATION_SECONDS = 60
 const REFRESH_THROTTLE_MS = 5 * 60 * 1000
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'] as const
 
+// Rediseno del modal (2026-09-03, "checa esto" sobre Screen/Modal - Sesión
+// por Inactividad - el .pen no tenia mock cuando se construyo esta HU
+// originalmente, ahora si): InactivityWarningModal.vue necesita el total
+// para dibujar el anillo de cuenta regresiva como porcentaje
+// (countdown/total), no solo el numero. Se exporta la misma constante que ya
+// usaba este archivo en vez de duplicarla.
+export { WARNING_DURATION_SECONDS }
+
 export function useIdleTimeout(onTimeout: () => void | Promise<void>) {
   const { refresh } = useAuth()
 
