@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // HU-ERD-22 (backend/estado) + diseno aplicado desde ERPDinamico.pen
 // (Screen/Login), estilo definido en las variables del archivo Pencil.
-import { Boxes, Building2, CircleAlert, ShieldCheck } from '@lucide/vue'
+import { Boxes, Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
 import type { OrganizationOption } from '~/composables/useAuth'
 
 definePageMeta({ layout: false })
@@ -48,8 +48,35 @@ const pendingTempToken = ref('')
 const totpCode = ref('')
 const pendingOrgToken = ref('')
 const organizations = ref<OrganizationOption[]>([])
-const selectingTenantId = ref('')
 const inactivityNotice = route.query.reason === 'inactividad'
+
+// HU multi-organizacion (2026-09-04), pantallas reales revisadas en Pencil
+// ("Screen/Login - Elige tu organización" y su variante "(Select abierto)",
+// nodos J4Fni/OT9h4) - el paso de organización es un select con el mismo
+// patron de interaccion que components/DynamicSelectField.vue (trigger con
+// el valor elegido + chevron, dropdown con las opciones, check en la
+// seleccionada) en vez de una lista de botones. El botón "Continuar" queda
+// deshabilitado hasta elegir una organización.
+const selectedTenantId = ref('')
+const selectedOrg = computed(() => organizations.value.find((o) => o.tenantId === selectedTenantId.value) ?? null)
+const orgDropdownOpen = ref(false)
+let orgDropdownCloseTimer: ReturnType<typeof setTimeout> | undefined
+
+function openOrgDropdown() {
+  if (orgDropdownCloseTimer) clearTimeout(orgDropdownCloseTimer)
+  orgDropdownOpen.value = true
+}
+
+function scheduleCloseOrgDropdown() {
+  orgDropdownCloseTimer = setTimeout(() => {
+    orgDropdownOpen.value = false
+  }, 150)
+}
+
+function pickOrganization(tenantId: string) {
+  selectedTenantId.value = tenantId
+  orgDropdownOpen.value = false
+}
 
 async function onSubmit() {
   errorMessage.value = ''
@@ -94,20 +121,25 @@ async function onSubmitTotp() {
   }
 }
 
-async function onSelectOrganization(tenantId: string) {
+async function onSubmitOrgSelect() {
+  if (!selectedTenantId.value) return
   errorMessage.value = ''
-  selectingTenantId.value = tenantId
   loading.value = true
   try {
-    await selectOrganization(pendingOrgToken.value, tenantId)
+    await selectOrganization(pendingOrgToken.value, selectedTenantId.value)
     await navigateTo('/')
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo entrar a esa organización.'
   } finally {
     loading.value = false
-    selectingTenantId.value = ''
   }
 }
+
+const brandTagline = computed(() =>
+  step.value === 'org-select'
+    ? 'Tu correo pertenece a más de una organización. Elige con cuál continuar.'
+    : 'Configura entidades, campos y relaciones sin escribir código.'
+)
 </script>
 
 <template>
@@ -120,7 +152,7 @@ async function onSelectOrganization(tenantId: string) {
       </div>
       <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">
-        Configurá entidades, campos y relaciones sin escribir código.
+        {{ brandTagline }}
       </p>
     </div>
 
@@ -186,15 +218,15 @@ async function onSelectOrganization(tenantId: string) {
         </button>
 
         <p class="text-center text-[13px] text-brand-text-muted">
-          ¿Problemas para ingresar? Contactá a tu administrador.
+          ¿Problemas para ingresar? Contacta a tu administrador.
         </p>
 
         <!-- HU multi-organizacion (2026-09-04): el registro publico no existe en
              modo "dedicated" (HU-ERD-35, un solo cliente por deployment) - el link
              se oculta ahi, mismo criterio que el campo Organizacion de antes. -->
         <p v-if="!isDedicated" class="text-center text-[13px] text-brand-text-muted">
-          ¿No tenés cuenta?
-          <NuxtLink to="/registro" class="font-semibold text-brand-blue hover:underline">Creá tu organización</NuxtLink>
+          ¿No tienes cuenta?
+          <NuxtLink to="/registro" class="font-semibold text-brand-blue hover:underline">Crea tu organización</NuxtLink>
         </p>
       </form>
 
@@ -205,7 +237,7 @@ async function onSelectOrganization(tenantId: string) {
             <ShieldCheck class="h-5 w-5 text-brand-blue" :stroke-width="1.75" />
           </div>
           <h2 class="text-2xl font-bold text-brand-text">Verificación en dos pasos</h2>
-          <p class="mt-1 text-sm text-brand-text-secondary">Ingresá el código de tu app autenticadora</p>
+          <p class="mt-1 text-sm text-brand-text-secondary">Ingresa el código de tu app autenticadora</p>
         </div>
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
@@ -241,18 +273,18 @@ async function onSelectOrganization(tenantId: string) {
         </button>
       </form>
 
-      <!-- HU multi-organizacion (2026-09-04): paso nuevo, sin diseño Pencil propio
-           (se buscó en el archivo .pen - no existe un "Screen/Elegir organización" -
-           ver comentario largo en el codigo del proyecto). Se construye con el mismo
-           lenguaje visual que los demas pasos de este formulario (contenedor, tipografia,
-           botones) en vez de inventar un estilo nuevo. -->
-      <div v-else-if="step === 'org-select'" class="flex w-full max-w-[380px] flex-col gap-5">
+      <!-- HU multi-organizacion (2026-09-04): "Screen/Login - Elige tu
+           organización" (+ variante "Select abierto"), revisado en Pencil
+           antes de construir (nodos J4Fni/OT9h4) - select con el mismo patron
+           de interaccion que components/DynamicSelectField.vue (trigger con
+           el valor elegido + chevron, dropdown con las opciones, check en la
+           seleccionada), no una lista de botones. "Continuar" queda
+           deshabilitado hasta elegir una organización - nunca se vuelve a
+           pedir contraseña ni código TOTP en este paso. -->
+      <form v-else-if="step === 'org-select'" class="flex w-full max-w-[380px] flex-col gap-5" @submit.prevent="onSubmitOrgSelect">
         <div>
-          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-brand-blue-bg">
-            <Building2 class="h-5 w-5 text-brand-blue" :stroke-width="1.75" />
-          </div>
-          <h2 class="text-2xl font-bold text-brand-text">Elegí tu organización</h2>
-          <p class="mt-1 text-sm text-brand-text-secondary">Tu correo pertenece a más de una organización</p>
+          <h2 class="text-2xl font-bold text-brand-text">Elige tu organización</h2>
+          <p class="mt-1 text-sm text-brand-text-secondary">Selecciona la organización con la que quieres continuar</p>
         </div>
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
@@ -260,21 +292,48 @@ async function onSelectOrganization(tenantId: string) {
           <p class="text-[13px] font-medium text-brand-error-text">{{ errorMessage }}</p>
         </div>
 
-        <div class="flex flex-col gap-2">
-          <button
-            v-for="org in organizations"
-            :key="org.tenantId"
-            type="button"
-            :disabled="loading"
-            class="flex items-center gap-3 rounded border border-brand-border px-3 py-2.5 text-left text-sm font-semibold text-brand-text hover:border-brand-blue hover:bg-brand-blue-bg disabled:cursor-not-allowed disabled:opacity-60"
-            @click="onSelectOrganization(org.tenantId)"
-          >
-            <Building2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
-            <span class="flex-1">{{ org.tenantName }}</span>
-            <span v-if="selectingTenantId === org.tenantId" class="text-[13px] font-normal text-brand-text-muted">Entrando...</span>
-          </button>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[13px] font-semibold text-brand-text">Organización</label>
+          <div class="relative">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-2 rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-left text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              @click="orgDropdownOpen ? (orgDropdownOpen = false) : openOrgDropdown()"
+              @blur="scheduleCloseOrgDropdown"
+            >
+              <span :class="selectedOrg ? 'text-brand-text' : 'text-brand-text-muted'">
+                {{ selectedOrg ? selectedOrg.tenantName : 'Selecciona una organización' }}
+              </span>
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="2" />
+            </button>
+
+            <div v-if="orgDropdownOpen" class="absolute z-10 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
+              <button
+                v-for="org in organizations"
+                :key="org.tenantId"
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-brand-text hover:bg-brand-bg"
+                @mousedown.prevent="pickOrganization(org.tenantId)"
+              >
+                <span class="min-w-0 flex-1 truncate">{{ org.tenantName }}</span>
+                <Check v-if="selectedTenantId === org.tenantId" class="h-3.5 w-3.5 shrink-0 text-brand-orange" :stroke-width="2.5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <button
+          type="submit"
+          :disabled="!selectedTenantId || loading"
+          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {{ loading ? 'Entrando...' : 'Continuar' }}
+        </button>
+
+        <p class="text-center text-[13px] text-brand-text-muted">
+          ¿Problemas para ingresar? Contacta a tu administrador.
+        </p>
+      </form>
     </div>
   </div>
 </template>

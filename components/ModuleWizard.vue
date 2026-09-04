@@ -291,7 +291,7 @@ async function onContinue() {
               <span class="text-[15px] font-bold text-brand-text">{{ name }}</span>
               <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ slug }}</span>
             </div>
-            <p class="text-sm text-brand-text-secondary">Configurá qué información aparece en la ficha de un registro y en qué orden</p>
+            <p class="text-sm text-brand-text-secondary">Configura qué información aparece en la ficha de un registro y en qué orden</p>
           </div>
         </div>
         <div class="flex items-center gap-2.5">
@@ -353,7 +353,7 @@ async function onContinue() {
               <span class="text-[15px] font-bold text-brand-text">{{ name }}</span>
               <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ slug }}</span>
             </div>
-            <p class="text-sm text-brand-text-secondary">Configurá qué columnas se muestran en el listado, qué filtros están disponibles y el orden por defecto</p>
+            <p class="text-sm text-brand-text-secondary">Configura qué columnas se muestran en el listado, qué filtros están disponibles y el orden por defecto</p>
           </div>
         </div>
         <div class="flex items-center gap-2.5">

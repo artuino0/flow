@@ -304,7 +304,7 @@ async function copySecret() {
 
         <!-- Estado: confirmando desactivacion -->
         <template v-else-if="totpEnabled && totpStep === 'disabling'">
-          <p class="text-sm text-brand-text-secondary">Ingresá tu contraseña actual para desactivar el 2FA.</p>
+          <p class="text-sm text-brand-text-secondary">Ingresa tu contraseña actual para desactivar el 2FA.</p>
           <div class="flex flex-col gap-1.5">
             <label for="disablePassword" class="text-[13px] font-semibold text-brand-text">Contraseña actual</label>
             <input

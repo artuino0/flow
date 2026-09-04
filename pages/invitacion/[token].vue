@@ -54,7 +54,7 @@ async function onSubmit() {
       </div>
       <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">
-        Configurá entidades, campos y relaciones sin escribir código.
+        Configura entidades, campos y relaciones sin escribir código.
       </p>
     </div>
 
@@ -64,7 +64,7 @@ async function onSubmit() {
           <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
         </div>
         <h2 class="text-2xl font-bold text-brand-text">Cuenta activada</h2>
-        <p class="text-sm text-brand-text-secondary">Ya podés iniciar sesión con tu correo y la contraseña que elegiste.</p>
+        <p class="text-sm text-brand-text-secondary">Ya puedes iniciar sesión con tu correo y la contraseña que elegiste.</p>
         <NuxtLink
           to="/login"
           class="mt-2 w-full rounded bg-brand-orange px-4 py-[9px] text-center text-sm font-semibold text-white hover:bg-brand-orange-hover"
@@ -76,7 +76,7 @@ async function onSubmit() {
       <form v-else class="flex w-full max-w-[380px] flex-col gap-5" @submit.prevent="onSubmit">
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Aceptar invitación</h2>
-          <p class="mt-1 text-sm text-brand-text-secondary">Elegí tu nombre y una contraseña para activar tu cuenta</p>
+          <p class="mt-1 text-sm text-brand-text-secondary">Elige tu nombre y una contraseña para activar tu cuenta</p>
         </div>
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">

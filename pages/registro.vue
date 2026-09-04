@@ -107,7 +107,7 @@ watch(slug, (val) => {
 
 const canContinueStep2 = computed(() => organizationName.value.trim().length > 0 && slug.value.length > 0 && slugAvailable.value !== false)
 
-// Paso 3: "Invitá a tu equipo"
+// Paso 3: "Invita a tu equipo"
 const invitees = ref<{ email: string }[]>([{ email: '' }])
 
 function addInvitee() {
@@ -154,11 +154,11 @@ async function onSubmit() {
 const brandText = computed(() => {
   switch (step.value) {
     case 1:
-      return 'Creá tu organización y empezá a modelar tus entidades en minutos, sin escribir código.'
+      return 'Crea tu organización y empieza a modelar tus entidades en minutos, sin escribir código.'
     case 2:
       return 'Cada organización vive en su propio espacio, con su URL, sus datos y sus usuarios.'
     case 3:
-      return 'Colaborá con tu equipo: cada persona ve solo lo que su rol le permite.'
+      return 'Colabora con tu equipo: cada persona ve solo lo que su rol le permite.'
     default:
       return 'Ya puedes empezar a crear módulos, cargar datos e invitar a más personas cuando quieras.'
   }
@@ -197,7 +197,7 @@ const brandText = computed(() => {
         </div>
 
         <div>
-          <h2 class="text-2xl font-bold text-brand-text">Creá tu cuenta</h2>
+          <h2 class="text-2xl font-bold text-brand-text">Crea tu cuenta</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Empieza con tus datos personales. Después configuramos tu organización.</p>
         </div>
 
@@ -295,7 +295,7 @@ const brandText = computed(() => {
         </div>
 
         <div>
-          <h2 class="text-2xl font-bold text-brand-text">Creá tu organización</h2>
+          <h2 class="text-2xl font-bold text-brand-text">Crea tu organización</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Este será el espacio de trabajo de tu equipo, con sus propios datos.</p>
         </div>
 
@@ -337,7 +337,7 @@ const brandText = computed(() => {
           <p v-if="slugAvailable === true" class="flex items-center gap-1 text-xs font-medium text-brand-success-text">
             <CircleCheck class="h-3.5 w-3.5" :stroke-width="2" /> Disponible — tu equipo entrará por {{ slug }}.erpdinamico.com
           </p>
-          <p v-else-if="slugAvailable === false" class="text-xs font-medium text-brand-error-text">Ese subdominio ya está en uso, probá con otro.</p>
+          <p v-else-if="slugAvailable === false" class="text-xs font-medium text-brand-error-text">Ese subdominio ya está en uso, prueba con otro.</p>
         </div>
 
         <!-- Cosmetico: no hay ningun campo/backend detras (ver el comentario
@@ -377,7 +377,7 @@ const brandText = computed(() => {
         </div>
       </div>
 
-      <!-- Paso 3: Invitá a tu equipo -->
+      <!-- Paso 3: Invita a tu equipo -->
       <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
@@ -396,7 +396,7 @@ const brandText = computed(() => {
         </div>
 
         <div>
-          <h2 class="text-2xl font-bold text-brand-text">Invitá a tu equipo</h2>
+          <h2 class="text-2xl font-bold text-brand-text">Invita a tu equipo</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Puedes invitar ahora o hacerlo después desde Usuarios.</p>
         </div>
 
