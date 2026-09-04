@@ -20,6 +20,13 @@ export interface ResolvedEntity {
   // primer commit de esta HU (la de detailLayout se agrego recien en ERD-74
   // tras un bug real encontrado por tests e2e; se aplica la leccion aca).
   listLayout?: unknown
+  // Reportado por el usuario (2026-09-03): campo propio (texto) que se usa
+  // como etiqueta cuando ESTA entidad es el destino de una relacion (ver
+  // comentario largo en server/db/schema.ts) - incluida aca por el mismo
+  // motivo que detailLayout/listLayout: fields.get.ts la expone en `entity`
+  // para que el picker "Campo a mostrar" (ModuleListLayoutCard.vue) sepa la
+  // eleccion vigente.
+  labelField?: string | null
 }
 
 export interface PermissionResult {
@@ -71,7 +78,8 @@ export async function requirePermission(
         name: entities.name,
         isActive: entities.isActive,
         detailLayout: entities.detailLayout,
-        listLayout: entities.listLayout
+        listLayout: entities.listLayout,
+        labelField: entities.labelField
       })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))

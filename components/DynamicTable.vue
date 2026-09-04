@@ -23,6 +23,12 @@ const props = defineProps<{
   sortBy: string
   sortDir: 'asc' | 'desc'
   permissions: EntityPermissions
+  // Reportado por el usuario (2026-09-03): etiquetas ya resueltas para las
+  // columnas de tipo relation (ver server/utils/relationLabels.ts) -
+  // `{ [nombreDeCampo]: { [uuid]: etiqueta } }`, adjuntado por
+  // GET /api/records/:entity como relationLabels. Opcional (default {})
+  // para no romper ningun uso previo del componente que todavia no lo pasa.
+  relationLabels?: Record<string, Record<string, string>>
 }>()
 
 const emit = defineEmits<{
@@ -74,6 +80,12 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
       const labelFor = (value: string) => options.find((o) => o.value === value)?.label ?? value
       return Array.isArray(v) ? v.map(labelFor).join(', ') || '-' : labelFor(String(v))
     }
+    // Reportado por el usuario (2026-09-03): antes caia al default (uuid
+    // crudo) - usa la etiqueta ya resuelta server-side; si por lo que sea no
+    // esta (registro relacionado borrado, etc.) cae al uuid truncado, nunca
+    // al uuid completo.
+    case 'relation':
+      return (props.relationLabels?.[field.name]?.[String(v)]) ?? String(v).slice(0, 8)
     default:
       return String(v)
   }

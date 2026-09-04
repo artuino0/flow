@@ -2,7 +2,8 @@ import { and, eq } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
 import { revalidateIfDirty } from '~/server/utils/lazyRevalidation'
 import { withTenant } from '~/server/db'
-import { records } from '~/server/db/schema'
+import { records, entityFields } from '~/server/db/schema'
+import { resolveRelationLabels } from '~/server/utils/relationLabels'
 
 // GET /api/records/:entity/:id (HU-ERD-16)
 export default defineEventHandler(async (event) => {
@@ -10,19 +11,30 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')
 
-  const row = await withTenant(auth.tenantId, async (tx) => {
+  const result = await withTenant(auth.tenantId, async (tx) => {
     const [r] = await tx
       .select()
       .from(records)
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
       .limit(1)
-    if (!r) return r
+    if (!r) return null
     // HU-ERD-18: revalidacion perezosa en el proximo acceso al registro.
-    return revalidateIfDirty(tx, r)
+    const row = await revalidateIfDirty(tx, r)
+
+    // Reportado por el usuario (2026-09-03): mismo criterio que el listado
+    // (ver server/utils/relationLabels.ts) - la ficha de detalle tambien
+    // mostraba el uuid crudo en las propiedades de tipo relation.
+    const sourceFields = await tx
+      .select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
+      .from(entityFields)
+      .where(eq(entityFields.entityId, entity.id))
+    const relationLabels = await resolveRelationLabels(tx, auth.tenantId, sourceFields, [row])
+
+    return { row, relationLabels }
   })
 
-  if (!row) {
+  if (!result) {
     throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   }
-  return row
+  return { ...result.row, relationLabels: result.relationLabels }
 })

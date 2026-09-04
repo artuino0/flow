@@ -14,6 +14,11 @@ export interface EntityMeta {
   id: string
   slug: string
   name: string
+  // Reportado por el usuario (2026-09-03, ver comentario largo en
+  // server/db/schema.ts): campo propio de texto elegido a mano como
+  // etiqueta cuando ESTA entidad es destino de una relacion. null/undefined
+  // = heuristica automatica (utils/recordLabel.ts).
+  labelField?: string | null
 }
 
 export interface EntityPermissions {

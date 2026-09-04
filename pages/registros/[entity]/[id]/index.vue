@@ -21,6 +21,9 @@ interface RecordRow {
   id: string
   customData: Record<string, unknown>
   createdAt?: string
+  // Reportado por el usuario (2026-09-03): etiquetas de propiedades relation
+  // ya resueltas server-side (ver server/utils/relationLabels.ts).
+  relationLabels: Record<string, Record<string, string>>
 }
 
 // HU-ERD-32: mismo fix de forwarding de cookie en SSR ya establecido en el
@@ -60,6 +63,7 @@ function onDeleted() {
       :record="record"
       :can-update="data.permissions.canUpdate"
       :can-delete="data.permissions.canDelete"
+      :label-field="data.entity.labelField"
       @deleted="onDeleted"
     />
   </div>

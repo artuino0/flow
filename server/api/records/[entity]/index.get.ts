@@ -3,6 +3,7 @@ import { and, eq, desc, asc, sql as dsql } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { records, entityFields } from '~/server/db/schema'
+import { resolveRelationLabels } from '~/server/utils/relationLabels'
 
 // GET /api/records/:entity?page=1&pageSize=20&sortBy=createdAt&sortDir=desc&search=...&filterField=...&filterValues=a,b
 // (HU-ERD-16, orden HU-ERD-24, search HU-ERD-72, filtro HU-ERD-73)
@@ -105,6 +106,17 @@ export default defineEventHandler(async (event) => {
 
     const [{ count }] = await tx.select({ count: dsql<number>`count(*)::int` }).from(records).where(where)
 
+    // Reportado por el usuario (2026-09-03): columnas de tipo relation en el
+    // listado mostraban el uuid crudo (ver comentario largo en
+    // server/utils/relationLabels.ts) - se resuelve una sola vez aca, para
+    // toda la pagina, en vez de que cada fila del cliente dispare su propia
+    // consulta.
+    const sourceFields = await tx
+      .select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
+      .from(entityFields)
+      .where(eq(entityFields.entityId, entity.id))
+    const relationLabels = await resolveRelationLabels(tx, auth.tenantId, sourceFields, data)
+
     return {
       data,
       page: query.page,
@@ -113,7 +125,8 @@ export default defineEventHandler(async (event) => {
       sortBy: query.sortBy,
       sortDir: query.sortDir,
       filterField: query.filterField,
-      filterValues: query.filterValues
+      filterValues: query.filterValues,
+      relationLabels
     }
   })
 })

@@ -28,6 +28,15 @@ const emit = defineEmits<{
 
 const errors = ref<Record<string, string>>({})
 
+// Reportado por el usuario (2026-09-03): GET /api/entities/:entity/fields
+// ahora siempre antepone un campo sintetico "id" a props.fields (ver el
+// comentario largo en fields.get.ts) para que ModuleFieldsCard.vue lo pinte
+// como "Automático"/"Reservado" - pero records.id ya lo genera Postgres solo
+// (nunca vive en custom_data), asi que el formulario REAL de crear/editar un
+// registro nunca debe pedirlo a mano ni validarlo. Mismo filtro en
+// ModulePreviewCard.vue, que renderiza este mismo formulario en el asistente.
+const renderableFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
+
 function valueFor(name: string): unknown {
   return props.modelValue[name]
 }
@@ -52,7 +61,7 @@ function onInput(field: EntityFieldMeta, raw: unknown) {
 
 function validateAll(): boolean {
   const nextErrors: Record<string, string> = {}
-  for (const field of props.fields) {
+  for (const field of renderableFields.value) {
     const result = validateFieldValue(field, valueFor(field.name))
     if (!result.valid) nextErrors[field.name] = result.error!
   }
@@ -65,7 +74,7 @@ defineExpose({ validateAll })
 
 <template>
   <div class="flex flex-col gap-4">
-    <div v-for="field in fields" :key="field.id" class="flex flex-col gap-1.5">
+    <div v-for="field in renderableFields" :key="field.id" class="flex flex-col gap-1.5">
       <label :for="`field-${field.name}`" class="text-[13px] font-semibold text-brand-text">
         {{ field.label }}
         <span v-if="field.isRequired" class="text-brand-error-text">*</span>

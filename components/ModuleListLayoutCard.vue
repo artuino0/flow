@@ -1,17 +1,28 @@
 <script setup lang="ts">
 // HU-ERD-75: card "Listado de registros" - configurador del "Diseño del
-// listado" (Table Builder, Screen/Table Builder del .pen, revisado con las
-// herramientas de Pencil antes de construir). Tres secciones: COLUMNAS
-// VISIBLES (que campos propios se muestran en DynamicTable.vue y en que
-// orden), FILTROS DISPONIBLES (subconjunto curado de los campos Select/
+// listado" (Table Builder, Screen/Table Builder del .pen). Tres secciones:
+// COLUMNAS VISIBLES (que campos propios se muestran en DynamicTable.vue y en
+// que orden), FILTROS DISPONIBLES (subconjunto curado de los campos Select/
 // Multiselect que se ofrecen como filtro en el listado real, ver
 // server/utils/listLayout.ts) y ORDEN POR DEFECTO (campo + direccion).
 //
-// Mismas simplificaciones ya establecidas en ModuleDetailLayoutCard.vue
-// (HU-ERD-74): reordenar con botones ↑/↓ en vez de arrastrar, etiqueta de
-// texto simple por tipo (fieldTypeLabel, ahora compartida - ver
-// utils/fieldTypeLabels.ts).
-import { ChevronDown } from '@lucide/vue'
+// Reportado por el usuario (2026-09-03, "no mames ni se parece al pencil"):
+// la primera version de esta tarjeta simplificaba el reorder a botones ↑/↓ y
+// usaba checkboxes nativos - revisando el mock real con las herramientas de
+// Pencil (Get con depth:6 sobre el frame completo) salio que el diseño real
+// usa drag-and-drop (igual que "El organizador" de ModuleFieldsCard.vue,
+// mismo patron nativo copiado tal cual aca) y checkboxes cuadrados rellenos
+// (mismo patron ya usado en la matriz de permisos de pages/roles/index.vue:
+// boton `rounded-[3px]` con `<Check>` adentro, no un `<input type=checkbox>`).
+//
+// Ademas el mock trae algo que la primera version no tenia: para una columna
+// de tipo Relación, un pill "Campo a mostrar" que abre un menu para elegir
+// (por esa entidad, no por este modulo) que campo de texto usar como
+// etiqueta en cualquier lugar donde se muestre un registro relacionado con
+// ella (entities.labelField, ver comentario largo en server/db/schema.ts) -
+// pedido explicito del usuario tras ver uuids crudos en Screen/Listado
+// Recepción ("necesitamos poder decidir que se muestra de la relacion").
+import { Check, ChevronDown, GripVertical } from '@lucide/vue'
 import type { EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
 
 const props = defineProps<{
@@ -30,23 +41,24 @@ function fieldMeta(name: string): EntityFieldMeta | undefined {
 // HU-ERD-73: los unicos campos con un operador de filtro real hoy son
 // Select/Multiselect - mismo calculo que server/api/entities/[entity]/fields.get.ts
 // (filterFields de listLayout nunca puede ofrecer nada fuera de este conjunto,
-// criterio de aceptacion explicito de la HU).
+// criterio de aceptacion explicito de la HU). El mock de "FILTROS DISPONIBLES"
+// muestra tambien columnas Relación/Fecha como ejemplo - no se toma como
+// cambio de alcance sin confirmarlo con el usuario, se mantiene la regla ya
+// aceptada y testeada.
 const filterableCandidates = computed(() => props.fields.filter((f) => f.dataType === 'select' || f.dataType === 'multiselect'))
+
+// Reportado por el usuario (2026-09-03): props.fields ahora siempre trae el
+// campo sintetico "id" (ver fields.get.ts) - listLayout.defaultSort.field
+// nunca puede ser "id" server-side (resolveListLayout() lo valida contra los
+// campos reales, sin id) asi que ofrecerlo en "Orden por defecto" seria una
+// opcion que nunca llega a guardarse.
+const sortableFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
 
 function toggleColumnVisible(name: string) {
   emit('update:modelValue', {
     ...props.modelValue,
     columns: props.modelValue.columns.map((c) => (c.name === name ? { ...c, visible: !c.visible } : c))
   })
-}
-function moveColumn(index: number, dir: -1 | 1) {
-  const target = index + dir
-  const list = props.modelValue.columns
-  if (target < 0 || target >= list.length) return
-  const next = [...list]
-  const [item] = next.splice(index, 1)
-  next.splice(target, 0, item)
-  emit('update:modelValue', { ...props.modelValue, columns: next })
 }
 
 function toggleFilterField(name: string) {
@@ -68,6 +80,136 @@ function setDefaultSortDir(dir: 'asc' | 'desc') {
   if (!props.modelValue.defaultSort) return
   emit('update:modelValue', { ...props.modelValue, defaultSort: { ...props.modelValue.defaultSort, dir } })
 }
+
+// Drag-and-drop del orden de columnas - mismo patron nativo (sin libreria)
+// que "El organizador" de ModuleFieldsCard.vue, adaptado para reordenar
+// SOLO el array local `modelValue.columns` (no hay un endpoint de reorder
+// aparte aca: listLayout entero se guarda de una con "Guardar diseño", igual
+// que cualquier otro cambio de esta tarjeta).
+const draggingIndex = ref<number | null>(null)
+const dropIndicator = ref<{ index: number; position: 'before' | 'after' } | null>(null)
+
+function onDragStart(index: number, event: DragEvent) {
+  draggingIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function onDragOverRow(index: number, event: DragEvent) {
+  if (draggingIndex.value === null) return
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const position = event.clientY - rect.top < rect.height / 2 ? 'before' : 'after'
+  dropIndicator.value = { index, position }
+}
+
+function onDragLeaveRow(index: number) {
+  if (dropIndicator.value?.index === index) dropIndicator.value = null
+}
+
+function onDragEnd() {
+  draggingIndex.value = null
+  dropIndicator.value = null
+}
+
+function onDrop() {
+  const from = draggingIndex.value
+  const indicator = dropIndicator.value
+  draggingIndex.value = null
+  dropIndicator.value = null
+  if (from === null || !indicator) return
+
+  let to = indicator.position === 'after' ? indicator.index + 1 : indicator.index
+  if (from < to) to -= 1
+  if (to === from) return
+
+  const next = [...props.modelValue.columns]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  emit('update:modelValue', { ...props.modelValue, columns: next })
+}
+
+// "Campo a mostrar" (entities.labelField) - vive en la entidad DESTINO de la
+// relacion, no en este modulo (ver comentario largo en server/db/schema.ts),
+// asi que hace falta resolver/editar esa OTRA entidad en contexto. Se busca
+// solo al abrir el picker de una columna puntual (mismo criterio "lazy" que
+// DynamicRelationField.vue con ensureRelationFields()), cacheado por slug
+// para no repetir el fetch si hay mas de una columna apuntando a la misma
+// entidad relacionada.
+interface RelatedMeta {
+  id: string
+  labelField: string | null
+  textFields: EntityFieldMeta[]
+}
+const relatedMeta = reactive<Record<string, RelatedMeta | 'loading' | 'error'>>({})
+const openPickerFor = ref<string | null>(null)
+const pickerError = ref<string | null>(null)
+const pickerSaving = ref<string | null>(null)
+
+function relationSlug(field: EntityFieldMeta): string | null {
+  const rules = (field.validationRules ?? {}) as Record<string, unknown>
+  return typeof rules.relationEntity === 'string' && rules.relationEntity ? rules.relationEntity : null
+}
+
+async function ensureRelatedMeta(slug: string) {
+  if (relatedMeta[slug]) return
+  relatedMeta[slug] = 'loading'
+  try {
+    const res = await $fetch<{ entity: { id: string; labelField: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
+    relatedMeta[slug] = {
+      id: res.entity.id,
+      labelField: res.entity.labelField ?? null,
+      textFields: res.fields.filter((f) => f.dataType === 'text' && f.name !== 'id')
+    }
+  } catch {
+    relatedMeta[slug] = 'error'
+  }
+}
+
+async function togglePicker(field: EntityFieldMeta) {
+  const slug = relationSlug(field)
+  if (!slug) return
+  if (openPickerFor.value === field.name) {
+    openPickerFor.value = null
+    return
+  }
+  pickerError.value = null
+  openPickerFor.value = field.name
+  await ensureRelatedMeta(slug)
+}
+
+// Solo un picker puede estar abierto a la vez - se resuelve la metadata del
+// picker ABIERTO una sola vez aca, en vez de repetir fieldMeta()+relationSlug()
+// en cada expresion del template (menos ruido, y evita el TS narrowing raro
+// de indexar relatedMeta[...] varias veces con casts distintos).
+const openPickerMeta = computed<RelatedMeta | 'loading' | 'error' | null>(() => {
+  if (!openPickerFor.value) return null
+  const field = fieldMeta(openPickerFor.value)
+  if (!field) return null
+  const slug = relationSlug(field)
+  if (!slug) return null
+  return relatedMeta[slug] ?? null
+})
+
+async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
+  const slug = relationSlug(field)
+  if (!slug) return
+  const meta = relatedMeta[slug]
+  if (!meta || meta === 'loading' || meta === 'error') return
+
+  pickerError.value = null
+  pickerSaving.value = field.name
+  try {
+    await $fetch(`/api/entities/${meta.id}`, { method: 'PUT', body: { labelField: value } })
+    relatedMeta[slug] = { ...meta, labelField: value }
+    openPickerFor.value = null
+  } catch (err: any) {
+    pickerError.value = err?.data?.statusMessage || 'No se pudo guardar el campo a mostrar'
+  } finally {
+    pickerSaving.value = null
+  }
+}
 </script>
 
 <template>
@@ -81,25 +223,84 @@ function setDefaultSortDir(dir: 'asc' | 'desc') {
       <div class="flex flex-col gap-1.5">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Columnas visibles</p>
         <p v-if="modelValue.columns.length === 0" class="text-xs text-brand-text-muted">Este módulo todavía no tiene campos.</p>
+
         <div
           v-for="(col, index) in modelValue.columns"
           :key="col.name"
-          class="flex items-center gap-2.5 rounded px-1.5 py-1.5 hover:bg-brand-bg"
+          class="relative flex items-center gap-2.5 rounded px-1.5 py-1.5 transition-opacity hover:bg-brand-bg"
+          :class="draggingIndex === index ? 'opacity-40' : ''"
+          draggable="true"
+          @dragstart="onDragStart(index, $event)"
+          @dragover.prevent="onDragOverRow(index, $event)"
+          @dragleave="onDragLeaveRow(index)"
+          @drop.prevent="onDrop"
+          @dragend="onDragEnd"
         >
-          <input type="checkbox" :checked="col.visible" class="h-3.5 w-3.5 shrink-0" @change="toggleColumnVisible(col.name)" />
+          <div v-if="dropIndicator && dropIndicator.index === index && dropIndicator.position === 'before'" class="absolute inset-x-0 top-0 h-0.5 rounded-full bg-brand-orange" />
+          <div v-if="dropIndicator && dropIndicator.index === index && dropIndicator.position === 'after'" class="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-brand-orange" />
+
+          <GripVertical class="h-4 w-4 shrink-0 cursor-grab text-brand-text-muted active:cursor-grabbing" :stroke-width="1.75" />
+
+          <button
+            type="button"
+            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border"
+            :class="col.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
+            @click="toggleColumnVisible(col.name)"
+          >
+            <Check v-if="col.visible" class="h-3 w-3 text-white" :stroke-width="3" />
+          </button>
+
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ fieldMeta(col.name)?.label ?? col.name }}</span>
+
+          <!-- Reportado por el usuario (2026-09-03): picker "Campo a mostrar"
+               para columnas de relación - ver comentario largo arriba. -->
+          <div v-if="fieldMeta(col.name)?.dataType === 'relation'" class="relative shrink-0">
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text hover:bg-brand-border-light"
+              :disabled="pickerSaving === col.name"
+              @click.stop="togglePicker(fieldMeta(col.name)!)"
+            >
+              Campo a mostrar
+              <ChevronDown class="h-3 w-3" :stroke-width="2" />
+            </button>
+
+            <div v-if="openPickerFor === col.name" class="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-brand-border-light bg-brand-surface py-1 shadow-lg">
+              <p v-if="openPickerMeta === 'loading'" class="px-3 py-1.5 text-xs text-brand-text-muted">Cargando...</p>
+              <p v-else-if="openPickerMeta === 'error'" class="px-3 py-1.5 text-xs text-brand-error-text">No se pudo cargar la entidad relacionada.</p>
+              <template v-else-if="openPickerMeta">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-brand-bg"
+                  @click="chooseLabelField(fieldMeta(col.name)!, null)"
+                >
+                  <span class="flex flex-col">
+                    <span class="text-sm text-brand-text">Automático</span>
+                    <span class="text-xs text-brand-text-muted">Primer campo de texto</span>
+                  </span>
+                  <Check v-if="!openPickerMeta.labelField" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
+                </button>
+                <button
+                  v-for="tf in openPickerMeta.textFields"
+                  :key="tf.id"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-brand-text hover:bg-brand-bg"
+                  @click="chooseLabelField(fieldMeta(col.name)!, tf.name)"
+                >
+                  {{ tf.label }}
+                  <Check v-if="openPickerMeta.labelField === tf.name" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
+                </button>
+                <p v-if="openPickerMeta.textFields.length === 0" class="px-3 py-1.5 text-xs text-brand-text-muted">Esa entidad no tiene campos de texto.</p>
+              </template>
+            </div>
+          </div>
+
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">
             {{ fieldTypeLabel(fieldMeta(col.name)?.dataType) }}
           </span>
-          <div class="flex shrink-0 gap-0.5">
-            <button type="button" title="Mover arriba" :disabled="index === 0" class="flex h-6 w-6 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg disabled:opacity-30" @click="moveColumn(index, -1)">
-              <ChevronDown class="h-3.5 w-3.5 rotate-180" :stroke-width="1.75" />
-            </button>
-            <button type="button" title="Mover abajo" :disabled="index === modelValue.columns.length - 1" class="flex h-6 w-6 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg disabled:opacity-30" @click="moveColumn(index, 1)">
-              <ChevronDown class="h-3.5 w-3.5" :stroke-width="1.75" />
-            </button>
-          </div>
         </div>
+
+        <p v-if="pickerError" class="text-xs text-brand-error-text">{{ pickerError }}</p>
       </div>
 
       <div class="flex flex-col gap-1.5 border-t border-brand-border-light pt-4">
@@ -112,7 +313,14 @@ function setDefaultSortDir(dir: 'asc' | 'desc') {
           :key="f.id"
           class="flex cursor-pointer items-center gap-2.5 rounded px-1.5 py-1.5 hover:bg-brand-bg"
         >
-          <input type="checkbox" :checked="modelValue.filterFields.includes(f.name)" class="h-3.5 w-3.5 shrink-0" @change="toggleFilterField(f.name)" />
+          <button
+            type="button"
+            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border"
+            :class="modelValue.filterFields.includes(f.name) ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
+            @click="toggleFilterField(f.name)"
+          >
+            <Check v-if="modelValue.filterFields.includes(f.name)" class="h-3 w-3 text-white" :stroke-width="3" />
+          </button>
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ f.label }}</span>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">{{ fieldTypeLabel(f.dataType) }}</span>
         </label>
@@ -126,7 +334,7 @@ function setDefaultSortDir(dir: 'asc' | 'desc') {
           @change="setDefaultSortField(($event.target as HTMLSelectElement).value)"
         >
           <option value="">Sin orden por defecto (fecha de creación, descendente)</option>
-          <option v-for="f in fields" :key="f.id" :value="f.name">{{ f.label }}</option>
+          <option v-for="f in sortableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
         </select>
         <div v-if="modelValue.defaultSort" class="flex w-full max-w-[220px] gap-0.5 rounded-full bg-brand-bg p-[3px]">
           <button

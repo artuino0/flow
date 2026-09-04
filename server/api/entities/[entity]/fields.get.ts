@@ -65,5 +65,33 @@ export default defineEventHandler(async (event) => {
   const filterableFieldNames = fields.filter((f) => f.dataType === 'select' || f.dataType === 'multiselect').map((f) => f.name)
   const listLayout = resolveListLayout(entity.listLayout, fields.map((f) => f.name), filterableFieldNames)
 
-  return { entity, fields, permissions, inverseRelations, detailLayout, listLayout }
+  // Reportado por el usuario (2026-09-03, "en el array de campos siempre debe
+  // existir el id... no lo podiamos eliminar... debia ser un UUID"): el
+  // Paso 2 "Campos" del asistente arrancaba en 0 campos para un modulo nuevo,
+  // sin ningun rastro del identificador. records.id YA es un UUID
+  // autogenerado por Postgres para todo record (ver comentario en
+  // server/db/schema.ts) - no es un campo real de entity_fields ni vive en
+  // custom_data, asi que agregarlo como fila real ahi contaminaria el schema
+  // Zod dinamico (dynamicSchema.ts), los defaults de Diseño del
+  // detalle/listado (detailLayout.ts/listLayout.ts) y la deteccion de "campo
+  // de etiqueta" para relaciones (csvImport.ts, que hubiera elegido "id" por
+  // ser el primer campo de tipo texto). Se sintetiza SOLO aca, al final,
+  // despues de resolver detailLayout/listLayout con los campos reales (sin
+  // "id") - ModuleFieldsCard.vue ya sabia mostrar name==='id' como
+  // "Automático"/"Reservado" sin editar/eliminar (bloqueado tambien server-side
+  // en moduleEntityFields.ts) desde que se reporto este mismo problema por
+  // primera vez, pero nunca llegaba a aparecer en la lista. Ver tambien el
+  // filtro `f.name !== 'id'` en ModulePreviewCard.vue y DynamicForm.vue: el
+  // formulario REAL de crear/editar un registro nunca debe pedir el id a
+  // mano.
+  const idField = {
+    id: 'system:id',
+    name: 'id',
+    label: 'ID',
+    dataType: 'text',
+    validationRules: {},
+    isRequired: false
+  }
+
+  return { entity, fields: [idField, ...fields], permissions, inverseRelations, detailLayout, listLayout }
 })

@@ -53,18 +53,27 @@ const open = ref(false)
 const loading = ref(false)
 const results = ref<SearchResult[]>([])
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
-let fieldsCache: EntityFieldMeta[] | null = null
 
-async function ensureRelationFields(): Promise<EntityFieldMeta[]> {
-  if (fieldsCache) return fieldsCache
-  if (!relationEntity.value) return []
+// Reportado por el usuario (2026-09-03): ademas de los campos, se cachea
+// entity.labelField (la eleccion explicita, si existe - ver comentario largo
+// en server/db/schema.ts) para pasarselo a labelForRecord() como override -
+// mismo criterio que DynamicTableField.vue.
+interface RelationEntityMeta {
+  fields: EntityFieldMeta[]
+  labelField: string | null
+}
+let metaCache: RelationEntityMeta | null = null
+
+async function ensureRelationFields(): Promise<RelationEntityMeta> {
+  if (metaCache) return metaCache
+  if (!relationEntity.value) return { fields: [], labelField: null }
   try {
-    const res = await $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${relationEntity.value}/fields`)
-    fieldsCache = res.fields
+    const res = await $fetch<{ entity: { labelField: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${relationEntity.value}/fields`)
+    metaCache = { fields: res.fields, labelField: res.entity.labelField ?? null }
   } catch {
-    fieldsCache = []
+    metaCache = { fields: [], labelField: null }
   }
-  return fieldsCache
+  return metaCache
 }
 
 function onSearchInput(value: string) {
@@ -81,13 +90,13 @@ async function runSearch() {
   }
   loading.value = true
   try {
-    const [fields, res] = await Promise.all([
+    const [meta, res] = await Promise.all([
       ensureRelationFields(),
       $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${relationEntity.value}`, {
         query: { search: query.value, pageSize: 6 }
       })
     ])
-    results.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(fields, r.customData, r.id) }))
+    results.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField) }))
     for (const r of results.value) labelCache[cacheKey(r.id)] = r.label
   } catch {
     results.value = []
@@ -122,11 +131,11 @@ async function resolveExistingLabel(id: string) {
   const key = cacheKey(id)
   if (labelCache[key]) return
   try {
-    const [fields, record] = await Promise.all([
+    const [meta, record] = await Promise.all([
       ensureRelationFields(),
       $fetch<{ customData: Record<string, unknown> }>(`/api/records/${relationEntity.value}/${id}`)
     ])
-    labelCache[key] = labelForRecord(fields, record.customData, id)
+    labelCache[key] = labelForRecord(meta.fields, record.customData, id, meta.labelField)
   } catch {
     labelCache[key] = id.slice(0, 8)
   }

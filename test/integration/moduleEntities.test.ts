@@ -87,6 +87,20 @@ describe('moduleEntities (Postgres real)', () => {
     expect(await updateEntity(TENANT_B, entity.id, { name: 'Hackeado' })).toBeNull()
   })
 
+  // Reportado por el usuario (2026-09-03): entities.labelField (ver
+  // comentario largo en server/db/schema.ts) - null por default, se puede
+  // fijar a un name de campo de texto y volver a null explicitamente.
+  it('updateEntity persiste labelField y lo puede volver a null explicitamente', async () => {
+    const entity = await createEntity(TENANT_A, { name: 'Productores', slug: 'productores', description: null })
+    expect(entity.labelField).toBeNull()
+
+    const withLabelField = await updateEntity(TENANT_A, entity.id, { labelField: 'nombre' })
+    expect(withLabelField).toMatchObject({ labelField: 'nombre' })
+
+    const clearedAgain = await updateEntity(TENANT_A, entity.id, { labelField: null })
+    expect(clearedAgain).toMatchObject({ labelField: null })
+  })
+
   it('deleteEntity borra un modulo sin records', async () => {
     const entity = await createEntity(TENANT_A, { name: 'Descartable', slug: 'descartable', description: null })
     const result = await deleteEntity(TENANT_A, entity.id)

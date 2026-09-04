@@ -117,14 +117,24 @@ function formatNumber(n: number): string {
 
 // --- Autocomplete de columnas de relacion (busca records de OTRA entidad
 // por texto libre, GET /api/records/:entity?search=..., HU-ERD-72) ---
-const entityFieldsCache = reactive<Record<string, EntityFieldMeta[]>>({})
-async function ensureEntityFields(slug: string): Promise<EntityFieldMeta[]> {
+// Reportado por el usuario (2026-09-03): ademas de los campos, se cachea
+// entity.labelField (la eleccion explicita, si existe - ver comentario largo
+// en server/db/schema.ts) para pasarselo a labelForRecord() como override -
+// sin esto, esta busqueda seguia usando SIEMPRE la heuristica automatica
+// aunque el usuario ya hubiera fijado a mano un campo distinto desde
+// ModuleListLayoutCard.vue.
+interface RelationEntityMeta {
+  fields: EntityFieldMeta[]
+  labelField: string | null
+}
+const entityFieldsCache = reactive<Record<string, RelationEntityMeta>>({})
+async function ensureEntityFields(slug: string): Promise<RelationEntityMeta> {
   if (entityFieldsCache[slug]) return entityFieldsCache[slug]
   try {
-    const res = await $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
-    entityFieldsCache[slug] = res.fields
+    const res = await $fetch<{ entity: { labelField: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
+    entityFieldsCache[slug] = { fields: res.fields, labelField: res.entity.labelField ?? null }
   } catch {
-    entityFieldsCache[slug] = []
+    entityFieldsCache[slug] = { fields: [], labelField: null }
   }
   return entityFieldsCache[slug]
 }
@@ -166,13 +176,13 @@ async function runSearch(idx: number, col: ColumnDef) {
   }
   state.loading = true
   try {
-    const [fields, res] = await Promise.all([
+    const [meta, res] = await Promise.all([
       ensureEntityFields(col.relationEntity),
       $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
         query: { search: state.query, pageSize: 6 }
       })
     ])
-    state.results = res.data.map((r) => ({ id: r.id, label: labelForRecord(fields, r.customData, r.id), customData: r.customData }))
+    state.results = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
     for (const r of state.results) labelCache[cacheKey(col.relationEntity, r.id)] = r.label
   } catch {
     state.results = []
@@ -222,11 +232,11 @@ async function resolveExistingLabel(id: string, col: ColumnDef) {
   const key = cacheKey(col.relationEntity, id)
   if (labelCache[key]) return
   try {
-    const [fields, record] = await Promise.all([
+    const [meta, record] = await Promise.all([
       ensureEntityFields(col.relationEntity),
       $fetch<{ customData: Record<string, unknown> }>(`/api/records/${col.relationEntity}/${id}`)
     ])
-    labelCache[key] = labelForRecord(fields, record.customData, id)
+    labelCache[key] = labelForRecord(meta.fields, record.customData, id, meta.labelField)
   } catch {
     labelCache[key] = id.slice(0, 8)
   }

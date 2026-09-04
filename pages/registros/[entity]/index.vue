@@ -120,6 +120,9 @@ interface RecordsResponse {
   page: number
   pageSize: number
   total: number
+  // Reportado por el usuario (2026-09-03): etiquetas de columnas relation ya
+  // resueltas server-side (ver server/utils/relationLabels.ts).
+  relationLabels: Record<string, Record<string, string>>
 }
 
 // HU-ERD-32: mismo fix de forwarding de cookie en SSR que useEntityFields.ts
@@ -263,7 +266,7 @@ async function onDelete(id: string) {
 
     <template v-else-if="meta && recordsData">
       <p v-if="deleteError" class="text-sm text-brand-error-text">{{ deleteError }}</p>
-      <p v-if="meta.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavia no tiene campos configurados.</p>
+      <p v-if="meta.fields.filter((f) => f.name !== 'id').length === 0" class="text-sm text-brand-text-muted">Esta entidad todavia no tiene campos configurados.</p>
       <p v-else-if="visibleFields.length === 0" class="text-sm text-brand-text-muted">
         Todas las columnas están ocultas en el diseño del listado de este módulo.
       </p>
@@ -278,6 +281,7 @@ async function onDelete(id: string) {
         :sort-by="sortBy"
         :sort-dir="sortDir"
         :permissions="meta.permissions"
+        :relation-labels="recordsData.relationLabels"
         @update:page="page = $event"
         @update:sort="onSort"
         @delete="onDelete"

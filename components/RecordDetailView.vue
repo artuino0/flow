@@ -31,6 +31,10 @@ interface RecordData {
   id: string
   customData: Record<string, unknown>
   createdAt?: string
+  // Reportado por el usuario (2026-09-03): etiquetas ya resueltas para las
+  // propiedades de tipo relation (ver server/utils/relationLabels.ts),
+  // adjuntadas por GET /api/records/:entity/:id.
+  relationLabels?: Record<string, Record<string, string>>
 }
 
 const props = defineProps<{
@@ -43,6 +47,12 @@ const props = defineProps<{
   record: RecordData | null
   canUpdate?: boolean
   canDelete?: boolean
+  // Reportado por el usuario (2026-09-03): entities.labelField de ESTA
+  // entidad (no de una relacionada) - el encabezado de la ficha ("displayLabel"
+  // de abajo) es exactamente "como se etiqueta un registro de esta entidad",
+  // el mismo concepto que labelField configura para cuando esta entidad es
+  // destino de una relacion en OTRO lado - mismo criterio, mismo dato.
+  labelField?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -64,7 +74,9 @@ const visibleRelations = computed(() =>
 )
 
 const displayLabel = computed(() =>
-  props.record ? labelForRecord(props.fields, props.record.customData, props.record.id) : `Ejemplo de ${props.entityName || 'este módulo'}`
+  props.record
+    ? labelForRecord(props.fields, props.record.customData, props.record.id, props.labelField)
+    : `Ejemplo de ${props.entityName || 'este módulo'}`
 )
 const initials = computed(() => {
   const words = displayLabel.value.trim().split(/\s+/).filter(Boolean)
@@ -89,6 +101,10 @@ function formatValue(field: EntityFieldMeta, value: unknown): string {
     }
     case 'json':
       return typeof value === 'string' ? value : JSON.stringify(value)
+    // Reportado por el usuario (2026-09-03): antes caia al default (uuid
+    // crudo) - misma etiqueta ya resuelta server-side que usa DynamicTable.vue.
+    case 'relation':
+      return props.record?.relationLabels?.[field.name]?.[String(value)] ?? String(value).slice(0, 8)
     default:
       return String(value)
   }
@@ -103,6 +119,11 @@ interface RelatedTableState {
   rows: { id: string; customData: Record<string, unknown> }[]
   total: number
   loading: boolean
+  // Reportado por el usuario (2026-09-03): la tabla embebida de una relacion
+  // inversa puede tener SUS PROPIAS columnas relation (ej. Empaque listando
+  // Recepciones, y esa lista mostrando a su vez su Productor) - mismas
+  // etiquetas ya resueltas que trae GET /api/records/:entity.
+  relationLabels: Record<string, Record<string, string>>
 }
 const relatedTables = reactive<Record<string, RelatedTableState>>({})
 const readOnlyPermissions = { canRead: true, canCreate: false, canUpdate: false, canDelete: false }
@@ -110,17 +131,18 @@ const readOnlyPermissions = { canRead: true, canCreate: false, canUpdate: false,
 async function loadRelatedTable(entitySlug: string, fieldName: string) {
   if (!props.record) return
   const key = `${entitySlug}.${fieldName}`
-  relatedTables[key] = { fields: [], rows: [], total: 0, loading: true }
+  relatedTables[key] = { fields: [], rows: [], total: 0, loading: true, relationLabels: {} }
   try {
     const [fieldsRes, recordsRes] = await Promise.all([
       $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${entitySlug}/fields`),
-      $fetch<{ data: { id: string; customData: Record<string, unknown> }[]; total: number }>(`/api/records/${entitySlug}`, {
-        query: { filterField: fieldName, filterValues: props.record.id, pageSize: 5 }
-      })
+      $fetch<{ data: { id: string; customData: Record<string, unknown> }[]; total: number; relationLabels: Record<string, Record<string, string>> }>(
+        `/api/records/${entitySlug}`,
+        { query: { filterField: fieldName, filterValues: props.record.id, pageSize: 5 } }
+      )
     ])
-    relatedTables[key] = { fields: fieldsRes.fields, rows: recordsRes.data, total: recordsRes.total, loading: false }
+    relatedTables[key] = { fields: fieldsRes.fields, rows: recordsRes.data, total: recordsRes.total, loading: false, relationLabels: recordsRes.relationLabels }
   } catch {
-    relatedTables[key] = { fields: [], rows: [], total: 0, loading: false }
+    relatedTables[key] = { fields: [], rows: [], total: 0, loading: false, relationLabels: {} }
   }
 }
 
@@ -225,6 +247,7 @@ async function onDelete() {
               sort-by="createdAt"
               sort-dir="desc"
               :permissions="readOnlyPermissions"
+              :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
             />
             <NuxtLink
               v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total > 5"

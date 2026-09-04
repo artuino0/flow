@@ -24,7 +24,7 @@ const props = defineProps<{
 }>()
 
 interface PreviewRecord { id: string; customData: Record<string, unknown> }
-interface PreviewRecordsResponse { data: PreviewRecord[]; total: number }
+interface PreviewRecordsResponse { data: PreviewRecord[]; total: number; relationLabels: Record<string, Record<string, string>> }
 
 const previewFields = computed<EntityFieldMeta[]>(() =>
   props.listLayout.columns
@@ -47,6 +47,7 @@ watch(
 const rows = ref<PreviewRecord[]>([])
 const total = ref(0)
 const loading = ref(false)
+const relationLabels = ref<Record<string, Record<string, string>>>({})
 
 async function load() {
   if (!props.entitySlug) return
@@ -57,6 +58,7 @@ async function load() {
     })
     rows.value = res.data
     total.value = res.total
+    relationLabels.value = res.relationLabels
   } finally {
     loading.value = false
   }
@@ -90,6 +92,7 @@ function onSort(value: { sortBy: string; sortDir: 'asc' | 'desc' }) {
         :sort-by="sortBy"
         :sort-dir="sortDir"
         :permissions="{ canRead: true, canCreate: false, canUpdate: false, canDelete: false }"
+        :relation-labels="relationLabels"
         @update:sort="onSort"
       />
     </div>

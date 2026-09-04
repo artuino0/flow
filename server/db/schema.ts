@@ -69,6 +69,21 @@ export const entities = pgTable('entities', {
   // un modulo queda mal clasificado hay que recrearlo, decision explicita del
   // usuario para mantener esto simple.
   moduleKind: text('module_kind').notNull().default('hecho'),
+  // Reportado por el usuario (2026-09-03, viendo Screen/Listado Recepción con
+  // las columnas "productor"/"cultivo" mostrando el UUID crudo del registro
+  // relacionado en vez de un nombre legible): "necesitamos poder decidir que
+  // se muestra de la relacion". Vive en la entidad DESTINO de la relacion
+  // (Productor/Cultivo), no en cada campo "relation" que apunta a ella - una
+  // misma entidad puede ser destino de varios campos relation en distintos
+  // modulos (ej. Productor podria referenciarse desde mas de un lugar en el
+  // futuro) y todos deberian mostrar la misma etiqueta, sin repetir la
+  // eleccion en cada uno. null (default) = heuristica automatica ya existente
+  // (utils/recordLabel.ts: primer campo propio de tipo texto, sin contar el
+  // "id" sintetico) - mismo criterio de "no romper nada existente" que
+  // detailLayout/listLayout (ERD-74/75). Si no-null, DEBE ser el name de un
+  // entity_field propio de tipo texto (validado en PUT /api/entities/:id,
+  // server/utils/moduleEntities.ts) - nunca "id" (validado ahi mismo).
+  labelField: text('label_field'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

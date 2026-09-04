@@ -39,6 +39,14 @@ export interface EntitySummary {
   // HU-ERD-75: mismo criterio que detailLayout de arriba - guardado tal cual,
   // resuelto por resolveListLayout() (server/utils/listLayout.ts).
   listLayout?: unknown
+  // Reportado por el usuario (2026-09-03, ver comentario largo en
+  // server/db/schema.ts): campo propio de tipo texto (por name, nunca "id")
+  // que se usa como etiqueta cuando ESTA entidad es destino de una relacion.
+  // null = heuristica automatica (utils/recordLabel.ts). No incluido en
+  // listEntities() por el mismo motivo que detailLayout/listLayout: el
+  // listado de modulos no lo necesita, solo create/updateEntity y
+  // fields.get.ts (via requirePermission()).
+  labelField?: string | null
 }
 
 // Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
@@ -185,7 +193,8 @@ export async function createEntity(
       icon: entity.icon,
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
-      listLayout: entity.listLayout
+      listLayout: entity.listLayout,
+      labelField: entity.labelField
     }
   })
 }
@@ -200,6 +209,7 @@ export async function updateEntity(
     icon?: string | null
     detailLayout?: unknown
     listLayout?: unknown
+    labelField?: string | null
   }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
@@ -210,6 +220,7 @@ export async function updateEntity(
     if (input.icon !== undefined) setValues.icon = input.icon
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
+    if (input.labelField !== undefined) setValues.labelField = input.labelField
 
     const [entity] = await tx
       .update(entities)
@@ -227,7 +238,8 @@ export async function updateEntity(
       icon: entity.icon,
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
-      listLayout: entity.listLayout
+      listLayout: entity.listLayout,
+      labelField: entity.labelField
     }
   })
 }

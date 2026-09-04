@@ -25,6 +25,14 @@ const props = defineProps<{
 }>()
 
 const previewData = ref<Record<string, unknown>>({})
+
+// Reportado por el usuario (2026-09-03): props.fields ahora siempre trae el
+// campo sintetico "id" (ver fields.get.ts) - DynamicForm.vue ya lo filtra
+// solo para el formulario en si, pero el placeholder de abajo ("Los campos
+// del formulario se agregarán...") debe seguir apareciendo cuando el modulo
+// todavia no tiene NINGUN campo real, no solo cuando fields esta
+// literalmente vacio (que ya nunca vuelve a pasar).
+const realFieldCount = computed(() => props.fields.filter((f) => f.name !== 'id').length)
 </script>
 
 <template>
@@ -40,7 +48,7 @@ const previewData = ref<Record<string, unknown>>({})
     </div>
 
     <div class="p-5">
-      <div v-if="fields.length === 0" class="flex flex-col items-center gap-2 rounded border border-brand-border bg-brand-surface p-7 text-center">
+      <div v-if="realFieldCount === 0" class="flex flex-col items-center gap-2 rounded border border-brand-border bg-brand-surface p-7 text-center">
         <ListPlus class="h-5 w-5 text-brand-text-muted" :stroke-width="1.75" />
         <p class="text-xs text-brand-text-muted">Los campos del formulario se agregarán en el siguiente paso</p>
       </div>
