@@ -84,6 +84,27 @@ export const entities = pgTable('entities', {
   // entity_field propio de tipo texto (validado en PUT /api/entities/:id,
   // server/utils/moduleEntities.ts) - nunca "id" (validado ahi mismo).
   labelField: text('label_field'),
+  // Pedido directo del usuario (2026-09-05): "hay manera de calcular el
+  // plural? para que en el menu salga Manifiestos, Empaques..." - se
+  // investigo la opcion de calcular el plural en español a partir de `name`,
+  // pero los modulos YA existentes guardan ahi directamente el plural
+  // ("Recepciones", "Empaques", mismo texto que hoy se ve en el menu) - hacer
+  // de `name` el singular canonico hubiera roto el menu de TODOS los modulos
+  // creados hasta hoy. Se elige en cambio la opcion sin riesgo, confirmada
+  // con el usuario: `name` sigue siendo exactamente lo que es hoy (el texto
+  // libre que se ve en menu/listado/breadcrumb, tipicamente en plural), y se
+  // agrega esta columna nueva y opcional para el caso puntual de "Nuevo
+  // X"/"Editar X" (pages/registros/:entity/nuevo.vue y .../:id/editar.vue,
+  // agregados recien en el rediseno de esas pantallas) - null (default, y el
+  // valor de TODO modulo existente) hace que esas pantallas sigan usando
+  // `name` tal cual, exactamente el comportamiento de antes de esta columna;
+  // solo si se completa a mano se usa ahi en vez de `name`. Mismo criterio de
+  // "automatico/heuristica + override opcional, nunca rompe lo existente" que
+  // detailLayout/listLayout/labelField de arriba - la diferencia es que aca
+  // no hay heuristica automatica (calcular el plural de un texto arbitrario
+  // en español no es confiable para casos irregulares), asi que sin este
+  // dato el comportamiento es simplemente "no cambia nada".
+  singularName: text('singular_name'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

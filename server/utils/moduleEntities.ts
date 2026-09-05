@@ -47,6 +47,13 @@ export interface EntitySummary {
   // listado de modulos no lo necesita, solo create/updateEntity y
   // fields.get.ts (via requirePermission()).
   labelField?: string | null
+  // Pedido directo del usuario (2026-09-05): "Nombre en singular" opcional -
+  // ver comentario largo en server/db/schema.ts (entities.singularName). A
+  // diferencia de detailLayout/listLayout/labelField, SI se incluye en
+  // listEntities() (mismo criterio que description/icon): vive en la misma
+  // pestaña "Información general" de Editar Módulo, como un campo de texto
+  // mas junto a Nombre/Descripción, no en un configurador aparte.
+  singularName?: string | null
 }
 
 // Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
@@ -95,6 +102,7 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind): P
         isActive: entities.isActive,
         icon: entities.icon,
         moduleKind: entities.moduleKind,
+        singularName: entities.singularName,
         createdAt: entities.createdAt
       })
       .from(entities)
@@ -140,7 +148,7 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind): P
  */
 export async function createEntity(
   tenantId: string,
-  input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind }
+  input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind; singularName?: string | null }
 ): Promise<EntitySummary> {
   return withTenant(tenantId, async (tx) => {
     let entity: typeof entities.$inferSelect
@@ -153,6 +161,7 @@ export async function createEntity(
           slug: input.slug,
           description: input.description,
           icon: input.icon ?? null,
+          singularName: input.singularName ?? null,
           ...(input.moduleKind ? { moduleKind: input.moduleKind } : {})
         })
         .returning()
@@ -194,7 +203,8 @@ export async function createEntity(
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
-      labelField: entity.labelField
+      labelField: entity.labelField,
+      singularName: entity.singularName
     }
   })
 }
@@ -210,6 +220,7 @@ export async function updateEntity(
     detailLayout?: unknown
     listLayout?: unknown
     labelField?: string | null
+    singularName?: string | null
   }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
@@ -221,6 +232,7 @@ export async function updateEntity(
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
     if (input.labelField !== undefined) setValues.labelField = input.labelField
+    if (input.singularName !== undefined) setValues.singularName = input.singularName
 
     const [entity] = await tx
       .update(entities)
@@ -239,7 +251,8 @@ export async function updateEntity(
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
-      labelField: entity.labelField
+      labelField: entity.labelField,
+      singularName: entity.singularName
     }
   })
 }

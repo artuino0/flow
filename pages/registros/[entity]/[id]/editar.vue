@@ -6,6 +6,10 @@
 // comentario largo ahi) - breadcrumb + titulo/subtitulo, tarjeta
 // "Informacion general" + una tarjeta por Campo Tabla, fiel a Screen/Form
 // Pedido (Campo Tabla) del .pen.
+//
+// Seguimiento (2026-09-05): usa entity.singularName si esta cargado (mismo
+// motivo y mismo campo que nuevo.vue, ver el comentario largo ahi) - si no,
+// sigue usando `name` tal cual.
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
@@ -82,7 +86,7 @@ async function onSubmit() {
 
     <template v-else-if="data && record">
       <div class="flex flex-col gap-1">
-        <h1 class="text-[22px] font-bold text-brand-text">Editar {{ data.entity.name }}</h1>
+        <h1 class="text-[22px] font-bold text-brand-text">Editar {{ data.entity.singularName || data.entity.name }}</h1>
         <p class="text-sm text-brand-text-secondary">Actualiza los campos de este registro.</p>
       </div>
 

@@ -19,6 +19,11 @@ export interface EntityMeta {
   // etiqueta cuando ESTA entidad es destino de una relacion. null/undefined
   // = heuristica automatica (utils/recordLabel.ts).
   labelField?: string | null
+  // Pedido directo del usuario (2026-09-05): "Nombre en singular" opcional -
+  // ver comentario largo en server/db/schema.ts (entities.singularName).
+  // null/undefined = las pantallas de crear/editar registro usan `name` tal
+  // cual (comportamiento de siempre).
+  singularName?: string | null
 }
 
 export interface EntityPermissions {

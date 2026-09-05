@@ -16,6 +16,16 @@
 // DynamicTableField.vue (HU-ERD-72, "Sigue Screen/Form Pedido") - no hacia
 // falta tocarla, solo faltaba este empaque visual.
 //
+// Seguimiento (2026-09-05, pedido directo del usuario: "hay manera de
+// calcular el plural? para que en el menu salga Manifiestos, Empaques..."):
+// `entity.name` sigue siendo el texto libre de siempre (tipicamente en
+// plural - "Empaques", igual que ya se ve en el menu) - "Nuevo {name}" de
+// abajo hubiera quedado gramaticalmente mal ("Nuevo Empaques"). Se agrega
+// `entity.singularName` (opcional, ver comentario largo en
+// server/db/schema.ts) - si esta cargado se usa aca, si no se sigue usando
+// `name` tal cual (mismo comportamiento que el dia que se escribio esta
+// pagina).
+//
 // Decision de alcance: el mock agrupa los campos de "Informacion general" en
 // filas de 3 columnas - esta pagina los sigue mostrando en una sola columna
 // (igual que siempre did DynamicForm.vue) para no reescribir ese componente
@@ -84,8 +94,8 @@ async function onSubmit() {
 
     <template v-else-if="data">
       <div class="flex flex-col gap-1">
-        <h1 class="text-[22px] font-bold text-brand-text">Nuevo {{ data.entity.name }}</h1>
-        <p class="text-sm text-brand-text-secondary">Completa los campos para crear un nuevo registro en la entidad {{ data.entity.name }}.</p>
+        <h1 class="text-[22px] font-bold text-brand-text">Nuevo {{ data.entity.singularName || data.entity.name }}</h1>
+        <p class="text-sm text-brand-text-secondary">Completa los campos para crear un nuevo registro en la entidad {{ data.entity.singularName || data.entity.name }}.</p>
       </div>
 
       <p v-if="data.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavía no tiene campos configurados.</p>

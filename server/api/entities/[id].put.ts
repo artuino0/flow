@@ -8,7 +8,7 @@ import { MODULE_ICON_KEY_SET } from '~/server/utils/moduleIcons'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
 
-// PUT /api/entities/:id { name?, description?, isActive?, icon?, detailLayout?, listLayout? }
+// PUT /api/entities/:id { name?, description?, isActive?, icon?, detailLayout?, listLayout?, labelField?, singularName? }
 // (HU-ERD-66, detailLayout HU-ERD-74, listLayout HU-ERD-75, isActive:
 // rediseno "Editar Módulo"; icon: pedido directo del usuario 2026-09-01 - ver
 // comentarios largos en server/db/schema.ts) - edita nombre/descripcion de un
@@ -41,7 +41,12 @@ const bodySchema = z.object({
   // REALES de esta entidad mas abajo (no alcanza con z.string(): tiene que
   // ser un name de entity_fields propio, de tipo texto, nunca "id" - el
   // sintetico de fields.get.ts).
-  labelField: z.string().trim().min(1).nullable().optional()
+  labelField: z.string().trim().min(1).nullable().optional(),
+  // Pedido directo del usuario (2026-09-05) - ver comentario largo en
+  // server/db/schema.ts (entities.singularName). Null explicito vuelve a
+  // usar `name` tal cual en "Nuevo X"/"Editar X"; undefined (omitido) no lo
+  // toca - mismo criterio que icon/detailLayout/listLayout de arriba.
+  singularName: z.string().trim().min(1).nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {

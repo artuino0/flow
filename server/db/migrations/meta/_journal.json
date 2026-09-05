@@ -225,6 +225,13 @@
       "when": 1788606000000,
       "tag": "0031_users_self_membership_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0032_erd_entities_singular_name",
+      "breakpoints": true
     }
   ]
 }

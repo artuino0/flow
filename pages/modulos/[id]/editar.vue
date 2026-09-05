@@ -52,6 +52,9 @@ interface ModuleDetail {
   // el borrado (/modulos o /catalogos) - nunca se edita desde aca (ver
   // comentario largo en server/db/schema.ts, no viaja en el PUT de onSave()).
   moduleKind: 'hecho' | 'dimension'
+  // Pedido directo del usuario (2026-09-05) - ver comentario largo en
+  // server/db/schema.ts (entities.singularName).
+  singularName: string | null
 }
 
 // Rediseno "Editar Módulo": el indicador de 4 pasos con circulos se
@@ -113,12 +116,14 @@ const name = ref('')
 const description = ref('')
 const isActive = ref(true)
 const icon = ref<string | null>(null)
+const singularName = ref('')
 watchEffect(() => {
   if (currentModule.value) {
     name.value = currentModule.value.name
     description.value = currentModule.value.description ?? ''
     isActive.value = currentModule.value.isActive
     icon.value = currentModule.value.icon
+    singularName.value = currentModule.value.singularName ?? ''
   }
 })
 
@@ -133,7 +138,13 @@ async function onSave() {
   try {
     await $fetch(`/api/entities/${moduleId}`, {
       method: 'PUT',
-      body: { name: name.value, description: description.value || null, isActive: isActive.value, icon: icon.value }
+      body: {
+        name: name.value,
+        description: description.value || null,
+        isActive: isActive.value,
+        icon: icon.value,
+        singularName: singularName.value.trim() || null
+      }
     })
     saved.value = true
     await refresh()
@@ -334,6 +345,24 @@ async function onSaveListLayout() {
                     rows="2"
                     class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   />
+                </div>
+
+                <!-- Pedido directo del usuario (2026-09-05): "hay manera de
+                     calcular el plural? para que en el menu salga
+                     Manifiestos, Empaques..." - ver comentario largo en
+                     server/db/schema.ts (entities.singularName). Opcional:
+                     vacio (default) deja "Nuevo X"/"Editar X" usando Nombre
+                     tal cual, igual que siempre. -->
+                <div class="flex flex-col gap-1.5">
+                  <label for="modulo-singular-name" class="text-[13px] font-semibold text-brand-text">Nombre en singular</label>
+                  <input
+                    id="modulo-singular-name"
+                    v-model="singularName"
+                    type="text"
+                    :placeholder="name || 'Ej. Empaque'"
+                    class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  />
+                  <p class="text-xs text-brand-text-muted">Opcional. Se usa solo en "Nuevo" y "Editar" (ej. "Nuevo Empaque"). Si se deja vacío, se usa el Nombre tal cual.</p>
                 </div>
 
                 <!-- Rediseno "Editar Módulo": el "Slug" pasa a llamarse "Ruta"

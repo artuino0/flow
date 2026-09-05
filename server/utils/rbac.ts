@@ -27,6 +27,12 @@ export interface ResolvedEntity {
   // para que el picker "Campo a mostrar" (ModuleListLayoutCard.vue) sepa la
   // eleccion vigente.
   labelField?: string | null
+  // Pedido directo del usuario (2026-09-05): "Nombre en singular" opcional -
+  // ver comentario largo en server/db/schema.ts (entities.singularName).
+  // Incluida aca por el mismo motivo que labelField: fields.get.ts la expone
+  // en `entity` para que pages/registros/:entity/nuevo.vue y .../:id/editar.vue
+  // sepan si hay un singular explicito o deben seguir usando `name` tal cual.
+  singularName?: string | null
 }
 
 export interface PermissionResult {
@@ -79,7 +85,8 @@ export async function requirePermission(
         isActive: entities.isActive,
         detailLayout: entities.detailLayout,
         listLayout: entities.listLayout,
-        labelField: entities.labelField
+        labelField: entities.labelField,
+        singularName: entities.singularName
       })
       .from(entities)
       .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))

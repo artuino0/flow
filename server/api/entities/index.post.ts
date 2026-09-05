@@ -3,7 +3,7 @@ import { requireAdminRole } from '~/server/utils/rbac'
 import { createEntity, DuplicateSlugError, MODULE_KINDS, SLUG_PATTERN } from '~/server/utils/moduleEntities'
 import { MODULE_ICON_KEY_SET } from '~/server/utils/moduleIcons'
 
-// POST /api/entities { name, slug, description?, icon?, moduleKind? } (HU-ERD-66;
+// POST /api/entities { name, slug, description?, icon?, moduleKind?, singularName? } (HU-ERD-66;
 // icon: pedido directo del usuario 2026-09-01, ver comentario largo en
 // server/db/schema.ts) - crea un modulo nuevo. Solo Administrador
 // (requireAdminRole, HU-ERD-61) - hasta esta HU, la unica forma de dar de
@@ -34,7 +34,12 @@ const bodySchema = z.object({
   // (pages/modulos/nuevo.vue vs pages/catalogos/nuevo.vue) - nunca elegido a
   // mano por el usuario en el formulario. Omitido -> 'hecho' (default del
   // schema), ver comentario largo en server/db/schema.ts.
-  moduleKind: z.enum(MODULE_KINDS).optional()
+  moduleKind: z.enum(MODULE_KINDS).optional(),
+  // Pedido directo del usuario (2026-09-05) - ver comentario largo en
+  // server/db/schema.ts (entities.singularName). Opcional/nullable: omitido
+  // o null (default) = las pantallas de crear/editar registro siguen usando
+  // `name` tal cual, exactamente el comportamiento de siempre.
+  singularName: z.string().trim().min(1).nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -47,7 +52,8 @@ export default defineEventHandler(async (event) => {
       slug: body.slug,
       description: body.description ?? null,
       icon: body.icon ?? null,
-      moduleKind: body.moduleKind
+      moduleKind: body.moduleKind,
+      singularName: body.singularName ?? null
     })
     setResponseStatus(event, 201)
     return entity

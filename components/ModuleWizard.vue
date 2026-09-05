@@ -35,6 +35,9 @@ const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
 const name = ref('')
 const slug = ref('')
 const description = ref('')
+// Pedido directo del usuario (2026-09-05) - ver comentario largo en
+// server/db/schema.ts (entities.singularName).
+const singularName = ref('')
 const slugTouched = ref(false)
 const createError = ref<string | null>(null)
 const creating = ref(false)
@@ -105,7 +108,13 @@ async function onContinue() {
   try {
     const entity = await $fetch<{ id: string; slug: string }>('/api/entities', {
       method: 'POST',
-      body: { name: name.value, slug: slug.value, description: description.value || null, moduleKind: props.moduleKind }
+      body: {
+        name: name.value,
+        slug: slug.value,
+        description: description.value || null,
+        moduleKind: props.moduleKind,
+        singularName: singularName.value.trim() || null
+      }
     })
     entityId.value = entity.id
     step.value = 'campos'
@@ -200,6 +209,23 @@ async function onContinue() {
                 class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
               />
               <p class="text-xs text-brand-text-muted">Opcional. Ayuda a otros usuarios a entender para qué sirve este {{ noun }}.</p>
+            </div>
+
+            <!-- Pedido directo del usuario (2026-09-05): "hay manera de
+                 calcular el plural? para que en el menu salga Manifiestos,
+                 Empaques..." - ver comentario largo en server/db/schema.ts
+                 (entities.singularName). Se puede completar despues desde
+                 "Editar Módulo" - no bloquea "Continuar". -->
+            <div class="flex flex-col gap-1.5">
+              <label for="modulo-singular-name" class="text-[13px] font-semibold text-brand-text">Nombre en singular</label>
+              <input
+                id="modulo-singular-name"
+                v-model="singularName"
+                type="text"
+                :placeholder="name || 'Ej. Empaque'"
+                class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              />
+              <p class="text-xs text-brand-text-muted">Opcional. Se usa solo en "Nuevo" y "Editar" (ej. "Nuevo Empaque"). Si se deja vacío, se usa el Nombre tal cual.</p>
             </div>
           </div>
 

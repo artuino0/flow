@@ -688,6 +688,51 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
     expect(invalidPutRes.status).toBe(400)
   })
 
+  // Pedido directo del usuario (2026-09-05): "hay manera de calcular el
+  // plural? para que en el menu salga Manifiestos, Empaques..." - ver
+  // comentario largo en server/db/schema.ts (entities.singularName).
+  it('POST /api/entities acepta singularName opcional; se expone en GET /api/entities/:slug/fields', async () => {
+    const withSingularRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Manifiestos', slug: 'manifiestos-e2e', singularName: 'Manifiesto' })
+    })
+    expect(withSingularRes.status).toBe(201)
+    const withSingular = await withSingularRes.json()
+    expect(withSingular.singularName).toBe('Manifiesto')
+
+    const fieldsRes = await api('/api/entities/manifiestos-e2e/fields')
+    expect(fieldsRes.status).toBe(200)
+    expect((await fieldsRes.json()).entity.singularName).toBe('Manifiesto')
+
+    // Omitido -> null (comportamiento de siempre: las pantallas de
+    // crear/editar registro caen a `name` tal cual).
+    const withoutSingularRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Sin Singular E2E', slug: 'sin-singular-e2e' })
+    })
+    expect((await withoutSingularRes.json()).singularName).toBeNull()
+  })
+
+  it('PUT /api/entities/:id cambia singularName; null lo limpia; string vacio es invalido', async () => {
+    const createRes = await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Embarques Editable E2E', slug: 'embarques-editable-e2e' })
+    })
+    const entity = await createRes.json()
+    expect(entity.singularName).toBeNull()
+
+    const putRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ singularName: 'Embarque' }) })
+    expect(putRes.status).toBe(200)
+    expect((await putRes.json()).singularName).toBe('Embarque')
+
+    const clearRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ singularName: null }) })
+    expect(clearRes.status).toBe(200)
+    expect((await clearRes.json()).singularName).toBeNull()
+
+    const emptyRes = await api(`/api/entities/${entity.id}`, { method: 'PUT', body: JSON.stringify({ singularName: '' }) })
+    expect(emptyRes.status).toBe(400)
+  })
+
   it('DELETE /api/entities/:id borra un modulo sin records, pero 409 si tiene records', async () => {
     const createRes = await api('/api/entities', {
       method: 'POST',
@@ -2647,5 +2692,24 @@ describe('e2e: flujo Recepcion -> Empaque -> Embarque (scripts/seedEmpaque.mjs)'
     expect(html).not.toContain('No se pudo cargar la definicion de esta entidad')
     expect(html).toContain('Productor')
     expect(html).toContain('Buscar productor')
+  })
+
+  // Pedido directo del usuario (2026-09-05): reproduce el problema real
+  // ("Nuevo Manifiestos" en vez de "Nuevo Manifiesto") y confirma el fix -
+  // usa la entidad "manifiestos-e2e" (name="Manifiestos", singularName="Manifiesto")
+  // creada en el test de arriba, dentro de este mismo describe.
+  it('SSR: /registros/manifiestos-e2e/nuevo usa singularName ("Nuevo Manifiesto"), no name ("Nuevo Manifiestos")', async () => {
+    const res = await fetch(`${baseUrl}/registros/manifiestos-e2e/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Nuevo Manifiesto')
+    expect(html).not.toContain('Nuevo Manifiestos')
+  })
+
+  it('SSR: /registros/sin-singular-e2e/nuevo sin singularName sigue usando name tal cual ("Nuevo Sin Singular E2E")', async () => {
+    const res = await fetch(`${baseUrl}/registros/sin-singular-e2e/nuevo`, { headers: { cookie: authCookie } })
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Nuevo Sin Singular E2E')
   })
 })
