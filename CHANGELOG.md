@@ -1,5 +1,13 @@
 # Changelog
 
+### [0.71.0] - 2026-09-05
+#### [add]
+- **Botón "Editar módulo" en el listado de registros, visible solo para administrador.** Pedido directo del usuario: "quiero que los módulos tengan un botón que lleve a la edición del módulo, visible solo para el administrador" - aclarado en el momento a "no en el menú, en el listado del módulo" (`pages/registros/[entity]/index.vue`, no la sección MÓDULOS del sidebar).
+- `composables/useIsAdmin.ts` (nuevo): extrae el chequeo "es administrador" que antes vivía solo dentro de `components/AppNav.vue` (probar `GET /api/roles`, que exige `requireAdminRole` - HU-ERD-61 - y tratar cualquier error como "no admin", en vez de duplicar en el frontend una lógica que hoy no viaja en `/api/auth/me`). Misma `key` de `useAsyncData` (`'appnav-is-admin'`) que ya usaba `AppNav.vue`, así Nuxt deduplica el pedido: como `AppNav.vue` vive en el layout de toda página, para cualquier pantalla que también use este composable el dato ya está resuelto (o en vuelo) sin una segunda llamada a `GET /api/roles`.
+- `components/AppNav.vue`: pasa a usar `useIsAdmin()` en vez de su bloque `useAsyncData` propio - sin cambio de comportamiento, solo deduplicación de código.
+- `pages/registros/[entity]/index.vue`: nuevo ícono `Settings2` junto al título y al badge de conteo (`v-if="isAdmin && meta?.entity?.id"`), enlaza a `/modulos/:id/editar` - la misma pantalla que ya usa `components/ModuleListing.vue` para esta acción; reusa su mismo ícono y el texto "Editar módulo" en vez de inventar un lenguaje visual nuevo.
+- Validado: `npx vue-tsc --noEmit` limpio, suite unit 163/163 sin cambios de conteo (sin tests unitarios de componentes Vue en este proyecto). El e2e completo no se pudo correr en el sandbox (mismo problema de `npm run build` documentado desde 0.64.0) - se recomienda correrlo localmente y probar a mano que el botón aparece solo con un usuario administrador y navega a la edición correcta del módulo.
+
 ### [0.70.0] - 2026-09-05
 #### [add]
 - **Secciones plegables en el menú lateral (GENERAL/MÓDULOS/ADMINISTRACIÓN).** Pedido directo del usuario: "hay manera de hacer desplegable el nivel principal del menú, general, entidades, administración". El componente "Sidebar Section Title" del diseño en Pencil es solo texto plano (sin chevron ni estado de plegado) - confirmado con las herramientas de Pencil antes de este cambio, así que no había un mock que reconciliar; se implementó siguiendo el mismo lenguaje visual ya establecido (mismo icono `ChevronDown` que ya usan los dropdowns de `pages/login.vue`/`layouts/default.vue`).

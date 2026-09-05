@@ -103,15 +103,12 @@ const moduleItems = computed(() =>
 // admin" (roles.isSystem no viaja en /api/auth/me hoy). Se prueba solo
 // /api/roles (no tambien /api/dashboard/metrics) porque ambos usan el MISMO
 // guard - alcanza con uno para saber si el rol es administrador.
-const { data: isAdmin } = await useAsyncData('appnav-is-admin', async () => {
-  const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
-  try {
-    await $fetch('/api/roles', { headers })
-    return true
-  } catch {
-    return false
-  }
-})
+//
+// Pedido directo del usuario (2026-09-05): extraido a composables/useIsAdmin.ts
+// para que pages/registros/[entity]/index.vue (boton "Editar módulo" del
+// listado, solo-admin) pueda reusar el mismo dato sin duplicar este
+// fetch+try/catch - misma key de useAsyncData, Nuxt lo deduplica solo.
+const { data: isAdmin } = await useIsAdmin()
 
 // Reubicacion del menu (feedback del usuario, post-HU-ERD-67): "Tablero"
 // (ex-Dashboard) y la vieja "Inicio" (bienvenida vacia) eran dos pantallas

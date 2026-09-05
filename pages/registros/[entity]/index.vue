@@ -17,7 +17,7 @@
 // pencil-antes-de-frontend: no existe ningun Screen/Importar en el .pen) -
 // se construyo siguiendo el mismo lenguaje visual ya establecido en el resto
 // del Constructor de Modulos.
-import { Filter, Plus, Upload, X } from '@lucide/vue'
+import { Filter, Plus, Settings2, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -26,6 +26,16 @@ const route = useRoute()
 const slug = route.params.entity as string
 
 const { data: meta, pending: metaPending, error: metaError } = await useEntityFields(slug)
+
+// Pedido directo del usuario (2026-09-05): "quiero que los modulos, en el
+// listado, tengan un boton que lleve a la edicion del modulo, visible solo
+// para el administrador" - reusa composables/useIsAdmin.ts (mismo dato que ya
+// resuelve components/AppNav.vue para la seccion ADMINISTRACIÓN, deduplicado
+// por Nuxt via useAsyncData). El boton lleva a pages/modulos/[id]/editar.vue,
+// la misma pantalla que ya usa el Listado de Módulos (components/ModuleListing.vue)
+// para esta accion - reusa su icono (Settings2) y texto ("Editar módulo") en
+// vez de inventar un lenguaje visual nuevo.
+const { data: isAdmin } = await useIsAdmin()
 
 const page = ref(1)
 // HU-ERD-75: orden por defecto del "Diseño del listado" (Table Builder) si el
@@ -177,6 +187,14 @@ async function onDelete(id: string) {
         >
           {{ recordsData.total }} registro{{ recordsData.total === 1 ? '' : 's' }}
         </span>
+        <NuxtLink
+          v-if="isAdmin && meta?.entity?.id"
+          :to="`/modulos/${meta.entity.id}/editar`"
+          title="Editar módulo"
+          class="flex h-7 w-7 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg hover:text-brand-blue"
+        >
+          <Settings2 class="h-4 w-4" :stroke-width="1.75" />
+        </NuxtLink>
       </div>
       <div class="flex items-center gap-2.5">
         <div v-if="filterableFields.length > 0" class="relative">
