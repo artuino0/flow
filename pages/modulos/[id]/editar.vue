@@ -117,6 +117,10 @@ const description = ref('')
 const isActive = ref(true)
 const icon = ref<string | null>(null)
 const singularName = ref('')
+// Seguimiento (2026-09-05, mismo dia): "queria que con js en el menu se
+// pusiera en plural, no queria un campo nuevo" - ver comentario largo en
+// components/ModuleWizard.vue (mismo campo, misma vista previa).
+const singularNamePreview = computed(() => (singularName.value.trim() ? pluralize(singularName.value.trim()) : ''))
 watchEffect(() => {
   if (currentModule.value) {
     name.value = currentModule.value.name
@@ -362,7 +366,10 @@ async function onSaveListLayout() {
                     :placeholder="name || 'Ej. Empaque'"
                     class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   />
-                  <p class="text-xs text-brand-text-muted">Opcional. Se usa solo en "Nuevo" y "Editar" (ej. "Nuevo Empaque"). Si se deja vacío, se usa el Nombre tal cual.</p>
+                  <p class="text-xs text-brand-text-muted">
+                    Opcional. Se usa en "Nuevo"/"Editar" (ej. "Nuevo Empaque")<template v-if="singularNamePreview">
+                      y en el menú se va a mostrar como "<strong>{{ singularNamePreview }}</strong>"</template>. Si se deja vacío, se usa el Nombre tal cual.
+                  </p>
                 </div>
 
                 <!-- Rediseno "Editar Módulo": el "Slug" pasa a llamarse "Ruta"

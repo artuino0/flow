@@ -854,6 +854,33 @@ describe('e2e: ERD-43/44 (GET /api/nav/entities - menu dinamico filtrado por per
     expect(slugs).toContain(navOcultoEntitySlug)
     expect(slugs).toContain(navInactivoEntitySlug)
   })
+
+  // Pedido directo del usuario (2026-09-05): "queria que con js en el menu
+  // se pusiera en plural, no queria un campo nuevo" - GET /api/nav/entities
+  // (la fuente real del menu, components/AppNav.vue) debe mostrar
+  // pluralize(singularName) en vez de `name` crudo cuando singularName esta
+  // cargado, y seguir mostrando `name` tal cual cuando no lo esta.
+  it('GET /api/nav/entities muestra pluralize(singularName) cuando esta cargado, name tal cual si no', async () => {
+    // createEntity() otorga CRUD completo al rol Administrador de inmediato
+    // (ver comentario largo en server/utils/moduleEntities.ts) - alcanza con
+    // crearla como admin (api() usa la sesion admin de este describe) para
+    // que ya aparezca en su propio /api/nav/entities, sin tocar permisos de
+    // navVendedorRoleId (evita pisar los permisos ya configurados para los
+    // otros tests de este describe).
+    await api('/api/entities', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Manifiestos Nav E2E', slug: 'manifiestos-nav-e2e', singularName: 'Manifiesto Nav E2E' })
+    })
+
+    const res = await api('/api/nav/entities')
+    const { entities } = await res.json()
+    const navEntity = entities.find((e: { slug: string }) => e.slug === 'manifiestos-nav-e2e')
+    // pluralize('Manifiesto Nav E2E') pluraliza solo la primera palabra.
+    expect(navEntity.name).toBe('Manifiestos Nav E2E')
+
+    const withoutSingular = entities.find((e: { slug: string }) => e.slug === 'nav-visible-e2e')
+    expect(withoutSingular.name).toBe('Nav Visible E2E')
+  })
 })
 
 // HU-ERD-67: endpoints de escritura sobre metadatos de campos (entity_fields)

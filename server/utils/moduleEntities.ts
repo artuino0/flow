@@ -1,6 +1,7 @@
 import { and, count, eq, inArray } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
+import { pluralize } from '~/server/utils/pluralize'
 
 // HU-ERD-66: logica de "modulos" (entities) como metadatos administrables -
 // hasta ahora entities/entity_fields solo se creaban por scripts/seed.mjs
@@ -260,6 +261,13 @@ export async function updateEntity(
 export interface NavEntity {
   id: string
   slug: string
+  // Pedido directo del usuario (2026-09-05): "queria que con js en el menu
+  // se pusiera en plural, no queria un campo nuevo" - este `name` YA es el
+  // que se muestra en el menu (components/AppNav.vue lo usa tal cual), pero
+  // ahora, si el modulo tiene `singularName` cargado, es pluralize(singularName)
+  // (server/utils/pluralize.ts) en vez del `entities.name` crudo - ver el
+  // calculo en listVisibleEntities() de abajo. Sin singularName, sigue siendo
+  // exactamente `entities.name`, comportamiento identico al de siempre.
   name: string
   icon: string | null
   canRead: boolean
@@ -300,6 +308,7 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
         id: entities.id,
         slug: entities.slug,
         name: entities.name,
+        singularName: entities.singularName,
         icon: entities.icon,
         isActive: entities.isActive,
         canRead: roleEntityPermissions.canRead,
@@ -315,7 +324,12 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
       .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true), eq(entities.moduleKind, moduleKind)))
       .orderBy(entities.name)
 
-    return rows.filter((r) => isAdmin || r.isActive).map(({ isActive: _isActive, ...rest }) => rest)
+    return rows
+      .filter((r) => isAdmin || r.isActive)
+      .map(({ isActive: _isActive, singularName, name, ...rest }) => ({
+        ...rest,
+        name: singularName ? pluralize(singularName) : name
+      }))
   })
 }
 

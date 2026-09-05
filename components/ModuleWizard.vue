@@ -38,6 +38,13 @@ const description = ref('')
 // Pedido directo del usuario (2026-09-05) - ver comentario largo en
 // server/db/schema.ts (entities.singularName).
 const singularName = ref('')
+// Seguimiento (2026-09-05, mismo dia): "queria que con js en el menu se
+// pusiera en plural, no queria un campo nuevo" - vista previa en vivo del
+// mismo calculo que corre server-side (listVisibleEntities(),
+// server/utils/pluralize.ts) para que el usuario vea de entrada si el
+// calculo automatico da el resultado esperado, sin tener que guardar y
+// mirar el menu para comprobarlo.
+const singularNamePreview = computed(() => (singularName.value.trim() ? pluralize(singularName.value.trim()) : ''))
 const slugTouched = ref(false)
 const createError = ref<string | null>(null)
 const creating = ref(false)
@@ -225,7 +232,10 @@ async function onContinue() {
                 :placeholder="name || 'Ej. Empaque'"
                 class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
               />
-              <p class="text-xs text-brand-text-muted">Opcional. Se usa solo en "Nuevo" y "Editar" (ej. "Nuevo Empaque"). Si se deja vacío, se usa el Nombre tal cual.</p>
+              <p class="text-xs text-brand-text-muted">
+                Opcional. Se usa en "Nuevo"/"Editar" (ej. "Nuevo Empaque")<template v-if="singularNamePreview">
+                  y en el menú se va a mostrar como "<strong>{{ singularNamePreview }}</strong>"</template>. Si se deja vacío, se usa el Nombre tal cual.
+              </p>
             </div>
           </div>
 

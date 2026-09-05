@@ -92,18 +92,22 @@ export const entities = pgTable('entities', {
   // de `name` el singular canonico hubiera roto el menu de TODOS los modulos
   // creados hasta hoy. Se elige en cambio la opcion sin riesgo, confirmada
   // con el usuario: `name` sigue siendo exactamente lo que es hoy (el texto
-  // libre que se ve en menu/listado/breadcrumb, tipicamente en plural), y se
-  // agrega esta columna nueva y opcional para el caso puntual de "Nuevo
-  // X"/"Editar X" (pages/registros/:entity/nuevo.vue y .../:id/editar.vue,
-  // agregados recien en el rediseno de esas pantallas) - null (default, y el
-  // valor de TODO modulo existente) hace que esas pantallas sigan usando
-  // `name` tal cual, exactamente el comportamiento de antes de esta columna;
-  // solo si se completa a mano se usa ahi en vez de `name`. Mismo criterio de
-  // "automatico/heuristica + override opcional, nunca rompe lo existente" que
-  // detailLayout/listLayout/labelField de arriba - la diferencia es que aca
-  // no hay heuristica automatica (calcular el plural de un texto arbitrario
-  // en español no es confiable para casos irregulares), asi que sin este
-  // dato el comportamiento es simplemente "no cambia nada".
+  // libre que se ve en listado/breadcrumb, tipicamente en plural), y se
+  // agrega esta columna nueva y opcional.
+  //
+  // Uso doble, ambos condicionados a que este cargada (null = no cambia
+  // nada, comportamiento identico al de antes de esta columna):
+  // 1. "Nuevo X"/"Editar X" (pages/registros/:entity/nuevo.vue y
+  //    .../:id/editar.vue) usan `singularName` tal cual en vez de `name`.
+  // 2. Seguimiento el mismo dia ("queria que con js en el menu se pusiera en
+  //    plural, no queria un campo nuevo"): el menu (components/AppNav.vue,
+  //    via listVisibleEntities()) muestra pluralize(singularName)
+  //    (server/utils/pluralize.ts) en vez de `name` crudo - asi el usuario
+  //    solo escribe el singular UNA vez y el plural del menu se calcula solo,
+  //    sin pedirle un segundo texto libre.
+  //
+  // Mismo criterio de "automatico/heuristica + override opcional, nunca
+  // rompe lo existente" que detailLayout/listLayout/labelField de arriba.
   singularName: text('singular_name'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
