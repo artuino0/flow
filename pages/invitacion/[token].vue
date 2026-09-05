@@ -49,7 +49,10 @@ async function onSubmit() {
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
     >
-      <img src="/brand/logo-mono-invert.png" alt="FlowERP" class="h-12 w-auto" />
+      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
+        <img src="/brand/isotipo-white.png" alt="FlowERP" class="h-9 w-9 object-contain" />
+      </div>
+      <h1 class="text-[28px] font-bold text-white">FlowERP</h1>
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">
         Configura entidades, campos y relaciones sin escribir código.
       </p>

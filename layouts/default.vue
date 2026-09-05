@@ -37,8 +37,9 @@ async function onLogout(reason?: 'inactividad') {
 <template>
   <div class="flex min-h-screen flex-col bg-brand-bg font-sans">
     <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
-      <div class="flex items-center gap-2.5">
-        <img src="/brand/logo-color.png" alt="FlowERP" class="h-6 w-auto" />
+      <div class="flex items-center gap-2">
+        <img src="/brand/isotipo.png" alt="FlowERP" class="h-7 w-7 object-contain" />
+        <span class="text-base font-bold text-brand-text">FlowERP</span>
       </div>
 
       <div class="flex items-center gap-4">
