@@ -31,7 +31,7 @@
 // DOCS, sin necesitar un campo de formula). Documentado aca porque es una
 // simplificacion deliberada, no un motor de calculo generico - si a futuro
 // se necesita algo mas flexible, eso es una HU de "campos calculados" aparte.
-import { computed, onBeforeUnmount, onMounted, reactive } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Info, Package, Plus, Search, Sigma, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
@@ -63,6 +63,22 @@ const columns = computed<ColumnDef[]>(() => {
 })
 
 const readonlyNumericColumn = computed(() => columns.value.find((c) => c.readonly && c.type === 'number') ?? null)
+
+// Reportado por el usuario (2026-09-05, con captura de pantalla): cuando el
+// Campo Tabla tiene UNA sola columna y es de relacion (el caso mas comun -
+// "elegir varios registros de otra entidad", ej. Recepciones dentro de
+// Empaque), el patron generico de "Agregar linea -> aparece una fila vacia
+// -> buscar DENTRO de esa fila" es confuso para ese caso puntual: "el body,
+// deberia de tener solo la tabla, arriba de la tabla el select con un boton
+// mas". Se detecta este caso (`isSinglePickerColumn`) para reemplazar, SOLO
+// en esa situacion, el flujo de abajo (boton "Agregar linea" + buscador
+// dentro de la fila) por un buscador + boton "+" arriba de la tabla que
+// arma la fila YA completa de un solo paso (ver pickerX de abajo) - la tabla
+// de tablas con mas de una columna (ej. Pedido: cantidad/precio/subtotal)
+// sigue exactamente igual que antes, porque ahi si hace falta una fila vacia
+// con varios campos para llenar a mano.
+const isSinglePickerColumn = computed(() => columns.value.length === 1 && columns.value[0].type === 'relation')
+const pickerColumn = computed(() => (isSinglePickerColumn.value ? columns.value[0] : null))
 
 function computeReadonly(row: Row, col: ColumnDef): number {
   const factors = columns.value
@@ -302,13 +318,142 @@ onMounted(() => {
     }
   }
 })
+
+// --- Buscador "picker" arriba de la tabla, solo para isSinglePickerColumn
+// (ver el comentario largo mas arriba) - independiente del searchState
+// por-fila de arriba porque aca no hay fila todavia: se elige la relacion
+// PRIMERO (con el resultado guardado en pickerSelected) y recien al confirmar
+// con el boton "+" (addRowFromPicker) se crea la fila, ya completa. No
+// necesita Teleport/reposicionamiento como el buscador por-fila: vive fuera
+// del `overflow-x-auto` de la tabla, asi que nunca se recorta.
+interface PickerResult { id: string; label: string; customData: Record<string, unknown> }
+const pickerQuery = ref('')
+const pickerOpen = ref(false)
+const pickerLoading = ref(false)
+const pickerResults = ref<PickerResult[]>([])
+const pickerSelected = ref<PickerResult | null>(null)
+let pickerDebounce: ReturnType<typeof setTimeout> | undefined
+
+function onPickerInput(value: string) {
+  pickerQuery.value = value
+  pickerSelected.value = null
+  pickerOpen.value = true
+  clearTimeout(pickerDebounce)
+  pickerDebounce = setTimeout(() => void runPickerSearch(), 250)
+}
+async function runPickerSearch() {
+  const col = pickerColumn.value
+  if (!col?.relationEntity || !pickerQuery.value.trim()) {
+    pickerResults.value = []
+    return
+  }
+  pickerLoading.value = true
+  try {
+    const [meta, res] = await Promise.all([
+      ensureEntityFields(col.relationEntity),
+      $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
+        query: { search: pickerQuery.value, pageSize: 6 }
+      })
+    ])
+    pickerResults.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
+  } catch {
+    pickerResults.value = []
+  } finally {
+    pickerLoading.value = false
+  }
+}
+function choosePickerSuggestion(result: PickerResult) {
+  pickerSelected.value = result
+  pickerQuery.value = result.label
+  pickerOpen.value = false
+}
+function clearPickerSelection() {
+  pickerSelected.value = null
+  pickerQuery.value = ''
+  pickerResults.value = []
+}
+function closePickerDropdown() {
+  // Deja que el mousedown de una sugerencia se procese antes de cerrar la lista.
+  setTimeout(() => {
+    pickerOpen.value = false
+  }, 150)
+}
+function addRowFromPicker() {
+  const col = pickerColumn.value
+  if (!col?.relationEntity || !pickerSelected.value) return
+  const selected = pickerSelected.value
+  labelCache[cacheKey(col.relationEntity, selected.id)] = selected.label
+  const newRow = emptyRow()
+  newRow[col.name] = selected.id
+  const prefix = `${col.relationEntity}.`
+  for (const c of columns.value) {
+    if (c.copyFrom?.startsWith(prefix)) newRow[c.name] = selected.customData[c.copyFrom.slice(prefix.length)] ?? null
+  }
+  emit('update:modelValue', bakeReadonly([...props.modelValue, newRow]))
+  clearPickerSelection()
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-3 rounded border border-brand-border-light bg-brand-surface p-3">
+    <!-- Buscador "picker" arriba de la tabla (solo Campo Tabla de 1 columna de
+    relacion - ver isSinglePickerColumn) - reemplaza el flujo generico de
+    "Agregar linea + buscar dentro de la fila" por "elegir primero, confirmar
+    con + despues", la fila que arma ya sale completa. -->
+    <div v-if="isSinglePickerColumn && !disabled" class="flex items-center gap-2">
+      <div class="relative flex-1">
+        <div class="flex items-center gap-1.5 rounded border border-brand-border px-2.5 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
+          <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+          <input
+            type="text"
+            :placeholder="`Buscar ${pickerColumn!.label.toLowerCase()}...`"
+            class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
+            :value="pickerQuery"
+            @input="onPickerInput(($event.target as HTMLInputElement).value)"
+            @focus="pickerOpen = true"
+            @blur="closePickerDropdown"
+          />
+          <button v-if="pickerSelected" type="button" class="text-brand-text-muted hover:text-brand-error-text" @click="clearPickerSelection">
+            <X class="h-3.5 w-3.5" :stroke-width="2" />
+          </button>
+        </div>
+        <div
+          v-if="pickerOpen && (pickerLoading || pickerResults.length > 0 || pickerQuery)"
+          class="absolute z-10 mt-1 w-full rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+        >
+          <p v-if="pickerLoading" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
+          <p v-else-if="pickerResults.length === 0" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
+          <button
+            v-for="r in pickerResults"
+            :key="r.id"
+            type="button"
+            class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-brand-text hover:bg-brand-bg"
+            @mousedown.prevent="choosePickerSuggestion(r)"
+          >
+            <Package class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+            {{ r.label }}
+          </button>
+        </div>
+      </div>
+      <button
+        type="button"
+        title="Agregar"
+        :disabled="!pickerSelected"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-brand-border text-brand-text-secondary hover:bg-brand-bg disabled:cursor-not-allowed disabled:opacity-50"
+        @click="addRowFromPicker"
+      >
+        <Plus class="h-4 w-4" :stroke-width="2" />
+      </button>
+    </div>
+
     <div class="overflow-x-auto">
       <table class="w-full min-w-[420px] border-collapse text-sm">
-        <thead>
+        <!-- Reportado por el usuario: con 1 sola columna, mostrar su
+        encabezado repite el mismo texto que ya dice el titulo de la tarjeta
+        que envuelve este campo (pages/registros/.../nuevo.vue y editar.vue) -
+        se oculta el <thead> en ese caso; con 2+ columnas (ej. Pedido) sigue
+        siendo necesario para distinguir cada columna. -->
+        <thead v-if="columns.length > 1">
           <tr class="border-b border-brand-border-light">
             <th v-for="col in columns" :key="col.name" class="px-2 py-1.5 text-left text-xs font-semibold text-brand-text-secondary">{{ col.label }}</th>
             <th v-if="!disabled" class="w-8" />
@@ -330,7 +475,7 @@ onMounted(() => {
                     <X class="h-3 w-3" :stroke-width="2" />
                   </button>
                 </div>
-                <div v-else-if="!disabled" class="relative">
+                <div v-else-if="!disabled && !isSinglePickerColumn" class="relative">
                   <div
                     :ref="(el) => setSearchWrapperRef(idx, col, el as Element | null)"
                     class="flex items-center gap-1.5 rounded border border-brand-border px-2 py-[7px]"
@@ -443,10 +588,16 @@ onMounted(() => {
       </table>
     </div>
 
-    <button v-if="!disabled" type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-border px-3 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addRow">
-      <Plus class="h-3.5 w-3.5" :stroke-width="2" />
-      Agregar línea
-    </button>
+    <!-- "Footer" de la tarjeta (pedido del usuario: "deberia ser una card,
+    header, body y footer, en footer va los botones") - solo para el caso
+    generico de varias columnas; con isSinglePickerColumn el boton de arriba
+    ya cubre agregar filas, no hace falta este. -->
+    <div v-if="!disabled && !isSinglePickerColumn" class="border-t border-brand-border-light pt-3">
+      <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-border px-3 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addRow">
+        <Plus class="h-3.5 w-3.5" :stroke-width="2" />
+        Agregar línea
+      </button>
+    </div>
 
     <p v-if="disabled && modelValue.length > 0" class="flex items-center gap-1.5 rounded bg-brand-bg px-2.5 py-2 text-xs text-brand-text-muted">
       <Info class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
