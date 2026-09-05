@@ -45,6 +45,17 @@ const { data, pending, error: fetchError } = await useEntityFields(slug)
 const generalFields = computed(() => (data.value?.fields ?? []).filter((f) => f.dataType !== 'tabla'))
 const visibleGeneralFields = computed(() => generalFields.value.filter((f) => f.name !== 'id' && f.dataType !== 'incremental'))
 const tablaFields = computed(() => (data.value?.fields ?? []).filter((f) => f.dataType === 'tabla'))
+// Rediseño (2026-09-05, pedido directo del usuario: "creo que seria mejor
+// que las entidades relacionadas se vean a la derecha como un dos columnas,
+// la izq menos ancha, unas 4 o algo fijo, lo demas para los de la derecha
+// com si fueran cards 100% ancho de las 8"): "Informacion general" pasa a
+// una columna izquierda angosta (4/12) y cada Campo Tabla (entidades
+// relacionadas) a una columna derecha ancha (8/12), apiladas si hay mas de
+// una - antes las dos iban en una sola columna, una arriba de la otra. Sin
+// Campos Tabla no tiene sentido angostar "Informacion general" a 4/12 (se
+// veria un formulario chico con medio ancho de pantalla vacio) - ahi se
+// sigue mostrando a ancho completo, como antes de este cambio.
+const hasTablaFields = computed(() => tablaFields.value.length > 0)
 
 const formValues = ref<Record<string, unknown>>({})
 const generalFormRef = ref<{ validateAll: () => boolean } | null>(null)
@@ -101,26 +112,32 @@ async function onSubmit() {
       <p v-if="data.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavía no tiene campos configurados.</p>
 
       <form v-else class="flex flex-col gap-5" @submit.prevent="onSubmit">
-        <div v-if="visibleGeneralFields.length > 0" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-          <div class="border-b border-brand-border-light p-5">
-            <h2 class="text-[15px] font-bold text-brand-text">Información general</h2>
+        <div class="grid grid-cols-1 gap-5" :class="hasTablaFields ? 'lg:grid-cols-12' : ''">
+          <div :class="hasTablaFields ? 'lg:col-span-4' : ''">
+            <div v-if="visibleGeneralFields.length > 0" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+              <div class="border-b border-brand-border-light p-5">
+                <h2 class="text-[15px] font-bold text-brand-text">Información general</h2>
+              </div>
+              <div class="p-5">
+                <DynamicForm ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" />
+              </div>
+            </div>
           </div>
-          <div class="p-5">
-            <DynamicForm ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" />
-          </div>
-        </div>
 
-        <div
-          v-for="field in tablaFields"
-          :key="field.id"
-          class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
-        >
-          <div class="border-b border-brand-border-light p-5">
-            <h2 class="text-[15px] font-bold text-brand-text">{{ field.label }}</h2>
-            <p class="mt-0.5 text-xs text-brand-text-muted">Agrega las filas que necesites.</p>
-          </div>
-          <div class="p-5">
-            <DynamicForm ref="tablaFormRefs" v-model="formValues" :fields="[field]" :entity-id="data.entity.id" :disabled="submitting" hide-labels />
+          <div v-if="hasTablaFields" class="flex flex-col gap-5 lg:col-span-8">
+            <div
+              v-for="field in tablaFields"
+              :key="field.id"
+              class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
+            >
+              <div class="border-b border-brand-border-light p-5">
+                <h2 class="text-[15px] font-bold text-brand-text">{{ field.label }}</h2>
+                <p class="mt-0.5 text-xs text-brand-text-muted">Agrega las filas que necesites.</p>
+              </div>
+              <div class="p-5">
+                <DynamicForm ref="tablaFormRefs" v-model="formValues" :fields="[field]" :entity-id="data.entity.id" :disabled="submitting" hide-labels />
+              </div>
+            </div>
           </div>
         </div>
 

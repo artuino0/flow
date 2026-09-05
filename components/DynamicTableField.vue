@@ -31,7 +31,7 @@
 // DOCS, sin necesitar un campo de formula). Documentado aca porque es una
 // simplificacion deliberada, no un motor de calculo generico - si a futuro
 // se necesita algo mas flexible, eso es una HU de "campos calculados" aparte.
-import { computed, onMounted, reactive } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { Info, Package, Plus, Search, Sigma, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
@@ -160,11 +160,63 @@ function stateFor(idx: number): SearchState {
   return searchState[idx]
 }
 
+// Reportado por el usuario (2026-09-05): el dropdown de sugerencias vivia
+// `absolute` DENTRO del `<div class="overflow-x-auto">` que envuelve la
+// tabla (necesario para que las tablas con muchas columnas puedan scrollear
+// horizontal) - por la regla de CSS de que un eje "visible" con el otro en
+// "auto" se recalcula tambien a "auto" (CSS 2.1 11.1.1), ese contenedor
+// terminaba con scroll VERTICAL tambien apenas el dropdown (que sobresale
+// hacia abajo) se abria, y lo recortaba a la altura de la fila en vez de
+// mostrarlo completo. La unica forma robusta de evitarlo sin renunciar al
+// scroll horizontal de la tabla es sacar el dropdown de ese arbol de DOM por
+// completo: se teletransporta a <body> (`<Teleport to="body">` mas abajo) y
+// se posiciona a mano en `position: fixed` con las coordenadas reales del
+// buscador (`getBoundingClientRect()`), recalculadas en foco/tipeo y en
+// cualquier scroll/resize mientras haya al menos un dropdown abierto.
+function searchKey(idx: number, col: ColumnDef): string {
+  return `${idx}:${col.name}`
+}
+const searchWrapperEls: Record<string, HTMLElement> = {}
+function setSearchWrapperRef(idx: number, col: ColumnDef, el: Element | null) {
+  const key = searchKey(idx, col)
+  if (el instanceof HTMLElement) searchWrapperEls[key] = el
+  else delete searchWrapperEls[key]
+}
+const dropdownStyle = reactive<Record<string, { top: number; left: number; width: number }>>({})
+const MIN_DROPDOWN_WIDTH = 224 // mismo ancho que el w-56 que tenia el dropdown antes de teletransportarlo
+function updateDropdownPosition(idx: number, col: ColumnDef) {
+  const key = searchKey(idx, col)
+  const el = searchWrapperEls[key]
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  dropdownStyle[key] = { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, MIN_DROPDOWN_WIDTH) }
+}
+function repositionOpenDropdowns() {
+  for (const idxKey of Object.keys(searchState)) {
+    const idx = Number(idxKey)
+    if (!searchState[idx]?.open) continue
+    for (const col of columns.value) {
+      if (col.type === 'relation') updateDropdownPosition(idx, col)
+    }
+  }
+}
+onMounted(() => {
+  // capture:true: el scroll de la tabla (overflow-x-auto) no burbujea hasta
+  // window por default, pero un listener en fase de captura si lo intercepta.
+  window.addEventListener('scroll', repositionOpenDropdowns, true)
+  window.addEventListener('resize', repositionOpenDropdowns)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', repositionOpenDropdowns, true)
+  window.removeEventListener('resize', repositionOpenDropdowns)
+})
+
 const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {}
 function onSearchInput(idx: number, col: ColumnDef, value: string) {
   const state = stateFor(idx)
   state.query = value
   state.open = true
+  updateDropdownPosition(idx, col)
   clearTimeout(debounceTimers[idx])
   debounceTimers[idx] = setTimeout(() => void runSearch(idx, col), 250)
 }
@@ -279,7 +331,10 @@ onMounted(() => {
                   </button>
                 </div>
                 <div v-else-if="!disabled" class="relative">
-                  <div class="flex items-center gap-1.5 rounded border border-brand-border px-2 py-1">
+                  <div
+                    :ref="(el) => setSearchWrapperRef(idx, col, el as Element | null)"
+                    class="flex items-center gap-1.5 rounded border border-brand-border px-2 py-[7px]"
+                  >
                     <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
                     <input
                       type="text"
@@ -287,27 +342,34 @@ onMounted(() => {
                       class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
                       :value="stateFor(idx).query"
                       @input="onSearchInput(idx, col, ($event.target as HTMLInputElement).value)"
-                      @focus="stateFor(idx).open = true"
+                      @focus="stateFor(idx).open = true; updateDropdownPosition(idx, col)"
                       @blur="closeSuggestions(idx)"
                     />
                   </div>
-                  <div
-                    v-if="stateFor(idx).open && (stateFor(idx).loading || stateFor(idx).results.length > 0 || stateFor(idx).query)"
-                    class="absolute z-10 mt-1 w-56 max-w-xs rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
-                  >
-                    <p v-if="stateFor(idx).loading" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
-                    <p v-else-if="stateFor(idx).results.length === 0" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
-                    <button
-                      v-for="r in stateFor(idx).results"
-                      :key="r.id"
-                      type="button"
-                      class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-brand-text hover:bg-brand-bg"
-                      @mousedown.prevent="selectSuggestion(idx, col, r)"
+                  <Teleport to="body">
+                    <div
+                      v-if="stateFor(idx).open && (stateFor(idx).loading || stateFor(idx).results.length > 0 || stateFor(idx).query)"
+                      class="fixed z-50 rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+                      :style="{
+                        top: `${dropdownStyle[searchKey(idx, col)]?.top ?? 0}px`,
+                        left: `${dropdownStyle[searchKey(idx, col)]?.left ?? 0}px`,
+                        width: `${dropdownStyle[searchKey(idx, col)]?.width ?? MIN_DROPDOWN_WIDTH}px`
+                      }"
                     >
-                      <Package class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
-                      {{ r.label }}
-                    </button>
-                  </div>
+                      <p v-if="stateFor(idx).loading" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
+                      <p v-else-if="stateFor(idx).results.length === 0" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
+                      <button
+                        v-for="r in stateFor(idx).results"
+                        :key="r.id"
+                        type="button"
+                        class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-brand-text hover:bg-brand-bg"
+                        @mousedown.prevent="selectSuggestion(idx, col, r)"
+                      >
+                        <Package class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+                        {{ r.label }}
+                      </button>
+                    </div>
+                  </Teleport>
                 </div>
                 <span v-else class="text-xs text-brand-text-muted">-</span>
               </template>
