@@ -6,8 +6,18 @@
 // pantalla disenada para esta HU (no existia mock previo), revisada/creada
 // con las herramientas de Pencil antes de este cambio, mismo patron que
 // pages/modulos/index.vue: breadcrumb, toolbar con buscador + selector de
-// modulo + boton "Nuevo trigger", tabla con toggle activo/inactivo inline y
-// badge de la ultima ejecucion.
+// modulo, tabla con toggle activo/inactivo inline y badge de la ultima
+// ejecucion.
+//
+// Reportado por el usuario (2026-09-05): el .pen tiene dos versiones de esta
+// pantalla que quedaron desincronizadas entre si (una todavia dice
+// "Triggers", la otra ya renombro todo a "Automatización" - confirmado
+// revisando ambas con las herramientas de Pencil). Decision del usuario:
+// migrar todo el texto visible al nombre nuevo ("Automatización"/
+// "automatización") en esta pantalla y en el editor - identificadores
+// internos (rutas /triggers, tablas triggers/trigger_actions/trigger_logs,
+// nombres de variables/tipos) se mantienen sin cambio, es un rename de cara
+// al usuario unicamente.
 import { ChevronRight, Search, Settings2, Trash2, Zap } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
@@ -82,28 +92,28 @@ async function onToggleActive(row: TriggerRow) {
     await $fetch(`/api/triggers/${row.id}`, { method: 'PUT', body: { isActive: next } })
   } catch (err: any) {
     row.isActive = !next
-    toggleError.value = err?.data?.statusMessage || 'No se pudo cambiar el estado del trigger'
+    toggleError.value = err?.data?.statusMessage || 'No se pudo cambiar el estado de la automatización'
     // Toast ademas del inline (a diferencia de otras acciones de esta
     // pantalla): el switch ya revirtio SOLO visualmente al valor anterior -
     // sin el toast, un usuario que no mire el mensaje suelto podria no notar
     // que el cambio no se aplico.
-    toast.error('No se pudo cambiar el estado del trigger', toggleError.value)
+    toast.error('No se pudo cambiar el estado de la automatización', toggleError.value)
   }
 }
 
 const deleteError = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
 async function onDelete(row: TriggerRow) {
-  if (!confirm(`Eliminar el trigger "${row.name}"? Esta acción no se puede deshacer.`)) return
+  if (!confirm(`Eliminar la automatización "${row.name}"? Esta acción no se puede deshacer.`)) return
   deleteError.value = null
   deletingId.value = row.id
   try {
     await $fetch(`/api/triggers/${row.id}`, { method: 'DELETE' })
     await refresh()
-    toast.success('Trigger eliminado', `"${row.name}" se eliminó correctamente.`)
+    toast.success('Automatización eliminada', `"${row.name}" se eliminó correctamente.`)
   } catch (err: any) {
-    deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el trigger'
-    toast.error('No se pudo eliminar el trigger', deleteError.value)
+    deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar la automatización'
+    toast.error('No se pudo eliminar la automatización', deleteError.value)
   } finally {
     deletingId.value = null
   }
@@ -138,11 +148,11 @@ async function onCreate() {
       body: { name: newName.value, entityId: newEntityId.value, triggerEvent: newEvent.value }
     })
     showCreate.value = false
-    toast.success('Trigger creado', `"${newName.value}" ya está disponible.`)
+    toast.success('Automatización creada', `"${newName.value}" ya está disponible.`)
     await navigateTo(`/triggers/${created.id}/editar`)
   } catch (err: any) {
-    createError.value = err?.data?.statusMessage || 'No se pudo crear el trigger'
-    toast.error('No se pudo crear el trigger', createError.value)
+    createError.value = err?.data?.statusMessage || 'No se pudo crear la automatización'
+    toast.error('No se pudo crear la automatización', createError.value)
   } finally {
     creating.value = false
   }
@@ -159,7 +169,7 @@ async function onCreate() {
 
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
-      No se pudo cargar el listado de triggers{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
+      No se pudo cargar el listado de automatizaciones{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
 
     <template v-else-if="data">
@@ -175,7 +185,7 @@ async function onCreate() {
             <input
               v-model="search"
               type="text"
-              placeholder="Buscar trigger..."
+              placeholder="Buscar automatización..."
               class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
             />
           </div>
@@ -192,7 +202,7 @@ async function onCreate() {
             @click="openCreate"
           >
             <Zap class="h-4 w-4" :stroke-width="1.75" />
-            Nuevo trigger
+            Nueva automatización
           </button>
         </div>
       </div>
@@ -200,8 +210,8 @@ async function onCreate() {
       <p v-if="deleteError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
       <p v-if="toggleError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ toggleError }}</p>
 
-      <p v-if="data.length === 0" class="text-sm text-brand-text-muted">Este tenant todavía no tiene triggers configurados.</p>
-      <p v-else-if="filteredTriggers.length === 0" class="text-sm text-brand-text-muted">Ningún trigger coincide con "{{ search }}".</p>
+      <p v-if="data.length === 0" class="text-sm text-brand-text-muted">Este tenant todavía no tiene automatizaciones configuradas.</p>
+      <p v-else-if="filteredTriggers.length === 0" class="text-sm text-brand-text-muted">Ninguna automatización coincide con "{{ search }}".</p>
 
       <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
         <table class="min-w-full text-sm">
@@ -277,7 +287,7 @@ async function onCreate() {
       <div class="flex w-full max-w-[420px] flex-col rounded-lg bg-brand-surface shadow-xl">
         <div class="flex items-start justify-between border-b border-brand-border-light p-5">
           <div class="flex flex-col gap-0.5">
-            <h2 class="text-[17px] font-bold text-brand-text">Nuevo trigger</h2>
+            <h2 class="text-[17px] font-bold text-brand-text">Nueva automatización</h2>
             <p class="text-sm text-brand-text-secondary">Elige el módulo y el evento - configura la condición y las acciones después</p>
           </div>
         </div>
@@ -324,7 +334,7 @@ async function onCreate() {
             class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onCreate"
           >
-            {{ creating ? 'Creando...' : 'Crear trigger' }}
+            {{ creating ? 'Creando...' : 'Crear automatización' }}
           </button>
         </div>
       </div>

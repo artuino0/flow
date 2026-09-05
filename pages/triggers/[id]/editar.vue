@@ -15,7 +15,27 @@
 // soporta el arbol completo via su DSL JSON, pero la UI cubre el caso de uso
 // real (varias condiciones simples combinadas de la misma forma) sin la
 // complejidad de un editor de arboles.
-import { ArrowDown, ArrowUp, Mail, Pencil, RefreshCw, Settings2, Trash2, Webhook, X } from '@lucide/vue'
+//
+// Reportado por el usuario (2026-09-05, ver mismo comentario en
+// pages/triggers/index.vue): texto visible renombrado de "Trigger" a
+// "Automatización" siguiendo la version mas nueva de esta pantalla en el
+// .pen (las dos versiones del diseño habian quedado desincronizadas entre
+// si). Icono del encabezado tambien pasa de Webhook a Zap (generico, no
+// depende del tipo de la primera accion) - coincide con el icono ya usado en
+// AppNav.vue y en cada fila del listado.
+//
+// El constructor de condicion (titulo "Condición de disparo", fila Campo/
+// Operador/Valor con label arriba de cada select, boton "+ Agregar
+// condición", texto "Se combinan con Y/O") ya coincide con la version nueva
+// del mock - la unica diferencia real son los selects de Campo/Operador de
+// esa version, que muestran un icono "calendar" fijo dentro del valor
+// (revisado con las herramientas de Pencil: mismo icono en AMBOS selects,
+// sin relacion con el tipo de dato del campo elegido ni con el operador) -
+// se interpreta como un resto de copiar el componente Field/Select sin
+// terminar de configurarlo, no como una intencion de diseño real, asi que
+// no se replica (agregar un icono que no significa nada seria peor que no
+// tener icono).
+import { ArrowDown, ArrowUp, Mail, Pencil, RefreshCw, Settings2, Trash2, Webhook, X, Zap } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -131,10 +151,10 @@ async function onSaveHeader() {
       body: { name: name.value, triggerEvent: triggerEvent.value, isActive: isActive.value, condition: conditionPayload.value }
     })
     await refresh()
-    toast.updated('Trigger actualizado', `"${name.value}" se guardó correctamente.`)
+    toast.updated('Automatización actualizada', `"${name.value}" se guardó correctamente.`)
   } catch (err: any) {
-    saveError.value = err?.data?.statusMessage || 'No se pudo guardar el trigger'
-    toast.error('No se pudo guardar el trigger', saveError.value)
+    saveError.value = err?.data?.statusMessage || 'No se pudo guardar la automatización'
+    toast.error('No se pudo guardar la automatización', saveError.value)
   } finally {
     saving.value = false
   }
@@ -143,16 +163,16 @@ async function onSaveHeader() {
 const deleting = ref(false)
 async function onDeleteTrigger() {
   if (!data.value) return
-  if (!confirm(`Eliminar el trigger "${data.value.name}"? Esta acción no se puede deshacer.`)) return
+  if (!confirm(`Eliminar la automatización "${data.value.name}"? Esta acción no se puede deshacer.`)) return
   deleting.value = true
   try {
     const triggerName = data.value.name
     await $fetch(`/api/triggers/${triggerId}`, { method: 'DELETE' })
-    toast.success('Trigger eliminado', `"${triggerName}" se eliminó correctamente.`)
+    toast.success('Automatización eliminada', `"${triggerName}" se eliminó correctamente.`)
     await router.push('/triggers')
   } catch (err: any) {
-    saveError.value = err?.data?.statusMessage || 'No se pudo eliminar el trigger'
-    toast.error('No se pudo eliminar el trigger', saveError.value)
+    saveError.value = err?.data?.statusMessage || 'No se pudo eliminar la automatización'
+    toast.error('No se pudo eliminar la automatización', saveError.value)
   } finally {
     deleting.value = false
   }
@@ -373,20 +393,20 @@ async function onRetry(logId: string) {
 <template>
   <div class="flex flex-col gap-5">
     <div class="flex items-center justify-between">
-      <h1 class="text-[22px] font-bold text-brand-text">Editar trigger{{ data ? ` - ${data.name}` : '' }}</h1>
+      <h1 class="text-[22px] font-bold text-brand-text">Editar automatización{{ data ? ` - ${data.name}` : '' }}</h1>
       <NuxtLink to="/triggers" class="text-sm font-semibold text-brand-text-secondary hover:underline">Volver al listado</NuxtLink>
     </div>
 
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
-      No se pudo cargar el trigger{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
+      No se pudo cargar la automatización{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
 
     <template v-else-if="data">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded bg-brand-blue-bg">
-            <Webhook class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
+            <Zap class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
           </div>
           <div class="flex flex-col gap-0.5">
             <div class="flex items-center gap-2.5">
@@ -455,7 +475,7 @@ async function onRetry(logId: string) {
           </div>
           <div class="flex flex-col gap-3 p-5">
             <p v-if="conditionRows.length === 0" class="text-sm text-brand-text-muted">
-              Sin condición configurada todavía - el trigger no disparará hasta que agregues al menos una.
+              Sin condición configurada todavía - la automatización no disparará hasta que agregues al menos una.
             </p>
             <template v-for="(row, index) in conditionRows" :key="index">
               <div v-if="index > 0" class="flex items-center">
@@ -507,7 +527,7 @@ async function onRetry(logId: string) {
           </div>
           <p v-if="actionsError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ actionsError }}</p>
           <div class="flex flex-col gap-2.5 p-5">
-            <p v-if="actions.length === 0" class="text-sm text-brand-text-muted">Este trigger todavía no tiene acciones configuradas.</p>
+            <p v-if="actions.length === 0" class="text-sm text-brand-text-muted">Esta automatización todavía no tiene acciones configuradas.</p>
             <div v-for="(row, index) in actions" :key="row.id" class="flex flex-col rounded border border-brand-border-light bg-brand-bg">
               <template v-if="editingActionId === row.id">
                 <div class="flex flex-col gap-3 p-3.5">
@@ -618,7 +638,7 @@ async function onRetry(logId: string) {
       <template v-else>
         <p v-if="retryError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ retryError }}</p>
         <p v-if="logsPending" class="text-sm text-brand-text-muted">Cargando...</p>
-        <p v-else-if="!logsData || logsData.length === 0" class="text-sm text-brand-text-muted">Este trigger todavía no tiene ejecuciones registradas.</p>
+        <p v-else-if="!logsData || logsData.length === 0" class="text-sm text-brand-text-muted">Esta automatización todavía no tiene ejecuciones registradas.</p>
         <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
           <table class="min-w-full text-sm">
             <thead class="border-b border-brand-border-light bg-brand-bg">
