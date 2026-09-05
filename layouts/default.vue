@@ -101,5 +101,11 @@ async function onLogout(reason?: 'inactividad') {
         <slot />
       </main>
     </div>
+
+    <!-- Pedido directo del usuario ("aplica los toast, checa donde deben ir"):
+    montado una sola vez aca (layout autenticado) para que cualquier pantalla
+    de adentro pueda usar useToast() sin volver a declarar el contenedor - ver
+    components/ToastContainer.vue. -->
+    <ToastContainer />
   </div>
 </template>

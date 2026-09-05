@@ -160,6 +160,10 @@ function relatedListLink(entitySlug: string, fieldName: string): string {
   return `/registros/${entitySlug}?filterField=${encodeURIComponent(fieldName)}&filterValues=${encodeURIComponent(props.record.id)}`
 }
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 const deleting = ref(false)
 const deleteError = ref<string | null>(null)
 async function onDelete() {
@@ -169,9 +173,11 @@ async function onDelete() {
   deleteError.value = null
   try {
     await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, { method: 'DELETE' })
+    toast.success('Registro eliminado', 'El registro se eliminó correctamente.')
     emit('deleted')
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el registro'
+    toast.error('No se pudo eliminar el registro', deleteError.value)
   } finally {
     deleting.value = false
   }

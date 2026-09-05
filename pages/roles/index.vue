@@ -107,12 +107,16 @@ function toggle(row: EntityPermissionRow, key: PermKey) {
 
 const saving = ref(false)
 const saveError = ref<string | null>(null)
-const saved = ref(false)
+
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Reemplaza el aviso inline estatico "Permisos
+// guardados correctamente." (quedaba invisible con la matriz larga, si el
+// usuario ya habia scrolleado).
+const toast = useToast()
 
 async function onSave() {
   if (!selectedRoleId.value) return
   saveError.value = null
-  saved.value = false
   saving.value = true
   try {
     const result = await $fetch<RolePermissionsResponse>(`/api/roles/${selectedRoleId.value}/permissions`, {
@@ -120,9 +124,10 @@ async function onSave() {
       body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete }) => ({ entityId, canRead, canCreate, canUpdate, canDelete })) }
     })
     rows.value = result.permissions.map((p) => ({ ...p }))
-    saved.value = true
+    toast.updated('Permisos actualizados', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudieron guardar los permisos'
+    toast.error('No se pudieron guardar los permisos', saveError.value)
   } finally {
     saving.value = false
   }
@@ -142,7 +147,6 @@ function selectRole(roleId: string) {
   selectorOpen.value = false
   roleSearch.value = ''
   saveError.value = null
-  saved.value = false
   // Deep-link opcional (?role=<id>) para poder compartir/recargar sobre el
   // mismo rol - no forma parte del diseno pero es una mejora minima y segura
   // (el diseno no muestra URLs, no la contradice).
@@ -240,8 +244,10 @@ async function onCreateRole() {
     await refreshRoles()
     selectRole(result.role.id)
     createOpen.value = false
+    toast.success('Rol creado', `"${name}" ya está disponible.`)
   } catch (err: any) {
     createError.value = err?.data?.statusMessage || 'No se pudo crear el rol'
+    toast.error('No se pudo crear el rol', createError.value)
   } finally {
     creating.value = false
   }
@@ -401,7 +407,6 @@ async function onCreateRole() {
               {{ saving ? 'Guardando...' : 'Guardar permisos' }}
             </button>
             <p v-if="saveError" class="text-sm text-brand-error-text">{{ saveError }}</p>
-            <p v-if="saved" class="text-sm text-brand-success-text">Permisos guardados correctamente.</p>
           </div>
         </template>
       </template>

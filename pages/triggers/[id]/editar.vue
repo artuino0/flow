@@ -104,6 +104,10 @@ const { data: fieldsData } = await useFetch<{ fields: EntityFieldMeta[] }>(
 )
 const entityFields = computed(() => fieldsData.value?.fields ?? [])
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 // ---- Encabezado: nombre, evento, activo ----
 const name = ref('')
 const triggerEvent = ref<'on_create' | 'on_update' | 'on_delete'>('on_create')
@@ -118,20 +122,19 @@ watchEffect(() => {
 
 const saveError = ref<string | null>(null)
 const saving = ref(false)
-const saved = ref(false)
 async function onSaveHeader() {
   saveError.value = null
-  saved.value = false
   saving.value = true
   try {
     await $fetch(`/api/triggers/${triggerId}`, {
       method: 'PUT',
       body: { name: name.value, triggerEvent: triggerEvent.value, isActive: isActive.value, condition: conditionPayload.value }
     })
-    saved.value = true
     await refresh()
+    toast.updated('Trigger actualizado', `"${name.value}" se guardó correctamente.`)
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudo guardar el trigger'
+    toast.error('No se pudo guardar el trigger', saveError.value)
   } finally {
     saving.value = false
   }
@@ -143,10 +146,13 @@ async function onDeleteTrigger() {
   if (!confirm(`Eliminar el trigger "${data.value.name}"? Esta acción no se puede deshacer.`)) return
   deleting.value = true
   try {
+    const triggerName = data.value.name
     await $fetch(`/api/triggers/${triggerId}`, { method: 'DELETE' })
+    toast.success('Trigger eliminado', `"${triggerName}" se eliminó correctamente.`)
     await router.push('/triggers')
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudo eliminar el trigger'
+    toast.error('No se pudo eliminar el trigger', saveError.value)
   } finally {
     deleting.value = false
   }
@@ -239,8 +245,10 @@ async function saveEditAction(row: TriggerActionRow) {
     })
     editingActionId.value = null
     await refresh()
+    toast.updated('Acción actualizada', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     actionsError.value = err?.data?.statusMessage || 'No se pudo guardar la acción'
+    toast.error('No se pudo guardar la acción', actionsError.value)
   } finally {
     savingAction.value = false
   }
@@ -260,11 +268,18 @@ async function deleteAction(row: TriggerActionRow) {
     // Nitro/rou3, no solo de tipos) en server/utils/moduleEntityFields.ts.
     await $fetch(`/api/trigger-actions/${row.id}` as string, { method: 'DELETE' })
     await refresh()
+    toast.success('Acción eliminada', 'La acción se eliminó correctamente.')
   } catch (err: any) {
     actionsError.value = err?.data?.statusMessage || 'No se pudo eliminar la acción'
+    toast.error('No se pudo eliminar la acción', actionsError.value)
   }
 }
 
+// Reordenar via drag-equivalente (flechas arriba/abajo): sin toast de exito -
+// un toast por cada click de flecha seria ruido, la UI ya se reordena al
+// instante (mismo criterio que ModuleFieldsCard.vue). Si falla, el error SI
+// se avisa por toast porque la UI ya cambio de forma optimista y luego se
+// revierte con el refresh().
 async function moveAction(index: number, direction: -1 | 1) {
   const target = index + direction
   if (target < 0 || target >= actions.value.length) return
@@ -280,6 +295,7 @@ async function moveAction(index: number, direction: -1 | 1) {
     await refresh()
   } catch (err: any) {
     actionsError.value = err?.data?.statusMessage || 'No se pudo reordenar las acciones'
+    toast.error('No se pudo reordenar las acciones', actionsError.value)
     await refresh()
   }
 }
@@ -306,8 +322,10 @@ async function onAddAction() {
     })
     showAddAction.value = false
     await refresh()
+    toast.success('Acción agregada', 'La acción se agregó correctamente.')
   } catch (err: any) {
     actionsError.value = err?.data?.statusMessage || 'No se pudo agregar la acción'
+    toast.error('No se pudo agregar la acción', actionsError.value)
   } finally {
     savingAction.value = false
   }
@@ -342,8 +360,10 @@ async function onRetry(logId: string) {
   try {
     await $fetch(`/api/trigger-logs/${logId}/retry`, { method: 'POST' })
     await refreshLogs()
+    toast.success('Reintento enviado', 'La ejecución se volvió a encolar.')
   } catch (err: any) {
     retryError.value = err?.data?.statusMessage || 'No se pudo reintentar'
+    toast.error('No se pudo reintentar', retryError.value)
   } finally {
     retryingId.value = null
   }
@@ -402,7 +422,6 @@ async function onRetry(logId: string) {
         </div>
       </div>
       <p v-if="saveError" class="text-sm text-brand-error-text">{{ saveError }}</p>
-      <p v-if="saved" class="text-sm text-brand-success-text">Trigger guardado correctamente.</p>
 
       <div class="flex items-center gap-3">
         <select

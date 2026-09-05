@@ -80,6 +80,10 @@ function badgeForField(field: EntityFieldMeta) {
 }
 
 const modalOpen = ref(false)
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 const modalMode = ref<'create' | 'edit'>('create')
 const editingField = ref<EntityFieldMeta | null>(null)
 const saving = ref(false)
@@ -173,13 +177,16 @@ async function runFieldUpdate(draft: FieldDraft) {
   try {
     if (modalMode.value === 'create') {
       await $fetch(`/api/entities/${props.entityId}/fields`, { method: 'POST', body: draft })
+      toast.success('Campo creado', `"${draft.label}" se agregó al módulo.`)
     } else if (editingField.value) {
       await submitFieldUpdate(editingField.value.id, draft)
+      toast.updated('Campo actualizado', `Los cambios en "${draft.label}" se guardaron correctamente.`)
     }
     modalOpen.value = false
     emit('changed')
   } catch (err: any) {
     modalError.value = err?.data?.statusMessage || 'No se pudo guardar el campo'
+    toast.error('No se pudo guardar el campo', modalError.value)
   } finally {
     saving.value = false
   }
@@ -229,8 +236,10 @@ async function runFieldDelete(fieldId: string) {
     const url: string = `/api/entity-fields/${fieldId}`
     await $fetch(url, { method: 'DELETE' })
     emit('changed')
+    toast.success('Campo eliminado', 'El campo se eliminó correctamente.')
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el campo'
+    toast.error('No se pudo eliminar el campo', deleteError.value)
   } finally {
     deletingId.value = null
   }
@@ -310,6 +319,12 @@ async function onDrop() {
     emit('changed')
   } catch (err: any) {
     reorderError.value = err?.data?.statusMessage || 'No se pudo reordenar los campos'
+    // Sin toast de exito aca a proposito (a diferencia del resto de acciones
+    // de esta tarjeta): el drag-and-drop es una interaccion frecuente/fluida,
+    // un toast en cada soltada seria ruido. El de error si importa - sin el,
+    // un reorder fallido pasaria desapercibido (el orden visual ya cambio
+    // optimisticamente antes de este catch).
+    toast.error('No se pudo reordenar los campos', reorderError.value)
   } finally {
     reordering.value = false
   }

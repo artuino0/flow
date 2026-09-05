@@ -73,6 +73,10 @@ function roleName(roleId: string | null): string {
   return roles.value.find((r) => r.id === roleId)?.name ?? 'Selecciona un rol'
 }
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 // --- Invitar usuario (Invite Modal del diseño) ---
 const inviteOpen = ref(false)
 const inviteEmail = ref('')
@@ -105,8 +109,10 @@ async function onInvite() {
     await $fetch('/api/users', { method: 'POST', body: { email, roleId: inviteRoleId.value } })
     await refreshUsers()
     inviteOpen.value = false
+    toast.success('Invitación enviada', `Se envió una invitación a ${email}.`)
   } catch (err: any) {
     inviteError.value = err?.data?.statusMessage || 'No se pudo enviar la invitación'
+    toast.error('No se pudo enviar la invitación', inviteError.value)
   } finally {
     inviting.value = false
   }
@@ -141,8 +147,10 @@ async function onSaveEdit() {
     })
     await refreshUsers()
     editOpen.value = false
+    toast.updated('Usuario actualizado', `Los cambios de ${editUser.value.email} se guardaron correctamente.`)
   } catch (err: any) {
     editError.value = err?.data?.statusMessage || 'No se pudieron guardar los cambios'
+    toast.error('No se pudieron guardar los cambios', editError.value)
   } finally {
     editSaving.value = false
   }
@@ -169,13 +177,16 @@ async function onConfirm() {
   try {
     if (confirmIsCancel.value) {
       await $fetch(`/api/users/${confirmTarget.value.id}`, { method: 'DELETE' })
+      toast.success('Invitación cancelada', `Se canceló la invitación de ${confirmTarget.value.email}.`)
     } else {
       await $fetch(`/api/users/${confirmTarget.value.id}`, { method: 'PUT', body: { isActive: false } })
+      toast.updated('Usuario desactivado', `${confirmTarget.value.email} ya no puede acceder.`)
     }
     await refreshUsers()
     confirmOpen.value = false
   } catch (err: any) {
     confirmError.value = err?.data?.statusMessage || 'No se pudo completar la acción'
+    toast.error('No se pudo completar la acción', confirmError.value)
   } finally {
     confirmLoading.value = false
   }

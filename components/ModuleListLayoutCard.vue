@@ -200,6 +200,13 @@ const openPickerMeta = computed<RelatedMeta | 'loading' | 'error' | null>(() => 
   return relatedMeta[slug] ?? null
 })
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Esta accion se auto-guarda al elegir una
+// opcion (sin boton "Guardar" propio) y solo cierra el picker en exito - sin
+// el toast no quedaria NINGUNA confirmacion visible de que el cambio se
+// aplico.
+const toast = useToast()
+
 async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
   const slug = relationSlug(field)
   if (!slug) return
@@ -212,8 +219,10 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
     await $fetch(`/api/entities/${meta.id}`, { method: 'PUT', body: { labelField: value } })
     relatedMeta[slug] = { ...meta, labelField: value }
     openPickerFor.value = null
+    toast.updated('Campo actualizado', 'El campo a mostrar en las relaciones se guardó correctamente.')
   } catch (err: any) {
     pickerError.value = err?.data?.statusMessage || 'No se pudo guardar el campo a mostrar'
+    toast.error('No se pudo guardar el campo a mostrar', pickerError.value)
   } finally {
     pickerSaving.value = null
   }

@@ -67,6 +67,10 @@ onMounted(loadRelations)
 // ej. "Empresa matriz de Empresa" - ver relationDefinitions.ts).
 const otherEntities = computed(() => props.entityOptions)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 const formOpen = ref(false)
 const formName = ref('')
 const formTargetEntityId = ref('')
@@ -94,8 +98,10 @@ async function onCreate() {
     })
     formOpen.value = false
     await loadRelations()
+    toast.success('Relación creada', `"${formName.value.trim()}" se agregó correctamente.`)
   } catch (err: any) {
     formError.value = err?.data?.statusMessage || 'No se pudo crear la relación'
+    toast.error('No se pudo crear la relación', formError.value)
   } finally {
     saving.value = false
   }
@@ -122,8 +128,10 @@ async function confirmRename(relation: RelationDefinition) {
     await $fetch(`/api/relation-definitions/${relation.id}`, { method: 'PUT', body: { name: renameValue.value.trim() } })
     renamingId.value = null
     await loadRelations()
+    toast.updated('Relación actualizada', `Se renombró a "${renameValue.value.trim()}".`)
   } catch (err: any) {
     renameError.value = err?.data?.statusMessage || 'No se pudo renombrar la relación'
+    toast.error('No se pudo renombrar la relación', renameError.value)
   } finally {
     renaming.value = false
   }
@@ -144,8 +152,10 @@ async function onDelete(relation: RelationDefinition) {
   try {
     await $fetch(`/api/relation-definitions/${relation.id}`, { method: 'DELETE' })
     await loadRelations()
+    toast.success('Relación eliminada', `"${relation.name}" se eliminó correctamente.`)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar la relación'
+    toast.error('No se pudo eliminar la relación', deleteError.value)
   } finally {
     deletingId.value = null
   }

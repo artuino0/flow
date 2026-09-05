@@ -46,7 +46,14 @@ const generalFormRef = ref<{ validateAll: () => boolean } | null>(null)
 const tablaFormRefs = ref<Array<{ validateAll: () => boolean } | null>>([])
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
-const submitted = ref(false)
+
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Toast/Editado (variante "updated") reemplaza
+// el aviso inline estatico "Cambios guardados correctamente." que vivia
+// suelto debajo del formulario (quedaba invisible si el usuario ya habia
+// scrolleado mas abajo) - el mensaje de error inline se mantiene ademas del
+// toast, igual que en nuevo.vue.
+const toast = useToast()
 
 function validateAll(): boolean {
   const refs = [generalFormRef.value, ...tablaFormRefs.value].filter((r): r is { validateAll: () => boolean } => Boolean(r))
@@ -56,7 +63,6 @@ function validateAll(): boolean {
 
 async function onSubmit() {
   submitError.value = null
-  submitted.value = false
   if (!validateAll()) return
 
   submitting.value = true
@@ -65,9 +71,10 @@ async function onSubmit() {
       method: 'PUT',
       body: { customData: formValues.value }
     })
-    submitted.value = true
+    toast.updated('Registro actualizado', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo actualizar el registro'
+    toast.error('No se pudo actualizar el registro', submitError.value)
   } finally {
     submitting.value = false
   }
@@ -125,7 +132,6 @@ async function onSubmit() {
         </div>
 
         <p v-if="submitError" class="text-sm text-brand-error-text">{{ submitError }}</p>
-        <p v-if="submitted" class="text-sm text-brand-success-text">Cambios guardados correctamente.</p>
 
         <div class="flex justify-end gap-2">
           <NuxtLink

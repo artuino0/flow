@@ -37,6 +37,12 @@ const importing = ref(false)
 const importError = ref<string | null>(null)
 const importResult = ref<ImportResult | null>(null)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. La importacion puede tardar (archivos con
+// muchas filas), por eso es la unica accion de la app que usa el toast
+// "Cargando" (unico variant que no se autodescarta) mientras esta en curso.
+const toast = useToast()
+
 function resetImportState() {
   parseError.value = null
   headers.value = []
@@ -80,13 +86,21 @@ async function onImport() {
   importError.value = null
   importResult.value = null
   importing.value = true
+  const loadingId = toast.loading('Importando archivo', `Procesando ${rows.value.length} fila${rows.value.length === 1 ? '' : 's'}...`)
   try {
     importResult.value = await $fetch<ImportResult>(`/api/records/${slug}/import`, {
       method: 'POST',
       body: { rows: rows.value }
     })
+    toast.dismiss(loadingId)
+    toast.success(
+      'Importación completa',
+      `${importResult.value.insertedCount} registro${importResult.value.insertedCount === 1 ? '' : 's'} importado${importResult.value.insertedCount === 1 ? '' : 's'}${importResult.value.errors.length > 0 ? `, ${importResult.value.errors.length} con error` : ''}.`
+    )
   } catch (err: any) {
+    toast.dismiss(loadingId)
     importError.value = err?.data?.statusMessage || 'No se pudo importar el archivo'
+    toast.error('No se pudo importar el archivo', importError.value)
   } finally {
     importing.value = false
   }

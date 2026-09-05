@@ -13,17 +13,19 @@ definePageMeta({ layout: 'default' })
 const { user, fetchMe } = useAuth()
 if (!user.value) await fetchMe()
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 // --- Cambiar contraseña -----------------------------------------------
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const passwordError = ref('')
-const passwordSuccess = ref(false)
 const savingPassword = ref(false)
 
 async function onChangePassword() {
   passwordError.value = ''
-  passwordSuccess.value = false
   if (newPassword.value !== confirmPassword.value) {
     passwordError.value = 'La confirmación no coincide con la contraseña nueva'
     return
@@ -34,12 +36,13 @@ async function onChangePassword() {
       method: 'PUT',
       body: { currentPassword: currentPassword.value, newPassword: newPassword.value }
     })
-    passwordSuccess.value = true
+    toast.updated('Contraseña actualizada', 'Tu contraseña se cambió correctamente.')
     currentPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
   } catch (err: any) {
     passwordError.value = err?.data?.statusMessage || 'No se pudo cambiar la contraseña'
+    toast.error('No se pudo cambiar la contraseña', passwordError.value)
   } finally {
     savingPassword.value = false
   }
@@ -80,8 +83,10 @@ async function confirmTotpSetup() {
     await $fetch('/api/auth/totp/verify', { method: 'POST', body: { code: totpVerifyCode.value } })
     totpStep.value = 'idle'
     await fetchMe()
+    toast.success('Verificación en dos pasos activada', 'Tu cuenta ahora está protegida con 2FA.')
   } catch (err: any) {
     totpError.value = err?.data?.statusMessage || 'Código inválido'
+    toast.error('No se pudo activar la verificación en dos pasos', totpError.value)
   } finally {
     totpLoading.value = false
   }
@@ -105,8 +110,10 @@ async function confirmTotpDisable() {
     disablePassword.value = ''
     totpStep.value = 'idle'
     await fetchMe()
+    toast.updated('Verificación en dos pasos desactivada', 'Tu cuenta ya no usa 2FA.')
   } catch (err: any) {
     totpError.value = err?.data?.statusMessage || 'No se pudo desactivar el 2FA'
+    toast.error('No se pudo desactivar el 2FA', totpError.value)
   } finally {
     totpLoading.value = false
   }
@@ -146,7 +153,6 @@ async function copySecret() {
       </div>
       <form class="flex flex-col gap-4 p-5" @submit.prevent="onChangePassword">
         <p v-if="passwordError" class="text-sm text-brand-error-text">{{ passwordError }}</p>
-        <p v-if="passwordSuccess" class="text-sm text-brand-success-text">Contraseña actualizada correctamente.</p>
 
         <div class="flex flex-col gap-1.5">
           <label for="currentPassword" class="text-[13px] font-semibold text-brand-text">Contraseña actual</label>

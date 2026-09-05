@@ -69,6 +69,10 @@ const filteredTriggers = computed(() => {
   return rows.filter((t) => t.name.toLowerCase().includes(term) || t.entityName.toLowerCase().includes(term))
 })
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 const toggleError = ref<string | null>(null)
 async function onToggleActive(row: TriggerRow) {
   toggleError.value = null
@@ -79,6 +83,11 @@ async function onToggleActive(row: TriggerRow) {
   } catch (err: any) {
     row.isActive = !next
     toggleError.value = err?.data?.statusMessage || 'No se pudo cambiar el estado del trigger'
+    // Toast ademas del inline (a diferencia de otras acciones de esta
+    // pantalla): el switch ya revirtio SOLO visualmente al valor anterior -
+    // sin el toast, un usuario que no mire el mensaje suelto podria no notar
+    // que el cambio no se aplico.
+    toast.error('No se pudo cambiar el estado del trigger', toggleError.value)
   }
 }
 
@@ -91,8 +100,10 @@ async function onDelete(row: TriggerRow) {
   try {
     await $fetch(`/api/triggers/${row.id}`, { method: 'DELETE' })
     await refresh()
+    toast.success('Trigger eliminado', `"${row.name}" se eliminó correctamente.`)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el trigger'
+    toast.error('No se pudo eliminar el trigger', deleteError.value)
   } finally {
     deletingId.value = null
   }
@@ -127,9 +138,11 @@ async function onCreate() {
       body: { name: newName.value, entityId: newEntityId.value, triggerEvent: newEvent.value }
     })
     showCreate.value = false
+    toast.success('Trigger creado', `"${newName.value}" ya está disponible.`)
     await navigateTo(`/triggers/${created.id}/editar`)
   } catch (err: any) {
     createError.value = err?.data?.statusMessage || 'No se pudo crear el trigger'
+    toast.error('No se pudo crear el trigger', createError.value)
   } finally {
     creating.value = false
   }

@@ -63,6 +63,13 @@ const tablaFormRefs = ref<Array<{ validateAll: () => boolean } | null>>([])
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Toast/Guardado (variante "success") en la
+// creacion exitosa - el error tambien se muestra en el toast, ademas del
+// mensaje inline ya existente (submitError, que queda por si el toast se
+// pierde por un re-render inmediato al navegar).
+const toast = useToast()
+
 function validateAll(): boolean {
   const refs = [generalFormRef.value, ...tablaFormRefs.value].filter((r): r is { validateAll: () => boolean } => Boolean(r))
   // .map() en vez de .every() con corto-circuito: hace falta correr
@@ -82,9 +89,11 @@ async function onSubmit() {
       method: 'POST',
       body: { customData: formValues.value }
     })
+    toast.success('Registro creado', `Se creó un nuevo registro en ${data.value?.entity?.singularName || data.value?.entity?.name || slug}.`)
     await navigateTo(`/registros/${slug}`)
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo crear el registro'
+    toast.error('No se pudo crear el registro', submitError.value)
   } finally {
     submitting.value = false
   }

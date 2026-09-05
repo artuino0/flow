@@ -165,13 +165,22 @@ function onSort(value: { sortBy: string; sortDir: 'asc' | 'desc' }) {
 
 const deleteError = ref<string | null>(null)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Reusa la variante "success" (Toast/Guardado,
+// circle-check verde) para la confirmacion de borrado - el diseno en Pencil
+// no tiene una quinta variante "Eliminado" propia, y semanticamente sigue
+// siendo "la accion terminó bien", igual que crear.
+const toast = useToast()
+
 async function onDelete(id: string) {
   deleteError.value = null
   try {
     await $fetch(`/api/records/${slug}/${id}`, { method: 'DELETE' })
     await refreshRecords()
+    toast.success('Registro eliminado', 'El registro se eliminó correctamente.')
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el registro'
+    toast.error('No se pudo eliminar el registro', deleteError.value)
   }
 }
 </script>

@@ -37,6 +37,10 @@ const loadingMeta = ref(false)
 const uploading = ref(false)
 const error = ref<string | null>(null)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts.
+const toast = useToast()
+
 const currentFileId = computed(() => (typeof props.modelValue === 'string' && props.modelValue ? props.modelValue : null))
 
 async function loadMeta(id: string) {
@@ -87,8 +91,10 @@ async function onFileChange(event: Event) {
     })
     fileMeta.value = result
     emit('update:modelValue', result.id)
+    toast.success('Archivo subido', `"${result.fileName}" se subió correctamente.`)
   } catch (err: any) {
     error.value = err?.data?.statusMessage || 'No se pudo subir el archivo'
+    toast.error('No se pudo subir el archivo', error.value)
   } finally {
     uploading.value = false
   }

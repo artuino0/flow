@@ -65,6 +65,10 @@ function formatDate(iso: string): string {
 const deleteError = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") - ver
+// composables/useToast.ts.
+const toast = useToast()
+
 async function onDelete(module: ModuleRow) {
   if (!confirm(`Eliminar el ${props.noun} "${module.name}"? Esta accion no se puede deshacer.`)) return
 
@@ -73,8 +77,10 @@ async function onDelete(module: ModuleRow) {
   try {
     await $fetch(`/api/entities/${module.id}`, { method: 'DELETE' })
     await refresh()
+    toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} eliminado`, `"${module.name}" se eliminó correctamente.`)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || `No se pudo eliminar el ${props.noun}`
+    toast.error(`No se pudo eliminar el ${props.noun}`, deleteError.value)
   } finally {
     deletingId.value = null
   }

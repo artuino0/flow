@@ -49,6 +49,13 @@ const slugTouched = ref(false)
 const createError = ref<string | null>(null)
 const creating = ref(false)
 
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Solo al TERMINAR el asistente completo (paso
+// 4, "Diseño del listado", el unico que redirige a basePath) - los pasos
+// intermedios (POST inicial, guardar diseño del detalle) son "continuar",
+// no "terminar", un toast en cada uno seria ruido.
+const toast = useToast()
+
 watch(name, (value) => {
   if (!slugTouched.value) slug.value = slugify(value)
 })
@@ -88,6 +95,7 @@ async function onSaveDetailLayout() {
     step.value = 'listado'
   } catch (err: any) {
     detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
+    toast.error('No se pudo guardar el diseño del detalle', detailLayoutError.value)
   } finally {
     savingDetailLayout.value = false
   }
@@ -101,9 +109,11 @@ async function onSaveListLayout() {
   savingListLayout.value = true
   try {
     await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { listLayout: listLayout.value } })
+    toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} creado`, `"${name.value}" ya está disponible.`)
     router.push(props.basePath)
   } catch (err: any) {
     listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
+    toast.error('No se pudo guardar el diseño del listado', listLayoutError.value)
   } finally {
     savingListLayout.value = false
   }
@@ -128,6 +138,7 @@ async function onContinue() {
     await loadFields()
   } catch (err: any) {
     createError.value = err?.data?.statusMessage || `No se pudo crear el ${props.noun}`
+    toast.error(`No se pudo crear el ${props.noun}`, createError.value)
   } finally {
     creating.value = false
   }

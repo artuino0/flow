@@ -133,11 +133,17 @@ watchEffect(() => {
 
 const saveError = ref<string | null>(null)
 const saving = ref(false)
-const saved = ref(false)
+
+// Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
+// ver composables/useToast.ts. Reemplaza los 3 avisos inline estaticos de
+// esta pagina (saved/detailLayoutSaved/listLayoutSaved, uno por pestaña) por
+// Toast/Editado (variante "updated") - quedaban ocultos si el usuario ya
+// habia scrolleado, y la pantalla tiene 6 pestañas distintas que podian
+// mostrar el mismo tipo de aviso suelto cada una.
+const toast = useToast()
 
 async function onSave() {
   saveError.value = null
-  saved.value = false
   saving.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, {
@@ -150,10 +156,11 @@ async function onSave() {
         singularName: singularName.value.trim() || null
       }
     })
-    saved.value = true
+    toast.updated('Módulo actualizado', 'Los cambios se guardaron correctamente.')
     await refresh()
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudo guardar el módulo'
+    toast.error('No se pudo guardar el módulo', saveError.value)
   } finally {
     saving.value = false
   }
@@ -173,9 +180,11 @@ async function onDeleteModule() {
   deleting.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, { method: 'DELETE' })
+    toast.success('Módulo eliminado', `"${currentModule.value.name}" se eliminó correctamente.`)
     await router.push(listBackTo.value)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el módulo'
+    toast.error('No se pudo eliminar el módulo', deleteError.value)
   } finally {
     deleting.value = false
   }
@@ -219,16 +228,15 @@ watchEffect(() => {
 
 const savingDetailLayout = ref(false)
 const detailLayoutError = ref<string | null>(null)
-const detailLayoutSaved = ref(false)
 async function onSaveDetailLayout() {
   detailLayoutError.value = null
-  detailLayoutSaved.value = false
   savingDetailLayout.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { detailLayout: detailLayout.value } })
-    detailLayoutSaved.value = true
+    toast.updated('Diseño del detalle guardado', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     detailLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del detalle'
+    toast.error('No se pudo guardar el diseño del detalle', detailLayoutError.value)
   } finally {
     savingDetailLayout.value = false
   }
@@ -244,16 +252,15 @@ watchEffect(() => {
 
 const savingListLayout = ref(false)
 const listLayoutError = ref<string | null>(null)
-const listLayoutSaved = ref(false)
 async function onSaveListLayout() {
   listLayoutError.value = null
-  listLayoutSaved.value = false
   savingListLayout.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value } })
-    listLayoutSaved.value = true
+    toast.updated('Diseño del listado guardado', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
+    toast.error('No se pudo guardar el diseño del listado', listLayoutError.value)
   } finally {
     savingListLayout.value = false
   }
@@ -412,7 +419,6 @@ async function onSaveListLayout() {
               </div>
 
               <p v-if="saveError" class="mx-5 mb-2 text-sm text-brand-error-text">{{ saveError }}</p>
-              <p v-if="saved" class="mx-5 mb-2 text-sm text-brand-success-text">Módulo guardado correctamente.</p>
 
               <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
                 <NuxtLink :to="listBackTo" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
@@ -477,7 +483,6 @@ async function onSaveListLayout() {
            vivo, el mismo componente que renderiza la ficha real). -->
       <template v-else-if="step === 'detalle'">
         <p v-if="detailLayoutError" class="text-sm text-brand-error-text">{{ detailLayoutError }}</p>
-        <p v-if="detailLayoutSaved" class="text-sm text-brand-success-text">Diseño del detalle guardado correctamente.</p>
         <div class="flex justify-end">
           <button
             type="button"
@@ -506,7 +511,6 @@ async function onSaveListLayout() {
            reusa DynamicTable.vue, el mismo componente del listado real). -->
       <template v-else-if="step === 'listado'">
         <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
-        <p v-if="listLayoutSaved" class="text-sm text-brand-success-text">Diseño del listado guardado correctamente.</p>
         <div class="flex justify-end">
           <button
             type="button"
