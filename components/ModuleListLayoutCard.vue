@@ -140,8 +140,16 @@ function onDrop() {
 interface RelatedMeta {
   id: string
   labelField: string | null
-  textFields: EntityFieldMeta[]
+  labelCandidateFields: EntityFieldMeta[]
 }
+
+// Bug reportado por el usuario (2026-09-04, viendo un uuid truncado
+// "86b28200" en el buscador de un campo relacion): este picker solo listaba
+// dataType 'text', dejando afuera 'incremental' (folio/numero autogenerado -
+// justo el campo que identifica un registro como una Recepcion) - ni
+// aparecia como opcion, aunque fuera el unico campo legible de la entidad.
+// Mismo criterio que LABEL_CANDIDATE_TYPES de utils/recordLabel.ts.
+const LABEL_CANDIDATE_TYPES = new Set(['text', 'incremental'])
 const relatedMeta = reactive<Record<string, RelatedMeta | 'loading' | 'error'>>({})
 const openPickerFor = ref<string | null>(null)
 const pickerError = ref<string | null>(null)
@@ -160,7 +168,7 @@ async function ensureRelatedMeta(slug: string) {
     relatedMeta[slug] = {
       id: res.entity.id,
       labelField: res.entity.labelField ?? null,
-      textFields: res.fields.filter((f) => f.dataType === 'text' && f.name !== 'id')
+      labelCandidateFields: res.fields.filter((f) => LABEL_CANDIDATE_TYPES.has(f.dataType) && f.name !== 'id')
     }
   } catch {
     relatedMeta[slug] = 'error'
@@ -276,12 +284,12 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
                 >
                   <span class="flex flex-col">
                     <span class="text-sm text-brand-text">Automático</span>
-                    <span class="text-xs text-brand-text-muted">Primer campo de texto</span>
+                    <span class="text-xs text-brand-text-muted">Primer campo de texto o incremental</span>
                   </span>
                   <Check v-if="!openPickerMeta.labelField" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
                 </button>
                 <button
-                  v-for="tf in openPickerMeta.textFields"
+                  v-for="tf in openPickerMeta.labelCandidateFields"
                   :key="tf.id"
                   type="button"
                   class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-brand-text hover:bg-brand-bg"
@@ -290,7 +298,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
                   {{ tf.label }}
                   <Check v-if="openPickerMeta.labelField === tf.name" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
                 </button>
-                <p v-if="openPickerMeta.textFields.length === 0" class="px-3 py-1.5 text-xs text-brand-text-muted">Esa entidad no tiene campos de texto.</p>
+                <p v-if="openPickerMeta.labelCandidateFields.length === 0" class="px-3 py-1.5 text-xs text-brand-text-muted">Esa entidad no tiene campos de texto ni incremental.</p>
               </template>
             </div>
           </div>

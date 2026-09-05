@@ -16,19 +16,26 @@ import { entities, entityFields, records } from '~/server/db/schema'
 // Duplica (a proposito, mismo criterio ya establecido entre
 // utils/recordLabel.ts del cliente y labelFieldFor() de csvImport.ts) la
 // heuristica de "campo etiqueta" - pero ACA ademas respeta entities.labelField
-// si esta fijado y sigue siendo un campo de texto real de la entidad destino
-// (ver comentario largo en server/db/schema.ts).
+// si esta fijado y sigue siendo un campo real de la entidad destino (ver
+// comentario largo en server/db/schema.ts).
+//
+// Bug reportado por el usuario (2026-09-04): igual que utils/recordLabel.ts,
+// esto solo consideraba dataType 'text' - un campo 'incremental' tambien es
+// un valor de texto legible en custom_data y no deberia quedar afuera (ver
+// el comentario largo de LABEL_CANDIDATE_TYPES en utils/recordLabel.ts).
 interface LabelFieldRow {
   name: string
   dataType: string
 }
 
-function pickLabelField(fields: LabelFieldRow[], override: string | null): string | null {
+const LABEL_CANDIDATE_TYPES = new Set(['text', 'incremental'])
+
+export function pickLabelField(fields: LabelFieldRow[], override: string | null): string | null {
   if (override) {
-    const overrideField = fields.find((f) => f.name === override && f.dataType === 'text')
+    const overrideField = fields.find((f) => f.name === override && LABEL_CANDIDATE_TYPES.has(f.dataType))
     if (overrideField) return overrideField.name
   }
-  return fields.find((f) => f.dataType === 'text')?.name ?? null
+  return fields.find((f) => LABEL_CANDIDATE_TYPES.has(f.dataType))?.name ?? null
 }
 
 interface SourceFieldRow {

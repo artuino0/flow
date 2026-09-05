@@ -13,12 +13,23 @@ import type { EntityFieldMeta } from '~/composables/useEntityFields'
 // entities.labelField permite fijar a mano cual campo de texto usar como
 // etiqueta cuando esta entidad es destino de una relacion. `override` es ese
 // valor (entity.labelField, puede venir null/undefined = "sin fijar"). Solo
-// se respeta si sigue siendo un campo de texto real y valido de esta
-// entidad (nunca "id") - si el campo fue borrado o cambio de tipo despues de
-// fijado, se cae a la heuristica automatica en vez de romper el label.
+// se respeta si sigue siendo un campo real y valido de esta entidad (nunca
+// "id") - si el campo fue borrado o cambio de tipo despues de fijado, se cae
+// a la heuristica automatica en vez de romper el label.
+//
+// Bug reportado por el usuario (2026-09-04, viendo un uuid crudo truncado
+// "86b28200" en el buscador de un campo relation): esta funcion solo
+// consideraba dataType 'text' - un campo 'incremental' (HU 2026-09-04,
+// posterior a esta funcion) tambien es un valor de texto legible y estable
+// guardado en custom_data, y de hecho suele ser justo el campo pensado para
+// identificar un registro (folio, numero de recepcion) - pero al no ser
+// 'text' nunca podia elegirse, ni a mano (el picker de ModuleListLayoutCard.vue
+// tampoco lo listaba) ni automaticamente, cayendo siempre al id truncado.
+const LABEL_CANDIDATE_TYPES = new Set(['text', 'incremental'])
+
 export function labelFieldFor(fields: EntityFieldMeta[], override?: string | null): string | null {
   if (override) {
-    const overrideField = fields.find((f) => f.name === override && f.dataType === 'text' && f.name !== 'id')
+    const overrideField = fields.find((f) => f.name === override && LABEL_CANDIDATE_TYPES.has(f.dataType) && f.name !== 'id')
     if (overrideField) return overrideField.name
   }
 
@@ -29,7 +40,7 @@ export function labelFieldFor(fields: EntityFieldMeta[], override?: string | nul
   // devolviendo el mismo fallback truncado de siempre (labelForRecord ya
   // caia a id.slice(0,8) al no encontrar 'id' en customData), tapando
   // cualquier campo real como "nombre" que antes SI se elegia.
-  return fields.find((f) => f.dataType === 'text' && f.name !== 'id')?.name ?? null
+  return fields.find((f) => LABEL_CANDIDATE_TYPES.has(f.dataType) && f.name !== 'id')?.name ?? null
 }
 
 export function labelForRecord(

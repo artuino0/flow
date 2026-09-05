@@ -38,6 +38,25 @@ describe('labelFieldFor', () => {
     const fields = [field({ name: 'id', dataType: 'text' }), field({ name: 'nombre', dataType: 'text' })]
     expect(labelFieldFor(fields, 'id')).toBe('nombre')
   })
+
+  // Bug reportado por el usuario (2026-09-04): un campo 'incremental' (folio
+  // autogenerado) es tan valido como etiqueta como uno 'text' - antes de este
+  // fix nunca se elegia (ni automatico ni por override), cayendo siempre al
+  // id truncado aunque fuera el unico campo legible de la entidad.
+  it('elige un campo incremental si no hay ningun campo de tipo text', () => {
+    const fields = [field({ name: 'id', dataType: 'text' }), field({ name: 'folio', dataType: 'incremental' }), field({ name: 'kilos', dataType: 'number' })]
+    expect(labelFieldFor(fields)).toBe('folio')
+  })
+
+  it('con un incremental y un text, gana el que aparece primero en el orden de campos (sin preferencia de tipo)', () => {
+    const fields = [field({ name: 'folio', dataType: 'incremental' }), field({ name: 'nombre', dataType: 'text' })]
+    expect(labelFieldFor(fields)).toBe('folio')
+  })
+
+  it('respeta el override si es un campo incremental real', () => {
+    const fields = [field({ name: 'nombre', dataType: 'text' }), field({ name: 'folio', dataType: 'incremental' })]
+    expect(labelFieldFor(fields, 'folio')).toBe('folio')
+  })
 })
 
 describe('labelForRecord', () => {
@@ -53,5 +72,10 @@ describe('labelForRecord', () => {
 
   it('cae al id truncado si el campo elegido esta vacio', () => {
     expect(labelForRecord(fields, { nombre: '', telefono: '' }, 'uuid12345678')).toBe('uuid1234')
+  })
+
+  it('usa el valor de un campo incremental cuando es el unico campo legible (el bug real reportado)', () => {
+    const withIncremental = [field({ name: 'id', dataType: 'text' }), field({ name: 'folio', dataType: 'incremental' }), field({ name: 'kilos', dataType: 'number' })]
+    expect(labelForRecord(withIncremental, { folio: 'R-2026-00007', kilos: 120 }, 'uuid12345678')).toBe('R-2026-00007')
   })
 })

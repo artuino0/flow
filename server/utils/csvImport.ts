@@ -57,9 +57,15 @@ interface ImportFieldRow {
   validationRules: unknown
 }
 
-/** Primer campo de tipo text de una entidad - misma heuristica de "etiqueta" que utils/recordLabel.ts (frontend), duplicada aca (ver comentario largo arriba). */
+// Bug reportado por el usuario (2026-09-04): esta heuristica solo miraba
+// dataType 'text', dejando afuera 'incremental' (folio/numero autogenerado -
+// justo el tipo de campo que alguien tipearia para buscar "por nombre" al
+// importar) - mismo fix que utils/recordLabel.ts y server/utils/relationLabels.ts.
+const LABEL_CANDIDATE_TYPES = new Set(['text', 'incremental'])
+
+/** Primer campo de tipo text/incremental de una entidad - misma heuristica de "etiqueta" que utils/recordLabel.ts (frontend), duplicada aca (ver comentario largo arriba). */
 function labelFieldFor(fields: ImportFieldRow[]): string | null {
-  return fields.find((f) => f.dataType === 'text')?.name ?? null
+  return fields.find((f) => LABEL_CANDIDATE_TYPES.has(f.dataType))?.name ?? null
 }
 
 type RelationLookup = string | { ambiguous: true } | null
