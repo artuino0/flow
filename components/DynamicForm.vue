@@ -20,6 +20,18 @@ const props = defineProps<{
   // asi que pasar su id es directo.
   entityId: string
   disabled?: boolean
+  // Pedido directo del usuario (2026-09-04, "no parece la ventana como la de
+  // pedido"): pages/registros/[entity]/nuevo.vue y .../[id]/editar.vue ahora
+  // arman una tarjeta propia por cada Campo Tabla (fiel a Screen/Form Pedido
+  // (Campo Tabla) del .pen) con el label del campo como titulo de la tarjeta
+  // - pasarle a esa tarjeta un DynamicForm con un solo campo (el Tabla)
+  // mostraria el mismo label DOS veces (titulo de tarjeta + label de arriba
+  // del campo). En vez de duplicar aca el switch de tipos de dynamicSchema.ts
+  // (que ya vive en este archivo) solo para el caso Tabla, se agrega esta
+  // bandera generica que oculta el bloque <label> - no cambia nada para el
+  // resto de usos (ModulePreviewCard.vue, "Informacion general") porque
+  // queda sin usar (undefined) ahi.
+  hideLabels?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,7 +95,7 @@ defineExpose({ validateAll })
 <template>
   <div class="flex flex-col gap-4">
     <div v-for="field in renderableFields" :key="field.id" class="flex flex-col gap-1.5">
-      <label :for="`field-${field.name}`" class="text-[13px] font-semibold text-brand-text">
+      <label v-if="!hideLabels" :for="`field-${field.name}`" class="text-[13px] font-semibold text-brand-text">
         {{ field.label }}
         <span v-if="field.isRequired" class="text-brand-error-text">*</span>
       </label>
