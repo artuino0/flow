@@ -1,5 +1,11 @@
 # Changelog
 
+### [0.70.0] - 2026-09-05
+#### [add]
+- **Secciones plegables en el menú lateral (GENERAL/MÓDULOS/ADMINISTRACIÓN).** Pedido directo del usuario: "hay manera de hacer desplegable el nivel principal del menú, general, entidades, administración". El componente "Sidebar Section Title" del diseño en Pencil es solo texto plano (sin chevron ni estado de plegado) - confirmado con las herramientas de Pencil antes de este cambio, así que no había un mock que reconciliar; se implementó siguiendo el mismo lenguaje visual ya establecido (mismo icono `ChevronDown` que ya usan los dropdowns de `pages/login.vue`/`layouts/default.vue`).
+- `components/AppNav.vue`: cada título de sección (antes un `<p>` estático) pasa a un `<button>` que alterna `sectionsOpen.{general,modulos,administracion}` - el chevron rota 90° cuando la sección está cerrada y sus links dejan de renderizarse. Estado persistido en `localStorage` (clave `flowerp-sidebar-sections-open`, envuelto en try/catch por si no está disponible - navegación privada, etc.) para que la elección sobreviva a recargar la página; por default las 3 secciones arrancan abiertas (mismo comportamiento visual que antes de este cambio si el usuario nunca las plegó).
+- Validado: `npx vue-tsc --noEmit` limpio, suite unit 163/163 sin cambios de conteo (cambio de UI puro, sin lógica de negocio ni endpoints tocados). El e2e completo no se pudo correr en el sandbox (mismo problema de `npm run build` documentado desde 0.64.0) - se recomienda correrlo localmente y probar a mano que plegar una sección, recargar la página, y volver a verla plegada funciona como se espera.
+
 ### [0.69.0] - 2026-09-05
 #### [add]
 - **Rediseño del Campo Tabla de relación única ("picker"): quita el encabezado redundante y cambia el flujo de "Agregar línea + buscar en la fila" por "elegir arriba, confirmar con +".** Feedback directo del usuario con captura de pantalla: "no es redundante que diga recepciones y luego una tabla dentro de la card llamada recepciones... el body debería tener solo la tabla, arriba de la tabla el select con un botón +". Dos cambios en `components/DynamicTableField.vue`:

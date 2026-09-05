@@ -26,8 +26,46 @@
 // seccion ya establecido, con el titulo "MÓDULOS" (el nombre real de la
 // epica, ERD-65) en vez de "DIRECTORIO" (ese nombre era especifico del CRM
 // hardcodeado que este cambio retira).
-import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap, Library } from '@lucide/vue'
+import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap, Library, ChevronDown } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
+
+// Pedido directo del usuario (2026-09-05): "hay manera de hacer desplegable
+// el nivel principal del menu, general, entidades, administracion" - las 3
+// secciones (GENERAL/MÓDULOS/ADMINISTRACIÓN) pasan de titulo estatico a
+// boton plegable (chevron que rota + oculta sus items). Sin mock en el .pen
+// para esto (el componente "Sidebar Section Title" del diseno es solo un
+// texto, sin chevron/estado de plegado - confirmado con las herramientas de
+// Pencil antes de este cambio), asi que se sigue el mismo lenguaje visual ya
+// establecido (chevron, mismo icono que ya usan los dropdown de
+// pages/login.vue/layouts/default.vue) en vez de inventar uno nuevo.
+// Estado persistido en localStorage (clave por seccion, no por usuario - es
+// una preferencia de UI del navegador, no un dato de negocio) para que la
+// eleccion sobreviva a recargar la pagina; default abierto (mismo
+// comportamiento que antes de este cambio) si no hay nada guardado o
+// localStorage no esta disponible (navegacion privada, etc.).
+type SidebarSection = 'general' | 'modulos' | 'administracion'
+const SIDEBAR_SECTIONS_STORAGE_KEY = 'flowerp-sidebar-sections-open'
+const sectionsOpen = reactive<Record<SidebarSection, boolean>>({
+  general: true,
+  modulos: true,
+  administracion: true
+})
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_SECTIONS_STORAGE_KEY)
+    if (raw) Object.assign(sectionsOpen, JSON.parse(raw))
+  } catch {
+    // localStorage no disponible (navegacion privada, etc.) - se queda con el default (abierto).
+  }
+})
+function toggleSection(key: SidebarSection) {
+  sectionsOpen[key] = !sectionsOpen[key]
+  try {
+    localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(sectionsOpen))
+  } catch {
+    // idem - si no se puede persistir, el toggle igual funciona para esta sesion.
+  }
+}
 
 interface NavEntity {
   slug: string
@@ -126,45 +164,72 @@ function isActive(to: string): boolean {
 <template>
   <nav class="flex flex-col gap-4">
     <div class="flex flex-col gap-px">
-      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">GENERAL</p>
-      <NuxtLink
-        v-for="item in items"
-        :key="item.to"
-        :to="item.to"
-        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
-        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted hover:text-brand-text-secondary"
+        @click="toggleSection('general')"
       >
-        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
-        {{ item.label }}
-      </NuxtLink>
+        <span>GENERAL</span>
+        <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="{ '-rotate-90': !sectionsOpen.general }" :stroke-width="2" />
+      </button>
+      <template v-if="sectionsOpen.general">
+        <NuxtLink
+          v-for="item in items"
+          :key="item.to"
+          :to="item.to"
+          class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+          :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+        >
+          <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
+          {{ item.label }}
+        </NuxtLink>
+      </template>
     </div>
 
     <div v-if="moduleItems.length" class="flex flex-col gap-px">
-      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">MÓDULOS</p>
-      <NuxtLink
-        v-for="item in moduleItems"
-        :key="item.to"
-        :to="item.to"
-        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
-        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted hover:text-brand-text-secondary"
+        @click="toggleSection('modulos')"
       >
-        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
-        {{ item.label }}
-      </NuxtLink>
+        <span>MÓDULOS</span>
+        <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="{ '-rotate-90': !sectionsOpen.modulos }" :stroke-width="2" />
+      </button>
+      <template v-if="sectionsOpen.modulos">
+        <NuxtLink
+          v-for="item in moduleItems"
+          :key="item.to"
+          :to="item.to"
+          class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+          :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+        >
+          <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
+          {{ item.label }}
+        </NuxtLink>
+      </template>
     </div>
 
     <div v-if="adminItems.length" class="flex flex-col gap-px">
-      <p class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">ADMINISTRACIÓN</p>
-      <NuxtLink
-        v-for="item in adminItems"
-        :key="item.to"
-        :to="item.to"
-        class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
-        :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted hover:text-brand-text-secondary"
+        @click="toggleSection('administracion')"
       >
-        <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
-        {{ item.label }}
-      </NuxtLink>
+        <span>ADMINISTRACIÓN</span>
+        <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="{ '-rotate-90': !sectionsOpen.administracion }" :stroke-width="2" />
+      </button>
+      <template v-if="sectionsOpen.administracion">
+        <NuxtLink
+          v-for="item in adminItems"
+          :key="item.to"
+          :to="item.to"
+          class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+          :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+        >
+          <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
+          {{ item.label }}
+        </NuxtLink>
+      </template>
     </div>
   </nav>
 </template>
