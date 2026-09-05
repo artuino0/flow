@@ -9,7 +9,7 @@
 // componente AppHeader del .pen). No hay endpoint de nombre de tenant hoy
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
-import { Boxes, Bell, LogOut, ChevronDown, PanelLeftClose } from '@lucide/vue'
+import { Bell, LogOut, ChevronDown, PanelLeftClose } from '@lucide/vue'
 
 const { user, logout } = useAuth()
 
@@ -38,10 +38,7 @@ async function onLogout(reason?: 'inactividad') {
   <div class="flex min-h-screen flex-col bg-brand-bg font-sans">
     <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
       <div class="flex items-center gap-2.5">
-        <div class="flex h-7 w-7 items-center justify-center rounded-md bg-brand-blue">
-          <Boxes class="h-4 w-4 text-white" :stroke-width="2" />
-        </div>
-        <span class="text-base font-bold text-brand-text">ERP Dinámico</span>
+        <img src="/brand/logo-color.png" alt="FlowERP" class="h-6 w-auto" />
       </div>
 
       <div class="flex items-center gap-4">

@@ -14,7 +14,7 @@
 // (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
 // registerTenant() solo crea ese rol de arranque además de "Administrador",
 // así que se dibuja fijo, sin dropdown funcional.
-import { ArrowLeft, ArrowRight, Boxes, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
 
 definePageMeta({ layout: false })
 
@@ -170,10 +170,7 @@ const brandText = computed(() => {
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
-        <Boxes class="h-[34px] w-[34px] text-white" :stroke-width="1.75" />
-      </div>
-      <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
+      <img src="/brand/logo-mono-invert.png" alt="FlowERP" class="h-12 w-auto" />
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">{{ brandText }}</p>
     </div>
 

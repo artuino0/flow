@@ -26,7 +26,7 @@ function setSmtpEnv(): void {
   process.env.SMTP_PORT = '587'
   process.env.SMTP_USER = 'user'
   process.env.SMTP_PASSWORD = 'pass'
-  process.env.SMTP_FROM = 'ERP Dinámico <no-responder@test.local>'
+  process.env.SMTP_FROM = 'FlowERP <no-responder@test.local>'
 }
 
 async function insertTrigger(name: string): Promise<string> {

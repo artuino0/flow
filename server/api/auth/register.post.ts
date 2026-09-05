@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
   try {
     await sendPlainEmail({
       to: body.email,
-      subject: `Tu organización ${body.organizationName} está lista en ERP Dinámico`,
+      subject: `Tu organización ${body.organizationName} está lista en FlowERP`,
       html: `<p>Hola ${escapeHtml(body.fullName)}, tu organización <strong>${escapeHtml(body.organizationName)}</strong> ya está lista. Ingresá con tu correo y contraseña cuando quieras.</p>`
     })
   } catch {

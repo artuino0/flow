@@ -1,6 +1,6 @@
 # erp-dinamico-frontback
 
-Nuxt 3 + Nitro (frontend y backend integrados) para el Motor ERP Dinamico.
+Nuxt 3 + Nitro (frontend y backend integrados) para el Motor FlowERP.
 
 ## Requisitos
 - Node 22+

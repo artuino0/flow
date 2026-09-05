@@ -9,7 +9,7 @@
 // Ruta /invitacion/:token (no /aceptar-invitacion?token=) porque asi es como
 // el correo real arma el enlace (Email/Invitación Usuario, nodo hOZJI:
 // "app.erpdinamico.com/invitacion/8f3a2c91").
-import { Boxes, CircleAlert, CircleCheck } from '@lucide/vue'
+import { CircleAlert, CircleCheck } from '@lucide/vue'
 
 definePageMeta({ layout: false })
 
@@ -49,10 +49,7 @@ async function onSubmit() {
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
-        <Boxes class="h-[34px] w-[34px] text-white" :stroke-width="1.75" />
-      </div>
-      <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
+      <img src="/brand/logo-mono-invert.png" alt="FlowERP" class="h-12 w-auto" />
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">
         Configura entidades, campos y relaciones sin escribir código.
       </p>

@@ -19,15 +19,15 @@ describe('buildInvitationEmailHtml', () => {
 
   it('incluye el copy exacto del diseño real', () => {
     const html = buildInvitationEmailHtml(base)
-    expect(html).toContain('ERP Dinámico')
+    expect(html).toContain('FlowERP')
     expect(html).toContain('Te invitaron a unirte a Acme Corp')
-    expect(html).toContain('Juan Pérez te invitó a colaborar en el espacio de trabajo de Acme Corp en ERP Dinámico. Te vas a unir con el rol de Ventas.')
+    expect(html).toContain('Juan Pérez te invitó a colaborar en el espacio de trabajo de Acme Corp en FlowERP. Te vas a unir con el rol de Ventas.')
     expect(html).toContain('Rol asignado')
     expect(html).toContain('Aceptar invitación')
     expect(html).toContain('Este enlace expira en 7 días')
     expect(html).toContain('¿El botón no funciona? Copia y pega este enlace en tu navegador:')
     expect(html).toContain('https://app.erpdinamico.test/invitacion/abc123')
-    expect(html).toContain('Este correo fue enviado a maria.garcia@acme.com porque fue invitada a ERP Dinámico.')
+    expect(html).toContain('Este correo fue enviado a maria.garcia@acme.com porque fue invitada a FlowERP.')
   })
 
   it('el botón enlaza al inviteUrl real', () => {

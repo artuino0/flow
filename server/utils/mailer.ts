@@ -110,13 +110,13 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
     <tr><td align="center">
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;">
         <tr><td style="padding:28px 32px 0 32px;">
-          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;">ERP Dinámico</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;">FlowERP</p>
         </td></tr>
         <tr><td style="padding:20px 32px 0 32px;">
           <p style="margin:0;font-size:22px;font-weight:700;color:#33475B;">Te invitaron a unirte a ${escape(tenantName)}</p>
         </td></tr>
         <tr><td style="padding:12px 32px 0 32px;">
-          <p style="margin:0;font-size:14px;line-height:1.5;color:#516F90;">${escape(inviterName)} te invitó a colaborar en el espacio de trabajo de ${escape(tenantName)} en ERP Dinámico. Te vas a unir con el rol de ${escape(roleName)}.</p>
+          <p style="margin:0;font-size:14px;line-height:1.5;color:#516F90;">${escape(inviterName)} te invitó a colaborar en el espacio de trabajo de ${escape(tenantName)} en FlowERP. Te vas a unir con el rol de ${escape(roleName)}.</p>
         </td></tr>
         <tr><td style="padding:20px 32px 0 32px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F8FA;border-radius:6px;">
@@ -137,8 +137,8 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
           <p style="margin:4px 0 0 0;font-size:12px;font-weight:600;color:#33475B;word-break:break-all;">${escape(inviteUrl)}</p>
         </td></tr>
         <tr><td style="padding:28px 32px 28px 32px;border-top:1px solid #E5EAF0;margin-top:24px;">
-          <p style="margin:24px 0 0 0;font-size:12px;color:#8DA1B5;">Este correo fue enviado a ${escape(to)} porque fue invitada a ERP Dinámico.</p>
-          <p style="margin:8px 0 0 0;font-size:12px;color:#8DA1B5;">© ${year} ERP Dinámico. Todos los derechos reservados.</p>
+          <p style="margin:24px 0 0 0;font-size:12px;color:#8DA1B5;">Este correo fue enviado a ${escape(to)} porque fue invitada a FlowERP.</p>
+          <p style="margin:8px 0 0 0;font-size:12px;color:#8DA1B5;">© ${year} FlowERP. Todos los derechos reservados.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -162,7 +162,7 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
   await transporter.sendMail({
     from: smtp.from,
     to: params.to,
-    subject: `Te invitaron a unirte a ${params.tenantName} en ERP Dinámico`,
+    subject: `Te invitaron a unirte a ${params.tenantName} en FlowERP`,
     html: buildInvitationEmailHtml({ ...params, inviteUrl })
   })
 }

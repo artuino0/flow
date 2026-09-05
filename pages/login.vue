@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // HU-ERD-22 (backend/estado) + diseno aplicado desde ERPDinamico.pen
 // (Screen/Login), estilo definido en las variables del archivo Pencil.
-import { Boxes, Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
+import { Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
 import type { OrganizationOption } from '~/composables/useAuth'
 
 definePageMeta({ layout: false })
@@ -147,10 +147,7 @@ const brandTagline = computed(() =>
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
-        <Boxes class="h-[34px] w-[34px] text-white" :stroke-width="1.75" />
-      </div>
-      <h1 class="text-[28px] font-bold text-white">ERP Dinámico</h1>
+      <img src="/brand/logo-mono-invert.png" alt="FlowERP" class="h-12 w-auto" />
       <p class="w-[340px] text-[15px] text-[#DCEAF0]">
         {{ brandTagline }}
       </p>

@@ -205,7 +205,7 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
     try {
       await sendPlainEmail({
         to: outcome.person.email,
-        subject: `Te agregaron a ${outcome.tenantName} en ERP Dinámico`,
+        subject: `Te agregaron a ${outcome.tenantName} en FlowERP`,
         html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(outcome.tenantName)} con el rol de ${escapeHtml(outcome.roleName)}. Iniciá sesión con tu contraseña habitual y vas a poder elegir esta organización.</p>`
       })
     } catch {

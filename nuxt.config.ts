@@ -9,12 +9,22 @@ export default defineNuxtConfig({
   },
   // Tipografia del diseno en Pencil (ERPDinamico.pen): Inter en todas las
   // pantallas. Cargada por link, no next/font (proyecto es Nuxt).
+  //
+  // Titulo de pestana y favicon (rebranding ERP Dinamico -> FlowERP, pedido
+  // del usuario: "cambio de branding, todo donde diga ERP Dinamico cambia
+  // Flow ERP checa Brand / FlowERP"). El favicon es un export PNG real del
+  // nodo "FlowERP / Favicon 32" del brand kit en ERPDinamico.pen (Export()
+  // via MCP de Pencil - no hay forma de sacar el d= de los paths SVG desde
+  // esa API, solo rasterizar - ver tambien public/brand/*.png, usados en
+  // layouts/default.vue y las pantallas de login/registro/invitacion).
   app: {
     head: {
+      title: 'FlowERP',
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' }
+        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' },
+        { rel: 'icon', type: 'image/png', href: '/brand/favicon.png' }
       ]
     }
   },
