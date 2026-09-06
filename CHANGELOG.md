@@ -1,5 +1,13 @@
 # Changelog
 
+### [0.76.0] - 2026-09-06
+#### [add]
+- **`scripts/seedSalmantino.mjs`: tenant de demo "Grupo Agrícola Salmantino" de punta a punta.** Pedido directo del usuario: tumbar la base local, migrar de cero y poblarla con una estructura "similar a INTEBA" (el sistema real de empacadoras usado como referencia desde el trabajo de ERD-88) - a diferencia de `scripts/seedEmpaque.mjs` (5 entidades, hasta 5 campos cada una), acá cada entidad tiene entre 6 y 11 campos reales y las relaciones encadenan varios niveles (Empaque → Recepción → Variedad → Especie; Detalle de Embarque → Palet → Cámara de Frío).
+  - 15 entidades nuevas: 10 catálogos (`productores`, `fincas`, `especies`, `variedades`, `clientes`, `transportistas`, `vehículos`, `choferes`, `cámaras_frio`, `presentaciones`, `moduleKind: 'dimension'`) + 5 transaccionales (`palets`, `recepciones`, `empaques`, `embarques`, `detalle_embarques`) - la última es la "tabla relacionada" 1:N que ejercita de verdad el diseñador de reportes imprimibles de ERD-88.
+  - A diferencia de `scripts/seed.mjs`/`seedEmpaque.mjs` (solo metadatos sobre un tenant ya existente), este script crea el tenant + rol Administrador + usuario (mismo patrón que `scripts/seed-dev-user.mjs`) Y ADEMÁS siembra `records` de ejemplo reales (63 registros) directo contra la base - dominio: exportación de pimiento (rojo/amarillo/verde), pepino persa (convencional/orgánico), tomate (cherry/heirloom) y berenjena orgánica.
+  - Folios (`palets`/`recepciones`/`empaques`/`embarques`) generados con la misma lógica atómica de contador que `server/utils/incrementalField.ts` (`nextFolio()`), para que un folio nuevo creado después desde la UI siga la secuencia sin repetirse.
+  - Validado corriendo el script real como subproceso contra un Postgres real (embedded-postgres) recién migrado: 15 entidades, 63 registros, folios sin duplicados, y el caso deliberado de un palet "reservado" sin ningún `detalle_embarques` todavía (para probar en el diseñador el caso de un grupo sin filas de detalle).
+
 ### [0.75.0] - 2026-09-06
 #### [add]
 - **Borrado lógico de registros (ERD-87), prerequisito del Diseñador de reportes imprimibles.** Surgió al diseñar en Pencil el toggle "Incluir registros eliminados" de `Screen/Config de tabla relacionada` (ver ERD-88 más abajo): investigación previa confirmó que FlowERP no tenía ningún concepto de papelera - `DELETE /api/records/:entity/:id` era un `delete` físico real. Se le preguntó al usuario cómo encarar esto (dejarlo para después vs. incluirlo ahora) y eligió resolverlo ya, de punta a punta.
