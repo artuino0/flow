@@ -200,12 +200,25 @@ export const records = pgTable('records', {
   tenantId: uuid('tenant_id').notNull(),
   customData: jsonb('custom_data').notNull().default({}),
   isDirty: boolean('is_dirty').notNull().default(false),
+  // ERD-87 (borrado logico): null = registro activo (comportamiento de
+  // siempre); no-null = "eliminado" en la fecha indicada, sin quitar la fila
+  // de la base. Antes de esta columna, DELETE /api/records/:entity/:id hacia
+  // un `delete` real - necesario ahora porque el Diseñador de reportes
+  // imprimibles (ERD-88) tiene que poder listar registros eliminados como
+  // filas atenuadas junto a los activos (visto en un reporte real de un ERP
+  // similar: UNION ALL contra una tabla "_eliminado"), algo imposible de
+  // reconstruir despues de un borrado fisico. El resto de la plataforma seguia
+  // exactamente igual: todo endpoint que lee registros para uso normal
+  // (listado, detalle, edicion, import, ETL de OLAP) filtra deletedAt IS NULL
+  // por defecto - ver el comentario largo en server/utils/records.ts.
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
   tenantIdx: index('records_tenant_idx').on(table.tenantId),
   entityIdx: index('records_entity_idx').on(table.entityId),
-  customDataGinIdx: index('records_custom_data_gin_idx').using('gin', table.customData)
+  customDataGinIdx: index('records_custom_data_gin_idx').using('gin', table.customData),
+  deletedAtIdx: index('records_deleted_at_idx').on(table.deletedAt)
 }))
 
 // relation_definitions: define tipos de vinculo permitidos entre dos entidades (grafo).

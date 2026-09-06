@@ -2,6 +2,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { tenants, entities, records, dimDate, dimCliente, dimSucursal, factEventos } from '~/server/db/schema'
 import { logger } from '~/server/utils/logger'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // ETL transaccional -> OLAP (HU-ERD-28). Corre cada 15 min (server/plugins/olap-etl.ts)
 // sobre una ventana de tiempo con solapamiento (mas ancha que el intervalo del cron),
@@ -76,6 +77,9 @@ export async function runOlapEtlForTenant(tenantId: string, windowStart: Date, w
     }
 
     for (const entity of tenantEntities) {
+      // ERD-87: un registro eliminado deja de entrar en la ventana de la
+      // proxima corrida (no se re-agrega a los dim/fact) - el dashboard de
+      // Reportería IA es data de negocio agregada, no la papelera.
       const changedRecords = await tx
         .select()
         .from(records)
@@ -83,6 +87,7 @@ export async function runOlapEtlForTenant(tenantId: string, windowStart: Date, w
           and(
             eq(records.tenantId, tenantId),
             eq(records.entityId, entity.id),
+            recordNotDeleted,
             gte(records.updatedAt, windowStart),
             lte(records.updatedAt, windowEnd)
           )

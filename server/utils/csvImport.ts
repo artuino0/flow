@@ -2,6 +2,7 @@ import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { entities, entityFields, records } from '~/server/db/schema'
 import { getEntityZodSchema } from './dynamicSchema'
+import { recordNotDeleted } from './records'
 
 // HU-ERD-80: importacion masiva de datos (CSV) por entidad - pedido explicito
 // del usuario tras la revision de gaps de plataforma (2026-09-01, ver
@@ -120,6 +121,9 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
         return { error: `${relationEntitySlug} no tiene un campo de texto para buscar "${trimmed}" por nombre` }
       }
 
+      // ERD-87: importar una relacion por nombre solo puede resolver contra
+      // registros activos - enlazar una fila nueva a algo que esta en la
+      // papelera no tiene sentido para el usuario que esta importando.
       const matches = await tx
         .select({ id: records.id })
         .from(records)
@@ -127,6 +131,7 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
           and(
             eq(records.tenantId, tenantId),
             eq(records.entityId, targetEntity.id),
+            recordNotDeleted,
             dsql`lower(${records.customData}->>${labelField}) = lower(${trimmed})`
           )
         )

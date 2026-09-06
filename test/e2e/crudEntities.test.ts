@@ -131,6 +131,23 @@ async function crudFlow(slug: string, createPayload: Record<string, unknown>, up
 
   const deleteAgainRes = await api(`/api/records/${slug}/${created.id}`, { method: 'DELETE' })
   expect(deleteAgainRes.status).toBe(404)
+
+  // ERD-87: DELETE es borrado LOGICO - el registro sigue existiendo en la
+  // base (con deleted_at seteado), no es un `delete` fisico. Se verifica
+  // directo contra Postgres (no hay otro endpoint HTTP que exponga
+  // deletedAt todavia) para no depender de que ERD-88 ya este construido.
+  const listAfterDeleteRes = await api(`/api/records/${slug}?pageSize=100`)
+  const listAfterDelete = await listAfterDeleteRes.json()
+  expect(listAfterDelete.data.some((r: { id: string }) => r.id === created.id)).toBe(false)
+
+  const admin = postgres(testDb.adminUrl)
+  try {
+    const [row] = await admin`select deleted_at from records where id = ${created.id}`
+    expect(row).toBeTruthy()
+    expect(row.deleted_at).not.toBeNull()
+  } finally {
+    await admin.end()
+  }
 }
 
 beforeAll(async () => {

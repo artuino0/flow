@@ -4,6 +4,7 @@ import { requirePermission } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { records, entityFields } from '~/server/db/schema'
 import { resolveRelationLabels } from '~/server/utils/relationLabels'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // GET /api/records/:entity?page=1&pageSize=20&sortBy=createdAt&sortDir=desc&search=...&filterField=...&filterValues=a,b
 // (HU-ERD-16, orden HU-ERD-24, search HU-ERD-72, filtro HU-ERD-73)
@@ -60,7 +61,9 @@ export default defineEventHandler(async (event) => {
         : dsql`${records.customData}->>${query.sortBy}`
   const orderBy = query.sortDir === 'asc' ? asc(sortExpr) : desc(sortExpr)
 
-  const baseWhere = and(eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id))
+  // ERD-87: un registro eliminado (deletedAt seteado) nunca aparece en el
+  // listado normal - es "papelera", no un dato mas a paginar/ordenar/buscar.
+  const baseWhere = and(eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted)
 
   return withTenant(auth.tenantId, async (tx) => {
     let where = query.search ? and(baseWhere, dsql`${records.customData}::text ilike ${'%' + query.search + '%'}`) : baseWhere

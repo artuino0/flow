@@ -5,6 +5,7 @@ import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
 import { entityFields, records } from '~/server/db/schema'
 import { fireTriggersForRecord } from '~/server/utils/triggers'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // PUT /api/records/:entity/:id { customData } (HU-ERD-16)
 // Igual que en el create, customData se revalida contra el schema Zod
@@ -38,10 +39,12 @@ export default defineEventHandler(async (event) => {
     // .optional().nullable() sin importar isRequired) lo dejaria vacio/perdido.
     // Se lee el registro actual PRIMERO (misma tx) para copiar esos valores tal
     // cual, sin importar lo que haya llegado en el body.
+    // ERD-87: no se puede editar un registro eliminado (papelera) - se
+    // responde 404, igual que un id inexistente.
     const [current] = await tx
       .select({ customData: records.customData })
       .from(records)
-      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
+      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted))
       .limit(1)
     if (!current) return undefined
 
@@ -59,7 +62,7 @@ export default defineEventHandler(async (event) => {
       // que esta edicion deja al registro limpio (HU-ERD-18: la edicion es
       // uno de los dos puntos de revalidacion perezosa, junto con el GET).
       .set({ customData, isDirty: false, updatedAt: new Date() })
-      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
+      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted))
       .returning()
     return r
   })

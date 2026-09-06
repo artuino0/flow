@@ -2,6 +2,7 @@ import { and, count, eq, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFieldHistory, entityFields, records } from '~/server/db/schema'
 import { getValidationRulesSchema, invalidateEntitySchemaCache } from '~/server/utils/dynamicSchema'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // HU-ERD-67: logica de "campos de un modulo" (entity_fields) como metadatos
 // administrables - mismo espiritu que moduleEntities.ts (ERD-66), separada de
@@ -141,10 +142,12 @@ export async function getEntityFieldImpact(tenantId: string, fieldId: string): P
     const current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return null
 
+    // ERD-87: el aviso de impacto (ERD-76) cuenta solo registros activos -
+    // avisar sobre datos que ya estan en la papelera confundiria al usuario.
     const [{ value: affectedRecords }] = await tx
       .select({ value: count() })
       .from(records)
-      .where(and(eq(records.entityId, current.entityId), sql`${records.customData} ? ${current.name}`))
+      .where(and(eq(records.entityId, current.entityId), recordNotDeleted, sql`${records.customData} ? ${current.name}`))
 
     return { ...toSummary(current), affectedRecords }
   })

@@ -173,6 +173,21 @@ describe('moduleEntities (Postgres real)', () => {
     expect(result.find((e) => e.slug === 'vacio')).toMatchObject({ recordCount: 0, fieldCount: 0 })
   })
 
+  // ERD-87 (borrado logico): el badge de "Registros" del Listado de Modulos
+  // cuenta solo activos - un registro en la papelera no debe leerse como si
+  // el modulo siguiera teniendo ese dato.
+  it('listEntities NO cuenta records con deletedAt seteado (papelera)', async () => {
+    const tenantSoftDelete = randomUUID()
+    await admin`insert into tenants (id, name) values (${tenantSoftDelete}, 'Tenant Papelera')`
+
+    const entity = await createEntity(tenantSoftDelete, { name: 'Con Papelera', slug: 'con-papelera', description: null })
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${tenantSoftDelete}, ${entity.id}, '{}')`
+    await admin`insert into records (tenant_id, entity_id, custom_data, deleted_at) values (${tenantSoftDelete}, ${entity.id}, '{}', now())`
+
+    const result = await listEntities(tenantSoftDelete)
+    expect(result.find((e) => e.slug === 'con-papelera')).toMatchObject({ recordCount: 1 })
+  })
+
   // ERD-43/ERD-44 (2026-09-01, pedido directo del usuario: "el menu aun no
   // renderisa las entidades") - listVisibleEntities() es la fuente real de
   // GET /api/nav/entities (components/AppNav.vue). No usa requireAdminRole -

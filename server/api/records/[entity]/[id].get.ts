@@ -4,6 +4,7 @@ import { revalidateIfDirty } from '~/server/utils/lazyRevalidation'
 import { withTenant } from '~/server/db'
 import { records, entityFields } from '~/server/db/schema'
 import { resolveRelationLabels } from '~/server/utils/relationLabels'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // GET /api/records/:entity/:id (HU-ERD-16)
 export default defineEventHandler(async (event) => {
@@ -15,7 +16,9 @@ export default defineEventHandler(async (event) => {
     const [r] = await tx
       .select()
       .from(records)
-      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id)))
+      // ERD-87: un registro eliminado responde 404, igual que si no existiera -
+      // la ficha de detalle es uso normal, no la papelera.
+      .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted))
       .limit(1)
     if (!r) return null
     // HU-ERD-18: revalidacion perezosa en el proximo acceso al registro.

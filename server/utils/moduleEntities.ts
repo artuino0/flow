@@ -2,6 +2,7 @@ import { and, count, eq, inArray } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 import { pluralize } from '~/server/utils/pluralize'
+import { recordNotDeleted } from '~/server/utils/records'
 
 // HU-ERD-66: logica de "modulos" (entities) como metadatos administrables -
 // hasta ahora entities/entity_fields solo se creaban por scripts/seed.mjs
@@ -113,10 +114,13 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind): P
     if (rows.length === 0) return []
     const ids = rows.map((r) => r.id)
 
+    // ERD-87: el badge de "N registros" del Listado de Módulos cuenta solo
+    // activos - un modulo cuyos registros estan todos en la papelera no debe
+    // leerse como si siguiera lleno de datos.
     const recordRows = await tx
       .select({ entityId: records.entityId, value: count() })
       .from(records)
-      .where(and(eq(records.tenantId, tenantId), inArray(records.entityId, ids)))
+      .where(and(eq(records.tenantId, tenantId), inArray(records.entityId, ids), recordNotDeleted))
       .groupBy(records.entityId)
     const fieldRows = await tx
       .select({ entityId: entityFields.entityId, value: count() })
