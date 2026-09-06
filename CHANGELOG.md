@@ -1,5 +1,10 @@
 # Changelog
 
+### [0.79.1] - 2026-09-06
+#### [bug]
+- **ERD-88: "Vista previa" sin título mostraba un error crudo de Zod.** Encontrado probando la app en local: `PrintReportDesigner.vue`'s `onPreview()` solo validaba que hubiera columnas antes de navegar a Vista previa, no que el reporte tuviera título - `printReportDslSchema` (`server/utils/printReport.ts`) exige `title` no vacío, así que `POST /api/print-reports/preview` rechazaba el DSL con un 400 cuyo `statusMessage` era el JSON crudo del error de Zod (`[{"code":"too_small",...,"path":["dsl","title"]}]`), mostrado tal cual en la pantalla de Vista previa. `onPreview()` ahora valida el título primero, igual que ya hacía `onSave()` ("Ponele un nombre al reporte antes de ver la vista previa.").
+- Validado: `npx vue-tsc --noEmit` limpio. Nota aparte (no es un bug): los logs también mostraban `relation "print_reports" does not exist` - es la migración 0036/0037 todavía sin aplicar en la base local, ya documentado como pendiente desde 0.77.0 (`npm run db:migrate`).
+
 ### [0.79.0] - 2026-09-06
 #### [add]
 - **ERD-88: Diseñador de reportes imprimibles (3 columnas), Config de tabla relacionada y Vista previa impresión - cierra la épica.** Completa las 3 tareas de frontend que quedaban (#291-293) sobre el motor y el CRUD ya subidos en 0.77.0/0.78.0.

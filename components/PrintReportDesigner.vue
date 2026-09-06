@@ -262,6 +262,15 @@ function onDiscard() {
 
 const previewDsl = useState<PrintReportDsl | null>('printReportPreviewDsl', () => null)
 async function onPreview() {
+  saveError.value = null
+  // Mismo chequeo que onSave(): el DSL exige `title` no vacío (printReportDslSchema,
+  // server/utils/printReport.ts) - sin esto, POST /api/print-reports/preview
+  // devuelve un 400 con el JSON crudo del error de Zod en vez de un mensaje
+  // entendible (bug real encontrado en un uso posterior a la entrega inicial).
+  if (!title.value.trim()) {
+    saveError.value = 'Ponele un nombre al reporte antes de ver la vista previa.'
+    return
+  }
   if (columns.value.length === 0) {
     saveError.value = 'Agregá al menos una columna antes de ver la vista previa.'
     return
