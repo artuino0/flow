@@ -17,8 +17,9 @@
 // pencil-antes-de-frontend: no existe ningun Screen/Importar en el .pen) -
 // se construyo siguiendo el mismo lenguaje visual ya establecido en el resto
 // del Constructor de Modulos.
-import { Filter, Plus, Settings2, Upload, X } from '@lucide/vue'
+import { FileBarChart2, FilePlus, FileText, Filter, Plus, Settings2, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import { formatRelativeTime } from '~/utils/relativeTime'
 
 definePageMeta({ layout: 'default' })
 
@@ -94,6 +95,7 @@ function openFilterPopover() {
   draftFieldName.value = appliedFilterField.value ?? filterableFields.value[0]?.name ?? null
   draftValues.value = [...appliedFilterValues.value]
   filterPopoverOpen.value = true
+  reportMenuOpen.value = false
 }
 
 function toggleDraftValue(value: string) {
@@ -124,6 +126,56 @@ const appliedFilterLabels = computed(() => {
     : []
   return appliedFilterValues.value.map((v) => options.find((o) => o.value === v)?.label ?? v)
 })
+
+// ERD-88 (Diseñador de reportes imprimibles): boton "Generar reporte" +
+// "Entry Menu" del listado - fiel a Screen/Generar reporte (punto de
+// entrada) del .pen, revisado con las herramientas de Pencil antes de
+// construir esta pantalla (regla pencil-antes-de-frontend). El mock reusa el
+// componente Button/Primary (mismo estilo que "Crear nuevo": fondo naranja,
+// texto blanco) para este boton, NO el estilo Outline de "Filtros"/"Importar" -
+// confirmado inspeccionando el nodo real (`ref: CnZSn` = Button/Primary).
+//
+// Al abrir el menu: "Nuevo reporte" (icono file-plus, azul) lleva siempre al
+// Diseñador vacio; debajo, si hay plantillas guardadas para esta entidad, una
+// seccion "REPORTES GUARDADOS" (icono file-text) - cada item es un documento
+// ya configurado (ej. "Remito de carga", "Lista de embarque" en el mock), y
+// tocarlo lleva directo a la Vista previa impresión (reimprimir con los datos
+// vigentes, ver comentario largo sobre esto en server/db/schema.ts) en vez de
+// reabrir el Diseñador - "editar" esa plantilla queda como una accion
+// secundaria disponible DESDE la propia Vista previa (ERD-88 #293), no desde
+// este menu de entrada (el mock no muestra ningun icono de edición en la fila,
+// solo el titulo + "Editado hace X").
+interface SavedPrintReport {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+const reportMenuOpen = ref(false)
+const savedReports = ref<SavedPrintReport[]>([])
+const savedReportsLoading = ref(false)
+const savedReportsError = ref(false)
+let savedReportsLoaded = false
+
+async function toggleReportMenu() {
+  if (reportMenuOpen.value) {
+    reportMenuOpen.value = false
+    return
+  }
+  reportMenuOpen.value = true
+  filterPopoverOpen.value = false
+  if (savedReportsLoaded) return
+  savedReportsLoading.value = true
+  savedReportsError.value = false
+  try {
+    savedReports.value = await $fetch<SavedPrintReport[]>('/api/print-reports', { query: { baseEntity: slug } })
+    savedReportsLoaded = true
+  } catch {
+    savedReportsError.value = true
+  } finally {
+    savedReportsLoading.value = false
+  }
+}
 
 interface RecordsResponse {
   data: { id: string; customData: Record<string, unknown> }[]
@@ -257,6 +309,50 @@ async function onDelete(id: string) {
                 Aplicar filtro
               </button>
             </div>
+          </div>
+        </div>
+        <div class="relative">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            @click="toggleReportMenu"
+          >
+            <FileBarChart2 class="h-4 w-4" :stroke-width="1.75" />
+            Generar reporte
+          </button>
+
+          <div v-if="reportMenuOpen" class="absolute right-0 z-20 mt-1.5 w-80 rounded-lg border border-brand-border-light bg-brand-surface py-1.5 shadow-lg">
+            <NuxtLink
+              :to="`/registros/${slug}/reportes/nuevo`"
+              class="flex items-start gap-2.5 px-3.5 py-2.5 hover:bg-brand-bg"
+              @click="reportMenuOpen = false"
+            >
+              <FilePlus class="mt-0.5 h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" />
+              <span class="flex flex-col">
+                <span class="text-sm font-semibold text-brand-text">Nuevo reporte</span>
+                <span class="text-xs text-brand-text-muted">Empezar un documento en blanco</span>
+              </span>
+            </NuxtLink>
+
+            <p v-if="savedReportsLoading" class="px-3.5 py-2 text-xs text-brand-text-muted">Cargando reportes guardados...</p>
+            <p v-else-if="savedReportsError" class="px-3.5 py-2 text-xs text-brand-error-text">No se pudieron cargar los reportes guardados.</p>
+
+            <template v-else-if="savedReports.length > 0">
+              <p class="mt-1 px-3.5 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Reportes guardados</p>
+              <NuxtLink
+                v-for="report in savedReports"
+                :key="report.id"
+                :to="`/registros/${slug}/reportes/${report.id}/imprimir`"
+                class="flex items-start gap-2.5 px-3.5 py-2.5 hover:bg-brand-bg"
+                @click="reportMenuOpen = false"
+              >
+                <FileText class="mt-0.5 h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+                <span class="flex flex-col">
+                  <span class="text-sm font-semibold text-brand-text">{{ report.title }}</span>
+                  <span class="text-xs text-brand-text-muted">Editado {{ formatRelativeTime(report.updatedAt) }}</span>
+                </span>
+              </NuxtLink>
+            </template>
           </div>
         </div>
         <NuxtLink
