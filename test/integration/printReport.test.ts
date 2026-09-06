@@ -123,6 +123,11 @@ describe('printReport (Postgres real)', () => {
       const noEmb = Number(row.values[noEmbarcadosKey])
       expect(emb === 0 || noEmb === 0).toBe(true)
       expect(emb + noEmb).toBe(Number(row.values.kilos_bulto))
+      // 'sumar' se comporta igual que las hojas de 'repartir': aparece en
+      // CADA fila de detalle (no solo en el subtotal) - ver comentario
+      // grande en printReport.ts sobre este comportamiento confirmado en
+      // el mock A0UnX.
+      expect(Number(row.values.total_kilos)).toBe(Number(row.values.kilos_bulto))
     }
     // subtotal del grupo: 10 + 30 embarcados, 20 no embarcados
     expect(groupL1!.subtotals[embarcadosKey]).toBe(40)

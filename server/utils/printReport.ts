@@ -27,10 +27,16 @@ import {
 // AGREGACIÓN"):
 //   - 'detalle': muestra el valor del campo tal cual, en cada fila impresa.
 //     ("Sin agregación... se repite en cada fila")
-//   - 'sumar': suma el campo (debe ser numérico: dataType 'number' o
-//     'incremental') y se imprime como subtotal en cada nivel de grupo activo
-//     y como total general al final - NUNCA en las filas de detalle.
-//     ("Genera subtotal por grupo y total general")
+//   - 'sumar': muestra el valor del campo en cada fila IGUAL que 'detalle'
+//     (debe ser numérico: dataType 'number' o 'incremental') Y ADEMÁS lo
+//     totaliza: aparece también como subtotal en cada nivel de grupo activo
+//     y como total general al final. ("Genera subtotal por grupo y total
+//     general" no dice "y desaparece de las filas" - confirmado contra
+//     Screen/Vista previa impresión: la columna "Peso (kg)" trae un valor
+//     por cada fila de detalle Y se ve sumada en cada "Subtotal ..."; una
+//     version anterior de este archivo asumía, sin evidencia real, que
+//     'sumar' NUNCA se mostraba en las filas de detalle - corregido al
+//     revisar ese mock).
 //   - 'repartir': PIVOT condicional, no reparto proporcional (nombre inicial
 //     mal interpretado en un borrador previo de este archivo, corregido tras
 //     re-revisar el mock real "repcard" de Screen/Config de tabla
@@ -40,9 +46,10 @@ import {
 //     embarcados"). Divide UNA columna numérica en VARIAS columnas, una por
 //     cada valor posible de `conditionSource` (boolean o select) - el mismo
 //     patron SQL "SUM(CASE WHEN condicion = X THEN valor ELSE 0 END)" del
-//     reporte real de "empaque" que motivó esta HU. A diferencia de 'sumar',
-//     cada columna generada SI aparece en las filas de detalle (con 0 en las
-//     filas que no matchean esa condición) Y TAMBIEN se totaliza en
+//     reporte real de "empaque" que motivó esta HU. Mismo comportamiento que
+//     'sumar' en cuanto a "se muestra Y se totaliza" - cada columna generada
+//     aparece en las filas de detalle (con 0 en las filas que no matchean
+//     esa condición) Y TAMBIEN se totaliza en
 //     subtotales/total general - confirmado en Screen/Vista previa impresión
 //     (columnas "Emb."/"No emb." con valores por fila Y sumadas en cada
 //     "Subtotal ..."). Alcance deliberado: `source` y `conditionSource` deben
@@ -263,7 +270,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
         assertNumericField(field, col.label)
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ key: col.key, label: col.label, kind: 'sumar', inRows: false, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
+        leaves.push({ key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
       } else {
         assertNumericField(field, col.label)
         if (col.conditionSource.side !== col.source.side) {
@@ -437,13 +444,15 @@ function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], gro
 
   return {
     title: dsl.title,
-    columns: leaves
-      .filter((l) => l.kind !== 'repartir' || l.inRows)
-      .reduce<PrintReportResultColumn[]>((acc, l) => {
-        if (acc.some((c) => c.key === l.key)) return acc
-        acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf })
-        return acc
-      }, []),
+    // Un descriptor por cada hoja (una columna 'repartir' del DSL produce
+    // varias hojas, una por valor de su condición) - todas las hojas se
+    // muestran ahora (ver comentario grande de arriba sobre 'sumar'), asi
+    // que no hace falta filtrar por inRows aca.
+    columns: leaves.reduce<PrintReportResultColumn[]>((acc, l) => {
+      if (acc.some((c) => c.key === l.key)) return acc
+      acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf })
+      return acc
+    }, []),
     groups,
     ungroupedRows,
     grandTotals
