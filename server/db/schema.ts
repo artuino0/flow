@@ -486,6 +486,39 @@ export const triggerLogs = pgTable('trigger_logs', {
   statusCreatedIdx: index('trigger_logs_status_created_idx').on(table.status, table.createdAt)
 }))
 
+// ---- Reportería con IA (Épica ERD-46, hermana de triggers/ERD-47 - ver
+// comentario arriba de `triggers`). Pedido del usuario (2026-09-05, "y los
+// reportes?" viendo el .pen): existía el diseño completo (Screen/Reportes -
+// Nuevo reporte, Generando, Previsualización, Error) sin ningún backend.
+//
+// El usuario describe el reporte en lenguaje natural; un proveedor de IA
+// (server/utils/aiProvider.ts) lo traduce a `queryDsl`, un JSON declarativo
+// validado con Zod (server/utils/reportQuery.ts) sobre el esquema en estrella
+// de abajo (dim_date/dim_cliente/dim_sucursal/fact_eventos) - MISMO principio
+// que `triggers.condition`: nunca se genera ni ejecuta SQL de texto libre ni
+// código arbitrario (eval/new Function), la IA solo elige entre un vocabulario
+// cerrado de dimensiones/medidas que después se mapea a columnas reales por
+// un switch controlado en el server.
+//
+// Fiel al mock: "Generar previsualización" NO persiste nada todavía (solo
+// devuelve queryDsl + resultSnapshot al frontend) - una fila en esta tabla
+// recien se crea al tocar "Guardar reporte". `resultSnapshot` es la
+// vista previa YA calculada al momento de guardar (no se vuelve a ejecutar
+// la consulta después) - mismo espíritu que un reporte "congelado" en el
+// momento en que se guardó.
+export const reports = pgTable('reports', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  description: text('description').notNull(),
+  queryDsl: jsonb('query_dsl').notNull(),
+  resultSnapshot: jsonb('result_snapshot').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('reports_tenant_idx').on(table.tenantId)
+}))
+
 // ---- Dominio OLAP (HU-ERD-27): esquema en estrella para analitica ----
 // El ETL que puebla estas tablas a partir del dominio transaccional
 // (records/entities) es HU-ERD-28, todavia no implementado - aca solo se

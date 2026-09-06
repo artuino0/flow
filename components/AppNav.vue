@@ -26,7 +26,7 @@
 // seccion ya establecido, con el titulo "MÓDULOS" (el nombre real de la
 // epica, ERD-65) en vez de "DIRECTORIO" (ese nombre era especifico del CRM
 // hardcodeado que este cambio retira).
-import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap, Library, ChevronDown } from '@lucide/vue'
+import { LayoutDashboard, ShieldCheck, Settings, Blocks, Users, Zap, Library, ChevronDown, BarChart3 } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 
 // Pedido directo del usuario (2026-09-05): "hay manera de hacer desplegable
@@ -43,11 +43,12 @@ import { moduleIconComponent } from '~/utils/moduleIcons'
 // eleccion sobreviva a recargar la pagina; default abierto (mismo
 // comportamiento que antes de este cambio) si no hay nada guardado o
 // localStorage no esta disponible (navegacion privada, etc.).
-type SidebarSection = 'general' | 'modulos' | 'administracion'
+type SidebarSection = 'general' | 'modulos' | 'reportes' | 'administracion'
 const SIDEBAR_SECTIONS_STORAGE_KEY = 'flowerp-sidebar-sections-open'
 const sectionsOpen = reactive<Record<SidebarSection, boolean>>({
   general: true,
   modulos: true,
+  reportes: true,
   administracion: true
 })
 onMounted(() => {
@@ -118,6 +119,21 @@ const { data: isAdmin } = await useIsAdmin()
 // condicionarla a isAdmin/appConfig como antes. La pantalla en si sigue
 // respetando FEATURE_DASHBOARD (HU-ERD-35) puertas adentro (pages/index.vue).
 const items = computed(() => [{ label: 'Tablero', to: '/', icon: LayoutDashboard }])
+// Épica ERD-46 (Reportería con IA): seccion propia "REPORTES", entre
+// MÓDULOS y ADMINISTRACIÓN - confirmado con las herramientas de Pencil
+// (Sidebar de Screen/Nuevo reporte - Previsualización): "Sidebar Section
+// Title" REPORTES con un unico "Sidebar Item" (icono bar-chart-3, texto
+// "Reportes") entre las secciones "ENTIDADES" (equivalente a nuestro
+// MÓDULOS dinamico) y "ADMINISTRACIÓN" del mock. Enlaza directo a
+// /reportes/nuevo (no /reportes a secas) porque el .pen solo disenó "Nuevo
+// reporte" - no existe una pantalla de listado propia todavia (ver
+// comentario largo en server/utils/reports.ts sobre listReports(), alcance
+// minimo agregado sin mock que lo respalde). Mismo guard que el resto de
+// Administracion (POST/GET /api/reports/* usa requireAdminRole).
+const reportItems = computed(() => {
+  if (!isAdmin.value) return []
+  return [{ label: 'Reportes', to: '/reportes/nuevo', icon: BarChart3 }]
+})
 // "Ajustes" es un placeholder (pages/ajustes/index.vue) - se reserva el
 // lugar en el menu a pedido del usuario; el alcance real es una HU aparte.
 // "Modulos" (HU-ERD-69) usa el mismo guard que ya prueba isAdmin arriba
@@ -195,6 +211,29 @@ function isActive(to: string): boolean {
       <template v-if="sectionsOpen.modulos">
         <NuxtLink
           v-for="item in moduleItems"
+          :key="item.to"
+          :to="item.to"
+          class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"
+          :class="isActive(item.to) ? 'border-l-[3px] border-brand-blue bg-brand-sidebar-active-bg pl-[9px] font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg'"
+        >
+          <component :is="item.icon" class="h-[17px] w-[17px] shrink-0" :stroke-width="1.75" />
+          {{ item.label }}
+        </NuxtLink>
+      </template>
+    </div>
+
+    <div v-if="reportItems.length" class="flex flex-col gap-px">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted hover:text-brand-text-secondary"
+        @click="toggleSection('reportes')"
+      >
+        <span>REPORTES</span>
+        <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="{ '-rotate-90': !sectionsOpen.reportes }" :stroke-width="2" />
+      </button>
+      <template v-if="sectionsOpen.reportes">
+        <NuxtLink
+          v-for="item in reportItems"
           :key="item.to"
           :to="item.to"
           class="flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium"

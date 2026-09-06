@@ -232,6 +232,20 @@
       "when": 1788700000000,
       "tag": "0032_erd_entities_singular_name",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788652757748,
+      "tag": "0033_erd46_reports_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788652757749,
+      "tag": "0034_reports_rls",
+      "breakpoints": true
     }
   ]
 }
