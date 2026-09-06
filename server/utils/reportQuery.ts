@@ -3,7 +3,7 @@ import { and, eq, gte, lte, sql as dsql, type SQL } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { dimCliente, dimSucursal, factEventos } from '~/server/db/schema'
 import { toDimDateId } from '~/server/utils/olapEtl'
-import { completeJson, AiProviderNotConfiguredError } from '~/server/utils/aiProvider'
+import { completeJson } from '~/server/utils/aiProvider'
 
 // Épica ERD-46 (Reportería con IA): traduce la descripción en lenguaje
 // natural de un reporte (Screen/Reportes - Nuevo reporte del .pen) a un DSL
@@ -250,5 +250,3 @@ export async function executeReportQuery(tenantId: string, dsl: ReportQueryDsl):
     }
   })
 }
-
-export { AiProviderNotConfiguredError }

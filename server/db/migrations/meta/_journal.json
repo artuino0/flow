@@ -253,6 +253,20 @@
       "when": 1788739200000,
       "tag": "0035_erd87_records_deleted_at",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788716010405,
+      "tag": "0036_equal_robin_chapel",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788716010406,
+      "tag": "0037_print_reports_rls",
+      "breakpoints": true
     }
   ]
 }

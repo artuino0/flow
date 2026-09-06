@@ -57,6 +57,7 @@ beforeAll(async () => {
   await createField(bultosId, 'kilos', 'Kilos', 'number')
   await createField(bultosId, 'lote', 'Lote', 'relation', { relationEntity: 'lotes' })
   await createField(bultosId, 'tipo', 'Tipo de Embalaje', 'relation', { relationEntity: 'tipos-embalaje' })
+  await createField(bultosId, 'embarcado', 'Embarcado', 'boolean')
 
   tipoT1 = await createRecord(tiposId, { nombre: 'Caja' })
   tipoT2 = await createRecord(tiposId, { nombre: 'Bolsa' })
@@ -64,10 +65,10 @@ beforeAll(async () => {
   loteL1 = await createRecord(lotesId, { nombre: 'L1', costo_total: 300 })
   loteL2 = await createRecord(lotesId, { nombre: 'L2', costo_total: 100 })
 
-  await createRecord(bultosId, { kilos: 10, lote: loteL1, tipo: tipoT1 })
-  await createRecord(bultosId, { kilos: 20, lote: loteL1, tipo: tipoT2 })
-  await createRecord(bultosId, { kilos: 30, lote: loteL1, tipo: tipoT1 })
-  await createRecord(bultosId, { kilos: 999, lote: loteL1, tipo: tipoT1 }, true) // en la papelera - no debe contarse
+  await createRecord(bultosId, { kilos: 10, lote: loteL1, tipo: tipoT1, embarcado: 'true' })
+  await createRecord(bultosId, { kilos: 20, lote: loteL1, tipo: tipoT2, embarcado: 'false' })
+  await createRecord(bultosId, { kilos: 30, lote: loteL1, tipo: tipoT1, embarcado: 'true' })
+  await createRecord(bultosId, { kilos: 999, lote: loteL1, tipo: tipoT1, embarcado: 'true' }, true) // en la papelera - no debe contarse
 
   process.env.APP_DATABASE_URL = testDb.appUrl
   ;({ executePrintReport, PrintReportError } = await import('../../server/utils/printReport'))
@@ -79,7 +80,7 @@ afterAll(async () => {
 })
 
 describe('printReport (Postgres real)', () => {
-  it('ejecuta un reporte agrupado con tabla relacionada: detalle + suma + reparto, sin contar registros en la papelera', async () => {
+  it('ejecuta un reporte agrupado con tabla relacionada: detalle + suma + reparto por condicion, sin contar registros en la papelera', async () => {
     const result = await executePrintReport(TENANT_A, {
       title: 'Bultos por Lote',
       baseEntity: 'lotes',
@@ -90,9 +91,23 @@ describe('printReport (Postgres real)', () => {
         { kind: 'detalle', key: 'kilos_bulto', label: 'Kilos', source: { side: 'detail', forwardHops: [], field: 'kilos' } },
         { kind: 'detalle', key: 'tipo_nombre', label: 'Tipo', source: { side: 'detail', forwardHops: ['tipo'], field: 'nombre' } },
         { kind: 'sumar', key: 'total_kilos', label: 'Total Kilos', source: { side: 'detail', forwardHops: [], field: 'kilos' } },
-        { kind: 'repartir', key: 'costo_repartido', label: 'Costo Repartido', source: { side: 'base', forwardHops: [], field: 'costo_total' } }
+        {
+          kind: 'repartir',
+          key: 'kilos_embarque',
+          label: 'Kilos por Embarque',
+          source: { side: 'detail', forwardHops: [], field: 'kilos' },
+          conditionSource: { side: 'detail', forwardHops: [], field: 'embarcado' },
+          valueLabels: { true: 'Embarcados', false: 'No embarcados' }
+        }
       ]
     })
+
+    // 'repartir' expande a una columna de resultado por cada valor posible
+    // del campo condicion (boolean -> true/false), no una sola columna.
+    const pivotCols = result.columns.filter((c) => c.pivotOf === 'kilos_embarque')
+    expect(pivotCols.map((c) => c.label).sort()).toEqual(['Embarcados', 'No embarcados'])
+    const embarcadosKey = pivotCols.find((c) => c.label === 'Embarcados')!.key
+    const noEmbarcadosKey = pivotCols.find((c) => c.label === 'No embarcados')!.key
 
     expect(result.groups).toHaveLength(2)
 
@@ -100,17 +115,50 @@ describe('printReport (Postgres real)', () => {
     expect(groupL1).toBeDefined()
     expect(groupL1!.rows).toHaveLength(3) // NO 4 - el bulto borrado logicamente no cuenta
     expect(groupL1!.subtotals.total_kilos).toBe(60)
+    // cada fila impresa trae el pivot completo: el valor real en la columna
+    // de SU condicion, y 0 en las demas (no un reparto proporcional)
     for (const row of groupL1!.rows) {
-      expect(row.values.costo_repartido).toBe(100) // 300 / 3 bultos
       expect(['Caja', 'Bolsa']).toContain(row.values.tipo_nombre)
+      const emb = Number(row.values[embarcadosKey])
+      const noEmb = Number(row.values[noEmbarcadosKey])
+      expect(emb === 0 || noEmb === 0).toBe(true)
+      expect(emb + noEmb).toBe(Number(row.values.kilos_bulto))
     }
+    // subtotal del grupo: 10 + 30 embarcados, 20 no embarcados
+    expect(groupL1!.subtotals[embarcadosKey]).toBe(40)
+    expect(groupL1!.subtotals[noEmbarcadosKey]).toBe(20)
 
     const groupL2 = result.groups.find((g) => g.label === 'L2')
     expect(groupL2).toBeDefined()
     expect(groupL2!.rows).toHaveLength(0)
     expect(groupL2!.subtotals.total_kilos).toBe(0)
+    expect(groupL2!.subtotals[embarcadosKey]).toBe(0)
+    expect(groupL2!.subtotals[noEmbarcadosKey]).toBe(0)
 
     expect(result.grandTotals.total_kilos).toBe(60)
+    expect(result.grandTotals[embarcadosKey]).toBe(40)
+    expect(result.grandTotals[noEmbarcadosKey]).toBe(20)
+  })
+
+  it('rechaza repartir cuando el campo condicion esta en un lado distinto al del campo a repartir', async () => {
+    await expect(
+      executePrintReport(TENANT_A, {
+        title: 'Invalido',
+        baseEntity: 'lotes',
+        includeDeletedBase: false,
+        detail: { entitySlug: 'bultos', fieldName: 'lote', includeDeleted: false },
+        groupBy: [],
+        columns: [
+          {
+            kind: 'repartir',
+            key: 'costo_repartido',
+            label: 'Costo Repartido',
+            source: { side: 'base', forwardHops: [], field: 'costo_total' },
+            conditionSource: { side: 'detail', forwardHops: [], field: 'embarcado' }
+          }
+        ]
+      })
+    ).rejects.toBeInstanceOf(PrintReportError)
   })
 
   it('con includeDeleted:true en la tabla relacionada, cuenta tambien el bulto en la papelera', async () => {

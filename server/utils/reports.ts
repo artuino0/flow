@@ -3,14 +3,12 @@ import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { factEventos, reports } from '~/server/db/schema'
 import {
-  AiResponseInvalidError,
   executeReportQuery,
   generateReportQueryDsl,
   reportQueryDslSchema,
   type ReportQueryDsl,
   type ReportResult
 } from '~/server/utils/reportQuery'
-import { AiProviderNotConfiguredError } from '~/server/utils/aiProvider'
 
 // Épica ERD-46 (Reportería con IA): orquestación de punta a punta - separada
 // de los endpoints (server/api/reports/*.ts) para poder testearla sin pasar
@@ -120,5 +118,3 @@ export async function listReports(tenantId: string): Promise<ReportListItem[]> {
     }))
   })
 }
-
-export { AiProviderNotConfiguredError, AiResponseInvalidError }

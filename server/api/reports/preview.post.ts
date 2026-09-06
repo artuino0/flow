@@ -2,7 +2,8 @@ import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { isFeatureEnabled } from '~/server/utils/appConfig'
 import { previewReport } from '~/server/utils/reports'
-import { AiProviderNotConfiguredError, AiResponseInvalidError } from '~/server/utils/reportQuery'
+import { AiResponseInvalidError } from '~/server/utils/reportQuery'
+import { AiProviderNotConfiguredError } from '~/server/utils/aiProvider'
 
 // POST /api/reports/preview { description } (Épica ERD-46, "Generar
 // previsualización" de Screen/Reportes - Nuevo reporte) - NO persiste nada

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { reportQueryDslSchema, stripMarkdownFence, generateReportQueryDsl, AiProviderNotConfiguredError } from '../../server/utils/reportQuery'
+import { reportQueryDslSchema, stripMarkdownFence, generateReportQueryDsl } from '../../server/utils/reportQuery'
+import { AiProviderNotConfiguredError } from '../../server/utils/aiProvider'
 
 // Épica ERD-46 (Reportería con IA): pruebas puras (sin Postgres, sin red),
 // mismo criterio que test/unit/triggerConditions.test.ts para el DSL de

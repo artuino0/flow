@@ -4,8 +4,6 @@ import { withTenant } from '~/server/db'
 import {
   loadTenantFieldContext,
   ReportPathPlanner,
-  InvalidFieldPathError,
-  type ColumnSource,
   type EntityFieldMeta
 } from '~/server/utils/reportFieldPath'
 
@@ -24,17 +22,32 @@ import {
 // por tractabilidad frente a un rollup SQL multi-nivel genérico, mismo
 // criterio de simplicidad deliberada que reportQuery.ts.
 //
-// Tres tipos de columna (pedido explícito del usuario tras mostrar el
-// reporte real de "empaque" con columnas condicionales/pivot):
+// Tres tipos de columna (verificados 1:1 contra Screen/Config de tabla
+// relacionada en Pencil - panel "Propiedades", sección "COLUMNAS ·
+// AGREGACIÓN"):
 //   - 'detalle': muestra el valor del campo tal cual, en cada fila impresa.
+//     ("Sin agregación... se repite en cada fila")
 //   - 'sumar': suma el campo (debe ser numérico: dataType 'number' o
 //     'incremental') y se imprime como subtotal en cada nivel de grupo activo
 //     y como total general al final - NUNCA en las filas de detalle.
-//   - 'repartir': reparte en partes iguales un total del ÚLTIMO nivel de
-//     grupo activo (o del total general si no hay grupos) entre la cantidad
-//     de filas de detalle de ese grupo - alcance deliberadamente simple
-//     (reparto equitativo, no proporcional a otra columna) para esta HU;
-//     cubre el caso real mostrado ("costo del lote repartido entre bultos").
+//     ("Genera subtotal por grupo y total general")
+//   - 'repartir': PIVOT condicional, no reparto proporcional (nombre inicial
+//     mal interpretado en un borrador previo de este archivo, corregido tras
+//     re-revisar el mock real "repcard" de Screen/Config de tabla
+//     relacionada: "Repartir «Cantidad» por condición" + selector "Campo
+//     condición" (ej. Embarcado sí/no) + un mapeo valor->nombre de columna
+//     por cada valor posible (ej. "Sí"->"Embarcados", "No"->"No
+//     embarcados"). Divide UNA columna numérica en VARIAS columnas, una por
+//     cada valor posible de `conditionSource` (boolean o select) - el mismo
+//     patron SQL "SUM(CASE WHEN condicion = X THEN valor ELSE 0 END)" del
+//     reporte real de "empaque" que motivó esta HU. A diferencia de 'sumar',
+//     cada columna generada SI aparece en las filas de detalle (con 0 en las
+//     filas que no matchean esa condición) Y TAMBIEN se totaliza en
+//     subtotales/total general - confirmado en Screen/Vista previa impresión
+//     (columnas "Emb."/"No emb." con valores por fila Y sumadas en cada
+//     "Subtotal ..."). Alcance deliberado: `source` y `conditionSource` deben
+//     estar del MISMO lado (`side`) - evaluarlos en lados distintos de un
+//     join 1:N no tiene una lectura correcta única y queda fuera de alcance.
 
 export class PrintReportError extends Error {}
 
@@ -55,7 +68,20 @@ const columnSourceSchema = z
 const printReportColumnSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('detalle'), key: columnKeySchema, label: z.string().min(1).max(80), source: columnSourceSchema }).strict(),
   z.object({ kind: z.literal('sumar'), key: columnKeySchema, label: z.string().min(1).max(80), source: columnSourceSchema }).strict(),
-  z.object({ kind: z.literal('repartir'), key: columnKeySchema, label: z.string().min(1).max(80), source: columnSourceSchema }).strict()
+  z
+    .object({
+      kind: z.literal('repartir'),
+      key: columnKeySchema,
+      label: z.string().min(1).max(80),
+      source: columnSourceSchema,
+      conditionSource: columnSourceSchema,
+      // Override opcional de etiqueta por valor crudo de conditionSource
+      // ("true"/"false" para boolean, el `value` de la opción para select) -
+      // ej. {"true": "Embarcados", "false": "No embarcados"}. Sin override,
+      // se usa "Sí"/"No" (boolean) o la label de la opción (select).
+      valueLabels: z.record(z.string(), z.string().min(1).max(60)).optional()
+    })
+    .strict()
 ])
 
 export type PrintReportColumn = z.infer<typeof printReportColumnSchema>
@@ -82,6 +108,7 @@ export type PrintReportDsl = z.infer<typeof printReportDslSchema>
 
 export interface PrintReportRow {
   values: Record<string, string | number | null>
+  isDeleted: boolean
 }
 
 export interface PrintReportGroup {
@@ -92,15 +119,27 @@ export interface PrintReportGroup {
   subtotals: Record<string, number>
 }
 
+export interface PrintReportResultColumn {
+  key: string
+  label: string
+  kind: PrintReportColumn['kind']
+  // Solo presente para columnas generadas por un 'repartir': el key del
+  // campo DSL original (dsl.columns[].key) del que salió esta columna - el
+  // frontend lo usa para agrupar visualmente las columnas pivoteadas bajo el
+  // mismo encabezado lógico si quiere.
+  pivotOf?: string
+}
+
 export interface PrintReportResult {
   title: string
-  columns: Array<{ key: string; label: string; kind: PrintReportColumn['kind'] }>
+  columns: PrintReportResultColumn[]
   groups: PrintReportGroup[]
   ungroupedRows: PrintReportRow[]
   grandTotals: Record<string, number>
 }
 
 const NUMERIC_DATA_TYPES = new Set(['number', 'incremental'])
+const PIVOTABLE_DATA_TYPES = new Set(['boolean', 'select'])
 
 function assertNumericField(field: EntityFieldMeta, columnLabel: string): void {
   if (!NUMERIC_DATA_TYPES.has(field.dataType)) {
@@ -108,15 +147,60 @@ function assertNumericField(field: EntityFieldMeta, columnLabel: string): void {
   }
 }
 
-function rawColumnAlias(key: string, index: number): string {
-  // Los keys ya estan validados por columnKeySchema (snake_case), pero se
-  // antepone un prefijo fijo + indice para blindar contra colisiones con los
-  // alias fijos usados mas abajo (__base_id__, __detail_id__, __group_N__).
-  return `col_${index}_${key}`
+interface PivotOption {
+  rawValue: string
+  label: string
+}
+
+function resolvePivotOptions(conditionField: EntityFieldMeta, valueLabels: Record<string, string> | undefined): PivotOption[] {
+  if (!PIVOTABLE_DATA_TYPES.has(conditionField.dataType)) {
+    throw new PrintReportError(`"${conditionField.label}" no se puede usar como condición de reparto - debe ser un campo booleano o de selección`)
+  }
+  if (conditionField.dataType === 'boolean') {
+    return [
+      { rawValue: 'true', label: valueLabels?.true ?? 'Sí' },
+      { rawValue: 'false', label: valueLabels?.false ?? 'No' }
+    ]
+  }
+  const rules = (conditionField.validationRules ?? {}) as { options?: Array<{ value: string; label: string }> }
+  const options = rules.options ?? []
+  if (options.length === 0) {
+    throw new PrintReportError(`"${conditionField.label}" no tiene opciones configuradas - no se puede usar como condición de reparto`)
+  }
+  return options.map((o) => ({ rawValue: o.value, label: valueLabels?.[o.value] ?? o.label }))
+}
+
+function sanitizeAliasHint(s: string): string {
+  const cleaned = s.replace(/[^a-zA-Z0-9_]/g, '_')
+  return cleaned.length > 0 ? cleaned : 'x'
+}
+
+function rawColumnAlias(hint: string, index: number): string {
+  // El indice numerico garantiza unicidad por si solo - `hint` (saneado) es
+  // solo para que el SQL generado sea mas legible al depurar.
+  return `col_${index}_${sanitizeAliasHint(hint)}`
 }
 
 function groupAlias(index: number): string {
   return `group_${index}`
+}
+
+// Una "hoja" resuelta a partir de una columna del DSL: una columna 'detalle'
+// o 'sumar' produce exactamente una hoja; una 'repartir' produce una hoja por
+// cada valor posible de su conditionSource. `inRows`/`inTotals` deciden en
+// qué parte del resultado aparece cada hoja - ver el comentario grande de
+// arriba sobre el comportamiento distinto de cada kind.
+interface ResolvedLeaf {
+  key: string
+  label: string
+  kind: PrintReportColumn['kind']
+  pivotOf?: string
+  inRows: boolean
+  inTotals: boolean
+  sourceSide: 'base' | 'detail'
+  valueAlias: string
+  conditionAlias?: string
+  pivotRawValue?: string
 }
 
 /**
@@ -152,25 +236,60 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
     }
 
     const planner = new ReportPathPlanner(ctx, tenantId, baseEntity.id, detailEntity?.id)
-
-    // Resuelve (y valida) cada columna/agrupacion ANTES de armar el SQL, para
-    // fallar con un error claro de dominio antes de tocar la base de datos.
-    const resolvedColumns = dsl.columns.map((col, index) => {
-      const { field } = planner.resolve(col.source)
-      if (col.kind === 'sumar' || col.kind === 'repartir') assertNumericField(field, col.label)
-      return { col, index, field }
-    })
-    const resolvedGroups = dsl.groupBy.map((source, index) => ({ source, index, ...planner.resolve(source) }))
-
     const selectParts: ReturnType<typeof dsql>[] = [
       dsql`${dsql.raw('r_base')}.id as __base_id__`,
-      ...(detailEntity ? [dsql`${dsql.raw('r_detail')}.id as __detail_id__`] : [])
+      ...(detailEntity ? [dsql`${dsql.raw('r_detail')}.id as __detail_id__`, dsql`${dsql.raw('r_detail')}.deleted_at as __detail_deleted__`] : [dsql`${dsql.raw('r_base')}.deleted_at as __base_deleted__`])
     ]
-    for (const g of resolvedGroups) {
-      selectParts.push(dsql`${planner.valueSql(g.source)} as ${dsql.raw(groupAlias(g.index))}`)
-    }
-    for (const { col, index } of resolvedColumns) {
-      selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(rawColumnAlias(col.key, index))}`)
+
+    const groupAliases = dsl.groupBy.map((source, index) => {
+      planner.resolve(source)
+      const alias = groupAlias(index)
+      selectParts.push(dsql`${planner.valueSql(source)} as ${dsql.raw(alias)}`)
+      return alias
+    })
+
+    // Resuelve (y valida) cada columna del DSL, expandiendola a 1 o mas
+    // "hojas" segun su kind, ANTES de armar el SQL - para fallar con un error
+    // claro de dominio antes de tocar la base de datos.
+    let leafCounter = 0
+    const leaves: ResolvedLeaf[] = []
+    for (const col of dsl.columns) {
+      const { field } = planner.resolve(col.source)
+      if (col.kind === 'detalle') {
+        const alias = rawColumnAlias(col.key, leafCounter++)
+        selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
+        leaves.push({ key: col.key, label: col.label, kind: 'detalle', inRows: true, inTotals: false, sourceSide: col.source.side, valueAlias: alias })
+      } else if (col.kind === 'sumar') {
+        assertNumericField(field, col.label)
+        const alias = rawColumnAlias(col.key, leafCounter++)
+        selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
+        leaves.push({ key: col.key, label: col.label, kind: 'sumar', inRows: false, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
+      } else {
+        assertNumericField(field, col.label)
+        if (col.conditionSource.side !== col.source.side) {
+          throw new PrintReportError(`"${col.label}": el campo a repartir y el campo condición deben estar del mismo lado (base o tabla relacionada)`)
+        }
+        const { field: conditionField } = planner.resolve(col.conditionSource)
+        const options = resolvePivotOptions(conditionField, col.valueLabels)
+        const valueAlias = rawColumnAlias(col.key, leafCounter++)
+        selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(valueAlias)}`)
+        const conditionAlias = rawColumnAlias(`${col.key}_cond`, leafCounter++)
+        selectParts.push(dsql`${planner.valueSql(col.conditionSource)} as ${dsql.raw(conditionAlias)}`)
+        for (const opt of options) {
+          leaves.push({
+            key: `${col.key}__${sanitizeAliasHint(opt.rawValue)}`,
+            label: opt.label,
+            kind: 'repartir',
+            pivotOf: col.key,
+            inRows: true,
+            inTotals: true,
+            sourceSide: col.source.side,
+            valueAlias,
+            conditionAlias,
+            pivotRawValue: opt.rawValue
+          })
+        }
+      }
     }
 
     const whereParts = [
@@ -197,7 +316,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
 
     const rows = (await tx.execute(query)) as unknown as Record<string, unknown>[]
 
-    return buildPrintReportResult(dsl, resolvedColumns.map(({ col, index }) => ({ col, index })), resolvedGroups.map((g) => g.index), rows)
+    return buildPrintReportResult(dsl, leaves, groupAliases, rows)
   })
 }
 
@@ -218,15 +337,15 @@ interface FlatRow {
   groupKeys: string[]
   baseId: string | null
   hasDetail: boolean
+  isDeleted: boolean
 }
 
 /**
  * Suma "sin duplicar por join": el LEFT JOIN a la tabla relacionada repite el
  * mismo valor de un campo del lado 'base' en cada fila de detalle de ese
  * record base - sumar esas filas tal cual contaria el mismo total varias
- * veces. Para 'repartir' (y para 'sumar' cuando su fuente es del lado base)
- * se suma UNA sola vez por record base distinto (primera ocurrencia), no por
- * fila plana.
+ * veces. Para columnas cuya fuente es del lado 'base' se suma UNA sola vez
+ * por record base distinto (primera ocurrencia), no por fila plana.
  */
 function sumDedupByBase(rows: FlatRow[], key: string): number {
   const seen = new Map<string, number>()
@@ -242,30 +361,25 @@ function sumDedupByBase(rows: FlatRow[], key: string): number {
 /**
  * Colapsa las filas planas (una por cada combinación base×detalle) en el
  * arbol de grupos anidados + subtotales + total general que consume
- * Screen/Vista previa impresión. Las columnas 'sumar'/'repartir' solo se
- * calculan a nivel de grupo/total - nunca aparecen en las filas de detalle.
+ * Screen/Vista previa impresión.
  */
-function buildPrintReportResult(
-  dsl: PrintReportDsl,
-  columnRefs: Array<{ col: PrintReportColumn; index: number }>,
-  groupIndexes: number[],
-  rawRows: Record<string, unknown>[]
-): PrintReportResult {
-  const detailColumns = columnRefs.filter((c) => c.col.kind === 'detalle')
-  const sumColumns = columnRefs.filter((c) => c.col.kind === 'sumar' || c.col.kind === 'repartir')
-  const repartirColumns = columnRefs.filter((c) => c.col.kind === 'repartir')
-  // 'sumar' cuenta una sola vez por record base cuando su fuente viene del
-  // lado 'base' (constante en cada fila del join) - de lo contrario sumaria
-  // el mismo valor N veces (N = filas de detalle de ese record). Si la
-  // fuente es del detalle, cada fila plana es un valor real distinto y se
-  // suma tal cual.
-  const sumColumnDedup = new Set(sumColumns.filter((c) => c.col.source.side === 'base').map((c) => c.col.key))
+function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], groupAliases: string[], rawRows: Record<string, unknown>[]): PrintReportResult {
+  const rowColumns = leaves.filter((l) => l.inRows)
+  const totalColumns = leaves.filter((l) => l.inTotals)
+  const dedupKeys = new Set(totalColumns.filter((l) => l.sourceSide === 'base').map((l) => l.key))
 
   const hasDetailTable = Boolean(dsl.detail)
   const flatRows: FlatRow[] = rawRows.map((raw) => {
     const values: Record<string, unknown> = {}
-    for (const { col, index } of columnRefs) values[col.key] = raw[rawColumnAlias(col.key, index)]
-    const groupKeys = groupIndexes.map((i) => String(raw[groupAlias(i)] ?? ''))
+    for (const leaf of leaves) {
+      if (leaf.kind === 'repartir') {
+        const matches = String(raw[leaf.conditionAlias!] ?? '') === leaf.pivotRawValue
+        values[leaf.key] = matches ? toNumber(raw[leaf.valueAlias]) : 0
+      } else {
+        values[leaf.key] = raw[leaf.valueAlias]
+      }
+    }
+    const groupKeys = groupAliases.map((alias) => String(raw[alias] ?? ''))
     const baseId = raw.__base_id__ === null || raw.__base_id__ === undefined ? null : String(raw.__base_id__)
     // Sin tabla relacionada, cada fila plana ES un record base real. Con
     // tabla relacionada, el LEFT JOIN produce una fila "fantasma" (todo
@@ -274,25 +388,30 @@ function buildPrintReportResult(
     // igual que un lote sin bultos en el reporte impreso real) pero NUNCA
     // debe imprimirse como una fila de detalle vacia.
     const hasDetail = !hasDetailTable || (raw.__detail_id__ !== null && raw.__detail_id__ !== undefined)
-    return { values, groupKeys, baseId, hasDetail }
+    // Screen/Config de tabla relacionada: con "Incluir registros eliminados"
+    // activo, una fila de la papelera SE MUESTRA (fila gris, "· Eliminado"),
+    // no se descarta - isDeleted es la señal para que el frontend la pinte
+    // distinto.
+    const isDeleted = hasDetailTable ? raw.__detail_deleted__ !== null && raw.__detail_deleted__ !== undefined : raw.__base_deleted__ !== null && raw.__base_deleted__ !== undefined
+    return { values, groupKeys, baseId, hasDetail, isDeleted }
   })
 
   function sumColumn(rows: FlatRow[], key: string): number {
-    if (sumColumnDedup.has(key)) return sumDedupByBase(rows, key)
+    if (dedupKeys.has(key)) return sumDedupByBase(rows, key)
     return rows.reduce((acc, r) => acc + toNumber(r.values[key]), 0)
   }
 
   const grandTotals: Record<string, number> = {}
-  for (const { col } of sumColumns) grandTotals[col.key] = sumColumn(flatRows, col.key)
+  for (const leaf of totalColumns) grandTotals[leaf.key] = sumColumn(flatRows, leaf.key)
 
   function toPrintRow(row: FlatRow): PrintReportRow {
     const values: Record<string, string | number | null> = {}
-    for (const { col } of detailColumns) values[col.key] = toDisplayValue(row.values[col.key])
-    return { values }
+    for (const leaf of rowColumns) values[leaf.key] = toDisplayValue(row.values[leaf.key])
+    return { values, isDeleted: row.isDeleted }
   }
 
   function buildLevel(rows: FlatRow[], level: number): PrintReportGroup[] {
-    if (level >= groupIndexes.length) return []
+    if (level >= groupAliases.length) return []
     const buckets = new Map<string, FlatRow[]>()
     for (const row of rows) {
       const key = row.groupKeys[level] ?? ''
@@ -302,40 +421,31 @@ function buildPrintReportResult(
     }
     return Array.from(buckets.entries()).map(([label, bucketRows]) => {
       const subtotals: Record<string, number> = {}
-      for (const { col } of sumColumns) subtotals[col.key] = sumColumn(bucketRows, col.key)
+      for (const leaf of totalColumns) subtotals[leaf.key] = sumColumn(bucketRows, leaf.key)
 
-      const isLastLevel = level === groupIndexes.length - 1
+      const isLastLevel = level === groupAliases.length - 1
       const children = buildLevel(bucketRows, level + 1)
       const realRows = bucketRows.filter((r) => r.hasDetail)
       const printedRows = isLastLevel ? realRows.map(toPrintRow) : []
-      if (isLastLevel) {
-        for (const { col } of repartirColumns) {
-          const share = realRows.length > 0 ? subtotals[col.key] / realRows.length : 0
-          for (const printed of printedRows) printed.values[col.key] = share
-        }
-      }
       return { level, label, rows: printedRows, children, subtotals }
     })
   }
 
   const groups = buildLevel(flatRows, 0)
   const realFlatRows = flatRows.filter((r) => r.hasDetail)
-  const ungroupedRows = groupIndexes.length === 0 ? realFlatRows.map(toPrintRow) : []
-  if (groupIndexes.length === 0) {
-    for (const { col } of repartirColumns) {
-      const share = realFlatRows.length > 0 ? grandTotals[col.key] / realFlatRows.length : 0
-      for (const printed of ungroupedRows) printed.values[col.key] = share
-    }
-  }
+  const ungroupedRows = groupAliases.length === 0 ? realFlatRows.map(toPrintRow) : []
 
   return {
     title: dsl.title,
-    columns: columnRefs.map(({ col }) => ({ key: col.key, label: col.label, kind: col.kind })),
+    columns: leaves
+      .filter((l) => l.kind !== 'repartir' || l.inRows)
+      .reduce<PrintReportResultColumn[]>((acc, l) => {
+        if (acc.some((c) => c.key === l.key)) return acc
+        acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf })
+        return acc
+      }, []),
     groups,
     ungroupedRows,
     grandTotals
   }
 }
-
-export { InvalidFieldPathError }
-export type { ColumnSource }

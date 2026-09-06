@@ -532,6 +532,31 @@ export const reports = pgTable('reports', {
   tenantIdx: index('reports_tenant_idx').on(table.tenantId)
 }))
 
+// print_reports (HU-ERD-88, Diseñador de reportes imprimibles): plantillas
+// guardadas de reporte imprimible - "REPORTES GUARDADOS" en Screen/Generar
+// reporte. A diferencia de `reports` (Reportería con IA, arriba), acá NO se
+// guarda un resultSnapshot congelado: `dsl` es la ÚNICA fuente de verdad, y
+// server/utils/printReport.ts se re-ejecuta contra los datos VIGENTES cada
+// vez que se abre "Vista previa impresión" - un reporte imprimible (folios
+// del día, bultos recién empacados) pierde el sentido si muestra datos
+// viejos, a diferencia de un análisis puntual de Reportería IA que sí tiene
+// sentido "congelar" (evita re-consultar a la IA cada vez que se reabre).
+// `baseEntitySlug` está desnormalizado desde `dsl.baseEntity` únicamente para
+// poder filtrar/mostrar la lista de guardados sin tener que parsear el jsonb
+// (mismo motivo que `queryDsl.title` en listReports() de server/utils/reports.ts).
+export const printReports = pgTable('print_reports', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  baseEntitySlug: text('base_entity_slug').notNull(),
+  dsl: jsonb('dsl').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('print_reports_tenant_idx').on(table.tenantId)
+}))
+
 // ---- Dominio OLAP (HU-ERD-27): esquema en estrella para analitica ----
 // El ETL que puebla estas tablas a partir del dominio transaccional
 // (records/entities) es HU-ERD-28, todavia no implementado - aca solo se
