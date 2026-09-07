@@ -2,19 +2,26 @@
 // ERD-88 #293 (Diseñador de reportes imprimibles): "Vista previa impresión"
 // para un DSL recién armado en el Diseñador y todavía SIN guardar - llega acá
 // por el botón "Vista previa" de PrintReportDesigner.vue, que deja el DSL en
-// useState('printReportPreviewDsl') y navega a esta ruta (mismo criterio que
-// useState('printReportPreviewDsl') documentado ahí). Fiel a
-// Screen/Vista previa impresión (grupos anidados) del .pen (`A0UnX`),
-// revisada con las herramientas de Pencil antes de construir esta pantalla
-// (regla pencil-antes-de-frontend) - el layout Print Bar + hoja centrada
-// reemplaza por completo el chrome normal de la app (sin sidebar/header), por
-// eso layout:false en vez de 'default'.
+// usePrintReportPreviewDraft() y navega a esta ruta. Fiel a Screen/Vista
+// previa impresión (grupos anidados) del .pen (`A0UnX`), revisada con las
+// herramientas de Pencil antes de construir esta pantalla (regla
+// pencil-antes-de-frontend) - el layout Print Bar + hoja centrada reemplaza
+// por completo el chrome normal de la app (sin sidebar/header), por eso
+// layout:false en vez de 'default'.
 //
 // El resultado NUNCA se congela: se pide en vivo a POST /api/print-reports/preview
 // con el DSL tal cual quedó en el Diseñador (ver el comentario grande sobre
 // esto en server/db/schema.ts, junto a la tabla print_reports).
+//
+// "Cerrar" (onClose) usa router.back() - vuelve a la MISMA instancia de ruta
+// del Diseñador (nuevo.vue o [id]/editar.vue), que se remonta de cero y
+// restaura este mismo borrador vía usePrintReportPreviewDraft() (ver el
+// comentario grande ahí sobre el bug que esto corrige: "se limpia el reporte
+// no se guarda como esta en el momento"). Por eso esta pantalla NO limpia el
+// draft al desmontarse - Designer es quien decide cuándo tirarlo (al guardar
+// o al descartar explícitamente).
 import { ArrowLeft, LoaderCircle, Printer } from '@lucide/vue'
-import { resolveSourceLabel, usePrintReportFieldTree, type PrintReportDsl, type PrintReportResult } from '~/composables/usePrintReports'
+import { resolveSourceLabel, usePrintReportFieldTree, usePrintReportPreviewDraft, type PrintReportResult } from '~/composables/usePrintReports'
 
 definePageMeta({ layout: false })
 
@@ -22,7 +29,8 @@ const route = useRoute()
 const router = useRouter()
 const slug = route.params.entity as string
 
-const dsl = useState<PrintReportDsl | null>('printReportPreviewDsl', () => null)
+const draft = usePrintReportPreviewDraft()
+const dsl = computed(() => draft.value?.dsl ?? null)
 
 const loading = ref(false)
 const errorMessage = ref('')

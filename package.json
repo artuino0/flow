@@ -1,6 +1,6 @@
 {
   "name": "erp-dinamico-frontback",
-  "version": "0.79.3",
+  "version": "0.79.4",
   "private": true,
   "type": "module",
   "scripts": {

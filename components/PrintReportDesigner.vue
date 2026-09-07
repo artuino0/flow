@@ -48,6 +48,7 @@ import {
   isPivotableFieldType,
   topLevelDetailCandidates,
   usePrintReportFieldTree,
+  usePrintReportPreviewDraft,
   type ColumnSource,
   type FieldTreeBranch,
   type FlatLeaf,
@@ -67,11 +68,20 @@ const router = useRouter()
 
 const { data: treeData, pending: treePending, error: treeError } = usePrintReportFieldTree(props.entitySlug)
 
-const title = ref(props.initialTitle ?? '')
-const includeDeletedBase = ref(props.initialDsl?.includeDeletedBase ?? false)
-const detail = ref(props.initialDsl?.detail ? { ...props.initialDsl.detail } : null as PrintReportDsl['detail'] | null)
-const groupBy = ref<ColumnSource[]>(props.initialDsl?.groupBy ? props.initialDsl.groupBy.map((g) => ({ ...g })) : [])
-const columns = ref<PrintReportColumn[]>(props.initialDsl?.columns ? JSON.parse(JSON.stringify(props.initialDsl.columns)) : [])
+// Ver el comentario grande de usePrintReportPreviewDraft(): si quedó un
+// borrador de ESTE MISMO reporte (mismo reportId/entidad) de una vuelta
+// anterior por Vista previa, se usa como fuente de los valores iniciales en
+// vez de `props.initialDsl` (la plantilla guardada, ya desactualizada).
+const previewDraft = usePrintReportPreviewDraft()
+const restoredDsl =
+  previewDraft.value && previewDraft.value.reportId === props.reportId && previewDraft.value.dsl.baseEntity === props.entitySlug ? previewDraft.value.dsl : null
+const initialSource = restoredDsl ?? props.initialDsl
+
+const title = ref(initialSource?.title ?? props.initialTitle ?? '')
+const includeDeletedBase = ref(initialSource?.includeDeletedBase ?? false)
+const detail = ref(initialSource?.detail ? { ...initialSource.detail } : null as PrintReportDsl['detail'] | null)
+const groupBy = ref<ColumnSource[]>(initialSource?.groupBy ? initialSource.groupBy.map((g) => ({ ...g })) : [])
+const columns = ref<PrintReportColumn[]>(initialSource?.columns ? JSON.parse(JSON.stringify(initialSource.columns)) : [])
 // dataType de cada columna, solo del lado cliente (el DSL que viaja al
 // servidor no lo necesita - lo vuelve a resolver server-side - pero el
 // Diseñador lo necesita para saber qué columnas pueden sumarse/repartirse y
@@ -273,6 +283,9 @@ async function onSave() {
       await $fetch('/api/print-reports', { method: 'POST', body: { title: dsl.title, dsl } })
       toast.success('Reporte guardado', `"${dsl.title}" ya está disponible en Reportes guardados.`)
     }
+    // Ya quedó persistido - un borrador viejo de este mismo reporte no debe
+    // resucitar la próxima vez que se abra (ver usePrintReportPreviewDraft()).
+    previewDraft.value = null
     await router.push(`/registros/${props.entitySlug}`)
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudo guardar el reporte'
@@ -283,10 +296,12 @@ async function onSave() {
 }
 
 function onDiscard() {
+  // Descarte explícito - a diferencia de "Cerrar" en Vista previa, acá sí
+  // hay que tirar cualquier borrador en curso de este reporte.
+  previewDraft.value = null
   router.push(`/registros/${props.entitySlug}`)
 }
 
-const previewDsl = useState<PrintReportDsl | null>('printReportPreviewDsl', () => null)
 async function onPreview() {
   saveError.value = null
   // Mismo chequeo que onSave(): el DSL exige `title` no vacío (printReportDslSchema,
@@ -301,7 +316,7 @@ async function onPreview() {
     saveError.value = 'Agregá al menos una columna antes de ver la vista previa.'
     return
   }
-  previewDsl.value = buildDsl()
+  previewDraft.value = { reportId: props.reportId, dsl: buildDsl() }
   await router.push(`/registros/${props.entitySlug}/reportes/vista-previa`)
 }
 

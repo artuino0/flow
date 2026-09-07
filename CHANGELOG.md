@@ -1,5 +1,10 @@
 # Changelog
 
+### [0.79.4] - 2026-09-07
+#### [bug]
+- **ERD-88: "Cerrar" desde Vista previa impresión borraba el reporte en curso en el Diseñador.** Reportado por el usuario: "al dar vista previa y dar cerrar la previa se limpia el reporte no se guarda como esta en el momento". `PrintReportDesigner.vue` guardaba el DSL en un `useState` de un solo uso, solo para que `vista-previa.vue` lo leyera al llegar - "Cerrar" hace `router.back()`, que vuelve a la misma ruta del Diseñador, pero al remontarse el componente nada leía ese DSL de vuelta: título, columnas y agrupamientos armados hasta ese momento se perdían (volvía a `props.initialDsl`, que en "Nuevo reporte" ni existe). Nuevo `usePrintReportPreviewDraft()` (`composables/usePrintReports.ts`) reemplaza ese useState de un solo uso por un "borrador en curso" con contexto (`reportId` + `dsl`): el Diseñador lo restaura al montar SOLO si coincide con lo que se está editando ahora mismo (mismo `reportId`, misma entidad base - nunca resucita el borrador de otro reporte), y lo descarta explícitamente al guardar (`onSave`) o al presionar "Descartar" (`onDiscard`).
+- Validado: `npx vue-tsc --noEmit` limpio; `test/integration/printReport.test.ts` (7/7) y `test/unit/usePrintReports.test.ts` (5/5) sin cambios de comportamiento (bug de estado en el cliente, no toca el motor de ejecución).
+
 ### [0.79.3] - 2026-09-07
 #### [bug]
 - **ERD-88: Diseñador de reporte imprimible no era fiel al mock `HgECQ`.** Reportado por el usuario probando `/registros/detalle_embarques/reportes/nuevo`: "no veo el drag and drop la estructura encabezado, filtros tabla, los colores del tipo de campo". Reabre una decisión de alcance documentada en 0.79.0 que resultó estar mal fundada - el motivo dado entonces ("sin una librería de drag-and-drop en el proyecto") no era en realidad un bloqueo, y el resto sí eran correcciones de fidelidad pendientes:

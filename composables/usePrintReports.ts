@@ -109,6 +109,29 @@ export function usePrintReportFieldTree(entitySlug: string) {
   })
 }
 
+export interface PrintReportPreviewDraft {
+  // undefined = se estaba armando un reporte nuevo (pages/.../reportes/nuevo.vue);
+  // un id = se estaba editando esa plantilla guardada (.../[id]/editar.vue).
+  // El Diseñador solo restaura este draft si coincide (mismo contexto) -
+  // nunca reaparece un borrador de OTRO reporte.
+  reportId: string | undefined
+  dsl: PrintReportDsl
+}
+
+// Bug reportado por el usuario (2026-09-07): "al dar vista previa y dar
+// cerrar la previa se limpia el reporte no se guarda como esta en el
+// momento" - PrintReportDesigner.vue dejaba el DSL en un useState solo para
+// que Vista previa impresión lo leyera una vez; al volver con "Cerrar"
+// (router.back(), misma ruta del Diseñador) el componente se monta de cero y
+// nada leía ese DSL de vuelta, así que perdía título/columnas/agrupamientos
+// no guardados. Ahora el mismo useState funciona como "borrador en curso" de
+// esta pestaña: el Diseñador lo restaura al montar si coincide con lo que se
+// está editando ahora mismo (mismo reportId, misma entidad base) y lo limpia
+// al guardar o al descartar explícitamente.
+export function usePrintReportPreviewDraft() {
+  return useState<PrintReportPreviewDraft | null>('printReportPreviewDraft', () => null)
+}
+
 const NUMERIC_DATA_TYPES = new Set(['number', 'incremental'])
 export function isNumericFieldType(dataType: string): boolean {
   return NUMERIC_DATA_TYPES.has(dataType)
