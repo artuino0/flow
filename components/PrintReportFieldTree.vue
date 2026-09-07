@@ -1,11 +1,26 @@
 <script setup lang="ts">
 // ERD-88 (Diseñador de reportes imprimibles): panel "Campos disponibles"
 // (izquierda de Screen/Diseñador de reporte imprimible - 3 columnas). Fiel al
-// mock en la forma del árbol (branches expandibles con ícono `c`/`lk` según
-// sea forward o el cardinality badge "1 : N" para inverse, leaves con badge
-// de tipo) - NO fiel en la interacción: el mock arrastra campos al lienzo,
-// acá (sin librería de drag-and-drop) un clic en una hoja la agrega
-// directamente como columna nueva del reporte (ver PrintReportDesigner.vue).
+// mock (árbol con branches expandibles - ícono `c`/`lk` según sea forward, o
+// el cardinality badge rosa "1 : N" para inverse - y hojas con ícono
+// `grip-vertical` + badge de tipo con el color exacto del dataType,
+// confirmado nodo por nodo con las herramientas de Pencil: Texto=neutral,
+// Fecha=morado, N.º=azul, Sí/No=verde, 1:N=rosa - los mismos tokens de
+// tailwind.config.ts ya usados en otras pantallas, solo que acá el mock los
+// asigna distinto por dataType).
+//
+// Corrección (2026-09-07, reporte directo del usuario: "no veo el drag and
+// drop"): la primera entrega de esta pantalla reemplazaba el drag-and-drop
+// real del mock por un clic-para-agregar, con el argumento de que el
+// proyecto no tenía ninguna librería de DnD. Eso seguía siendo cierto, pero
+// no hacía falta una librería: la API nativa de HTML5 (`draggable`,
+// `dragstart`/`dragover`/`drop`) alcanza para un caso simple de "una lista
+// arrastra a otra lista", así que ahora las hojas SÍ son arrastrables de
+// verdad - el payload va en `dataTransfer` como JSON (mismo shape que emite
+// `select-leaf`) y quien escucha el `drop` (PrintReportDesigner.vue) lo
+// procesa igual que un clic. El clic se mantiene además del drag (no se
+// quita ninguna interacción, se agrega la que faltaba - también mejora
+// accesibilidad para quien no puede arrastrar).
 //
 // Recursivo: se referencia a sí mismo para las branches. `chosenDetailField`
 // es el fieldName (nivel 0) de la ÚNICA tabla relacionada ya elegida, si hay
@@ -13,7 +28,7 @@
 // (ReportPathPlanner solo soporta una). Un salto inverso anidado dentro de
 // otro (a cualquier profundidad > 0) no es resoluble por ReportPathPlanner
 // (ver composables/usePrintReports.ts) y directamente no se renderiza.
-import { ChevronRight, Link2, Table2 } from '@lucide/vue'
+import { ChevronRight, GripVertical, Link2, Table2 } from '@lucide/vue'
 import type { FieldTreeBranch, FieldTreeLeaf, FieldTreeNode } from '~/composables/usePrintReports'
 
 const props = withDefaults(
@@ -32,18 +47,24 @@ const emit = defineEmits<{
   'select-detail-branch': [FieldTreeBranch]
 }>()
 
-const TYPE_BADGE: Record<string, string> = {
-  text: 'Texto',
-  date: 'Fecha',
-  number: 'N.º',
-  incremental: 'N.º',
-  boolean: 'Sí/No',
-  select: 'Selección',
-  multiselect: 'Selección',
-  json: 'JSON'
+// Colores exactos del mock (Get() nodo por nodo en HgECQ: leafNumero/
+// leafFecha/leafEstado/leafPeso/leafEmbarcado) - mapeados a los tokens de
+// tailwind.config.ts que ya tienen ese mismo par bg/text (no se inventó
+// ningún color nuevo). select/multiselect no tienen ejemplo en este mock
+// puntual (el dataset de la HU no usa ese tipo) - se reusa "info", el mismo
+// color que ya identifica select/multiselect en ModuleFieldsCard.vue.
+const TYPE_BADGE: Record<string, { label: string; bg: string; text: string }> = {
+  text: { label: 'Texto', bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text' },
+  date: { label: 'Fecha', bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text' },
+  number: { label: 'N.º', bg: 'bg-brand-blue-bg', text: 'text-brand-blue' },
+  incremental: { label: 'N.º', bg: 'bg-brand-blue-bg', text: 'text-brand-blue' },
+  boolean: { label: 'Sí/No', bg: 'bg-brand-success-bg', text: 'text-brand-success-text' },
+  select: { label: 'Selección', bg: 'bg-brand-info-bg', text: 'text-brand-info-text' },
+  multiselect: { label: 'Selección', bg: 'bg-brand-info-bg', text: 'text-brand-info-text' },
+  json: { label: 'JSON', bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text' }
 }
-function typeBadge(dataType: string): string {
-  return TYPE_BADGE[dataType] ?? dataType
+function typeBadge(dataType: string) {
+  return TYPE_BADGE[dataType] ?? { label: dataType, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text' }
 }
 
 const expanded = ref<Record<string, boolean>>({})
@@ -51,8 +72,15 @@ function toggle(key: string) {
   expanded.value[key] = !expanded.value[key]
 }
 
+function leafPayload(node: FieldTreeLeaf) {
+  return { side: props.side, forwardHops: props.forwardHops, field: node.fieldName, label: node.label, dataType: node.dataType }
+}
 function onLeafClick(node: FieldTreeLeaf) {
-  emit('select-leaf', { side: props.side, forwardHops: props.forwardHops, field: node.fieldName, label: node.label, dataType: node.dataType })
+  emit('select-leaf', leafPayload(node))
+}
+function onLeafDragStart(event: DragEvent, node: FieldTreeLeaf) {
+  event.dataTransfer?.setData('application/json', JSON.stringify(leafPayload(node)))
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
 }
 
 function isDisabledInverseBranch(node: FieldTreeBranch): boolean {
@@ -81,11 +109,14 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
       <button
         v-if="node.type === 'leaf'"
         type="button"
-        class="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm text-brand-text hover:bg-brand-bg"
+        draggable="true"
+        class="flex w-full cursor-grab items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-brand-text hover:bg-brand-bg active:cursor-grabbing"
         @click="onLeafClick(node)"
+        @dragstart="onLeafDragStart($event, node)"
       >
-        <span class="truncate">{{ node.label }}</span>
-        <span class="shrink-0 rounded bg-brand-neutral-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand-neutral-text">{{ typeBadge(node.dataType) }}</span>
+        <GripVertical class="h-3 w-3 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+        <span class="flex-1 truncate">{{ node.label }}</span>
+        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="[typeBadge(node.dataType).bg, typeBadge(node.dataType).text]">{{ typeBadge(node.dataType).label }}</span>
       </button>
 
       <template v-else>
@@ -100,7 +131,7 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
           <Link2 v-if="node.kind === 'forward'" class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
           <Table2 v-else class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="1.75" />
           <span class="truncate">{{ node.entityName }}</span>
-          <span v-if="node.kind === 'inverse'" class="ml-auto shrink-0 rounded-full bg-brand-blue/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-blue">1 : N</span>
+          <span v-if="node.kind === 'inverse'" class="ml-auto shrink-0 rounded-full bg-brand-pink-bg px-1.5 py-0.5 text-[10px] font-bold text-brand-pink-text">1 : N</span>
         </button>
 
         <PrintReportFieldTree

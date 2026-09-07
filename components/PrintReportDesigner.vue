@@ -7,28 +7,40 @@
 // plantilla guardada) - mismo criterio de componente compartido que
 // components/ModuleWizard.vue para Crear/Editar Módulo.
 //
-// Decisión de alcance (documentada, no es un olvido): el mock arrastra
-// campos del árbol al lienzo con drag-and-drop real y dibuja el lienzo como
-// una hoja impresa completa (logo, encabezado con datos fiscales del
-// tenant, parámetros de fecha/estado como placeholders `{...}`). Sin una
-// librería de drag-and-drop en el proyecto, acá un CLIC en una hoja del
-// árbol agrega la columna directamente (mismo criterio pragmático que el
-// constructor de condiciones de Automatización, ERD-51, y el Table Builder,
-// ERD-75 - ninguno de los dos usa drag-and-drop real tampoco). El lienzo
-// central es una vista previa simplificada de las columnas ya agregadas
-// (encabezados de tabla + resumen de subtotales configurados) en vez del
-// dibujo pixel-perfecto de la hoja - la impresión real, con datos reales,
-// vive en Vista previa impresión (ERD-88 #293).
+// Corrección (2026-09-07, reporte directo del usuario: "no veo el drag and
+// drop la estructura encabezado, filtros tabla, los colores del tipo de
+// campo") - se reinvestigó `HgECQ` a fondo con las herramientas de Pencil
+// (la primera pasada se había quedado corta) y se corrigieron 3 de las 4
+// cosas señaladas:
+// 1. Drag-and-drop real: no hacía falta ninguna librería - la API nativa de
+//    HTML5 (`draggable` + `dragstart`/`dragover`/`drop`) alcanza para "una
+//    lista arrastra a otra" (ver PrintReportFieldTree.vue). Se mantiene el
+//    clic-para-agregar además del drag (no se quita, se completa - también
+//    es más accesible).
+// 2. Colores por tipo de campo: PrintReportFieldTree.vue ahora usa los
+//    colores EXACTOS del mock (Texto=neutral, Fecha=morado, N.º=azul,
+//    Sí/No=verde, branch 1:N=rosa), tomados nodo por nodo con Pencil y
+//    mapeados a tokens ya existentes en tailwind.config.ts.
+// 3. Estructura del lienzo: el mock dibuja el Canvas como una hoja de
+//    verdad, con 4 zonas apiladas dentro de un marco blanco sobre fondo gris
+//    (`Zone Encabezado` con logo+título, una regla, `Zone Parámetros`,
+//    `Zone Tabla` con el encabezado real de columnas, y una barra
+//    `Subtotal`) más un FAB flotante "Vista previa" - reemplaza la tabla
+//    plana que había antes.
 //
-// "PARÁMETROS DEL REPORTE" del mock (filtros de fecha/estado elegidos AL
-// imprimir, no al diseñar) queda fuera de esta entrega: agregarlo bien
-// requeriría un tipo de columna nuevo en el DSL (parámetro de filtro) +
-// UI para completarlo en Vista previa impresión, y no hay evidencia en el
-// resto del .pen de cómo se validan/aplican esos valores - se prefiere
-// entregar el flujo completo (diseñar -> guardar -> imprimir) sin parámetros
-// de filtro antes que una versión a medias de esa pieza. Documentado acá
-// para que quede explícito, no perdido.
-import { AlertTriangle, ArrowLeft, Ban, Calculator, FileWarning, Save, Settings2, SplitSquareHorizontal, Trash2, X } from '@lucide/vue'
+// Lo que SIGUE fuera de esta entrega (decisión de alcance, no un olvido):
+// "PARÁMETROS DEL REPORTE" (filtros de fecha/estado elegidos AL imprimir, no
+// al diseñar) - agregarlo bien requeriría un tipo de columna nuevo en el DSL
+// (parámetro de filtro) + UI para completarlo en Vista previa impresión, y
+// no hay evidencia en el resto del .pen de cómo se validan/aplican esos
+// valores. La `Zone Parámetros` del lienzo SÍ se dibuja ahora (para que la
+// estructura de 4 zonas sea visible, que era parte del reclamo), pero como
+// una nota atenuada "no disponible en esta versión" en vez de una fila
+// funcional - preferible a una versión a medias de la pieza real. Tampoco
+// se agregan los datos fiscales del tenant en `Zone Encabezado` (logo real,
+// razón social, RUC) - no hay ningún endpoint que los exponga al cliente
+// hoy (mismo motivo ya documentado en Vista previa impresión).
+import { AlertTriangle, Ban, Calculator, Eye, FileText, Save, Settings2, SlidersHorizontal, SplitSquareHorizontal, Table2, Trash2, X } from '@lucide/vue'
 import {
   collectBaseLeaves,
   collectDetailLeaves,
@@ -126,6 +138,20 @@ function onSelectLeaf(payload: { side: 'base' | 'detail'; forwardHops: string[];
   columns.value.push({ kind: 'detalle', key, label: payload.label, source: { side: payload.side, forwardHops: payload.forwardHops, field: payload.field } })
   columnDataTypes.value[key] = payload.dataType
   selectedKey.value = key
+}
+
+// Soltar una hoja arrastrada desde el árbol sobre la Zona Tabla del lienzo -
+// mismo payload que emite `select-leaf` (ver PrintReportFieldTree.vue), así
+// que reusa exactamente la misma lógica de alta que el clic.
+function onCanvasDrop(event: DragEvent) {
+  event.preventDefault()
+  const raw = event.dataTransfer?.getData('application/json')
+  if (!raw) return
+  try {
+    onSelectLeaf(JSON.parse(raw))
+  } catch {
+    // payload invalido (drag de otro origen que no sea el arbol) - se ignora.
+  }
 }
 
 function onSelectDetailBranch(branch: FieldTreeBranch) {
@@ -297,18 +323,24 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
     </div>
 
     <div class="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-4">
-      <div class="flex min-w-[240px] flex-1 flex-col gap-1">
-        <label class="text-xs font-semibold text-brand-text-secondary">Nombre del reporte</label>
-        <input
-          v-model="title"
-          type="text"
-          placeholder="Ej. Remito de carga"
-          class="w-full max-w-md rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        />
+      <div class="flex min-w-[280px] flex-1 items-center gap-3">
+        <div class="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded bg-brand-blue-bg">
+          <FileText class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
+        </div>
+        <div class="flex max-w-[320px] flex-1 flex-col gap-1">
+          <label class="text-xs font-semibold text-brand-text-secondary">Nombre del reporte</label>
+          <input
+            v-model="title"
+            type="text"
+            placeholder="Ej. Remito de carga"
+            class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          />
+          <span class="text-[11px] text-brand-text-muted">Así vas a identificarlo en "Reportes guardados".</span>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="onDiscard">
-          <ArrowLeft class="h-4 w-4" :stroke-width="1.75" />
+          <SlidersHorizontal class="h-4 w-4" :stroke-width="1.75" />
           Descartar
         </button>
         <button
@@ -332,6 +364,13 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           <h2 class="text-sm font-bold text-brand-text">Campos disponibles</h2>
         </div>
         <div class="max-h-[560px] overflow-y-auto p-2">
+          <!-- Fila fija con el nombre de la entidad base (fiel a "branch Manifiestos"
+          del mock: un renglón no-clicable arriba del árbol, para ubicar de qué
+          módulo salen los campos de abajo). -->
+          <div class="mb-1 flex items-center gap-1.5 rounded bg-brand-bg px-2 py-1.5">
+            <Table2 class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="truncate text-xs font-bold text-brand-text">{{ entitySlug }}</span>
+          </div>
           <p v-if="treePending" class="p-2 text-xs text-brand-text-muted">Cargando campos...</p>
           <p v-else-if="treeError" class="p-2 text-xs text-brand-error-text">No se pudieron cargar los campos de esta entidad.</p>
           <PrintReportFieldTree
@@ -344,14 +383,20 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
         </div>
       </div>
 
-      <!-- Canvas (vista simplificada de columnas) -->
-      <div class="flex flex-col gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-4 lg:col-span-6">
+      <!-- Canvas: dibuja la hoja en 4 zonas apiladas (Encabezado/regla/Parámetros/
+      Tabla), fiel a `WIPhW`/`NAbkH` del mock - ver el comentario grande de arriba
+      sobre qué zona es real (Encabezado con el título en vivo, Tabla con las
+      columnas ya agregadas) y cuál es solo estructura visual (Parámetros, fuera
+      de alcance). Acepta drop de una hoja del árbol en cualquier punto del
+      lienzo, no solo sobre la Zona Tabla - más forgiving que exigir soltar
+      pixel-perfecto adentro de esa caja. -->
+      <div class="flex flex-col gap-2 lg:col-span-6">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-bold text-brand-text">{{ title || 'Reporte sin nombre' }}</h2>
           <button
             v-if="detail"
             type="button"
-            class="flex items-center gap-1.5 rounded border border-brand-border-light px-2.5 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg"
+            class="flex items-center gap-1.5 rounded border border-brand-border-light bg-brand-surface px-2.5 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg"
             @click="detailConfigOpen = true"
           >
             <Settings2 class="h-3.5 w-3.5" :stroke-width="1.75" />
@@ -359,46 +404,68 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           </button>
         </div>
 
-        <p v-if="columns.length === 0" class="rounded border border-dashed border-brand-border-light p-6 text-center text-sm text-brand-text-muted">
-          Elegí campos del panel de la izquierda para armar las columnas del reporte.
-        </p>
+        <div class="relative flex flex-1 items-start justify-center rounded-lg bg-[#E9ECF0] p-7" @dragover.prevent @drop="onCanvasDrop">
+          <div class="flex w-full max-w-[480px] flex-col gap-4 rounded border border-[#DADADA] bg-white p-6">
+            <!-- Zone Encabezado -->
+            <div class="flex items-center gap-3.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
+              <div class="flex h-11 w-16 shrink-0 items-center justify-center rounded border border-[#BFBFBF]">
+                <span class="text-[9px] text-[#9A9A9A]">LOGO</span>
+              </div>
+              <h3 class="truncate text-[15px] font-bold text-[#1A1A1A]">{{ title || 'Reporte sin nombre' }}</h3>
+            </div>
+            <div class="h-0.5 w-full bg-[#1A1A1A]" />
 
-        <div v-else class="overflow-x-auto rounded border border-brand-border-light">
-          <table class="w-full text-left text-sm">
-            <thead>
-              <tr class="border-b border-brand-border-light bg-brand-bg">
-                <th v-for="col in columns" :key="col.key" class="px-3 py-2 font-semibold text-brand-text-secondary">
-                  <button type="button" class="flex items-center gap-1 hover:text-brand-text" :class="{ 'text-brand-blue': selectedKey === col.key }" @click="selectedKey = col.key">
-                    {{ col.label }}
-                    <Calculator v-if="col.kind === 'sumar'" class="h-3 w-3" :stroke-width="2" />
-                    <SplitSquareHorizontal v-else-if="col.kind === 'repartir'" class="h-3 w-3" :stroke-width="2" />
-                  </button>
-                </th>
-                <th class="w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="border-b border-brand-border-light/60">
-                <td v-for="col in columns" :key="col.key" class="px-3 py-2 text-brand-text-muted">
-                  {{ col.kind === 'detalle' ? '…' : col.kind === 'sumar' ? 'Σ' : '⇉' }}
-                </td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
+            <!-- Zone Parámetros: estructura visible, fuera de alcance (ver comentario
+            grande del script). -->
+            <div class="flex flex-col gap-1.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
+              <p class="text-[9px] font-bold tracking-wide text-[#9AA0A6]">PARÁMETROS DEL REPORTE</p>
+              <p class="text-xs italic text-brand-text-muted">No disponible en esta versión.</p>
+            </div>
+
+            <!-- Zone Tabla: encabezado real de las columnas ya agregadas, clic o
+            drop acá también agrega/selecciona. -->
+            <div class="flex flex-col gap-1.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
+              <p class="truncate text-[9px] font-bold tracking-wide text-[#9AA0A6]">
+                {{ detail ? `TABLA RELACIONADA — ${detail.entitySlug}` : 'COLUMNAS DEL REPORTE' }}
+              </p>
+
+              <p v-if="columns.length === 0" class="rounded border border-dashed border-[#CBD6E2] px-3 py-4 text-center text-xs text-brand-text-muted">
+                Arrastrá un campo del árbol hasta acá, o hacé clic en una hoja.
+              </p>
+
+              <div v-else class="flex overflow-hidden rounded border border-[#B8B8B8]">
+                <button
+                  v-for="col in columns"
+                  :key="col.key"
+                  type="button"
+                  class="flex items-center justify-between gap-1.5 border-r border-[#B8B8B8] px-2.5 py-1.5 text-left text-[11px] font-bold text-[#1F1F1F] last:border-r-0"
+                  :class="selectedKey === col.key ? 'border border-brand-blue bg-[#DCF1F6]' : 'bg-[#ECECEC] hover:bg-[#E2E2E2]'"
+                  @click="selectedKey = col.key"
+                >
+                  <span class="truncate">{{ col.label }}</span>
+                  <Calculator v-if="col.kind === 'sumar'" class="h-3 w-3 shrink-0" :stroke-width="2" />
+                  <SplitSquareHorizontal v-else-if="col.kind === 'repartir'" class="h-3 w-3 shrink-0" :stroke-width="2" />
+                  <Settings2 v-else class="h-3 w-3 shrink-0 text-[#9AA0A6]" :stroke-width="1.75" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Subtotal -->
+            <div v-if="sumColumns.length > 0" class="flex justify-end rounded bg-[#EDEDED] px-3 py-2">
+              <span class="text-[11.5px] font-bold text-[#1A1A1A]">Subtotal: {{ sumColumns.map((c) => c.label).join(' · ') }}</span>
+            </div>
+          </div>
+
+          <!-- Vista previa FAB -->
+          <button
+            type="button"
+            class="absolute bottom-5 right-5 flex items-center gap-1.5 rounded border border-brand-border bg-white px-4 py-2.5 text-[13px] font-semibold text-brand-text shadow-sm hover:bg-brand-bg"
+            @click="onPreview"
+          >
+            <Eye class="h-4 w-4" :stroke-width="1.75" />
+            Vista previa
+          </button>
         </div>
-
-        <div v-if="sumColumns.length > 0" class="rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-xs text-brand-text-secondary">
-          Subtotal: {{ sumColumns.map((c) => c.label).join(' · ') }}
-        </div>
-
-        <button
-          type="button"
-          class="mt-auto flex items-center justify-center gap-1.5 self-end rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
-          @click="onPreview"
-        >
-          Vista previa
-        </button>
       </div>
 
       <!-- Panel Propiedades -->
