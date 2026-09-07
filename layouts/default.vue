@@ -9,9 +9,38 @@
 // componente AppHeader del .pen). No hay endpoint de nombre de tenant hoy
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
-import { Bell, LogOut, ChevronDown, PanelLeftClose } from '@lucide/vue'
+import { Bell, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
 
 const { user, logout } = useAuth()
+
+// Bug reportado por el usuario (2026-09-07): "el menu no se colapsa tiene el
+// icono pero no funciona" - el icono `panel-left-close` de la barra "MENÚ"
+// (fiel al mock: `Sidebar/Top` en el .pen lo dibuja como un `IconButton`
+// real, ver R8Du5) se habia dejado como un <div> decorativo sin @click ni
+// estado, nunca se terminó de conectar. El .pen no diseña un estado
+// "colapsado" del Sidebar (ningún mock alternativo, revisado con las
+// herramientas de Pencil) - se implementa el patrón estándar de "colapsar a
+// riel angosto" (solo el botón, sin MENÚ/items) en vez de ocultar el aside
+// por completo, para que el botón de reabrir siga siempre visible en el
+// mismo lugar. Persistido en localStorage con el mismo criterio que
+// sectionsOpen de AppNav.vue (preferencia de navegador, no dato de negocio).
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'flowerp-sidebar-collapsed'
+const sidebarCollapsed = ref(false)
+onMounted(() => {
+  try {
+    sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
+  } catch {
+    // localStorage no disponible - se queda con el default (expandido).
+  }
+})
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed.value ? '1' : '0')
+  } catch {
+    // idem - si no se puede persistir, el toggle igual funciona para esta sesion.
+  }
+}
 
 // HU-ERD-83 (parte 2): sesion deslizante + aviso de inactividad - ver
 // composables/useIdleTimeout.ts. Solo tiene sentido en el layout autenticado
@@ -85,14 +114,23 @@ async function onLogout(reason?: 'inactividad') {
     />
 
     <div class="flex flex-1">
-      <aside class="hidden w-60 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface sm:flex">
-        <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3.5">
-          <span class="text-xs font-bold tracking-wide text-brand-text-muted">MENÚ</span>
-          <div class="flex h-[26px] w-[26px] items-center justify-center rounded text-brand-text-secondary">
-            <PanelLeftClose class="h-4 w-4" :stroke-width="1.75" />
-          </div>
+      <aside
+        class="hidden shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:flex"
+        :class="sidebarCollapsed ? 'w-12' : 'w-60'"
+      >
+        <div class="flex items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
+          <span v-if="!sidebarCollapsed" class="text-xs font-bold tracking-wide text-brand-text-muted">MENÚ</span>
+          <button
+            type="button"
+            :title="sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'"
+            class="flex h-[26px] w-[26px] items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg"
+            @click="toggleSidebar"
+          >
+            <PanelLeftOpen v-if="sidebarCollapsed" class="h-4 w-4" :stroke-width="1.75" />
+            <PanelLeftClose v-else class="h-4 w-4" :stroke-width="1.75" />
+          </button>
         </div>
-        <div class="flex flex-1 flex-col gap-px p-2.5">
+        <div v-if="!sidebarCollapsed" class="flex flex-1 flex-col gap-px overflow-y-auto p-2.5">
           <AppNav />
         </div>
       </aside>

@@ -1,5 +1,10 @@
 # Changelog
 
+### [0.79.2] - 2026-09-07
+#### [bug]
+- **El icono "colapsar menú" de la barra lateral no hacía nada.** Reportado por el usuario: "el menu no se colapsa tiene el icono pero no funciona". `layouts/default.vue` dibujaba el icono `panel-left-close` de la barra "MENÚ" dentro de un `<div>` decorativo, sin `@click` ni estado - nunca se terminó de conectar, aunque el mock (`Sidebar/Top` del .pen, revisado con las herramientas de Pencil) sí lo diseña como un `IconButton` real. El .pen no tiene un mock del estado "colapsado" del Sidebar, así que se implementó el patrón estándar: al colapsar, el `<aside>` se angosta a un riel de solo el botón (sin "MENÚ" ni los items de `AppNav`), con el icono cambiando a `panel-left-open` para volver a expandirlo - el botón queda siempre visible en el mismo lugar en vez de desaparecer junto con el resto de la barra. Estado persistido en `localStorage` con el mismo criterio que las secciones plegables de `AppNav.vue` (preferencia de navegador).
+- Validado: `npx vue-tsc --noEmit` limpio.
+
 ### [0.79.1] - 2026-09-06
 #### [bug]
 - **ERD-88: "Vista previa" sin título mostraba un error crudo de Zod.** Encontrado probando la app en local: `PrintReportDesigner.vue`'s `onPreview()` solo validaba que hubiera columnas antes de navegar a Vista previa, no que el reporte tuviera título - `printReportDslSchema` (`server/utils/printReport.ts`) exige `title` no vacío, así que `POST /api/print-reports/preview` rechazaba el DSL con un 400 cuyo `statusMessage` era el JSON crudo del error de Zod (`[{"code":"too_small",...,"path":["dsl","title"]}]`), mostrado tal cual en la pantalla de Vista previa. `onPreview()` ahora valida el título primero, igual que ya hacía `onSave()` ("Ponele un nombre al reporte antes de ver la vista previa.").
