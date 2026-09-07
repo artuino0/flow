@@ -306,6 +306,19 @@ export const tenants = pgTable('tenants', {
   timezone: text('timezone').notNull().default('America/Mexico_City'),
   country: text('country').notNull().default('MX'),
   fiscalData: jsonb('fiscal_data').notNull().default({}),
+  // Logo del tenant (pedido directo del usuario, 2026-09-07: "los ajustes
+  // para cargar el logo y los datos de la empresa emisora del reporte") -
+  // mismo criterio de disco local que `files` (server/utils/fileStorage.ts),
+  // pero SIN pasar por esa tabla: `files.entity_id` es NOT NULL y apunta a
+  // un modulo dinamico (`entities`), y el logo no pertenece a ningun modulo
+  // - es un dato del tenant mismo, un renglon por tenant, no una coleccion.
+  // Server/utils/tenantLogo.ts reusa el mismo directorio de disco con sus
+  // propias funciones. logoStorageKey nunca sale de la API (ver
+  // GET /api/tenant) - es una ruta de disco interna, no un dato de negocio.
+  logoStorageKey: text('logo_storage_key'),
+  logoMimeType: text('logo_mime_type'),
+  logoFileName: text('logo_file_name'),
+  logoSizeBytes: integer('logo_size_bytes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({

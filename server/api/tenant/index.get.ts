@@ -7,6 +7,10 @@ import { requireAdminRole } from '~/server/utils/rbac'
 // para la pantalla Configuracion General (ERD-62). tenants no tiene RLS por
 // tenant_id (ella ES el tenant) - el aislamiento lo da filtrar explicitamente
 // por auth.tenantId, nunca por lo que mande el cliente.
+//
+// logoStorageKey NUNCA sale de aca (ruta de disco interna, ver
+// server/utils/tenantLogo.ts) - se resume a `hasLogo`. El logo mismo se pide
+// aparte a GET /api/tenant/logo (imagen binaria).
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
 
@@ -16,5 +20,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Tenant no encontrado' })
   }
 
-  return tenant
+  const { logoStorageKey, logoMimeType, logoFileName, logoSizeBytes, ...rest } = tenant
+  return { ...rest, hasLogo: logoStorageKey != null, logoFileName, logoSizeBytes }
 })

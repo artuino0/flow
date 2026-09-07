@@ -267,6 +267,13 @@
       "when": 1788716010406,
       "tag": "0037_print_reports_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788793964870,
+      "tag": "0038_erd62_tenant_logo",
+      "breakpoints": true
     }
   ]
 }

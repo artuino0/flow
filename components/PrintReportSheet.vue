@@ -9,18 +9,25 @@
 // print_reports nunca congela un resultado, en server/db/schema.ts).
 //
 // Decisiones de alcance (documentadas, mismo criterio que
-// PrintReportDesigner.vue): el mock dibuja un encabezado completo con
-// logo/razón social/RUC y una fila "PARÁMETROS DEL REPORTE" con los filtros
-// elegidos al imprimir - ninguno de los dos existe en el backend actual (no
-// hay datos fiscales del tenant expuestos al cliente, ni un tipo de columna
-// "parámetro de filtro" en el DSL), así que el encabezado acá se limita al
-// título del reporte. El mock también pagina la hoja en páginas fijas
+// PrintReportDesigner.vue): el mock también pagina la hoja en páginas fijas
 // ("Página 1 de 2") con el encabezado de columnas repetido a mano en cada
 // una - en vez de reimplementar esa paginación a mano, se usa una única
 // <table> continua con <thead> real: la mayoría de los navegadores ya
 // repiten el <thead> al cortar la impresión en varias hojas físicas, sin
 // necesitar lógica de paginación propia (lo único que NO se logra así es la
-// numeración real "Página X de Y", que sí queda fuera de esta entrega).
+// numeración real "Página X de Y", que sí queda fuera de esta entrega). La
+// fila "PARÁMETROS DEL REPORTE" (filtros elegidos AL imprimir) también sigue
+// fuera - no hay un tipo de columna "parámetro de filtro" en el DSL.
+//
+// Corrección (2026-09-07, pedido directo del usuario: "trabajar en los
+// ajustes para cargar el logo y los datos de la empresa emisora del
+// reporte"): el encabezado SÍ dibuja ahora logo + razón social + RFC, fiel a
+// la zona "mh" del mock (`cCoWH` en A0UnX) - antes se documentaba como fuera
+// de alcance por falta de un endpoint que expusiera estos datos; ese
+// endpoint ya existe (GET /api/tenant/branding + GET /api/tenant/logo, ver
+// pages/ajustes/index.vue). La columna derecha del mock ("N.º RPT-0087") no
+// se agrega - no existe un folio por reporte impreso, y no hay evidencia en
+// el resto del .pen de cómo se numeraría uno.
 import type { PrintReportGroup, PrintReportResult, PrintReportResultColumn, PrintReportRow } from '~/composables/usePrintReports'
 
 const props = defineProps<{
@@ -28,6 +35,22 @@ const props = defineProps<{
   groupFieldLabels: string[]
   generatedAt: Date
 }>()
+
+interface TenantBranding {
+  name: string
+  fiscalData: Record<string, unknown>
+  hasLogo: boolean
+}
+const { data: branding } = useFetch<TenantBranding>('/api/tenant/branding', {
+  key: 'print-report-branding',
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
+const logoSrc = computed(() => (branding.value?.hasLogo ? '/api/tenant/logo' : null))
+const companyLine = computed(() => {
+  if (!branding.value) return ''
+  const rfc = branding.value.fiscalData?.rfc as string | undefined
+  return rfc ? `${branding.value.name}  ·  RFC ${rfc}` : branding.value.name
+})
 
 type Line =
   | { kind: 'group-header'; level: number; text: string }
@@ -92,6 +115,12 @@ const generatedLabel = computed(() => {
   const d = props.generatedAt
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 })
+// Solo fecha (sin hora), fiel al "Emitido 14/08/2026" de mrr/b en el mock -
+// la hora sí se muestra abajo, en el pie ("Generado por FlowERP · ...").
+const emittedDateLabel = computed(() => {
+  const d = props.generatedAt
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`
+})
 
 function detailCellText(col: PrintReportResultColumn, row: PrintReportRow, index: number): string {
   const value = row.values[col.key]
@@ -108,8 +137,16 @@ function detailCellText(col: PrintReportResultColumn, row: PrintReportRow, index
 
 <template>
   <div class="mx-auto w-full max-w-[840px] border border-brand-border-light bg-white p-8 text-[#2B2B2B] shadow-sm print:max-w-none print:border-0 print:p-0 print:shadow-none">
-    <div class="mb-3.5 flex items-end justify-between gap-4">
-      <h1 class="text-lg font-bold text-[#1A1A1A]">{{ result.title }}</h1>
+    <div class="mb-3.5 flex items-center gap-3.5">
+      <div class="flex h-11 w-[66px] shrink-0 items-center justify-center rounded-sm border border-[#BFBFBF]">
+        <img v-if="logoSrc" :src="logoSrc" alt="Logo de la organización" class="h-full w-full object-contain" />
+        <span v-else class="text-[9px] text-[#9A9A9A]">LOGO</span>
+      </div>
+      <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+        <h1 class="truncate text-lg font-bold tracking-wide text-[#1A1A1A]">{{ result.title }}</h1>
+        <p v-if="companyLine" class="truncate text-[10px] text-[#555555]">{{ companyLine }}</p>
+      </div>
+      <div class="shrink-0 text-[10px] text-[#555555]">Emitido {{ emittedDateLabel }}</div>
     </div>
     <div class="mb-4 h-[2px] w-full bg-[#1A1A1A]" />
 
