@@ -117,8 +117,9 @@ async function onDelete(module: ModuleRow) {
               class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
             />
           </div>
-          <NuxtLink
-            :to="`${basePath}/nuevo`"
+            <NuxtLink to="/organizacion" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
+            <NuxtLink
+              :to="`${basePath}/nuevo`"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
           >
             <Blocks class="h-4 w-4" :stroke-width="1.75" />

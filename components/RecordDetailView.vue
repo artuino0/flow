@@ -24,8 +24,8 @@
 // ningún historial de auditoría en el esquema hoy - se muestra un aviso
 // honesto en vez de datos inventados; el historial real queda para una HU futura.
 import { computed, reactive, ref, watch } from 'vue'
-import { Calendar, Clock, Pencil, Trash2 } from '@lucide/vue'
-import type { DetailLayout, EntityFieldMeta, InverseRelation } from '~/composables/useEntityFields'
+import { Calendar, Clock, Pencil, Plus, Trash2 } from '@lucide/vue'
+import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation } from '~/composables/useEntityFields'
 
 interface RecordData {
   id: string
@@ -119,6 +119,7 @@ interface RelatedTableState {
   rows: { id: string; customData: Record<string, unknown> }[]
   total: number
   loading: boolean
+  canCreate: boolean
   // Reportado por el usuario (2026-09-03): la tabla embebida de una relacion
   // inversa puede tener SUS PROPIAS columnas relation (ej. Empaque listando
   // Recepciones, y esa lista mostrando a su vez su Productor) - mismas
@@ -126,23 +127,24 @@ interface RelatedTableState {
   relationLabels: Record<string, Record<string, string>>
 }
 const relatedTables = reactive<Record<string, RelatedTableState>>({})
-const readOnlyPermissions = { canRead: true, canCreate: false, canUpdate: false, canDelete: false }
+const readOnlyPermissions: EntityPermissions = { canRead: true, canCreate: false, canUpdate: false, canDelete: false }
+const activePane = ref<'associations' | 'activity'>('associations')
 
 async function loadRelatedTable(entitySlug: string, fieldName: string) {
   if (!props.record) return
   const key = `${entitySlug}.${fieldName}`
-  relatedTables[key] = { fields: [], rows: [], total: 0, loading: true, relationLabels: {} }
+  relatedTables[key] = { fields: [], rows: [], total: 0, loading: true, canCreate: false, relationLabels: {} }
   try {
     const [fieldsRes, recordsRes] = await Promise.all([
-      $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${entitySlug}/fields`),
+      $fetch<{ fields: EntityFieldMeta[]; permissions: EntityPermissions }>(`/api/entities/${entitySlug}/fields`),
       $fetch<{ data: { id: string; customData: Record<string, unknown> }[]; total: number; relationLabels: Record<string, Record<string, string>> }>(
         `/api/records/${entitySlug}`,
         { query: { filterField: fieldName, filterValues: props.record.id, pageSize: 5 } }
       )
     ])
-    relatedTables[key] = { fields: fieldsRes.fields, rows: recordsRes.data, total: recordsRes.total, loading: false, relationLabels: recordsRes.relationLabels }
+    relatedTables[key] = { fields: fieldsRes.fields, rows: recordsRes.data, total: recordsRes.total, loading: false, canCreate: !!fieldsRes.permissions?.canCreate, relationLabels: recordsRes.relationLabels }
   } catch {
-    relatedTables[key] = { fields: [], rows: [], total: 0, loading: false, relationLabels: {} }
+    relatedTables[key] = { fields: [], rows: [], total: 0, loading: false, canCreate: false, relationLabels: {} }
   }
 }
 
@@ -158,6 +160,12 @@ watch(
 function relatedListLink(entitySlug: string, fieldName: string): string {
   if (!props.record) return '#'
   return `/registros/${entitySlug}?filterField=${encodeURIComponent(fieldName)}&filterValues=${encodeURIComponent(props.record.id)}`
+}
+
+function relatedCreateLink(entitySlug: string, fieldName: string): string {
+  if (!props.record) return '#'
+  const from = `/registros/${props.entitySlug}/${props.record.id}`
+  return `/registros/${entitySlug}/nuevo?${encodeURIComponent(fieldName)}=${encodeURIComponent(props.record.id)}&from=${encodeURIComponent(from)}`
 }
 
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
@@ -185,91 +193,140 @@ async function onDelete() {
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-    <div class="flex items-start justify-between gap-3 border-b border-brand-border-light p-5">
-      <div class="flex items-center gap-3">
-        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-blue-bg text-sm font-bold text-brand-blue">{{ initials }}</span>
-        <div class="flex flex-col gap-0.5">
-          <h2 class="text-[17px] font-bold text-brand-text">{{ displayLabel }}</h2>
-          <p v-if="record?.createdAt" class="flex items-center gap-1 text-xs text-brand-text-muted">
-            <Calendar class="h-3 w-3" :stroke-width="1.75" />
-            Creado el {{ new Date(record.createdAt).toLocaleDateString() }}
-          </p>
-          <p v-else-if="!record" class="text-xs text-brand-text-muted">Así se verá la ficha de un registro de {{ entityName || 'este módulo' }}</p>
+  <div class="grid grid-cols-1 gap-5" :class="record ? 'lg:grid-cols-12' : ''">
+    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]" :class="record ? 'lg:col-span-4' : ''">
+      <div class="flex flex-col gap-3 border-b border-brand-border-light p-5">
+        <div class="flex min-w-0 items-start gap-3">
+          <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-blue-bg text-sm font-bold text-brand-blue">{{ initials }}</span>
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Acerca de</p>
+            <h2 class="break-words text-[17px] font-bold leading-snug text-brand-text">{{ displayLabel }}</h2>
+            <p v-if="record?.createdAt" class="flex items-center gap-1 text-xs text-brand-text-muted">
+              <Calendar class="h-3 w-3 shrink-0" :stroke-width="1.75" />
+              Creado el {{ new Date(record.createdAt).toLocaleDateString() }}
+            </p>
+            <p v-else-if="!record" class="text-xs text-brand-text-muted">Así se verá la ficha de un registro de {{ entityName || 'este módulo' }}</p>
+          </div>
+        </div>
+        <div v-if="record && (canUpdate || canDelete)" class="flex items-center gap-2">
+          <NuxtLink
+            v-if="canUpdate"
+            :to="`/registros/${entitySlug}/${record.id}/editar`"
+            class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
+          >
+            <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
+            Editar
+          </NuxtLink>
+          <button
+            v-if="canDelete"
+            type="button"
+            :disabled="deleting"
+            title="Eliminar"
+            class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onDelete"
+          >
+            <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
+          </button>
         </div>
       </div>
-      <div v-if="record" class="flex shrink-0 items-center gap-2">
-        <NuxtLink
-          v-if="canUpdate"
-          :to="`/registros/${entitySlug}/${record.id}/editar`"
-          class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
-        >
-          <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
-          Editar
-        </NuxtLink>
-        <button
-          v-if="canDelete"
-          type="button"
-          :disabled="deleting"
-          title="Eliminar"
-          class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
-          @click="onDelete"
-        >
-          <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
-        </button>
+
+      <p v-if="deleteError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
+
+      <div class="flex flex-col gap-5 p-5">
+        <div v-if="visibleProperties.length === 0" class="text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
+        <dl v-else class="grid grid-cols-1 gap-3">
+          <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-0.5">
+            <dt class="text-xs font-semibold text-brand-text-secondary">{{ field.label }}</dt>
+            <dd class="text-sm text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+          </div>
+        </dl>
       </div>
     </div>
 
-    <p v-if="deleteError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
-
-    <div class="flex flex-col gap-5 p-5">
-      <div v-if="visibleProperties.length === 0" class="text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
-      <dl v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-0.5">
-          <dt class="text-xs font-semibold text-brand-text-secondary">{{ field.label }}</dt>
-          <dd class="text-sm text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
-        </div>
-      </dl>
-
-      <div v-for="rel in visibleRelations" :key="`${rel.entitySlug}.${rel.fieldName}`" class="flex flex-col gap-2 border-t border-brand-border-light pt-4">
-        <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
-
-        <!-- Modo vista previa: sin datos reales, mismo texto que el .pen. -->
-        <p v-if="!record" class="text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
-
-        <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
-          <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="text-xs text-brand-text-muted">Cargando...</p>
-          <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0">
-            <p class="text-xs text-brand-text-muted">Sin registros relacionados.</p>
-          </template>
-          <template v-else>
-            <DynamicTable
-              :entity-slug="rel.entitySlug"
-              :fields="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].fields"
-              :rows="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows"
-              :page="1"
-              :page-size="5"
-              :total="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total"
-              sort-by="createdAt"
-              sort-dir="desc"
-              :permissions="readOnlyPermissions"
-              :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
-            />
-            <NuxtLink
-              v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total > 5"
-              :to="relatedListLink(rel.entitySlug, rel.fieldName)"
-              class="self-start text-xs font-semibold text-brand-blue hover:underline"
-            >
-              Ver los {{ relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total }} registros →
-            </NuxtLink>
-          </template>
-        </template>
+    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]" :class="record ? 'lg:col-span-8' : ''">
+      <div class="flex items-center gap-1 border-b border-brand-border-light px-5" role="tablist" aria-label="Asociaciones y actividad">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activePane === 'associations'"
+          class="border-b-2 px-4 py-3 text-sm font-semibold"
+          :class="activePane === 'associations' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'"
+          @click="activePane = 'associations'"
+        >
+          Asociaciones
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activePane === 'activity'"
+          class="border-b-2 px-4 py-3 text-sm font-semibold"
+          :class="activePane === 'activity' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'"
+          @click="activePane = 'activity'"
+        >
+          Actividad
+        </button>
       </div>
 
-      <div v-if="layout.showActivity" class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
-        <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
-        <span v-if="!record">Línea de tiempo de actividad visible</span>
-        <span v-else>La línea de tiempo de actividad todavía no está disponible - requiere un historial de auditoría (HU futura).</span>
+      <div v-if="activePane === 'associations'" class="flex flex-col gap-5 p-5">
+        <p v-if="visibleRelations.length === 0" class="text-sm text-brand-text-muted">Ningún otro módulo tiene un campo de relación apuntando a este.</p>
+        <div
+          v-for="rel in visibleRelations"
+          :key="`${rel.entitySlug}.${rel.fieldName}`"
+          class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface"
+        >
+          <div class="flex items-center justify-between gap-3 border-b border-brand-border-light px-4 py-3">
+            <div class="flex flex-col gap-0.5">
+              <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
+              <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
+            </div>
+            <NuxtLink
+              v-if="record && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate"
+              :to="relatedCreateLink(rel.entitySlug, rel.fieldName)"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover"
+            >
+              <Plus class="h-3.5 w-3.5" :stroke-width="1.75" />
+              Agregar
+            </NuxtLink>
+          </div>
+          <div class="p-4">
+            <p v-if="!record" class="text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
+            <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
+              <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="text-xs text-brand-text-muted">Cargando...</p>
+              <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0">
+                <p class="text-xs text-brand-text-muted">Sin registros relacionados.</p>
+              </template>
+              <template v-else>
+                <DynamicTable
+                  :entity-slug="rel.entitySlug"
+                  :fields="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].fields"
+                  :rows="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows"
+                  :page="1"
+                  :page-size="5"
+                  :total="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total"
+                  sort-by="createdAt"
+                  sort-dir="desc"
+                  :permissions="readOnlyPermissions"
+                  :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
+                />
+                <NuxtLink
+                  v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total > 5"
+                  :to="relatedListLink(rel.entitySlug, rel.fieldName)"
+                  class="mt-3 inline-block text-xs font-semibold text-brand-blue hover:underline"
+                >
+                  Ver los {{ relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total }} registros →
+                </NuxtLink>
+              </template>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="p-5">
+        <div class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
+          <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
+          <span v-if="!record">Línea de tiempo de actividad visible</span>
+          <span v-else>La línea de tiempo de actividad todavía no está disponible - requiere un historial de auditoría (HU futura).</span>
+        </div>
       </div>
     </div>
   </div>

@@ -1,218 +1,140 @@
 <script setup lang="ts">
-// ERD-88 (Diseñador de reportes imprimibles): la hoja impresa real, fiel a
-// Screen/Vista previa impresión (grupos anidados) del .pen (`A0UnX`),
-// revisada con las herramientas de Pencil antes de construir esta pantalla
-// (regla pencil-antes-de-frontend). Reusado por
-// pages/registros/[entity]/reportes/vista-previa.vue (dsl sin guardar, recién
-// armado en el Diseñador) y .../[id]/imprimir.vue (plantilla guardada,
-// siempre reejecutada en vivo - ver el comentario grande sobre por qué
-// print_reports nunca congela un resultado, en server/db/schema.ts).
-//
-// Decisiones de alcance (documentadas, mismo criterio que
-// PrintReportDesigner.vue): el mock también pagina la hoja en páginas fijas
-// ("Página 1 de 2") con el encabezado de columnas repetido a mano en cada
-// una - en vez de reimplementar esa paginación a mano, se usa una única
-// <table> continua con <thead> real: la mayoría de los navegadores ya
-// repiten el <thead> al cortar la impresión en varias hojas físicas, sin
-// necesitar lógica de paginación propia (lo único que NO se logra así es la
-// numeración real "Página X de Y", que sí queda fuera de esta entrega). La
-// fila "PARÁMETROS DEL REPORTE" (filtros elegidos AL imprimir) también sigue
-// fuera - no hay un tipo de columna "parámetro de filtro" en el DSL.
-//
-// Corrección (2026-09-07, pedido directo del usuario: "trabajar en los
-// ajustes para cargar el logo y los datos de la empresa emisora del
-// reporte"): el encabezado SÍ dibuja ahora logo + razón social + RFC, fiel a
-// la zona "mh" del mock (`cCoWH` en A0UnX) - antes se documentaba como fuera
-// de alcance por falta de un endpoint que expusiera estos datos; ese
-// endpoint ya existe (GET /api/tenant/branding + GET /api/tenant/logo, ver
-// pages/ajustes/index.vue). La columna derecha del mock ("N.º RPT-0087") no
-// se agrega - no existe un folio por reporte impreso, y no hay evidencia en
-// el resto del .pen de cómo se numeraría uno.
-import type { PrintReportGroup, PrintReportResult, PrintReportResultColumn, PrintReportRow } from '~/composables/usePrintReports'
-
-const props = defineProps<{
-  result: PrintReportResult
-  groupFieldLabels: string[]
-  generatedAt: Date
-}>()
-
-interface TenantBranding {
-  name: string
-  fiscalData: Record<string, unknown>
-  hasLogo: boolean
-}
-const { data: branding } = useFetch<TenantBranding>('/api/tenant/branding', {
-  key: 'print-report-branding',
-  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+import type { PrintReportGroup, PrintReportResult } from '~/composables/usePrintReports'
+import type { ReportLine } from '~/components/PrintReportPage.vue'
+import { paginateReportRows, paperDimensions, resolvePrintLayout, type PrintLayout } from '~/utils/printLayout'
+const props = defineProps<{ result: PrintReportResult; groupFieldLabels: string[]; generatedAt: Date; layout?: PrintLayout }>()
+const emit = defineEmits<{ ready: [value: boolean]; pages: [count: number] }>()
+const layout = computed(() => resolvePrintLayout(props.layout, props.result.columns.length))
+const dimensions = computed(() => paperDimensions(layout.value))
+const measure = ref<HTMLElement>()
+const pageIndexes = ref<number[][]>([])
+const overflow = ref(false)
+const { data: branding, status } = useFetch<{ name: string; fiscalData: Record<string, unknown>; hasLogo: boolean; email: string | null; phone: string | null }>('/api/tenant/branding', {
+  key: 'print-report-branding', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
-const logoSrc = computed(() => (branding.value?.hasLogo ? '/api/tenant/logo' : null))
-const companyLine = computed(() => {
-  if (!branding.value) return ''
-  const rfc = branding.value.fiscalData?.rfc as string | undefined
-  return rfc ? `${branding.value.name}  ·  RFC ${rfc}` : branding.value.name
+const company = computed(() => branding.value?.name || 'Organización')
+const rfc = computed(() => String(branding.value?.fiscalData?.rfc || ''))
+const address = computed(() => {
+  const data = branding.value?.fiscalData ?? {}
+  return ['calle', 'numeroExterior', 'colonia', 'municipio', 'estado', 'codigoPostal'].map(key => data[key]).filter(Boolean).join(' · ')
 })
-
-type Line =
-  | { kind: 'group-header'; level: number; text: string }
-  | { kind: 'detail'; row: PrintReportRow }
-  | { kind: 'summary'; totalLabel: string; totals: Record<string, number> }
-
-const firstDetalleIndex = computed(() => props.result.columns.findIndex((c) => c.kind === 'detalle'))
-const lastDetalleIndex = computed(() => {
-  let idx = -1
-  props.result.columns.forEach((c, i) => {
-    if (c.kind === 'detalle') idx = i
-  })
-  return idx
-})
-const hasTotals = computed(() => props.result.columns.some((c) => c.kind !== 'detalle'))
-// Si no hay ninguna columna 'detalle' (caso raro: reporte de solo columnas
-// numéricas agregadas), la etiqueta de la fila de subtotal/total no tiene
-// dónde ir - se cae a la primera columna para no perderla.
-const summaryLabelIndex = computed(() => (firstDetalleIndex.value >= 0 ? firstDetalleIndex.value : 0))
-
-// Etiquetas de "Subtotal"/"Total" por nivel: el nivel 0 (el más externo, ej.
-// "Fecha") siempre dice "Total {valor}"; cualquier nivel más adentro (ej.
-// "Cultivo") siempre dice "Subtotal {valor}" - confirmado en el mock (que
-// llega hasta 2 niveles) y documentado igual en printReport.ts.
-function totalLabelFor(level: number, groupLabel: string): string {
-  return `${level === 0 ? 'Total' : 'Subtotal'} ${groupLabel}`
-}
-
-function pushGroup(group: PrintReportGroup, level: number, lines: Line[]) {
-  const fieldLabel = props.groupFieldLabels[level] ?? `Nivel ${level + 1}`
-  lines.push({ kind: 'group-header', level, text: `${fieldLabel}:  ${group.label}` })
-  if (group.children.length > 0) {
-    for (const child of group.children) pushGroup(child, level + 1, lines)
-  } else {
-    for (const row of group.rows) lines.push({ kind: 'detail', row })
+// Línea de contacto del encabezado impreso (mock tCiL7/SmVgI, 3ra línea de
+// OrgCol: "contacto@... · +52 ..."), debajo de nombre y RFC+dirección.
+const contact = computed(() => [branding.value?.email, branding.value?.phone].filter(Boolean).join(' · '))
+const issued = computed(() => new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(props.generatedAt))
+const lines = computed(() => {
+  const output: ReportLine[] = []
+  let number = 0
+  const hasTotals = props.result.columns.some(column => column.kind !== 'detalle')
+  function visit(group: PrintReportGroup) {
+    output.push({ kind: 'group', level: group.level, label: `${props.groupFieldLabels[group.level] || 'Grupo'}: ${group.label}` })
+    if (group.children.length) group.children.forEach(visit)
+    else group.rows.forEach(row => output.push({ kind: 'row', row, number: ++number }))
+    if (hasTotals) output.push({ kind: 'total', label: `Subtotal · ${group.label}`, values: group.subtotals })
   }
-  lines.push({ kind: 'summary', totalLabel: totalLabelFor(level, group.label), totals: group.subtotals })
-}
-
-const lines = computed<Line[]>(() => {
-  const out: Line[] = []
-  if (props.result.groups.length > 0) {
-    for (const group of props.result.groups) pushGroup(group, 0, out)
-  } else {
-    for (const row of props.result.ungroupedRows) out.push({ kind: 'detail', row })
-  }
-  if (hasTotals.value && (props.result.groups.length > 0 || props.result.ungroupedRows.length > 0)) {
-    out.push({ kind: 'summary', totalLabel: 'TOTAL GENERAL', totals: props.result.grandTotals })
-  }
-  return out
+  if (props.result.groups.length) props.result.groups.forEach(visit)
+  else props.result.ungroupedRows.forEach(row => output.push({ kind: 'row', row, number: ++number }))
+  if (hasTotals && (output.length || (props.result.mode === 'summary' && props.result.recordCount))) output.push({ kind: 'total', label: 'TOTAL GENERAL', values: props.result.grandTotals, grand: true })
+  return output
 })
-
-const numberFormatter = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 })
-function formatNumber(n: number | undefined): string {
-  return numberFormatter.format(n ?? 0)
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0')
-}
-const generatedLabel = computed(() => {
-  const d = props.generatedAt
-  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+const rowCount = computed(() => lines.value.filter(line => line.kind === 'row').length)
+const pages = computed(() => {
+  const seen = new Set<number>()
+  return pageIndexes.value.map(indexes => indexes.filter(index => index < lines.value.length).map(index => {
+    const line = lines.value[index]!
+    const repeated = seen.has(index)
+    seen.add(index)
+    return line.kind === 'group' && repeated ? { ...line, label: `${line.label} (continuación)` } : line
+  }))
 })
-// Solo fecha (sin hora), fiel al "Emitido 14/08/2026" de mrr/b en el mock -
-// la hora sí se muestra abajo, en el pie ("Generado por FlowERP · ...").
-const emittedDateLabel = computed(() => {
-  const d = props.generatedAt
-  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`
-})
-
-function detailCellText(col: PrintReportResultColumn, row: PrintReportRow, index: number): string {
-  const value = row.values[col.key]
-  const text = value === null || value === undefined ? '' : col.kind === 'detalle' ? String(value) : formatNumber(Number(value))
-  // "· Eliminado" se agrega al ÚLTIMO campo de detalle de la fila (el más
-  // cercano, en el mock, a la columna "Código") - una entrega genérica no
-  // sabe cuál columna es "la identificadora" del registro, así que se elige
-  // consistentemente la última columna de tipo 'detalle' en vez de una
-  // heurística más frágil.
-  if (row.isDeleted && index === lastDetalleIndex.value) return text ? `${text}  ·  Eliminado` : 'Eliminado'
-  return text
+const common = computed(() => ({ result: props.result, company: company.value, rfc: rfc.value, address: address.value, contact: contact.value,
+  logo: branding.value?.hasLogo ? '/api/tenant/logo' : undefined, issued: issued.value, rowCount: rowCount.value }))
+const paperStyle = computed(() => ({ '--paper-width': `${dimensions.value.width}mm`, '--paper-height': `${dimensions.value.height}mm` }))
+// Screen and print share measured pages. Wrapped text determines row height.
+let revision = 0
+async function paginate() {
+  const current = ++revision
+  emit('ready', false)
+  await nextTick()
+  await document.fonts.ready
+  if (current !== revision || !measure.value) return
+  const paper = measure.value.querySelector<HTMLElement>('.report-paper')!
+  const body = paper.querySelector<HTMLElement>('.report-body')!
+  const footer = paper.querySelector<HTMLElement>('.report-footer')!
+  const head = paper.querySelector<HTMLElement>('thead')!
+  const scale = paper.getBoundingClientRect().width / parseFloat(getComputedStyle(paper).width)
+  const capacity = (footer.getBoundingClientRect().top - body.getBoundingClientRect().top - head.getBoundingClientRect().height) / scale - 12
+  const rows = [...paper.querySelectorAll<HTMLElement>('[data-report-line]')]
+  const heights = rows.map(row => row.getBoundingClientRect().height / scale)
+  overflow.value = heights.some(height => height > capacity)
+  pageIndexes.value = paginateReportRows(heights, lines.value.map(line => line.kind === 'group'), Math.max(1, capacity), lines.value.map(line => line.kind === 'group' ? line.level : -1), lines.value.map(line => line.kind === 'total'))
+  emit('pages', pageIndexes.value.length)
+  await nextTick()
+  const rendered = measure.value?.parentElement?.querySelectorAll<HTMLElement>(':scope > .report-paper') ?? []
+  overflow.value ||= [...rendered].some(page => page.querySelector('table')!.getBoundingClientRect().bottom > page.querySelector('footer')!.getBoundingClientRect().top - 2)
+  if (current === revision) emit('ready', !overflow.value && status.value !== 'pending')
 }
+onMounted(() => { watch([lines, layout, branding, status], paginate, { immediate: true, deep: true }) })
+onBeforeUnmount(() => { revision++; emit('ready', false) })
 </script>
-
 <template>
-  <div class="mx-auto w-full max-w-[840px] border border-brand-border-light bg-white p-8 text-[#2B2B2B] shadow-sm print:max-w-none print:border-0 print:p-0 print:shadow-none">
-    <div class="mb-3.5 flex items-center gap-3.5">
-      <div class="flex h-11 w-[66px] shrink-0 items-center justify-center rounded-sm border border-[#BFBFBF]">
-        <img v-if="logoSrc" :src="logoSrc" alt="Logo de la organización" class="h-full w-full object-contain" />
-        <span v-else class="text-[9px] text-[#9A9A9A]">LOGO</span>
-      </div>
-      <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-        <h1 class="truncate text-lg font-bold tracking-wide text-[#1A1A1A]">{{ result.title }}</h1>
-        <p v-if="companyLine" class="truncate text-[10px] text-[#555555]">{{ companyLine }}</p>
-      </div>
-      <div class="shrink-0 text-[10px] text-[#555555]">Emitido {{ emittedDateLabel }}</div>
-    </div>
-    <div class="mb-4 h-[2px] w-full bg-[#1A1A1A]" />
-
-    <table class="w-full border-collapse border border-[#B8B8B8] text-[10.5px]">
-      <thead>
-        <tr class="bg-[#EAEAEA]">
-          <th
-            v-for="col in result.columns"
-            :key="col.key"
-            class="border-b border-[#B8B8B8] px-2.5 py-1.5 text-[10px] font-bold text-[#2B2B2B]"
-            :class="col.kind === 'detalle' ? 'text-left' : 'text-right'"
-          >
-            {{ col.label }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="(line, i) in lines" :key="i">
-          <tr v-if="line.kind === 'group-header'" :style="{ backgroundColor: line.level === 0 ? '#E4E4E4' : '#F0F0F0' }">
-            <td
-              :colspan="result.columns.length"
-              class="border-b border-[#CFCFCF] py-1.5 font-bold text-[#1F1F1F]"
-              :style="{ paddingLeft: `${10 + line.level * 12}px`, fontSize: line.level === 0 ? '11px' : '10.5px' }"
-            >
-              {{ line.text }}
-            </td>
-          </tr>
-
-          <tr v-else-if="line.kind === 'detail'" :class="line.row.isDeleted ? 'bg-[#F3F3F3]' : 'bg-white'">
-            <td
-              v-for="(col, ci) in result.columns"
-              :key="col.key"
-              class="border-b border-[#DBDBDB] px-2.5 py-1.5"
-              :class="[col.kind === 'detalle' ? 'text-left' : 'text-right', line.row.isDeleted ? 'text-[#9A9A9A]' : 'text-[#2B2B2B]']"
-            >
-              {{ detailCellText(col, line.row, ci) }}
-            </td>
-          </tr>
-
-          <tr v-else :class="line.totalLabel === 'TOTAL GENERAL' ? 'bg-[#D6D6D6]' : 'bg-[#FAFAFA]'">
-            <td
-              v-for="(col, ci) in result.columns"
-              :key="col.key"
-              class="border-b border-[#CFCFCF] px-2.5 py-1.5 font-bold text-[#1F1F1F]"
-              :class="col.kind === 'detalle' ? 'text-left' : 'text-right'"
-              :style="line.totalLabel === 'TOTAL GENERAL' ? { borderTop: '1.6px solid #CFCFCF' } : undefined"
-            >
-              <template v-if="ci === summaryLabelIndex">{{ line.totalLabel }}</template>
-              <template v-else-if="col.kind !== 'detalle'">{{ formatNumber(line.totals[col.key]) }}</template>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
-
-    <div class="mt-3.5 flex items-center justify-between text-[9px] text-[#B0B0B0]">
-      <span>Generado por FlowERP · {{ generatedLabel }}</span>
-    </div>
+  <div class="report-sheets" :class="{ 'report-compact': layout.density === 'compact' }" :style="paperStyle">
+    <p v-if="overflow" class="report-overflow-warning" role="alert">Una fila supera el alto de la hoja. Usa orientación vertical, densidad compacta o reduce las columnas antes de imprimir.</p>
+    <div ref="measure" class="report-measure" aria-hidden="true" inert><PrintReportPage v-bind="common" :lines="lines" :page="1" :pages="pageIndexes.length || 1" /></div>
+    <PrintReportPage v-for="(pageLines, index) in pages" :key="index" v-bind="common" :lines="pageLines" :page="index + 1" :pages="pageIndexes.length" />
   </div>
 </template>
-
-<style scoped>
-/* Evita que el navegador corte una fila de detalle o de subtotal a la mitad
-   entre dos hojas impresas - el <thead> de la tabla ya se repite solo en
-   cada hoja nueva (ver comentario grande arriba sobre la paginación). */
-tr {
-  break-inside: avoid;
+<style>
+/* 2026-09-11: recolorizado fiel al mock Screen/Reporte - Vista previa
+   (tCiL7 en ERPDinamico.pen) - antes usaba Arial y la paleta gris-azulada
+   de la app (#53616b/#aab5bc/#33475b). El papel impreso usa Lora (serif,
+   look de documento fiscal) y una escala de grises neutros (#1A1A1A a
+   #FAFAFA), deliberadamente distinta de la paleta "brand" azul de la app -
+   ver el comentario nuevo en nuxt.config.ts. */
+.report-sheets { color: #2B2B2B; font-family: 'Lora', Georgia, serif; }
+.report-paper { box-sizing: border-box; position: relative; width: var(--paper-width); height: var(--paper-height); margin: 0 auto 24px; padding: 12mm; background: #fff; box-shadow: 0 2px 14px #23334220; font-size: 9pt; line-height: 1.35; }
+.report-heading { padding-bottom: 4mm; }
+.report-company { display: flex; align-items: center; gap: 5mm; padding-bottom: 3mm; }
+.report-logobox { flex: none; width: 18mm; height: 18mm; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.report-logo { width: 100%; height: 100%; object-fit: contain; }
+.report-logo-placeholder { font-size: 6.5pt; color: #9A9A9A; letter-spacing: .5px; }
+.report-orgcol { min-width: 0; }
+.report-company-name { font-size: 13pt; font-weight: 700; color: #1A1A1A; overflow-wrap: anywhere; }
+.report-muted, .report-address { font-size: 8pt; color: #666666; margin-top: .8mm; overflow-wrap: anywhere; }
+.report-rule { height: .6mm; background: #1A1A1A; margin-bottom: 3mm; }
+.report-document { padding: 0 0 2mm; }
+.report-eyebrow { text-transform: uppercase; font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2px; color: #8A8A8A; margin-bottom: 1mm; }
+.report-document h1 { font-size: 15pt; font-weight: 700; color: #1A1A1A; line-height: 1.2; overflow-wrap: anywhere; }
+.report-metadata { font-size: 8pt; line-height: 1.5; color: #3A3A3A; overflow-wrap: anywhere; }
+.report-body { padding: 0; }
+.report-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.5pt; }
+.report-table th, .report-table td { padding: 2mm; border-bottom: .2mm solid #DCDCDC; vertical-align: top; overflow-wrap: anywhere; text-align: left; }
+.report-table thead th { background: #EAEAEA; border-bottom: .3mm solid #B8B8B8; color: #2B2B2B; font-size: 8pt; font-weight: 700; }
+.report-index-column { width: 10mm; }
+.report-table .report-index { font-size: 7pt; color: #666666; text-align: center; }
+.report-table .report-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.report-group th { background: #E4E4E4; color: #1F1F1F; font-weight: 700; border-bottom: .2mm solid #CFCFCF; }
+.report-group-inner th { background: #EDEDED; font-size: 8pt; }
+.report-alternate { background: #FFFFFF; }
+.report-total td { background: #FAFAFA; color: #1F1F1F; font-weight: 700; border-bottom: .2mm solid #CFCFCF; }
+.report-grand-total td { background: #F2F2F2; border-top: .5mm solid #1A1A1A; border-bottom: .2mm solid #CFCFCF; }
+.report-numeric-label { display: block; font-size: 6.5pt; margin-bottom: 1mm; }
+.report-deleted { color: #8A8A8A; }
+.report-deleted-label { display: block; font-size: 5.5pt; }
+.report-footer { position: absolute; bottom: 10mm; left: 12mm; right: 12mm; border-top: .2mm solid #DCDCDC; padding-top: 2mm; display: flex; justify-content: space-between; gap: 5mm; font-size: 7pt; }
+.report-footer span:first-child { max-width: 75%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #B0B0B0; }
+.report-footer span:last-child { color: #8A8A8A; }
+.report-table .report-empty { text-align: center; padding: 12mm 3mm; color: #666666; }
+.report-compact .report-table { font-size: 7.5pt; }
+.report-compact .report-table th, .report-compact .report-table td { padding-top: 1.2mm; padding-bottom: 1.2mm; }
+.report-measure { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
+.report-measure .report-paper { height: var(--paper-height); }
+.report-overflow-warning { max-width: 70ch; margin: 16px auto; color: #9b351d; background: #fff0e8; padding: 12px; }
+@media print {
+  html, body, #__nuxt { margin: 0 !important; padding: 0 !important; background: white !important; }
+  .report-measure, .report-overflow-warning { display: none !important; }
+  .report-paper { margin: 0; box-shadow: none; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .report-paper:last-child { break-after: auto; }
+  .report-table tr { break-inside: avoid; }
 }
 </style>

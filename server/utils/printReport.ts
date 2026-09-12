@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { reportParameterSchema } from '~/utils/reportParameters'
 import { sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import {
@@ -95,6 +96,15 @@ export type PrintReportColumn = z.infer<typeof printReportColumnSchema>
 
 export const printReportDslSchema = z
   .object({
+    mode: z.enum(['detail', 'summary']).optional(),
+    parameters: z.array(reportParameterSchema).max(12).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Los filtros deben tener identificadores únicos.').optional(),
+    filters: z.array(z.object({ source: columnSourceSchema, operator: z.enum(['eq', 'contains', 'gte', 'lte', 'lt', 'gt']), value: z.string().trim().min(1).max(500), recordId: z.boolean().optional() }).strict()).max(36).optional(),
+    orderBy: z.array(z.object({ source: columnSourceSchema, direction: z.enum(['asc', 'desc']) }).strict()).max(4).optional(),
+    layout: z.object({
+      paper: z.enum(['letter', 'a4']),
+      orientation: z.enum(['portrait', 'landscape']),
+      density: z.enum(['normal', 'compact'])
+    }).strict().optional(),
     title: z.string().min(1).max(120),
     baseEntity: z.string().min(1).max(80),
     includeDeletedBase: z.boolean().default(false),
@@ -127,6 +137,7 @@ export interface PrintReportGroup {
 }
 
 export interface PrintReportResultColumn {
+  dataType?: string
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -138,6 +149,8 @@ export interface PrintReportResultColumn {
 }
 
 export interface PrintReportResult {
+  mode?: 'detail' | 'summary'
+  recordCount?: number
   title: string
   columns: PrintReportResultColumn[]
   groups: PrintReportGroup[]
@@ -198,6 +211,8 @@ function groupAlias(index: number): string {
 // qué parte del resultado aparece cada hoja - ver el comentario grande de
 // arriba sobre el comportamiento distinto de cada kind.
 interface ResolvedLeaf {
+  identityAlias?: string
+  dataType?: string
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -216,6 +231,7 @@ interface ResolvedLeaf {
  * arma la estructura de grupos/subtotales/total general en memoria.
  */
 export async function executePrintReport(tenantId: string, dsl: PrintReportDsl): Promise<PrintReportResult> {
+  if (dsl.mode === 'summary' && !dsl.columns.some(column => column.kind !== 'detalle')) throw new PrintReportError('El resumen necesita al menos una columna con totales.')
   return withTenant(tenantId, async (tx) => {
     const ctx = await loadTenantFieldContext(tx, tenantId)
 
@@ -249,9 +265,12 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
     ]
 
     const groupAliases = dsl.groupBy.map((source, index) => {
-      planner.resolve(source)
+      const resolved = planner.resolve(source)
       const alias = groupAlias(index)
       selectParts.push(dsql`${planner.valueSql(source)} as ${dsql.raw(alias)}`)
+      if (ctx.entitiesById.get(resolved.field.entityId)?.labelField === resolved.field.name) {
+        selectParts.push(dsql`${dsql.raw(resolved.alias)}.id as ${dsql.raw(`${alias}_identity`)}`)
+      }
       return alias
     })
 
@@ -265,12 +284,12 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
       if (col.kind === 'detalle') {
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ key: col.key, label: col.label, kind: 'detalle', inRows: true, inTotals: false, sourceSide: col.source.side, valueAlias: alias })
+        leaves.push({ dataType: field.dataType, key: col.key, label: col.label, kind: 'detalle', inRows: true, inTotals: false, sourceSide: col.source.side, valueAlias: alias })
       } else if (col.kind === 'sumar') {
         assertNumericField(field, col.label)
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
+        leaves.push({ dataType: field.dataType, key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
       } else {
         assertNumericField(field, col.label)
         if (col.conditionSource.side !== col.source.side) {
@@ -287,6 +306,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
             key: `${col.key}__${sanitizeAliasHint(opt.rawValue)}`,
             label: opt.label,
             kind: 'repartir',
+            dataType: 'number',
             pivotOf: col.key,
             inRows: true,
             inTotals: true,
@@ -299,11 +319,60 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
       }
     }
 
+    // Each measure belongs to the record at its resolved path, not necessarily
+    // the base record. Repeated parents must not be summed once per child.
+    for (const [index, col] of dsl.columns.entries()) {
+      if (col.kind === 'detalle') continue
+      const resolved = planner.resolve(col.source)
+      const identityAlias = `identity_${index}`
+      selectParts.push(dsql`${dsql.raw(resolved.alias)}.id as ${dsql.raw(identityAlias)}`)
+      for (const leaf of leaves.filter(l => l.key === col.key || l.pivotOf === col.key)) leaf.identityAlias = identityAlias
+      if (col.kind === 'repartir' && planner.resolve(col.conditionSource).alias !== resolved.alias) {
+        throw new PrintReportError('La cantidad y su condición deben pertenecer al mismo registro para evitar duplicar totales.')
+      }
+    }
+
     const whereParts = [
       dsql`${dsql.raw('r_base')}.tenant_id = ${tenantId}`,
       dsql`${dsql.raw('r_base')}.entity_id = ${baseEntity.id}`
     ]
     if (!dsl.includeDeletedBase) whereParts.push(dsql`${dsql.raw('r_base')}.deleted_at is null`)
+
+    for (const filter of dsl.filters ?? []) {
+      const { field, alias } = planner.resolve(filter.source)
+      if (filter.recordId) {
+        if (filter.operator !== 'eq' || !z.string().uuid().safeParse(filter.value).success) throw new PrintReportError('Selecciona un registro válido para el filtro.')
+        whereParts.push(dsql`${dsql.raw(alias)}.id = ${filter.value}`)
+        continue
+      }
+      const value = planner.valueSql(filter.source)
+      const numeric = field.dataType === 'number' || field.dataType === 'incremental'
+      if (field.dataType === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value) || !Number.isFinite(Date.parse(filter.value)) || new Date(filter.value).toISOString().slice(0, 10) !== filter.value)) throw new PrintReportError(`El filtro de ${field.label} requiere una fecha válida.`)
+      if (field.dataType === 'boolean' && (filter.operator !== 'eq' || !['true', 'false'].includes(filter.value))) throw new PrintReportError(`El filtro de ${field.label} debe ser igual a true o false.`)
+      if (numeric && !Number.isFinite(Number(filter.value))) throw new PrintReportError(`El filtro de ${field.label} requiere un número.`)
+      const expression = numeric ? dsql`nullif(${value}, '')::numeric` : value
+      if (filter.operator === 'contains') {
+        if (field.dataType !== 'text') throw new PrintReportError('Contiene solo está disponible para texto.')
+        whereParts.push(dsql`strpos(lower(${value}), lower(${filter.value})) > 0`)
+      } else if (filter.operator === 'eq') whereParts.push(dsql`${expression} = ${filter.value}`)
+      else if (filter.operator === 'gte') whereParts.push(dsql`${expression} >= ${filter.value}`)
+      else if (filter.operator === 'lte') whereParts.push(dsql`${expression} <= ${filter.value}`)
+      else if (filter.operator === 'lt') whereParts.push(dsql`${expression} < ${filter.value}`)
+      else whereParts.push(dsql`${expression} > ${filter.value}`)
+    }
+    const orderParts = (dsl.orderBy ?? []).map(order => {
+      const { field } = planner.resolve(order.source)
+      const value = planner.valueSql(order.source)
+      const expression = field.dataType === 'number' || field.dataType === 'incremental' ? dsql`nullif(${value}, '')::numeric` : value
+      return dsql`${expression} ${dsql.raw(order.direction === 'desc' ? 'desc' : 'asc')} nulls last`
+    })
+    // With no user ordering, keep groups stable and readable instead of
+    // exposing the physical UUID order of records.
+    if (!(dsl.orderBy?.length)) {
+      for (const alias of groupAliases) orderParts.push(dsql`${dsql.raw(alias)} asc nulls last`)
+    }
+    orderParts.push(dsql`r_base.id`)
+    if (detailEntity) orderParts.push(dsql`r_detail.id`)
 
     let fromSql = dsql`from records as ${dsql.raw('r_base')}`
     if (detailEntity && dsl.detail) {
@@ -319,7 +388,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
       fromSql = dsql`${fromSql} ${joinPart}`
     }
 
-    const query = dsql`select ${dsql.join(selectParts, dsql`, `)} ${fromSql} where ${dsql.join(whereParts, dsql` and `)}`
+    const query = dsql`select ${dsql.join(selectParts, dsql`, `)} ${fromSql} where ${dsql.join(whereParts, dsql` and `)} order by ${dsql.join(orderParts, dsql`, `)}`
 
     const rows = (await tx.execute(query)) as unknown as Record<string, unknown>[]
 
@@ -340,6 +409,8 @@ function toDisplayValue(value: unknown): string | number | null {
 }
 
 interface FlatRow {
+  groupIdentities: string[]
+  identities: Record<string, string | null>
   values: Record<string, unknown>
   groupKeys: string[]
   baseId: string | null
@@ -370,7 +441,7 @@ function sumDedupByBase(rows: FlatRow[], key: string): number {
  * arbol de grupos anidados + subtotales + total general que consume
  * Screen/Vista previa impresión.
  */
-function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], groupAliases: string[], rawRows: Record<string, unknown>[]): PrintReportResult {
+export function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], groupAliases: string[], rawRows: Record<string, unknown>[]): PrintReportResult {
   const rowColumns = leaves.filter((l) => l.inRows)
   const totalColumns = leaves.filter((l) => l.inTotals)
   const dedupKeys = new Set(totalColumns.filter((l) => l.sourceSide === 'base').map((l) => l.key))
@@ -387,6 +458,7 @@ function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], gro
       }
     }
     const groupKeys = groupAliases.map((alias) => String(raw[alias] ?? ''))
+    const groupIdentities = groupAliases.map((alias, index) => String(raw[`${alias}_identity`] ?? groupKeys[index]))
     const baseId = raw.__base_id__ === null || raw.__base_id__ === undefined ? null : String(raw.__base_id__)
     // Sin tabla relacionada, cada fila plana ES un record base real. Con
     // tabla relacionada, el LEFT JOIN produce una fila "fantasma" (todo
@@ -400,10 +472,21 @@ function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], gro
     // no se descarta - isDeleted es la señal para que el frontend la pinte
     // distinto.
     const isDeleted = hasDetailTable ? raw.__detail_deleted__ !== null && raw.__detail_deleted__ !== undefined : raw.__base_deleted__ !== null && raw.__base_deleted__ !== undefined
-    return { values, groupKeys, baseId, hasDetail, isDeleted }
+    const identities = Object.fromEntries(totalColumns.map(leaf => [leaf.key, leaf.identityAlias && raw[leaf.identityAlias] != null ? String(raw[leaf.identityAlias]) : null]))
+    return { values, groupKeys, groupIdentities, baseId, hasDetail, isDeleted, identities }
   })
 
   function sumColumn(rows: FlatRow[], key: string): number {
+    const leaf = totalColumns.find(l => l.key === key)
+    if (leaf?.identityAlias) {
+      const seen = new Set<string>()
+      return rows.reduce((total, row) => {
+        const identity = row.identities[key]
+        if (!identity || seen.has(identity)) return total
+        seen.add(identity)
+        return total + toNumber(row.values[key])
+      }, 0)
+    }
     if (dedupKeys.has(key)) return sumDedupByBase(rows, key)
     return rows.reduce((acc, r) => acc + toNumber(r.values[key]), 0)
   }
@@ -421,38 +504,41 @@ function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf[], gro
     if (level >= groupAliases.length) return []
     const buckets = new Map<string, FlatRow[]>()
     for (const row of rows) {
-      const key = row.groupKeys[level] ?? ''
+      const key = row.groupIdentities[level] ?? ''
       const bucket = buckets.get(key)
       if (bucket) bucket.push(row)
       else buckets.set(key, [row])
     }
-    return Array.from(buckets.entries()).map(([label, bucketRows]) => {
+    return Array.from(buckets.values()).map((bucketRows) => {
+      const label = bucketRows[0]?.groupKeys[level] || 'Sin valor'
       const subtotals: Record<string, number> = {}
       for (const leaf of totalColumns) subtotals[leaf.key] = sumColumn(bucketRows, leaf.key)
 
       const isLastLevel = level === groupAliases.length - 1
       const children = buildLevel(bucketRows, level + 1)
       const realRows = bucketRows.filter((r) => r.hasDetail)
-      const printedRows = isLastLevel ? realRows.map(toPrintRow) : []
+      const printedRows = isLastLevel && dsl.mode !== 'summary' ? realRows.map(toPrintRow) : []
       return { level, label, rows: printedRows, children, subtotals }
     })
   }
 
   const groups = buildLevel(flatRows, 0)
   const realFlatRows = flatRows.filter((r) => r.hasDetail)
-  const ungroupedRows = groupAliases.length === 0 ? realFlatRows.map(toPrintRow) : []
+  const ungroupedRows = groupAliases.length === 0 && dsl.mode !== 'summary' ? realFlatRows.map(toPrintRow) : []
 
   return {
     title: dsl.title,
+    mode: dsl.mode ?? 'detail',
+    recordCount: realFlatRows.length,
     // Un descriptor por cada hoja (una columna 'repartir' del DSL produce
     // varias hojas, una por valor de su condición) - todas las hojas se
     // muestran ahora (ver comentario grande de arriba sobre 'sumar'), asi
     // que no hace falta filtrar por inRows aca.
-    columns: leaves.reduce<PrintReportResultColumn[]>((acc, l) => {
+    columns: leaves.filter(l => dsl.mode !== 'summary' || l.inTotals).reduce<PrintReportResultColumn[]>((acc, l) => {
       if (acc.some((c) => c.key === l.key)) return acc
-      acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf })
+      acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf, dataType: l.dataType })
       return acc
-    }, []),
+    }, dsl.mode === 'summary' ? [{ key: '__summary_label', label: 'Concepto', kind: 'detalle' }] : []),
     groups,
     ungroupedRows,
     grandTotals

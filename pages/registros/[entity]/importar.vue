@@ -10,7 +10,6 @@
 // construir, regla pencil-antes-de-frontend) - se construyo siguiendo el
 // mismo lenguaje visual de pages/registros/[entity]/nuevo.vue (card, botones,
 // colores brand-*) en vez de inventar un estilo nuevo.
-import Papa from 'papaparse'
 import { ArrowLeft, CloudUpload, FileUp, X } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
@@ -56,14 +55,16 @@ function clearFile() {
   resetImportState()
 }
 
-function onFileChange(event: Event) {
+async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   resetImportState()
   if (!file) return
 
   fileName.value = file.name
-  Papa.parse<Record<string, string>>(file, {
+  if (import.meta.server) return
+  const { default: PapaParser } = await import('papaparse')
+  PapaParser.parse<Record<string, string>>(file, {
     header: true,
     skipEmptyLines: true,
     complete: (result) => {

@@ -58,6 +58,25 @@ const tablaFields = computed(() => (data.value?.fields ?? []).filter((f) => f.da
 const hasTablaFields = computed(() => tablaFields.value.length > 0)
 
 const formValues = ref<Record<string, unknown>>({})
+const returnTo = computed(() => {
+  const from = typeof route.query.from === 'string' ? route.query.from : ''
+  return /^\/registros\/[A-Za-z0-9_-]+\/[0-9a-fA-F-]{36}$/.test(from) ? from : `/registros/${slug}`
+})
+watch(() => data.value?.fields, (fields) => {
+  if (!fields?.length) return
+  const next = { ...formValues.value }
+  let changed = false
+  for (const field of fields) {
+    if (field.dataType !== 'relation') continue
+    const raw = route.query[field.name]
+    const value = Array.isArray(raw) ? raw[0] : raw
+    if (typeof value === 'string' && /^[0-9a-fA-F-]{36}$/.test(value) && next[field.name] == null) {
+      next[field.name] = value
+      changed = true
+    }
+  }
+  if (changed) formValues.value = next
+}, { immediate: true })
 const generalFormRef = ref<{ validateAll: () => boolean } | null>(null)
 const tablaFormRefs = ref<Array<{ validateAll: () => boolean } | null>>([])
 const submitting = ref(false)
@@ -90,7 +109,7 @@ async function onSubmit() {
       body: { customData: formValues.value }
     })
     toast.success('Registro creado', `Se creó un nuevo registro en ${data.value?.entity?.singularName || data.value?.entity?.name || slug}.`)
-    await navigateTo(`/registros/${slug}`)
+    await navigateTo(returnTo.value)
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo crear el registro'
     toast.error('No se pudo crear el registro', submitError.value)
@@ -154,7 +173,7 @@ async function onSubmit() {
 
         <div class="flex justify-end gap-2">
           <NuxtLink
-            :to="`/registros/${slug}`"
+            :to="returnTo"
             class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg"
           >
             Cancelar

@@ -296,13 +296,11 @@ export interface NavEntity {
  * administrador (roles.isSystem) sigue viendo el modulo igual, para poder
  * reactivarlo.
  *
- * ERD-86: moduleKind filtra ademas por tipo de modulo - components/AppNav.vue
- * (seccion dinamica "MÓDULOS") pide 'hecho' explicito: los catalogos
- * (moduleKind='dimension') dejan de aparecer en el menu principal, solo se
- * administran desde Administracion > Catalogos (pages/catalogos/index.vue,
- * pantalla admin-only via listEntities(), no esta funcion).
+ * moduleKind es opcional. El menú por áreas consulta ambos tipos para
+ * incorporar catálogos contextuales. Devuelve entidades legibles aunque
+ * showInMenu sea false; buildNavigation aplica la preferencia de menú.
  */
-export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind: ModuleKind): Promise<NavEntity[]> {
+export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
   return withTenant(tenantId, async (tx) => {
     const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, roleId)).limit(1)
     const isAdmin = Boolean(role?.isSystem)
@@ -315,6 +313,8 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
         singularName: entities.singularName,
         icon: entities.icon,
         isActive: entities.isActive,
+        moduleKind: entities.moduleKind,
+        showInMenu: roleEntityPermissions.showInMenu,
         canRead: roleEntityPermissions.canRead,
         canCreate: roleEntityPermissions.canCreate,
         canUpdate: roleEntityPermissions.canUpdate,
@@ -325,7 +325,7 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
         roleEntityPermissions,
         and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId))
       )
-      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true), eq(entities.moduleKind, moduleKind)))
+      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined))
       .orderBy(entities.name)
 
     return rows

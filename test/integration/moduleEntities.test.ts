@@ -213,7 +213,7 @@ describe('moduleEntities (Postgres real)', () => {
 
       const result = await listVisibleEntities(tenant, vendedor.id, 'hecho')
       expect(result).toEqual([
-        { id: visible.id, slug: 'visible', name: 'Visible', icon: 'Warehouse', canRead: true, canCreate: false, canUpdate: true, canDelete: false }
+        { id: visible.id, slug: 'visible', name: 'Visible', icon: 'Warehouse', moduleKind: 'hecho', showInMenu: true, canRead: true, canCreate: false, canUpdate: true, canDelete: false }
       ])
     })
 

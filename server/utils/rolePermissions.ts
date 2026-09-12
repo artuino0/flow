@@ -30,6 +30,8 @@ export interface RoleSummary {
 }
 
 export interface EntityPermissionRow {
+  moduleKind: 'hecho' | 'dimension'
+  showInMenu: boolean
   entityId: string
   entitySlug: string
   entityName: string
@@ -48,6 +50,7 @@ export interface RolePermissionsResult {
 }
 
 export interface PermissionUpdate {
+  showInMenu?: boolean
   entityId: string
   canRead: boolean
   canCreate: boolean
@@ -148,7 +151,8 @@ export async function createRole(tenantId: string, name: string, copyFromRoleId?
         canRead: p.canRead,
         canCreate: p.canCreate,
         canUpdate: p.canUpdate,
-        canDelete: p.canDelete
+        canDelete: p.canDelete,
+        showInMenu: p.showInMenu
       })
       copiedPermissionCount += trueCount
     }
@@ -175,7 +179,7 @@ async function loadRolePermissions(tx: Tx, tenantId: string, roleId: string): Pr
   if (!role) return null
 
   const tenantEntities = await tx
-    .select({ id: entities.id, slug: entities.slug, name: entities.name })
+    .select({ id: entities.id, slug: entities.slug, name: entities.name, moduleKind: entities.moduleKind })
     .from(entities)
     .where(eq(entities.tenantId, tenantId))
     .orderBy(entities.name)
@@ -189,10 +193,12 @@ async function loadRolePermissions(tx: Tx, tenantId: string, roleId: string): Pr
       entityId: entity.id,
       entitySlug: entity.slug,
       entityName: entity.name,
+      moduleKind: entity.moduleKind as 'hecho' | 'dimension',
       canRead: existing?.canRead ?? false,
       canCreate: existing?.canCreate ?? false,
       canUpdate: existing?.canUpdate ?? false,
-      canDelete: existing?.canDelete ?? false
+      canDelete: existing?.canDelete ?? false,
+      showInMenu: existing?.showInMenu ?? true
     }
   })
 
@@ -245,7 +251,8 @@ export async function setRolePermissions(
           canRead: update.canRead,
           canCreate: update.canCreate,
           canUpdate: update.canUpdate,
-          canDelete: update.canDelete
+          canDelete: update.canDelete,
+          showInMenu: update.showInMenu ?? true
         })
         .onConflictDoUpdate({
           target: [roleEntityPermissions.roleId, roleEntityPermissions.entityId],
@@ -253,7 +260,8 @@ export async function setRolePermissions(
             canRead: update.canRead,
             canCreate: update.canCreate,
             canUpdate: update.canUpdate,
-            canDelete: update.canDelete
+            canDelete: update.canDelete,
+            ...(update.showInMenu === undefined ? {} : { showInMenu: update.showInMenu })
           }
         })
     }

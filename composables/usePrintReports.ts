@@ -55,6 +55,11 @@ export interface PrintReportDetailConfig {
 }
 
 export interface PrintReportDsl {
+  parameters?: import('~/utils/reportParameters').ReportParameter[]
+  mode?: 'detail' | 'summary'
+  filters?: { source: ColumnSource; operator: 'eq' | 'contains' | 'gte' | 'lte' | 'lt' | 'gt'; value: string; recordId?: boolean }[]
+  orderBy?: { source: ColumnSource; direction: 'asc' | 'desc' }[]
+  layout?: import('~/utils/printLayout').PrintLayout
   title: string
   baseEntity: string
   includeDeletedBase: boolean
@@ -77,6 +82,7 @@ export interface PrintReportGroup {
 }
 
 export interface PrintReportResultColumn {
+  dataType?: string
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -84,6 +90,9 @@ export interface PrintReportResultColumn {
 }
 
 export interface PrintReportResult {
+  criteria?: string[]
+  mode?: 'detail' | 'summary'
+  recordCount?: number
   title: string
   columns: PrintReportResultColumn[]
   groups: PrintReportGroup[]
@@ -196,6 +205,6 @@ export function resolveSourceLabel(fields: FieldTreeNode[], detail: PrintReportD
 
 function detailPool(fields: FieldTreeNode[], detail: PrintReportDetailConfig | undefined): FlatLeaf[] {
   if (!detail) return []
-  const branch = topLevelDetailCandidates(fields).find((b) => b.fieldName === detail.fieldName)
+  const branch = topLevelDetailCandidates(fields).find((b) => b.fieldName === detail.fieldName && b.entitySlug === detail.entitySlug)
   return branch ? collectDetailLeaves(branch) : []
 }

@@ -38,8 +38,9 @@ const props = withDefaults(
     forwardHops?: string[]
     side?: 'base' | 'detail'
     chosenDetailField?: string | null
+    search?: string
   }>(),
-  { depth: 0, forwardHops: () => [], side: 'base' }
+  { depth: 0, forwardHops: () => [], side: 'base', search: '' }
 )
 
 const emit = defineEmits<{
@@ -75,6 +76,11 @@ function toggle(key: string) {
 function leafPayload(node: FieldTreeLeaf) {
   return { side: props.side, forwardHops: props.forwardHops, field: node.fieldName, label: node.label, dataType: node.dataType }
 }
+function matchesSearch(node: FieldTreeNode): boolean {
+  const query = props.search.trim().toLocaleLowerCase()
+  if (!query) return true
+  return node.type === 'leaf' ? node.label.toLocaleLowerCase().includes(query) : node.entityName.toLocaleLowerCase().includes(query) || node.children.some(matchesSearch)
+}
 function onLeafClick(node: FieldTreeLeaf) {
   emit('select-leaf', leafPayload(node))
 }
@@ -84,14 +90,13 @@ function onLeafDragStart(event: DragEvent, node: FieldTreeLeaf) {
 }
 
 function isDisabledInverseBranch(node: FieldTreeBranch): boolean {
-  return props.depth === 0 && node.kind === 'inverse' && !!props.chosenDetailField && props.chosenDetailField !== node.fieldName
+  return props.depth === 0 && node.kind === 'inverse' && !!props.chosenDetailField && props.chosenDetailField !== `${node.entitySlug}|${node.fieldName}`
 }
 
 function onBranchClick(node: FieldTreeBranch) {
   const key = `${props.depth}-${node.fieldName}`
   if (node.kind === 'inverse' && props.depth === 0) {
     if (isDisabledInverseBranch(node)) return
-    emit('select-detail-branch', node)
   }
   toggle(key)
 }
@@ -105,7 +110,7 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
 
 <template>
   <ul class="flex flex-col gap-0.5" :style="{ paddingLeft: depth > 0 ? '14px' : '0px' }">
-    <li v-for="node in visibleNodes" :key="node.type === 'leaf' ? `leaf-${node.fieldName}` : `branch-${node.fieldName}`">
+    <li v-for="node in visibleNodes.filter(matchesSearch)" :key="node.type === 'leaf' ? `leaf-${node.fieldName}` : `branch-${node.entitySlug}-${node.fieldName}`">
       <button
         v-if="node.type === 'leaf'"
         type="button"
@@ -131,16 +136,19 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
           <Link2 v-if="node.kind === 'forward'" class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
           <Table2 v-else class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="1.75" />
           <span class="truncate">{{ node.entityName }}</span>
+          <span v-if="node.kind === 'forward'" class="ml-auto text-[10px] font-normal text-brand-text-muted">Un valor</span>
           <span v-if="node.kind === 'inverse'" class="ml-auto shrink-0 rounded-full bg-brand-pink-bg px-1.5 py-0.5 text-[10px] font-bold text-brand-pink-text">1 : N</span>
         </button>
 
+        <button v-if="node.kind === 'inverse' && expanded[`${depth}-${node.fieldName}`] && !chosenDetailField" type="button" class="my-2 ml-4 rounded border border-brand-border px-3 py-2 text-xs text-brand-blue" @click="emit('select-detail-branch', node)">Usar {{ node.entityName }} como filas del reporte</button>
         <PrintReportFieldTree
-          v-if="expanded[`${depth}-${node.fieldName}`] && !isDisabledInverseBranch(node)"
+          v-if="(expanded[`${depth}-${node.fieldName}`] || (search && node.kind === 'forward')) && !isDisabledInverseBranch(node) && (node.kind === 'forward' || !!chosenDetailField)"
           :nodes="node.children"
           :depth="depth + 1"
           :forward-hops="node.kind === 'forward' ? [...forwardHops, node.fieldName] : []"
           :side="node.kind === 'inverse' ? 'detail' : side"
           :chosen-detail-field="chosenDetailField"
+          :search="node.entityName.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? '' : search"
           @select-leaf="emit('select-leaf', $event)"
           @select-detail-branch="emit('select-detail-branch', $event)"
         />

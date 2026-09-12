@@ -1,8 +1,8 @@
-import EmbeddedPostgres from 'embedded-postgres'
 import postgres from 'postgres'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { randomUUID } from 'node:crypto'
 
 // HU-ERD-29: fixture de Postgres real para tests de integracion (RLS, etc.).
 // Usa embedded-postgres (Postgres real embebido, sin Docker) en vez de pglite:
@@ -29,6 +29,8 @@ export interface TestDb {
 }
 
 export async function createTestDb(): Promise<TestDb> {
+  if (process.env.TEST_POSTGRES_ADMIN_URL) return createExternalTestDb(process.env.TEST_POSTGRES_ADMIN_URL)
+  const { default: EmbeddedPostgres } = await import('embedded-postgres')
   const port = 40000 + Math.floor(Math.random() * 10000)
   const databaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-pg-'))
 
@@ -47,7 +49,7 @@ export async function createTestDb(): Promise<TestDb> {
   const adminUrl = `postgresql://erp_admin:changeme@localhost:${port}/erp_dinamico_test`
   const appUrl = `postgresql://erp_app:changeme_app@localhost:${port}/erp_dinamico_test`
 
-  const admin = postgres(adminUrl)
+  const admin = postgres(adminUrl, { onnotice: () => {} })
   try {
     // ---- mirror de init/001_extensions.sql ----
     await admin.unsafe('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
@@ -85,4 +87,38 @@ export async function createTestDb(): Promise<TestDb> {
       fs.rmSync(databaseDir, { recursive: true, force: true })
     }
   }
+}
+
+// Optional local Docker PostgreSQL fallback when embedded binaries are absent.
+// Every suite gets a fresh database; the application database is never used.
+async function createExternalTestDb(connection: string): Promise<TestDb> {
+  const url = new URL(connection)
+  if (!['localhost', '127.0.0.1'].includes(url.hostname)) throw new Error('La base de pruebas debe ser local')
+  const databaseName = 'flowerp_test_' + randomUUID().replaceAll('-', '')
+  const host = postgres(connection)
+  await host.unsafe(`CREATE DATABASE "${databaseName}"`)
+  url.pathname = '/' + databaseName
+  const adminUrl = url.toString()
+  const admin = postgres(adminUrl, { onnotice: () => {} })
+  async function stop() {
+    await host.unsafe(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+    await host.end()
+  }
+  try {
+    await admin.unsafe('CREATE EXTENSION IF NOT EXISTS "pgcrypto"; CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
+    await admin.unsafe('GRANT USAGE ON SCHEMA public TO erp_app')
+    await admin.unsafe('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app')
+    await admin.unsafe('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO erp_app')
+    for (const file of fs.readdirSync(MIGRATIONS_DIR).filter(file => file.endsWith('.sql')).sort()) {
+      await admin.unsafe(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'))
+    }
+  } catch (error) {
+    await admin.end()
+    await stop()
+    throw error
+  }
+  await admin.end()
+  url.username = 'erp_app'
+  url.password = process.env.TEST_POSTGRES_APP_PASSWORD || 'changeme_app'
+  return { adminUrl, appUrl: url.toString(), stop }
 }

@@ -20,8 +20,9 @@
 // no se guarda como esta en el momento"). Por eso esta pantalla NO limpia el
 // draft al desmontarse - Designer es quien decide cuándo tirarlo (al guardar
 // o al descartar explícitamente).
-import { ArrowLeft, LoaderCircle, Printer } from '@lucide/vue'
 import { resolveSourceLabel, usePrintReportFieldTree, usePrintReportPreviewDraft, type PrintReportResult } from '~/composables/usePrintReports'
+import type { PrintLayout } from '~/utils/printLayout'
+import type { ParameterAnswers } from '~/utils/reportParameters'
 
 definePageMeta({ layout: false })
 
@@ -36,6 +37,7 @@ const loading = ref(false)
 const errorMessage = ref('')
 const result = ref<PrintReportResult | null>(null)
 const generatedAt = ref(new Date())
+const parameterModal = ref(false)
 
 const { data: fieldData } = await usePrintReportFieldTree(slug)
 const groupFieldLabels = computed(() => {
@@ -44,59 +46,32 @@ const groupFieldLabels = computed(() => {
   return dsl.value.groupBy.map((source) => resolveSourceLabel(fields, dsl.value!.detail, source))
 })
 
-async function loadPreview() {
+async function loadPreview(answers?: ParameterAnswers) {
   if (!dsl.value) return
+  parameterModal.value = false
   loading.value = true
   errorMessage.value = ''
   try {
-    result.value = await $fetch<PrintReportResult>('/api/print-reports/preview', { method: 'POST', body: { dsl: dsl.value } })
+    result.value = await $fetch<PrintReportResult>('/api/print-reports/preview', { method: 'POST', body: { dsl: dsl.value, answers } })
     generatedAt.value = new Date()
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || 'No se pudo generar la vista previa. Volvé al diseñador e intenta de nuevo.'
+    errorMessage.value = err?.data?.statusMessage || 'No se pudo generar la vista previa. Vuelve al diseñador e intenta de nuevo.'
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadPreview)
+onMounted(() => { if (dsl.value?.parameters?.length) parameterModal.value = true; else loadPreview() })
 
 function onClose() {
   router.back()
 }
-function onPrint() {
-  window.print()
+function updateLayout(value: PrintLayout) {
+  if (draft.value) draft.value.dsl.layout = value
 }
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F0F0F0]">
-    <div class="sticky top-0 z-10 flex h-[52px] items-center justify-between border-b border-brand-border-light bg-white px-5 shadow-sm print:hidden">
-      <button type="button" class="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="onClose">
-        <ArrowLeft class="h-4 w-4" :stroke-width="1.75" />
-        Cerrar
-      </button>
-      <span class="text-sm font-semibold text-[#33475B]">{{ dsl?.title || 'Vista previa' }}</span>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60"
-        :disabled="!result"
-        @click="onPrint"
-      >
-        <Printer class="h-4 w-4" :stroke-width="1.75" />
-        Imprimir
-      </button>
-    </div>
-
-    <div class="flex flex-col items-center gap-6 px-6 py-10">
-      <p v-if="!dsl" class="text-sm text-brand-text-muted">
-        No hay datos de vista previa (recargaste la página, o llegaste acá directo). Volvé al diseñador para generar una.
-      </p>
-      <div v-else-if="loading" class="flex items-center gap-2 py-16 text-sm text-brand-text-muted">
-        <LoaderCircle class="h-4 w-4 animate-spin" :stroke-width="1.75" />
-        Generando vista previa...
-      </div>
-      <p v-else-if="errorMessage" class="text-sm text-brand-error-text">{{ errorMessage }}</p>
-      <PrintReportSheet v-else-if="result" :result="result" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" />
-    </div>
-  </div>
+  <PrintReportParameterModal v-if="parameterModal && dsl" :dsl="dsl" @cancel="result ? parameterModal = false : onClose()" @generate="loadPreview" />
+  <PrintReportPreview :title="dsl?.title || 'Vista previa'" :result="result" :loading="loading" :error="!dsl ? 'Vuelve al diseñador para generar una vista previa.' : errorMessage" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" :initial-layout="dsl?.layout" :has-parameters="!!dsl?.parameters?.length" @close="onClose" @layout="updateLayout" @change-filters="parameterModal = true" />
 </template>

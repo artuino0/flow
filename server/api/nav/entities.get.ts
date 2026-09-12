@@ -1,5 +1,9 @@
 import { requireAuth } from '~/server/utils/rbac'
 import { listVisibleEntities } from '~/server/utils/moduleEntities'
+import { eq } from 'drizzle-orm'
+import { db } from '~/server/db'
+import { tenants } from '~/server/db/schema'
+import { buildNavigation } from '~/utils/moduleNavigation'
 
 // GET /api/nav/entities (ERD-43/ERD-44): entidades visibles para armar el
 // menu dinamico (components/AppNav.vue) - a diferencia de GET /api/entities
@@ -18,13 +22,12 @@ import { listVisibleEntities } from '~/server/utils/moduleEntities'
 // mantiene consistente con como se comporta CUALQUIER otro endpoint
 // autenticado de esta app (dashboard, roles, etc.), no una excepcion sola
 // para este caso.
-// ERD-86: 'hecho' fijo - la seccion dinamica "MÓDULOS" de AppNav.vue es
-// exclusivamente para modulos transaccionales; los catalogos
-// (moduleKind='dimension') se administran aparte desde Administracion >
-// Catalogos, nunca aparecen en este menu (ver comentario largo en
-// server/utils/moduleEntities.ts, listVisibleEntities()).
+// Áreas y subprocesos: los catálogos asignados aparecen en su grupo.
+// showInMenu solo cambia esta respuesta, nunca los permisos de captura.
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const entities = await listVisibleEntities(auth.tenantId, auth.roleId!, 'hecho')
-  return { entities }
+  const readable = await listVisibleEntities(auth.tenantId, auth.roleId!)
+  const [tenant] = await db.select({ layout: tenants.navigationLayout }).from(tenants).where(eq(tenants.id, auth.tenantId))
+  const navigation = buildNavigation(tenant?.layout ?? { groups: [] }, readable)
+  return { entities: readable.filter(entity => entity.moduleKind === 'hecho' && entity.showInMenu), ...navigation }
 })

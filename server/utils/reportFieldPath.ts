@@ -41,6 +41,7 @@ export interface EntityFieldMeta {
 }
 
 export interface EntityMeta {
+  labelField?: string | null
   id: string
   slug: string
   name: string
@@ -54,7 +55,7 @@ export interface TenantFieldContext {
 
 /** Carga entities + entity_fields del tenant una sola vez (mismo criterio de "cargar todo, resolver en memoria" que computeInverseRelations). */
 export async function loadTenantFieldContext(tx: Tx, tenantId: string): Promise<TenantFieldContext> {
-  const allEntities = await tx.select({ id: entities.id, slug: entities.slug, name: entities.name }).from(entities).where(eq(entities.tenantId, tenantId))
+  const allEntities = await tx.select({ id: entities.id, slug: entities.slug, name: entities.name, labelField: entities.labelField }).from(entities).where(eq(entities.tenantId, tenantId))
   const entitiesById = new Map(allEntities.map((e) => [e.id, e]))
   const entitiesBySlug = new Map(allEntities.map((e) => [e.slug, e]))
 

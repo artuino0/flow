@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requireAuth, requirePermission } from '~/server/utils/rbac'
 import { printReportDslSchema } from '~/server/utils/printReport'
 import { getPrintReport, updatePrintReport, PrintReportNotFoundError } from '~/server/utils/printReports'
+import { requirePrintReportAccess } from '~/server/utils/printReportAccess'
 
 // PUT /api/print-reports/:id { title, dsl } (HU-ERD-88) - "Guardar cambios"
 // al reabrir una plantilla existente en el Diseñador. Se valida el permiso
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
     if (body.dsl.baseEntity !== existing.baseEntitySlug) {
       await requirePermission(event, body.dsl.baseEntity, 'canRead')
     }
+    await requirePrintReportAccess(event, body.dsl)
     return await updatePrintReport(auth.tenantId, id, body)
   } catch (err) {
     if (err instanceof PrintReportNotFoundError) {

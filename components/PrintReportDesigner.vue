@@ -1,48 +1,14 @@
 <script setup lang="ts">
-// ERD-88 (Diseñador de reportes imprimibles), Screen/Diseñador de reporte
-// imprimible (3 columnas) - revisado con las herramientas de Pencil antes de
-// construir (regla pencil-antes-de-frontend). Reusado por
-// pages/registros/[entity]/reportes/nuevo.vue (sin reportId) y
-// pages/registros/[entity]/reportes/[id]/editar.vue (con reportId, reabre una
-// plantilla guardada) - mismo criterio de componente compartido que
-// components/ModuleWizard.vue para Crear/Editar Módulo.
-//
-// Corrección (2026-09-07, reporte directo del usuario: "no veo el drag and
-// drop la estructura encabezado, filtros tabla, los colores del tipo de
-// campo") - se reinvestigó `HgECQ` a fondo con las herramientas de Pencil
-// (la primera pasada se había quedado corta) y se corrigieron 3 de las 4
-// cosas señaladas:
-// 1. Drag-and-drop real: no hacía falta ninguna librería - la API nativa de
-//    HTML5 (`draggable` + `dragstart`/`dragover`/`drop`) alcanza para "una
-//    lista arrastra a otra" (ver PrintReportFieldTree.vue). Se mantiene el
-//    clic-para-agregar además del drag (no se quita, se completa - también
-//    es más accesible).
-// 2. Colores por tipo de campo: PrintReportFieldTree.vue ahora usa los
-//    colores EXACTOS del mock (Texto=neutral, Fecha=morado, N.º=azul,
-//    Sí/No=verde, branch 1:N=rosa), tomados nodo por nodo con Pencil y
-//    mapeados a tokens ya existentes en tailwind.config.ts.
-// 3. Estructura del lienzo: el mock dibuja el Canvas como una hoja de
-//    verdad, con 4 zonas apiladas dentro de un marco blanco sobre fondo gris
-//    (`Zone Encabezado` con logo+título, una regla, `Zone Parámetros`,
-//    `Zone Tabla` con el encabezado real de columnas, y una barra
-//    `Subtotal`) más un FAB flotante "Vista previa" - reemplaza la tabla
-//    plana que había antes.
-//
-// Lo que SIGUE fuera de esta entrega (decisión de alcance, no un olvido):
-// "PARÁMETROS DEL REPORTE" (filtros de fecha/estado elegidos AL imprimir, no
-// al diseñar) - agregarlo bien requeriría un tipo de columna nuevo en el DSL
-// (parámetro de filtro) + UI para completarlo en Vista previa impresión, y
-// no hay evidencia en el resto del .pen de cómo se validan/aplican esos
-// valores. La `Zone Parámetros` del lienzo SÍ se dibuja ahora (para que la
-// estructura de 4 zonas sea visible, que era parte del reclamo), pero como
-// una nota atenuada "no disponible en esta versión" en vez de una fila
-// funcional - preferible a una versión a medias de la pieza real. Tampoco
-// se agregan los datos fiscales del tenant en `Zone Encabezado` (logo real,
-// razón social, RUC) - no hay ningún endpoint que los exponga al cliente
-// hoy (mismo motivo ya documentado en Vista previa impresión).
-import { AlertTriangle, Ban, Calculator, Eye, FileText, Save, Settings2, SlidersHorizontal, SplitSquareHorizontal, Table2, Trash2, X } from '@lucide/vue'
+// The editable canvas and print preview share physical paper proportions.
+// Layout is stored in the existing report DSL; older templates keep defaults.
+import { resolvePrintLayout, paperDimensions } from '~/utils/printLayout'
+import { inputsForType, type ReportParameter, type ParameterAnswers } from '~/utils/reportParameters'
+import { moveReportColumn, readReportFieldDrop } from '~/utils/reportDesigner'
+import { AlertTriangle, Ban, Calculator, Eye, FileText, FileWarning, Save, Settings2, SlidersHorizontal, SplitSquareHorizontal, Table2, Trash2, X } from '@lucide/vue'
 import {
   collectBaseLeaves,
+  resolveSourceLabel,
+  type PrintReportResult,
   collectDetailLeaves,
   isNumericFieldType,
   isPivotableFieldType,
@@ -76,8 +42,33 @@ const previewDraft = usePrintReportPreviewDraft()
 const restoredDsl =
   previewDraft.value && previewDraft.value.reportId === props.reportId && previewDraft.value.dsl.baseEntity === props.entitySlug ? previewDraft.value.dsl : null
 const initialSource = restoredDsl ?? props.initialDsl
+const mode = ref<'detail' | 'summary'>(initialSource?.mode ?? 'detail')
+const filters = ref<NonNullable<PrintReportDsl['filters']>>(JSON.parse(JSON.stringify(initialSource?.filters ?? [])))
+const parameters = ref<ReportParameter[]>(JSON.parse(JSON.stringify(initialSource?.parameters ?? [])))
+const parameterModal = ref(false)
+const legacyConverted = ref(false)
+onMounted(() => watch(treeData, () => {
+  if (!filters.value.length || !treeData.value) return
+  parameters.value.push(...filters.value.map((filter, index) => {
+    const leaf = availableLeaves.value.find(leaf => JSON.stringify([leaf.side, leaf.forwardHops, leaf.field]) === JSON.stringify([filter.source.side, filter.source.forwardHops, filter.source.field]))
+    return { id: `legacy-${index}`, source: filter.source, label: leaf?.label ?? filter.source.field, input: inputsForType(leaf?.dataType ?? 'text')[0]?.value ?? 'text', required: false } as ReportParameter
+  }))
+  filters.value = []
+  legacyConverted.value = true
+}, { immediate: true }))
+const orderBy = ref<NonNullable<PrintReportDsl['orderBy']>>(JSON.parse(JSON.stringify(initialSource?.orderBy ?? [])))
+const fieldSearch = ref('')
+const inlineResult = ref<PrintReportResult | null>(null)
+const inlineLoading = ref(false)
+const inlineError = ref('')
+const inlineDate = ref(new Date())
+const previewVisible = ref(false)
+let previewRevision = 0
 
 const title = ref(initialSource?.title ?? props.initialTitle ?? '')
+const layout = ref(resolvePrintLayout(initialSource?.layout, initialSource?.columns.length))
+const paperSize = computed(() => paperDimensions(layout.value))
+const { data: reportBranding } = useFetch<{ name: string; hasLogo: boolean }>('/api/tenant/branding', { key: 'report-designer-branding' })
 const includeDeletedBase = ref(initialSource?.includeDeletedBase ?? false)
 const detail = ref(initialSource?.detail ? { ...initialSource.detail } : null as PrintReportDsl['detail'] | null)
 const groupBy = ref<ColumnSource[]>(initialSource?.groupBy ? initialSource.groupBy.map((g) => ({ ...g })) : [])
@@ -116,9 +107,10 @@ function nextKey(label: string): string {
 
 const detailCandidates = computed<FieldTreeBranch[]>(() => topLevelDetailCandidates(treeData.value?.fields ?? []))
 const baseLeaves = computed<FlatLeaf[]>(() => collectBaseLeaves(treeData.value?.fields ?? []))
+const availableLeaves = computed(() => [...baseLeaves.value.map(leaf => ({ ...leaf, side: 'base' as const })), ...detailLeaves.value.map(leaf => ({ ...leaf, side: 'detail' as const }))])
 const detailLeaves = computed<FlatLeaf[]>(() => {
   if (!detail.value) return []
-  const branch = detailCandidates.value.find((b) => b.fieldName === detail.value!.fieldName)
+  const branch = detailCandidates.value.find((b) => b.fieldName === detail.value!.fieldName && b.entitySlug === detail.value!.entitySlug)
   return branch ? collectDetailLeaves(branch) : []
 })
 
@@ -144,6 +136,11 @@ watch(
 )
 
 function onSelectLeaf(payload: { side: 'base' | 'detail'; forwardHops: string[]; field: string; label: string; dataType: string }) {
+  if (!findLeafDataType(payload)) return
+  if (columns.value.length >= 20) {
+    toast.error('Límite de columnas', 'El reporte admite hasta 20 columnas. Quita una antes de agregar otra.')
+    return
+  }
   const key = nextKey(payload.label)
   columns.value.push({ kind: 'detalle', key, label: payload.label, source: { side: payload.side, forwardHops: payload.forwardHops, field: payload.field } })
   columnDataTypes.value[key] = payload.dataType
@@ -153,19 +150,40 @@ function onSelectLeaf(payload: { side: 'base' | 'detail'; forwardHops: string[];
 // Soltar una hoja arrastrada desde el árbol sobre la Zona Tabla del lienzo -
 // mismo payload que emite `select-leaf` (ver PrintReportFieldTree.vue), así
 // que reusa exactamente la misma lógica de alta que el clic.
-function onCanvasDrop(event: DragEvent) {
+function onCanvasDrop(event: DragEvent, targetKey?: string) {
   event.preventDefault()
+  const movingKey = event.dataTransfer?.getData('application/x-flowerp-report-column')
+  if (movingKey) {
+    columns.value = moveReportColumn(columns.value, movingKey, targetKey ? columns.value.findIndex(column => column.key === targetKey) : columns.value.length - 1)
+    return
+  }
   const raw = event.dataTransfer?.getData('application/json')
   if (!raw) return
-  try {
-    onSelectLeaf(JSON.parse(raw))
-  } catch {
-    // payload invalido (drag de otro origen que no sea el arbol) - se ignora.
+  const payload = readReportFieldDrop(raw)
+  if (payload) {
+    const previousCount = columns.value.length
+    onSelectLeaf(payload)
+    if (targetKey && columns.value.length > previousCount) columns.value = moveReportColumn(columns.value, columns.value[columns.value.length - 1]!.key, columns.value.findIndex(column => column.key === targetKey))
   }
+}
+function startColumnDrag(event: DragEvent, key: string) {
+  event.dataTransfer?.setData('application/x-flowerp-report-column', key)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+function onGroupDrop(event: DragEvent) {
+  event.preventDefault()
+  const payload = readReportFieldDrop(event.dataTransfer?.getData('application/json') ?? '')
+  if (!payload || !findLeafDataType(payload) || groupBy.value.length >= 4) return
+  const source = { side: payload.side, forwardHops: payload.forwardHops, field: payload.field }
+  if (!groupBy.value.some(level => level.side === source.side && level.field === source.field && level.forwardHops.join('.') === source.forwardHops.join('.'))) groupBy.value.push(source)
+}
+function moveSelectedColumn(offset: number) {
+  if (!selectedKey.value) return
+  columns.value = moveReportColumn(columns.value, selectedKey.value, columns.value.findIndex(column => column.key === selectedKey.value) + offset)
 }
 
 function onSelectDetailBranch(branch: FieldTreeBranch) {
-  if (detail.value && detail.value.fieldName !== branch.fieldName) {
+  if (detail.value && (detail.value.fieldName !== branch.fieldName || detail.value.entitySlug !== branch.entitySlug)) {
     toast.error('Este reporte ya tiene una tabla relacionada', `Ya se está usando "${detail.value.entitySlug}" - un reporte imprimible solo admite una.`)
     return
   }
@@ -255,16 +273,22 @@ function groupLevelSelectedValue(level: ColumnSource): string {
 function buildDsl(): PrintReportDsl {
   return {
     title: title.value.trim(),
+    mode: mode.value,
+    filters: filters.value,
+    parameters: parameters.value,
+    orderBy: orderBy.value,
     baseEntity: props.entitySlug,
     includeDeletedBase: includeDeletedBase.value,
     detail: detail.value ?? undefined,
     groupBy: groupBy.value,
-    columns: columns.value
+    columns: columns.value,
+    layout: layout.value
   }
 }
 
 async function onSave() {
   saveError.value = null
+  if (!validateDataOptions()) return
   if (!title.value.trim()) {
     saveError.value = 'Ponele un nombre al reporte antes de guardar.'
     return
@@ -304,6 +328,7 @@ function onDiscard() {
 
 async function onPreview() {
   saveError.value = null
+  if (!validateDataOptions()) return
   // Mismo chequeo que onSave(): el DSL exige `title` no vacío (printReportDslSchema,
   // server/utils/printReport.ts) - sin esto, POST /api/print-reports/preview
   // devuelve un 400 con el JSON crudo del error de Zod en vez de un mensaje
@@ -321,6 +346,52 @@ async function onPreview() {
 }
 
 const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar' || c.kind === 'repartir'))
+function validateDataOptions() {
+  if (parameters.value.some(parameter => !parameter.label.trim())) {
+    saveError.value = 'Escribe una etiqueta para cada filtro.'
+    return false
+  }
+  if (mode.value === 'summary' && !sumColumns.value.length) {
+    saveError.value = 'Para crear un resumen, configura al menos una columna como Sumar.'
+    return false
+  }
+  return true
+}
+async function refreshInlinePreview(answers?: ParameterAnswers) {
+  saveError.value = null
+  if (!validateDataOptions() || !title.value.trim() || !columns.value.length) {
+    saveError.value ||= 'Escribe un nombre y agrega columnas para probar el reporte.'
+    return
+  }
+  if (parameters.value.length && !answers) { parameterModal.value = true; return }
+  parameterModal.value = false
+  const revision = ++previewRevision
+  inlineLoading.value = true
+  inlineError.value = ''
+  inlineResult.value = null
+  previewVisible.value = true
+  try {
+    const result = await $fetch<PrintReportResult>('/api/print-reports/preview', { method: 'POST', body: { dsl: buildDsl(), answers } })
+    if (revision === previewRevision) { inlineResult.value = result; inlineDate.value = new Date() }
+  } catch (error: any) {
+    if (revision === previewRevision) inlineError.value = error?.data?.statusMessage || 'No se pudieron cargar los datos.'
+  } finally { if (revision === previewRevision) inlineLoading.value = false }
+}
+watch([columns, groupBy, filters, parameters, orderBy, mode, detail, title], () => {
+  previewRevision++
+  inlineResult.value = null
+  inlineLoading.value = false
+}, { deep: true })
+function clearDetail() {
+  columns.value = columns.value.filter(col => col.source.side === 'base' && (col.kind !== 'repartir' || col.conditionSource.side === 'base'))
+  groupBy.value = groupBy.value.filter(source => source.side === 'base')
+  filters.value = filters.value.filter(filter => filter.source.side === 'base')
+  parameters.value = parameters.value.filter(parameter => parameter.source.side === 'base')
+  orderBy.value = orderBy.value.filter(order => order.source.side === 'base')
+  detail.value = null
+  detailConfigOpen.value = false
+  selectedKey.value = null
+}
 </script>
 
 <template>
@@ -370,13 +441,18 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
       </div>
     </div>
 
-    <p v-if="saveError" class="text-sm text-brand-error-text">{{ saveError }}</p>
+    <p v-if="saveError" role="alert" class="text-sm text-brand-error-text">{{ saveError }}</p>
+    <p v-if="legacyConverted" class="text-sm text-brand-text-secondary">Los filtros anteriores ahora se preguntarán al generar. Guarda para actualizar esta plantilla.</p>
+    <PrintReportDataControls v-model:mode="mode" v-model:filters="parameters" v-model:order-by="orderBy" :leaves="availableLeaves" :base-name="entitySlug" :detail-name="detail?.entitySlug" />
+    <PrintReportParameterModal v-if="parameterModal" :dsl="buildDsl()" @cancel="parameterModal = false" @generate="refreshInlinePreview" />
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <!-- Panel Campos -->
       <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface lg:col-span-3">
         <div class="border-b border-brand-border-light p-3.5">
           <h2 class="text-sm font-bold text-brand-text">Campos disponibles</h2>
+          <input v-model="fieldSearch" type="search" aria-label="Buscar campos" placeholder="Buscar un campo…" class="mt-3 w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm" />
+          <p class="mt-2 text-xs text-brand-text-muted">Los vínculos traen un valor. Las tablas de detalle contienen varios registros.</p>
         </div>
         <div class="max-h-[560px] overflow-y-auto p-2">
           <!-- Fila fija con el nombre de la entidad base (fiel a "branch Manifiestos"
@@ -391,7 +467,8 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           <PrintReportFieldTree
             v-else
             :nodes="treeData?.fields ?? []"
-            :chosen-detail-field="detail?.fieldName ?? null"
+            :search="fieldSearch"
+            :chosen-detail-field="detail ? `${detail.entitySlug}|${detail.fieldName}` : null"
             @select-leaf="onSelectLeaf"
             @select-detail-branch="onSelectDetailBranch"
           />
@@ -419,24 +496,30 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           </button>
         </div>
 
-        <div class="relative flex flex-1 items-start justify-center rounded-lg bg-[#E9ECF0] p-7" @dragover.prevent @drop="onCanvasDrop">
-          <div class="flex w-full max-w-[480px] flex-col gap-4 rounded border border-[#DADADA] bg-white p-6">
-            <!-- Zone Encabezado -->
-            <div class="flex items-center gap-3.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
-              <div class="flex h-11 w-16 shrink-0 items-center justify-center rounded border border-[#BFBFBF]">
-                <span class="text-[9px] text-[#9A9A9A]">LOGO</span>
-              </div>
-              <h3 class="truncate text-[15px] font-bold text-[#1A1A1A]">{{ title || 'Reporte sin nombre' }}</h3>
+        <PrintReportLayoutControls v-model="layout" />
+        <div class="flex flex-wrap gap-2" aria-label="Vista del editor">
+          <button type="button" class="rounded border border-brand-border px-3 py-2 text-sm" :aria-pressed="!previewVisible" @click="previewVisible = false">Diseñar estructura</button>
+          <button type="button" class="rounded border border-brand-border px-3 py-2 text-sm text-brand-blue disabled:opacity-50" :disabled="inlineLoading" @click="refreshInlinePreview()">{{ inlineLoading ? 'Consultando…' : 'Probar con datos' }}</button>
+        </div>
+        <div v-if="previewVisible" class="overflow-auto rounded-lg bg-brand-bg p-3" aria-label="Resultado dentro del editor">
+          <p v-if="inlineLoading" role="status" class="p-6 text-sm">Preparando el reporte…</p>
+          <p v-else-if="inlineError" role="alert" class="p-6 text-sm text-brand-error-text">{{ inlineError }}</p>
+          <p v-else-if="!inlineResult" class="p-6 text-sm">El diseño cambió. Pulsa «Probar con datos» para actualizar el resultado.</p>
+          <div v-else style="zoom: 0.55"><PrintReportSheet :result="inlineResult" :generated-at="inlineDate" :layout="layout" :group-field-labels="groupBy.map(source => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, source))" /></div>
+        </div>
+        <div v-else class="relative flex flex-1 items-start justify-center rounded-lg bg-[#E9ECF0] p-7 pb-20" aria-label="Lienzo del reporte" @dragover.prevent @drop="onCanvasDrop($event)">
+          <div class="flex w-full flex-col gap-4 border border-[#DADADA] bg-white p-6 shadow-sm" :style="{ aspectRatio: `${paperSize.width} / ${paperSize.height}` }">
+            <div class="flex items-center gap-3 border-b-2 border-brand-navy pb-3">
+              <img v-if="reportBranding?.hasLogo" :src="'/api/tenant/logo'" alt="" class="h-10 w-14 object-contain" />
+              <p class="text-xs font-semibold text-brand-text">{{ reportBranding?.name || 'Organización' }}</p>
             </div>
-            <div class="h-0.5 w-full bg-[#1A1A1A]" />
+            <div><p class="mb-1 text-[9px] uppercase tracking-widest text-brand-text-secondary">Reporte operativo</p><h3 class="break-words text-base font-bold text-brand-navy">{{ title || 'Reporte sin nombre' }}</h3></div>
+            <p class="text-[10px] text-brand-text-secondary">{{ layout.paper === 'letter' ? 'Carta' : 'A4' }} · {{ layout.orientation === 'portrait' ? 'Vertical' : 'Horizontal' }} · Márgenes de 12 mm</p>
 
-            <!-- Zone Parámetros: estructura visible, fuera de alcance (ver comentario
-            grande del script). -->
-            <div class="flex flex-col gap-1.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
-              <p class="text-[9px] font-bold tracking-wide text-[#9AA0A6]">PARÁMETROS DEL REPORTE</p>
-              <p class="text-xs italic text-brand-text-muted">No disponible en esta versión.</p>
+            <div class="rounded border border-dashed border-brand-border p-3" aria-label="Zona de agrupación" @dragover.prevent @drop.stop="onGroupDrop">
+              <p class="text-xs font-semibold text-brand-text">Agrupaciones</p>
+              <p class="mt-1 text-xs text-brand-text-muted">{{ groupBy.length ? groupBy.map(level => [...level.forwardHops, level.field].join(' › ')).join(' / ') : 'Arrastra aquí una fecha, finca u otro campo para crear grupos.' }}</p>
             </div>
-
             <!-- Zone Tabla: encabezado real de las columnas ya agregadas, clic o
             drop acá también agrega/selecciona. -->
             <div class="flex flex-col gap-1.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
@@ -448,16 +531,21 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
                 Arrastrá un campo del árbol hasta acá, o hacé clic en una hoja.
               </p>
 
-              <div v-else class="flex overflow-hidden rounded border border-[#B8B8B8]">
+              <div v-else class="flex overflow-x-auto border border-[#B8B8B8]">
                 <button
                   v-for="col in columns"
                   :key="col.key"
                   type="button"
+                  draggable="true"
+                  :aria-label="`Columna ${col.label}`"
+                  @dragstart="startColumnDrag($event, col.key)"
+                  @dragover.prevent
+                  @drop.stop="onCanvasDrop($event, col.key)"
                   class="flex items-center justify-between gap-1.5 border-r border-[#B8B8B8] px-2.5 py-1.5 text-left text-[11px] font-bold text-[#1F1F1F] last:border-r-0"
                   :class="selectedKey === col.key ? 'border border-brand-blue bg-[#DCF1F6]' : 'bg-[#ECECEC] hover:bg-[#E2E2E2]'"
                   @click="selectedKey = col.key"
                 >
-                  <span class="truncate">{{ col.label }}</span>
+                  <span class="break-words">{{ col.label }}</span>
                   <Calculator v-if="col.kind === 'sumar'" class="h-3 w-3 shrink-0" :stroke-width="2" />
                   <SplitSquareHorizontal v-else-if="col.kind === 'repartir'" class="h-3 w-3 shrink-0" :stroke-width="2" />
                   <Settings2 v-else class="h-3 w-3 shrink-0 text-[#9AA0A6]" :stroke-width="1.75" />
@@ -492,6 +580,10 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           <p v-if="!selectedColumn" class="text-xs text-brand-text-muted">Elegí una columna del reporte para configurarla.</p>
 
           <template v-else>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="rounded border border-brand-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[0]?.key === selectedKey" @click="moveSelectedColumn(-1)">Mover a la izquierda</button>
+              <button type="button" class="rounded border border-brand-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[columns.length - 1]?.key === selectedKey" @click="moveSelectedColumn(1)">Mover a la derecha</button>
+            </div>
             <p class="text-xs font-semibold uppercase tracking-wide text-brand-text-muted">Columna</p>
 
             <div class="flex flex-col gap-1">
@@ -551,6 +643,39 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
               Quitar columna
             </button>
           </template>
+        <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Agrupar filas</p>
+            <button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4" @click="addGroupLevel">
+              + Agregar nivel
+            </button>
+          </div>
+          <p class="text-xs text-brand-text-muted">Agrupa por fecha, finca u otro campo. Las columnas configuradas como Sumar generan subtotales.</p>
+
+          <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
+            <span class="w-16 shrink-0 text-xs font-semibold text-brand-text-secondary">Nivel {{ index + 1 }}</span>
+            <select
+              class="min-w-0 flex-1 rounded border border-brand-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              :value="groupLevelSelectedValue(level)"
+              :aria-label="`Agrupar nivel ${index + 1}`"
+              @change="
+                (() => {
+                  const [side, path] = ($event.target as HTMLSelectElement).value.split('|')
+                  const parts = path.split('.')
+                  groupBy[index] = { side: side as 'base' | 'detail', forwardHops: parts.slice(0, -1), field: parts[parts.length - 1] }
+                })()
+              "
+            >
+              <option v-for="leaf in groupLevelLeaves()" :key="groupLevelOptionValue(leaf)" :value="groupLevelOptionValue(leaf)">
+                {{ [leaf.side === 'detail' ? 'Detalle' : '', ...leaf.forwardHops, leaf.label].filter(Boolean).join(' › ') }}
+              </option>
+            </select>
+            <button type="button" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)">
+              <Trash2 class="h-4 w-4" :stroke-width="1.75" />
+            </button>
+          </div>
+          <p v-if="groupBy.length === 0" class="text-xs text-brand-text-muted">Sin niveles configurados, el reporte se imprime como una sola lista.</p>
+        </div>
         </div>
       </div>
     </div>
@@ -564,6 +689,9 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
             <X class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
+
+        <p class="text-sm text-brand-text-secondary">Cada fila representa un registro de {{ detail.entitySlug }}. Los campos del módulo principal acompañan sus detalles.</p>
+        <button type="button" class="self-start text-sm text-brand-error-text underline" @click="clearDetail">Quitar tabla de detalle y sus campos del reporte</button>
 
         <div class="flex flex-col gap-2 border-b border-brand-border-light pb-4">
           <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Datos</p>
@@ -581,38 +709,7 @@ const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar'
           </p>
         </div>
 
-        <div class="flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Agrupamiento (subtotales anidados)</p>
-            <button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4" @click="addGroupLevel">
-              + Agregar nivel
-            </button>
-          </div>
-          <p class="text-xs text-brand-text-muted">Genera un subtotal por cada nivel y un total general al final del documento.</p>
 
-          <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
-            <span class="w-16 shrink-0 text-xs font-semibold text-brand-text-secondary">Nivel {{ index + 1 }}</span>
-            <select
-              class="flex-1 rounded border border-brand-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              :value="groupLevelSelectedValue(level)"
-              @change="
-                (() => {
-                  const [side, path] = ($event.target as HTMLSelectElement).value.split('|')
-                  const parts = path.split('.')
-                  groupBy[index] = { side: side as 'base' | 'detail', forwardHops: parts.slice(0, -1), field: parts[parts.length - 1] }
-                })()
-              "
-            >
-              <option v-for="leaf in groupLevelLeaves()" :key="groupLevelOptionValue(leaf)" :value="groupLevelOptionValue(leaf)">
-                {{ leaf.label }}
-              </option>
-            </select>
-            <button type="button" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)">
-              <Trash2 class="h-4 w-4" :stroke-width="1.75" />
-            </button>
-          </div>
-          <p v-if="groupBy.length === 0" class="text-xs text-brand-text-muted">Sin niveles configurados, el reporte se imprime como una sola lista.</p>
-        </div>
       </div>
     </div>
   </div>

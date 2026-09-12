@@ -1,6 +1,6 @@
 import { requirePermission } from '~/server/utils/rbac'
-import { withTenant } from '~/server/db'
-import { loadTenantFieldContext, buildFieldTree } from '~/server/utils/reportFieldPath'
+import { buildFieldTree } from '~/server/utils/reportFieldPath'
+import { readableReportContext } from '~/server/utils/printReportAccess'
 
 // GET /api/print-reports/fields?entity=<slug> (HU-ERD-88) - "Campos
 // disponibles" del panel izquierdo del Diseñador de 3 columnas: el árbol
@@ -15,10 +15,8 @@ export default defineEventHandler(async (event) => {
   if (!entitySlug) {
     throw createError({ statusCode: 400, statusMessage: 'Falta el parámetro "entity"' })
   }
-  const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')
+  const { entity } = await requirePermission(event, entitySlug, 'canRead')
 
-  return withTenant(auth.tenantId, async (tx) => {
-    const ctx = await loadTenantFieldContext(tx, auth.tenantId)
-    return { fields: buildFieldTree(ctx, entity.id) }
-  })
+  const ctx = await readableReportContext(event)
+  return { fields: buildFieldTree(ctx, entity.id) }
 })

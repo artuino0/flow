@@ -17,13 +17,20 @@ export default defineNuxtConfig({
   // via MCP de Pencil - no hay forma de sacar el d= de los paths SVG desde
   // esa API, solo rasterizar - ver tambien public/brand/*.png, usados en
   // layouts/default.vue y las pantallas de login/registro/invitacion).
+  //
+  // Lora (2026-09-11): la hoja impresa del reporte (Screen/Reporte - Vista
+  // previa, tCiL7 en el .pen) usa una serif deliberadamente distinta de la
+  // Inter del resto de la app - el papel imita un documento formal/fiscal,
+  // no una pantalla de la app. Se agrega como familia aparte, no un
+  // reemplazo de Inter (components/PrintReportPage.vue/PrintReportSheet.vue
+  // son los unicos consumidores).
   app: {
     head: {
       title: 'FlowERP',
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' },
+        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap' },
         { rel: 'icon', type: 'image/png', href: '/brand/favicon.png' }
       ]
     }

@@ -14,8 +14,8 @@
 // pages/registros/[entity]/reportes/[id]/editar.vue - ese archivo ya lo
 // documentaba como su punto de entrada real antes de que esta pantalla
 // existiera.
-import { ArrowLeft, LoaderCircle, Pencil, Printer } from '@lucide/vue'
 import { resolveSourceLabel, usePrintReportFieldTree, type PrintReportDsl, type PrintReportResult } from '~/composables/usePrintReports'
+import type { ParameterAnswers } from '~/utils/reportParameters'
 
 definePageMeta({ layout: false })
 
@@ -47,13 +47,16 @@ const loading = ref(false)
 const errorMessage = ref('')
 const result = ref<PrintReportResult | null>(null)
 const generatedAt = ref(new Date())
+const parameterModal = ref(false)
 
-async function loadPreview() {
+async function loadPreview(answers?: ParameterAnswers) {
   if (!report.value) return
+  parameterModal.value = false
   loading.value = true
+  result.value = null
   errorMessage.value = ''
   try {
-    result.value = await $fetch<PrintReportResult>('/api/print-reports/preview', { method: 'POST', body: { dsl: report.value.dsl } })
+    result.value = await $fetch<PrintReportResult>('/api/print-reports/preview', { method: 'POST', body: { dsl: report.value.dsl, answers } })
     generatedAt.value = new Date()
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || 'No se pudo generar el reporte.'
@@ -62,7 +65,7 @@ async function loadPreview() {
   }
 }
 
-watch(report, (r) => { if (r) loadPreview() }, { immediate: true })
+watch(report, (r) => { if (r) { if (r.dsl.parameters?.length) parameterModal.value = true; else loadPreview() } }, { immediate: true })
 
 function onClose() {
   router.push(`/registros/${slug}`)
@@ -70,48 +73,9 @@ function onClose() {
 function onEdit() {
   router.push(`/registros/${slug}/reportes/${reportId}/editar`)
 }
-function onPrint() {
-  window.print()
-}
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F0F0F0]">
-    <div class="sticky top-0 z-10 flex h-[52px] items-center justify-between border-b border-brand-border-light bg-white px-5 shadow-sm print:hidden">
-      <div class="flex items-center gap-1.5">
-        <button type="button" class="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="onClose">
-          <ArrowLeft class="h-4 w-4" :stroke-width="1.75" />
-          Cerrar
-        </button>
-        <button type="button" class="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="onEdit">
-          <Pencil class="h-4 w-4" :stroke-width="1.75" />
-          Editar
-        </button>
-      </div>
-      <span class="text-sm font-semibold text-[#33475B]">{{ report?.title || 'Vista previa' }}</span>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60"
-        :disabled="!result"
-        @click="onPrint"
-      >
-        <Printer class="h-4 w-4" :stroke-width="1.75" />
-        Imprimir
-      </button>
-    </div>
-
-    <div class="flex flex-col items-center gap-6 px-6 py-10">
-      <div v-if="loadingReport" class="flex items-center gap-2 py-16 text-sm text-brand-text-muted">
-        <LoaderCircle class="h-4 w-4 animate-spin" :stroke-width="1.75" />
-        Cargando reporte...
-      </div>
-      <p v-else-if="reportError" class="text-sm text-brand-error-text">No se pudo cargar este reporte.</p>
-      <div v-else-if="loading" class="flex items-center gap-2 py-16 text-sm text-brand-text-muted">
-        <LoaderCircle class="h-4 w-4 animate-spin" :stroke-width="1.75" />
-        Generando vista previa...
-      </div>
-      <p v-else-if="errorMessage" class="text-sm text-brand-error-text">{{ errorMessage }}</p>
-      <PrintReportSheet v-else-if="result" :result="result" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" />
-    </div>
-  </div>
+  <PrintReportParameterModal v-if="parameterModal && report" :dsl="report.dsl" @cancel="result ? parameterModal = false : onClose()" @generate="loadPreview" />
+  <PrintReportPreview :title="report?.title || 'Vista previa'" :result="result" :loading="loadingReport || loading" :error="reportError ? 'No se pudo cargar este reporte.' : errorMessage" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" :initial-layout="report?.dsl.layout" :has-parameters="!!report?.dsl.parameters?.length" editable @close="onClose" @edit="onEdit" @change-filters="parameterModal = true" />
 </template>

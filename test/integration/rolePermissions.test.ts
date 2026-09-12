@@ -62,8 +62,8 @@ beforeAll(async () => {
 }, 60_000)
 
 afterAll(async () => {
-  await admin.end()
-  await testDb.stop()
+  await admin?.end()
+  await testDb?.stop()
 })
 
 describe('rolePermissions (Postgres real)', () => {
@@ -86,11 +86,10 @@ describe('rolePermissions (Postgres real)', () => {
     // 2 usuarios en roleA, 1 en el rol nuevo, 1 sin rol (role_id null) - todos
     // en TENANT_A. Mas 1 usuario en TENANT_B con el MISMO nombre de rol
     // conceptual, para confirmar que no se mezcla entre tenants.
-    await admin`insert into users (tenant_id, role_id, email, password_hash) values
-      (${TENANT_A}, ${roleA}, 'user1@a.test', ${passwordHash}),
-      (${TENANT_A}, ${roleA}, 'user2@a.test', ${passwordHash}),
-      (${TENANT_A}, ${otherRole.id}, 'user3@a.test', ${passwordHash}),
-      (${TENANT_A}, null, 'user4@a.test', ${passwordHash})`
+    for (const [index, assignedRole] of [roleA, roleA, otherRole.id, null].entries()) {
+      const [person] = await admin`insert into people (email, password_hash) values (${`user${index}@a.test`}, ${passwordHash}) returning id`
+      await admin`insert into users (tenant_id, role_id, person_id) values (${TENANT_A}, ${assignedRole}, ${person.id})`
+    }
 
     const roles = await listRoles(TENANT_A)
     const vendedor = roles.find((r) => r.id === roleA)
@@ -258,5 +257,24 @@ describe('rolePermissions (Postgres real)', () => {
       const rolesAfterOtherTenantId = await listRoles(TENANT_A)
       expect(rolesAfterOtherTenantId.find((r) => r.name === 'Otro Nombre Nunca Usado')).toBeUndefined()
     })
+  })
+  it('ocultar del menú conserva lectura y consultas relacionadas; se copia y no se reinicia con clientes anteriores', async () => {
+    const role = await createRole(TENANT_A, 'Solo selector')
+    const permission = { entityId: clientesEntityA, canRead: true, canCreate: false, canUpdate: false, canDelete: false }
+    await setRolePermissions(TENANT_A, role.id, [{ ...permission, showInMenu: false }])
+    await setRolePermissions(TENANT_A, role.id, [permission])
+    const saved = await getRolePermissions(TENANT_A, role.id)
+    expect(saved!.permissions.find(p => p.entityId === clientesEntityA)).toMatchObject({ canRead: true, showInMenu: false })
+    const { getPermissionFlags } = await import('../../server/utils/rbac')
+    const flags = await getPermissionFlags({ tenantId: TENANT_A, roleId: role.id } as any, clientesEntityA)
+    expect(flags.canRead).toBe(true)
+    const { listVisibleEntities } = await import('../../server/utils/moduleEntities')
+    const { buildNavigation } = await import('../../utils/moduleNavigation')
+    const readable = await listVisibleEntities(TENANT_A, role.id)
+    expect(readable.map(entity => entity.id)).toContain(clientesEntityA)
+    expect(buildNavigation({ groups: [] }, readable).unassigned).toEqual([])
+    const copied = await createRole(TENANT_A, 'Copia selector', role.id)
+    const copy = await getRolePermissions(TENANT_A, copied.id)
+    expect(copy!.permissions.find(p => p.entityId === clientesEntityA)).toMatchObject({ canRead: true, showInMenu: false })
   })
 })

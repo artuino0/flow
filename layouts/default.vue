@@ -9,7 +9,7 @@
 // componente AppHeader del .pen). No hay endpoint de nombre de tenant hoy
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
-import { Bell, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
+import { Bell, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X } from '@lucide/vue'
 
 const { user, logout } = useAuth()
 
@@ -26,6 +26,9 @@ const { user, logout } = useAuth()
 // sectionsOpen de AppNav.vue (preferencia de navegador, no dato de negocio).
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'flowerp-sidebar-collapsed'
 const sidebarCollapsed = ref(false)
+const mobileMenuOpen = ref(false)
+const navRoute = useRoute()
+watch(() => navRoute.path, () => { mobileMenuOpen.value = false })
 onMounted(() => {
   try {
     sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
@@ -67,6 +70,7 @@ async function onLogout(reason?: 'inactividad') {
   <div class="flex min-h-screen flex-col bg-brand-bg font-sans">
     <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
       <div class="flex items-center gap-2">
+        <button type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
         <img src="/brand/isotipo.png" alt="FlowERP" class="h-7 w-7 object-contain" />
         <span class="text-base font-bold text-brand-text">FlowERP</span>
       </div>
@@ -114,12 +118,15 @@ async function onLogout(reason?: 'inactividad') {
     />
 
     <div class="flex flex-1">
+      <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-black/30 sm:hidden" @click="mobileMenuOpen = false" />
       <aside
-        class="hidden shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:flex"
-        :class="sidebarCollapsed ? 'w-12' : 'w-60'"
+        class="shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:static sm:flex"
+        :class="[sidebarCollapsed ? 'w-16' : 'w-60', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
+        @keydown.esc="mobileMenuOpen = false"
       >
         <div class="flex items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
           <span v-if="!sidebarCollapsed" class="text-xs font-bold tracking-wide text-brand-text-muted">MENÚ</span>
+          <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = false"><X class="h-4 w-4" /></button>
           <button
             type="button"
             :title="sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'"
@@ -130,8 +137,8 @@ async function onLogout(reason?: 'inactividad') {
             <PanelLeftClose v-else class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
-        <div v-if="!sidebarCollapsed" class="flex flex-1 flex-col gap-px overflow-y-auto p-2.5">
-          <AppNav />
+        <div class="flex flex-1 flex-col gap-px overflow-y-auto p-2.5">
+          <AppNav :compact="sidebarCollapsed" />
         </div>
       </aside>
 

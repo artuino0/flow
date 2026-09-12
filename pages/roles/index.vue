@@ -30,6 +30,8 @@ interface RoleRow {
 }
 
 interface EntityPermissionRow {
+  moduleKind: 'hecho' | 'dimension'
+  showInMenu: boolean
   entityId: string
   entitySlug: string
   entityName: string
@@ -44,7 +46,7 @@ interface RolePermissionsResponse {
   permissions: EntityPermissionRow[]
 }
 
-type PermKey = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
+type PermKey = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete' | 'showInMenu'
 
 // Columnas de la Permission Matrix: labels tal cual el diseno ("Ver", no
 // "Leer" como tenia la implementacion original de HU-ERD-33 - unico texto
@@ -53,7 +55,8 @@ const COLUMNS: { key: PermKey; label: string }[] = [
   { key: 'canRead', label: 'Ver' },
   { key: 'canCreate', label: 'Crear' },
   { key: 'canUpdate', label: 'Editar' },
-  { key: 'canDelete', label: 'Eliminar' }
+  { key: 'canDelete', label: 'Eliminar' },
+  { key: 'showInMenu', label: 'Mostrar en menú' }
 ]
 
 const route = useRoute()
@@ -97,6 +100,10 @@ const {
 // Copia local editable - se resetea cada vez que llega/cambia `permsData`
 // (carga inicial, cambio de rol seleccionado, o despues de guardar con exito).
 const rows = ref<EntityPermissionRow[]>([])
+const activeTab = ref<'hecho' | 'dimension'>('hecho')
+const visibleRows = computed(() => rows.value.filter(row => (activeTab.value === 'hecho' ? row.moduleKind === 'hecho' : row.moduleKind === 'dimension')))
+const visibleColumns = computed(() => activeTab.value === 'dimension' ? COLUMNS.filter(col => col.key !== 'showInMenu') : COLUMNS)
+const tabCounts = computed(() => ({ hecho: rows.value.filter(row => row.moduleKind === 'hecho').length, dimension: rows.value.filter(row => row.moduleKind === 'dimension').length }))
 watchEffect(() => {
   if (permsData.value) rows.value = permsData.value.permissions.map((p) => ({ ...p }))
 })
@@ -121,9 +128,10 @@ async function onSave() {
   try {
     const result = await $fetch<RolePermissionsResponse>(`/api/roles/${selectedRoleId.value}/permissions`, {
       method: 'PUT',
-      body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete }) => ({ entityId, canRead, canCreate, canUpdate, canDelete })) }
+      body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu }) => ({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu })) }
     })
     rows.value = result.permissions.map((p) => ({ ...p }))
+    await refreshNuxtData('appnav-modules')
     toast.updated('Permisos actualizados', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudieron guardar los permisos'
@@ -259,7 +267,8 @@ async function onCreateRole() {
     <div class="flex items-center justify-between">
       <div class="flex flex-col gap-1">
         <h1 class="text-[22px] font-bold text-brand-text">Roles y Permisos</h1>
-        <p class="text-sm text-brand-text-secondary">Define qué puede ver, crear, editar o eliminar cada rol en cada entidad</p>
+        <p class="text-sm text-brand-text-secondary">Define los permisos de cada rol y qué módulos aparecen en su menú.</p>
+        <p class="text-xs text-brand-text-muted">Ocultar del menú conserva el permiso Ver, el acceso directo y los selectores relacionados. Sin Ver, el módulo no aparece.</p>
       </div>
       <button
         type="button"
@@ -367,25 +376,33 @@ async function onCreateRole() {
             </NuxtLink>
           </div>
 
-          <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+          <div v-else>
+            <div class="mb-3 flex items-center gap-1 border-b border-brand-border-light" role="tablist" aria-label="Tipo de entidad">
+              <button type="button" role="tab" :aria-selected="activeTab === 'hecho'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'hecho' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'hecho'">Módulos <span class="ml-1 text-xs font-normal">({{ tabCounts.hecho }})</span></button>
+              <button type="button" role="tab" :aria-selected="activeTab === 'dimension'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'dimension' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'dimension'">Catálogos <span class="ml-1 text-xs font-normal">({{ tabCounts.dimension }})</span></button>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
             <table class="min-w-full text-sm">
               <thead class="border-b border-brand-border-light bg-brand-bg">
                 <tr>
                   <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Entidad</th>
                   <th
-                    v-for="col in COLUMNS"
+                    v-for="col in visibleColumns"
                     :key="col.key"
                     class="w-[110px] px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary"
                   >{{ col.label }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-brand-border-light">
-                <tr v-for="row in rows" :key="row.entityId" class="hover:bg-brand-bg">
+                <tr v-for="row in visibleRows" :key="row.entityId" class="hover:bg-brand-bg">
                   <td class="px-4 py-3 font-medium text-brand-text">{{ row.entityName }}</td>
-                  <td v-for="col in COLUMNS" :key="col.key" class="px-4 py-3 text-center">
+                  <td v-for="col in visibleColumns" :key="col.key" class="px-4 py-3 text-center">
                     <button
                       type="button"
                       class="inline-flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border"
+                      role="checkbox"
+                      :aria-checked="row[col.key]"
+                      :aria-label="`${col.label}: ${row.entityName}`"
                       :class="row[col.key] ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
                       @click="toggle(row, col.key)"
                     >
@@ -395,6 +412,8 @@ async function onCreateRole() {
                 </tr>
               </tbody>
             </table>
+            </div>
+            <p v-if="visibleRows.length === 0" class="px-2 py-4 text-sm text-brand-text-muted">No hay {{ activeTab === 'hecho' ? 'módulos' : 'catálogos' }} para este rol.</p>
           </div>
 
           <div class="flex items-center gap-3">

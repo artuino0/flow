@@ -269,7 +269,8 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
   canRead: boolean('can_read').notNull().default(false),
   canCreate: boolean('can_create').notNull().default(false),
   canUpdate: boolean('can_update').notNull().default(false),
-  canDelete: boolean('can_delete').notNull().default(false)
+  canDelete: boolean('can_delete').notNull().default(false),
+  showInMenu: boolean('show_in_menu').notNull().default(true)
 }, (table) => ({
   roleEntityUnique: uniqueIndex('role_entity_permissions_role_entity_unique').on(table.roleId, table.entityId)
 }))
@@ -306,6 +307,8 @@ export const tenants = pgTable('tenants', {
   timezone: text('timezone').notNull().default('America/Mexico_City'),
   country: text('country').notNull().default('MX'),
   fiscalData: jsonb('fiscal_data').notNull().default({}),
+  navigationLayout: jsonb('navigation_layout').$type<import('../../utils/moduleNavigation').NavigationLayout>().notNull().default({ groups: [] }),
+  navigationRevision: integer('navigation_revision').notNull().default(0),
   // Logo del tenant (pedido directo del usuario, 2026-09-07: "los ajustes
   // para cargar el logo y los datos de la empresa emisora del reporte") -
   // mismo criterio de disco local que `files` (server/utils/fileStorage.ts),

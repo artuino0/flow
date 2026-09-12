@@ -1,5 +1,66 @@
 # Changelog
 
+### [0.85.1] - 2026-09-11
+#### [bug]
+- Empaque y embarque pasa al primer nivel del menú en Salmantino. Los catálogos quedan fuera del menú operativo y conservan su uso en selectores.
+- El editor de módulos permite elegir o crear el grupo desde la pestaña Ubicación en menú.
+
+### [0.85.0] - 2026-09-11
+#### [feature]
+- Organización del menú por área y subproceso, con iconos, orden configurable y catálogos contextuales. Los módulos sin asignar conservan su acceso.
+- Visibilidad del menú independiente del permiso de lectura por rol; conserva consultas y selectores relacionados autorizados.
+- Menú plegable con iconos en modo compacto y configuración administrativa con validación de pertenencia y control de cambios simultáneos.
+
+
+### [0.84.2] - 2026-09-11
+#### [bug]
+- Selectores personalizados de papel, orientación, densidad y zoom, con opciones redondeadas, selección visible y navegación por teclado.
+
+### [0.84.1] - 2026-09-11
+#### [bug]
+- Modal de filtros alineado con las pantallas de Pencil: colores, tipografía, separadores, cierre, rangos y selector con buscador desplegable.
+- Franja de filtros aplicados siempre visible debajo de las propiedades de impresión, con estados sin filtros y pendiente de generar.
+
+### [0.84.0] - 2026-09-11
+#### [bug]
+- Vista previa de impresión: estilos corregidos contra el diseño real (Papel/Orientación/Densidad/Zoom como mini-selectores con etiqueta al lado, en vez de selects apilados; encabezado de la hoja con tipografía serif y colores neutros).
+- «Cambiar filtros» pasa de botón flotante a la barra superior, junto a Editar diseño e Imprimir/PDF; se agrega una franja de «Filtros aplicados» debajo de las opciones de impresión, que ahora incluye tanto los parámetros respondidos como los filtros fijos configurados en el Diseñador (antes no aparecían).
+- Botón «Imprimir / PDF» en naranja de marca, igual que el resto de los botones primarios de la app.
+- Pequeño barrido de voseo en un mensaje de error de la vista previa del Diseñador.
+#### [add]
+- Zoom de vista previa: opciones de 125 % y 150 %.
+- Encabezado impreso: línea de contacto (correo/teléfono de la empresa), tomada de los mismos datos de Ajustes.
+
+### [0.83.0] - 2026-09-10
+#### [add]
+- Filtros configurables por tipo de entrada: texto, selector con búsqueda, fechas y números con rangos, casilla e interruptor booleano.
+- Modal de parámetros al generar o probar un reporte, con filtros opcionales u obligatorios, sin guardar los valores de cada ejecución.
+- Opciones consultadas con permisos del módulo y aislamiento por organización; los selectores relacionados distinguen registros por identidad.
+- Criterios en la impresión y acción para cambiar filtros; al editar una plantilla antigua, sus filtros se convierten en preguntas al guardar.
+
+### [0.82.0] - 2026-09-10
+#### [add]
+- Builder: significado de cada fila, búsqueda de campos, elección explícita del detalle, zona de agrupación arrastrable y prueba con datos dentro del editor.
+- Filtros combinados, orden de filas y modo de resumen guardados en la plantilla; las plantillas anteriores conservan su comportamiento.
+#### [bug]
+- Las medidas se totalizan por la identidad de su registro de origen, incluyendo padres relacionados; las condiciones deben pertenecer al mismo registro que su medida.
+- Los grupos basados en el campo identificador visual de una entidad distinguen registros con nombres iguales.
+- El selector y la ejecución comprueban acceso a los módulos relacionados, incluidos filtros y orden.
+
+
+### [0.81.0] - 2026-09-08
+#### [add]
+- Reportes imprimibles con hojas Carta/A4, orientación vertical/horizontal, densidad y zoom de vista previa. Las preferencias se guardan en el DSL existente, sin migración; las plantillas anteriores siguen funcionando.
+- Encabezado de empresa y dirección, tabla con anchos proporcionales, números en formato mexicano, filas numeradas, subtotales y total general. Sin logo ficticio ni título truncado.
+- Paginación por altura medida, encabezados de tabla y contexto de grupo repetidos, pie «Página X de Y». Vista previa e impresión comparten las mismas hojas y márgenes físicos de 12 mm.
+- Diseñador con proporción de papel y datos de la organización, y vista previa compartida entre borradores y reportes guardados.
+#### [bug]
+- Agrupación disponible también sin tabla relacionada; columnas reordenables y validación del contenido arrastrado.
+- Migración de reparación 0039 para bases donde el orden histórico de migraciones dejó sin crear `print_reports`, con permisos y aislamiento por organización.
+- Los reportes de solo importes ya no pierden el primer total al mostrar su etiqueta. Los campos numéricos de detalle y los booleanos se presentan según su tipo.
+- Se impide imprimir mientras se prepara la paginación o si el contenido excede el espacio imprimible. Cambiar opciones de impresión no descarta el borrador.
+
+
 ### [0.80.0] - 2026-09-07
 #### [add]
 - **ERD-62: Configuración General - logo del tenant + datos fiscales de la empresa emisora del reporte.** Pedido directo del usuario: "creo que debemos de trabajar en los ajustes para cargar el logo y los datos de la empresa emisora del reporte". Reemplaza el placeholder de "Ajustes" (0.33.1) por la pantalla real, revisada con las herramientas de Pencil antes de construir (regla pencil-antes-de-frontend): el mock `Screen/Configuración General` (`yLMnH`) solo dibuja Nombre de la organización + Moneda por defecto + Zona horaria - logo y datos fiscales no están en el mock, se agregaron siguiendo el mismo lenguaje visual (Card, Field/Text), documentado en el propio archivo, mismo criterio ya usado para el sidebar colapsable (0.79.2).

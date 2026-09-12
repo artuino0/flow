@@ -14,7 +14,8 @@ const bodySchema = z.object({
       canRead: z.boolean(),
       canCreate: z.boolean(),
       canUpdate: z.boolean(),
-      canDelete: z.boolean()
+      canDelete: z.boolean(),
+      showInMenu: z.boolean().optional()
     })
   )
 })

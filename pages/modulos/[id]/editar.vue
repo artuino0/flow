@@ -33,6 +33,7 @@
 // detalle de diseno - revisado en Pencil antes de construir, sin mock fiel
 // para esta version simple, decision explicita del usuario 2026-09-01).
 import { Trash2 } from '@lucide/vue'
+import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -71,6 +72,7 @@ const TABS = [
   { key: 'basica', label: 'Información general' },
   { key: 'campos', label: 'Campos' },
   { key: 'relaciones', label: 'Relaciones' },
+  { key: 'navegacion', label: 'Ubicación en menú' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
   { key: 'preview', label: 'Vista previa' }
@@ -539,6 +541,10 @@ async function onSaveListLayout() {
            pero a ancho completo, en vez de compartir columna con un
            configurador - le da a la vista previa el foco central que su
            nombre de pestaña promete. -->
+      <template v-else-if="step === 'navegacion'">
+        <ModuleNavigationEditor v-if="currentModule.moduleKind === 'hecho'" :entity-id="currentModule.id" :entity-name="currentModule.name" />
+        <p v-else class="text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
+      </template>
       <template v-else>
         <div class="mx-auto w-full max-w-[480px]">
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />

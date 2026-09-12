@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requirePermission } from '~/server/utils/rbac'
 import { printReportDslSchema } from '~/server/utils/printReport'
 import { createPrintReport } from '~/server/utils/printReports'
+import { requirePrintReportAccess } from '~/server/utils/printReportAccess'
 
 // POST /api/print-reports { title, dsl } (HU-ERD-88, botón "Guardar reporte"
 // del Diseñador de 3 columnas) - crea una plantilla nueva. El permiso se
@@ -16,6 +17,7 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, bodySchema.parse)
   const { auth } = await requirePermission(event, body.dsl.baseEntity, 'canRead')
 
+  await requirePrintReportAccess(event, body.dsl)
   const report = await createPrintReport(auth.tenantId, auth.sub, body)
   setResponseStatus(event, 201)
   return report
