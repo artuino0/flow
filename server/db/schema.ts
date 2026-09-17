@@ -293,6 +293,9 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
 // ahora es solo un identificador unico mostrado en el wizard, sin logica de
 // enrutamiento por host detras.
 export const tenants = pgTable('tenants', {
+  address: text('address'),
+  idleTimeoutMinutes: integer('idle_timeout_minutes').notNull().default(30),
+  idleWarningMinutes: integer('idle_warning_minutes').notNull().default(2),
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   name: text('name').notNull(),
   // Default aleatorio (nunca usado por el wizard de Registro real, que
@@ -363,6 +366,7 @@ export const people = pgTable('people', {
   email: text('email').notNull(),
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name'),
+  phone: text('phone'),
   // HU-ERD-83 (parte 2): 2FA por TOTP (RFC 6238). totpSecret queda guardado
   // apenas se inicia la configuracion (POST /api/auth/totp/setup) pero
   // totpEnabled sigue en false hasta que el usuario confirma un codigo real
@@ -386,6 +390,8 @@ export const users = pgTable('users', {
   tenantId: uuid('tenant_id').notNull(),
   personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
+  jobTitle: text('job_title'),
+  timezone: text('timezone'),
   isActive: boolean('is_active').notNull().default(true),
   // HU-ERD-84: invitacion por correo. Una membresia invitada (persona nueva,
   // nunca existio antes en `people`) se inserta con isActive=false - el
@@ -406,9 +412,64 @@ export const users = pgTable('users', {
   invitationTokenHash: text('invitation_token_hash'),
   invitationExpiresAt: timestamp('invitation_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  dashboardShortcuts: jsonb('dashboard_shortcuts').$type<string[]>().notNull().default(sql`'[]'::jsonb`)
 }, (table) => ({
   tenantPersonUnique: uniqueIndex('users_tenant_person_unique').on(table.tenantId, table.personId)
+}))
+
+// Configuracion SMTP personalizada por organizacion. Los secretos nunca se
+// guardan en claro: server/utils/settingsCrypto.ts los cifra antes de insertar.
+export const authSessions = pgTable('auth_sessions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userAgent: text('user_agent').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true })
+}, table => ({ ownerIdx: index('auth_sessions_owner_idx').on(table.tenantId, table.userId) }))
+
+export const tenantEmailSettings = pgTable('tenant_email_settings', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull().default('smtp'),
+  host: text('host'),
+  port: integer('port'),
+  security: text('security').notNull().default('tls'),
+  username: text('username'),
+  passwordEncrypted: text('password_encrypted'),
+  apiKeyEncrypted: text('api_key_encrypted'),
+  fromEmail: text('from_email').notNull(),
+  fromName: text('from_name'),
+  replyTo: text('reply_to'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantUnique: uniqueIndex('tenant_email_settings_tenant_unique').on(table.tenantId),
+  tenantIdx: index('tenant_email_settings_tenant_idx').on(table.tenantId)
+}))
+
+// API keys personales, aisladas por tenant. Solo se persiste el hash; el
+// secreto crudo se entrega una vez al crearla y después no puede recuperarse.
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  prefix: text('prefix').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  scopes: jsonb('scopes').notNull().default({}),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tokenHashUnique: uniqueIndex('api_keys_token_hash_unique').on(table.tokenHash),
+  tenantIdx: index('api_keys_tenant_idx').on(table.tenantId),
+  ownerIdx: index('api_keys_owner_idx').on(table.ownerUserId)
 }))
 
 // files: metadatos de archivos subidos para el dataType 'file' (HU-ERD-78).
@@ -463,6 +524,8 @@ export const triggers = pgTable('triggers', {
   // dispara": ERD-48 trata un condition vacío/sin campo como inválido, no
   // como verdadero.
   condition: jsonb('condition').notNull().default({}),
+  // DSL opcional para una decisión interna con ramas sí/no. Vacío conserva el flujo lineal.
+  decisionCondition: jsonb('decision_condition').notNull().default({}),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
@@ -480,7 +543,7 @@ export const triggerActions = pgTable('trigger_actions', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull(),
   triggerId: uuid('trigger_id').notNull().references(() => triggers.id, { onDelete: 'cascade' }),
-  actionType: text('action_type').notNull(), // webhook | email | update_field (ERD-49)
+  actionType: text('action_type').notNull(), // webhook | email | notification | update_field (ERD-49)
   config: jsonb('config').notNull().default({}),
   executionOrder: integer('execution_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -653,4 +716,371 @@ export const factEventos = pgTable('fact_eventos', {
   // Unico parcial - clave de upsert idempotente del ETL (HU-ERD-28): un hecho
   // por record de origen (se re-sube/actualiza, nunca se duplica).
   recordUnique: uniqueIndex('fact_eventos_tenant_record_unique').on(table.tenantId, table.recordId).where(sql`${table.recordId} is not null`)
+}))
+
+// record_activities: Bitácora unificada de auditoría y notas (Timeline).
+export const recordActivities = pgTable('record_activities', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  recordId: uuid('record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  // Tipos automáticos: 'CREATED', 'UPDATED', 'DELETED', 'LINKED', 'UNLINKED'
+  // Tipos manuales: 'NOTE', 'EMAIL', 'CALL', 'TASK'
+  actionType: text('action_type').notNull(),
+  // Guardará los cambios automáticos {"changes": [{"field":"monto", "old":0, "new":1}]}
+  // o los detalles manuales {"text": "Se recibió bien..."}
+  details: jsonb('details').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('record_activities_tenant_idx').on(table.tenantId),
+  recordIdx: index('record_activities_record_idx').on(table.recordId),
+  userIdx: index('record_activities_user_idx').on(table.userId),
+  createdIdx: index('record_activities_created_idx').on(table.createdAt) // Útil para ordenar la línea de tiempo cronológicamente
+}))
+
+// notification_groups: grupos de usuarios para destinatarios de avisos.
+// Son tenant-scoped y no sustituyen a los roles: un grupo representa una
+// audiencia operativa que puede cambiar sin modificar permisos.
+export const notificationGroups = pgTable('notification_groups', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantNameUnique: uniqueIndex('notification_groups_tenant_name_unique').on(table.tenantId, table.name),
+  tenantIdx: index('notification_groups_tenant_idx').on(table.tenantId)
+}))
+
+export const notificationGroupMembers = pgTable('notification_group_members', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  groupId: uuid('group_id').notNull().references(() => notificationGroups.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  groupUserUnique: uniqueIndex('notification_group_members_group_user_unique').on(table.groupId, table.userId),
+  groupIdx: index('notification_group_members_group_idx').on(table.groupId),
+  userIdx: index('notification_group_members_user_idx').on(table.userId)
+}))
+
+// notifications: aviso dirigido a un usuario. El evento origen se conserva
+// en record_activities; esta tabla representa únicamente la bandeja personal,
+// con su estado de lectura y destino navegable.
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: text('type').notNull().default('MENTION'),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  entitySlug: text('entity_slug'),
+  recordId: uuid('record_id').references(() => records.id, { onDelete: 'cascade' }),
+  activityId: uuid('activity_id').references(() => recordActivities.id, { onDelete: 'cascade' }),
+  actionUrl: text('action_url'),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  inboxIdx: index('notifications_inbox_idx').on(table.tenantId, table.userId, table.createdAt),
+  unreadIdx: index('notifications_unread_idx').on(table.tenantId, table.userId, table.readAt)
+}))
+
+// Permisos funcionales del chat. Los valores del rol son la base; las
+// columnas nullable de la excepcion individual significan "heredar" cuando
+// vienen en null. Se mantienen fuera de role_entity_permissions porque Chat
+// es una capacidad transversal, no una entidad dinamica del motor.
+export const roleChatPermissions = pgTable('role_chat_permissions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  canAccess: boolean('can_access').notNull().default(true),
+  canStartDirect: boolean('can_start_direct').notNull().default(true),
+  canSendAttachments: boolean('can_send_attachments').notNull().default(true),
+  canCreateGroups: boolean('can_create_groups').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  roleUnique: uniqueIndex('role_chat_permissions_role_unique').on(table.roleId),
+  tenantIdx: index('role_chat_permissions_tenant_idx').on(table.tenantId)
+}))
+
+export const userChatPermissionOverrides = pgTable('user_chat_permission_overrides', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  canAccess: boolean('can_access'),
+  canStartDirect: boolean('can_start_direct'),
+  canSendAttachments: boolean('can_send_attachments'),
+  canCreateGroups: boolean('can_create_groups'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  userUnique: uniqueIndex('user_chat_permission_overrides_user_unique').on(table.userId),
+  tenantIdx: index('user_chat_permission_overrides_tenant_idx').on(table.tenantId)
+}))
+
+export const chatConversations = pgTable('chat_conversations', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // direct | group
+  title: text('title'),
+  directKey: text('direct_key'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('chat_conversations_tenant_idx').on(table.tenantId),
+  recentIdx: index('chat_conversations_recent_idx').on(table.tenantId, table.lastMessageAt),
+  directUnique: uniqueIndex('chat_conversations_direct_unique').on(table.tenantId, table.directKey).where(sql`${table.directKey} is not null`)
+}))
+
+export const chatParticipants = pgTable('chat_participants', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  participantRole: text('participant_role').notNull().default('member'), // owner | member
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  conversationUserUnique: uniqueIndex('chat_participants_conversation_user_unique').on(table.conversationId, table.userId),
+  inboxIdx: index('chat_participants_inbox_idx').on(table.tenantId, table.userId, table.archivedAt),
+  conversationIdx: index('chat_participants_conversation_idx').on(table.conversationId)
+}))
+
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  senderUserId: uuid('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
+  clientMessageId: uuid('client_message_id').notNull(),
+  body: text('body').notNull().default(''),
+  replyToMessageId: uuid('reply_to_message_id'),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  clientMessageUnique: uniqueIndex('chat_messages_client_message_unique').on(table.conversationId, table.senderUserId, table.clientMessageId),
+  conversationCreatedIdx: index('chat_messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+  tenantIdx: index('chat_messages_tenant_idx').on(table.tenantId)
+}))
+
+// Un adjunto puede existir brevemente sin messageId mientras el usuario
+// redacta. Al enviar se valida propietario/tenant y se liga en la misma
+// transaccion que crea el mensaje.
+export const chatAttachments = pgTable('chat_attachments', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  uploadedBy: uuid('uploaded_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').references(() => chatMessages.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  storageKey: text('storage_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('chat_attachments_tenant_idx').on(table.tenantId),
+  messageIdx: index('chat_attachments_message_idx').on(table.messageId),
+  ownerIdx: index('chat_attachments_owner_idx').on(table.uploadedBy)
+}))
+
+// ---------------------------------------------------------------------------
+// DOMINIO FISCAL FIJO: emision de CFDI 4.0 con PAC.
+// Pedido directo del usuario (2026-09-14): "la facturacion no debe ser un
+// modulo dinamico, la facturacion es fija". Un documento fiscal es un documento
+// legal: no puede depender de metadatos editables (cambiar un entity_field
+// marca records is_dirty y revalida perezosamente, ERD-18), necesita folio
+// atomico por serie, transaccionalidad real y auditoria append-only. Por eso
+// vive en tablas fijas (mismo criterio que users/tenants/roles/files/
+// print_reports/chat), NO en entities/records. HU completa con fases A-H:
+// DOCS/HU_Timbrado_CFDI_PAC.md.
+//
+// Relacion con el dominio dinamico: los modulos dinamicos son ORIGEN y
+// CATALOGO. cfdi_documents.source_entity_id/source_record_id apuntan al
+// registro que origino el documento (embarque, CxC, cobro - mismo patron de
+// files.entity_id), SIN FK a entities/records a proposito: un documento
+// timbrado debe sobrevivir a que el tenant borre o renombre el modulo de
+// origen (inmutabilidad fiscal). Todo lo fiscal se SNAPSHOTEA al capturar/
+// timbrar (emisor desde tenants.fiscalData, receptor desde el modulo dinamico
+// clientes, claves SAT y tasas desde productos/unidades/impuestos).
+// ---------------------------------------------------------------------------
+
+// Secuencias de folio fiscal por (serie, tipo de comprobante). El folio se
+// consume en la transaccion del intento de timbrado (UPDATE ... RETURNING,
+// server/utils/cfdiFolio.ts) - el row lock de Postgres serializa intentos
+// concurrentes, mismo principio que entity_field_counters (incrementalField.ts).
+export const cfdiSeries = pgTable('cfdi_series', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  serie: text('serie').notNull(),
+  tipoComprobante: text('tipo_comprobante').notNull(), // I | E | P (CHECK en migracion 0049)
+  lugarExpedicion: text('lugar_expedicion').notNull(), // CP del emisor (5 digitos)
+  nextFolio: integer('next_folio').notNull().default(1),
+  estado: text('estado').notNull().default('activa'), // activa | inactiva
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  serieTipoUnique: uniqueIndex('cfdi_series_serie_tipo_unique').on(table.tenantId, table.serie, table.tipoComprobante),
+  tenantIdx: index('cfdi_series_tenant_idx').on(table.tenantId)
+}))
+
+// El documento fiscal (CFDI). Maquina de estados: borrador -> timbrando ->
+// timbrada | error; timbrada -> cancelada. `folio` es NULL en borrador y se
+// asigna al pasar a `timbrando` (los errores de validacion previos a llamar al
+// PAC no consumen folio). uuid_fiscal UNIQUE global (parcial: los borradores
+// no tienen) - garantia dura contra doble timbrado, ademas del 409 del
+// endpoint. custom_data queda reservado para extras por tenant (UI en v2).
+export const cfdiDocuments = pgTable('cfdi_documents', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  serieId: uuid('serie_id').notNull().references(() => cfdiSeries.id, { onDelete: 'restrict' }),
+  folio: integer('folio'),
+  tipo: text('tipo').notNull(), // I | E | P (debe coincidir con la serie; CHECK en migracion)
+  estado: text('estado').notNull().default('borrador'), // borrador | timbrando | timbrada | error | cancelada
+  fechaEmision: timestamp('fecha_emision', { withTimezone: true }),
+  // Emisor (snapshot de tenants.fiscalData + serie al timbrar)
+  emisorRfc: text('emisor_rfc'),
+  emisorNombre: text('emisor_nombre'),
+  emisorRegimenFiscal: text('emisor_regimen_fiscal'),
+  emisorCodigoPostal: text('emisor_codigo_postal'),
+  // Receptor: referencia floja al registro dinamico del modulo clientes
+  // (sin FK - ver comentario del dominio) + snapshot fiscal validado al capturar.
+  customerEntityId: uuid('customer_entity_id'),
+  customerRecordId: uuid('customer_record_id'),
+  receptorRfc: text('receptor_rfc'),
+  receptorNombre: text('receptor_nombre'),
+  receptorCodigoPostal: text('receptor_codigo_postal'),
+  receptorRegimenFiscal: text('receptor_regimen_fiscal'),
+  receptorCorreo: text('receptor_correo'),
+  usoCfdi: text('uso_cfdi'),
+  // Datos fiscales del comprobante
+  formaPago: text('forma_pago'), // clave SAT c_FormaPago (01/03/04/28/99...)
+  metodoPago: text('metodo_pago').notNull().default('PUE'), // PUE | PPD
+  moneda: text('moneda').notNull().default('MXN'),
+  tipoCambio: numeric('tipo_cambio', { precision: 18, scale: 6 }),
+  subtotal: numeric('subtotal', { precision: 18, scale: 2 }).notNull().default('0'),
+  descuento: numeric('descuento', { precision: 18, scale: 2 }).notNull().default('0'),
+  total: numeric('total', { precision: 18, scale: 2 }).notNull().default('0'),
+  // Resumen de traslados/retenciones: { traslados: [{base, impuesto, tipoFactor, tasaOCuota, importe}], retenciones: [...] }
+  impuestos: jsonb('impuestos').notNull().default({}),
+  exportacion: text('exportacion').notNull().default('01'), // 01 no aplica | 02 definitiva | 03 temporal
+  // CFDI relacionado (tipo E: nota de credito). Sin FK en Drizzle por
+  // autorreferencia; la FK real (ON DELETE RESTRICT) esta en la migracion 0049.
+  cfdiRelacionadoId: uuid('cfdi_relacionado_id'),
+  tipoRelacion: text('tipo_relacion'), // clave SAT c_TipoRelacion (01/02/03/...)
+  // Origen dinamico (embarque, CxC, cobro...): uuids de entities/records sin FK
+  sourceEntityId: uuid('source_entity_id'),
+  sourceRecordId: uuid('source_record_id'),
+  fechaPago: timestamp('fecha_pago', { withTimezone: true }), // solo tipo P (complemento de pagos)
+  // Resultado PAC
+  uuidFiscal: text('uuid_fiscal'),
+  fechaTimbrado: timestamp('fecha_timbrado', { withTimezone: true }),
+  xmlStorageKey: text('xml_storage_key'), // binarios en disco, patron fileStorage.ts
+  pdfStorageKey: text('pdf_storage_key'),
+  mensajePac: text('mensaje_pac'),
+  pacProvider: text('pac_provider'),
+  pacDocumentId: text('pac_document_id'), // id del comprobante en el PAC (ej. _id de Facturapi) - cancel/getStatus operan sobre el
+  intentos: integer('intentos').notNull().default(0),
+  observaciones: text('observaciones'),
+  customData: jsonb('custom_data').notNull().default({}),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  folioUnique: uniqueIndex('cfdi_documents_folio_unique').on(table.tenantId, table.serieId, table.folio).where(sql`${table.folio} is not null`),
+  uuidFiscalUnique: uniqueIndex('cfdi_documents_uuid_fiscal_unique').on(table.uuidFiscal).where(sql`${table.uuidFiscal} is not null`),
+  tenantEstadoIdx: index('cfdi_documents_tenant_estado_idx').on(table.tenantId, table.estado),
+  serieIdx: index('cfdi_documents_serie_idx').on(table.serieId),
+  sourceIdx: index('cfdi_documents_source_idx').on(table.sourceEntityId, table.sourceRecordId),
+  relacionadoIdx: index('cfdi_documents_relacionado_idx').on(table.cfdiRelacionadoId)
+}))
+
+// Conceptos (lineas) del CFDI. clave_prod_serv/clave_unidad e impuestos son
+// SNAPSHOT de los modulos dinamicos productos/unidades_medida/impuestos al
+// capturar - el PAC y el SAT exigen que la linea no cambie jamas.
+export const cfdiConceptos = pgTable('cfdi_conceptos', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => cfdiDocuments.id, { onDelete: 'cascade' }),
+  orden: integer('orden').notNull().default(1),
+  claveProdServ: text('clave_prod_serv').notNull(),
+  claveUnidad: text('clave_unidad').notNull(),
+  cantidad: numeric('cantidad', { precision: 18, scale: 6 }).notNull(),
+  descripcion: text('descripcion').notNull(),
+  valorUnitario: numeric('valor_unitario', { precision: 18, scale: 6 }).notNull(),
+  descuento: numeric('descuento', { precision: 18, scale: 6 }).notNull().default('0'),
+  importe: numeric('importe', { precision: 18, scale: 6 }).notNull(),
+  // { traslados: [{base, impuesto, tipoFactor, tasaOCuota, importe}], retenciones: [...] } por concepto
+  impuestos: jsonb('impuestos').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  documentIdx: index('cfdi_conceptos_document_idx').on(table.documentId),
+  tenantIdx: index('cfdi_conceptos_tenant_idx').on(table.tenantId)
+}))
+
+// DoctoRelacionado del complemento de pagos 2.0: una fila por factura (tipo I
+// ya timbrada, de ahi la FK RESTRICT) que el documento P aplica. Nace de los
+// registros dinamicos cobros_cliente/aplicaciones_cobro (fase E de la HU).
+export const cfdiPaymentDocs = pgTable('cfdi_payment_docs', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => cfdiDocuments.id, { onDelete: 'cascade' }),
+  relatedCfdiId: uuid('related_cfdi_id').notNull().references(() => cfdiDocuments.id, { onDelete: 'restrict' }),
+  numParcialidad: integer('num_parcialidad'),
+  impSaldoAnt: numeric('imp_saldo_ant', { precision: 18, scale: 2 }).notNull(),
+  impPagado: numeric('imp_pagado', { precision: 18, scale: 2 }).notNull(),
+  impSaldoIns: numeric('imp_saldo_ins', { precision: 18, scale: 2 }).notNull(),
+  monedaDr: text('moneda_dr').notNull().default('MXN'),
+  tipoCambioDr: numeric('tipo_cambio_dr', { precision: 18, scale: 6 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  documentIdx: index('cfdi_payment_docs_document_idx').on(table.documentId),
+  relatedIdx: index('cfdi_payment_docs_related_idx').on(table.relatedCfdiId),
+  tenantIdx: index('cfdi_payment_docs_tenant_idx').on(table.tenantId)
+}))
+
+// Pista de auditoria fiscal APPEND-ONLY: cada intento de timbrado, error PAC,
+// verificacion getStatus, cancelacion y acuse queda aqui. La inmutabilidad la
+// garantiza un trigger (migracion 0049) que rechaza UPDATE/DELETE - mismo
+// espiritu que los triggers de integridad de record_relations (ERD-10).
+export const cfdiEvents = pgTable('cfdi_events', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => cfdiDocuments.id, { onDelete: 'cascade' }),
+  tipo: text('tipo').notNull(), // folio_asignado | intento_timbrado | timbrado_ok | error_pac | verificacion_getstatus | cancelacion_solicitada | cancelacion_confirmada | email_enviado
+  detalle: jsonb('detalle').notNull().default({}),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  documentIdx: index('cfdi_events_document_idx').on(table.documentId),
+  tenantIdx: index('cfdi_events_tenant_idx').on(table.tenantId)
+}))
+
+// Credenciales PAC por tenant (fase B de la HU). Secretos SIEMPRE cifrados con
+// settingsCrypto.ts (mismo patron que tenant_email_settings, migracion 0043):
+// api_key y contraseña del CSD nunca en claro, nunca en logs/Sentry, y la API
+// solo expone flags hasApiKey/hasCsd (patron hasLogo de ERD-62). Los binarios
+// .cer/.key van a disco con el patron de tenantLogo.ts (storage keys), NO por
+// la tabla files (que exige entity_id de un modulo dinamico).
+export const tenantPacSettings = pgTable('tenant_pac_settings', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull().default('facturapi'),
+  apiKeyEncrypted: text('api_key_encrypted'),
+  sandbox: boolean('sandbox').notNull().default(true),
+  csdCerStorageKey: text('csd_cer_storage_key'),
+  csdKeyStorageKey: text('csd_key_storage_key'),
+  csdCerFileName: text('csd_cer_file_name'),
+  csdKeyFileName: text('csd_key_file_name'),
+  csdPasswordEncrypted: text('csd_password_encrypted'),
+  csdValidUntil: timestamp('csd_valid_until', { withTimezone: true }),
+  lastTestAt: timestamp('last_test_at', { withTimezone: true }),
+  lastTestOk: boolean('last_test_ok'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantUnique: uniqueIndex('tenant_pac_settings_tenant_unique').on(table.tenantId),
+  tenantIdx: index('tenant_pac_settings_tenant_idx').on(table.tenantId)
 }))

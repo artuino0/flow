@@ -9,7 +9,16 @@ import { tenantUpdateSchema } from '~/server/utils/tenantFiscal'
 // el schema del pais resultante (nunca confiar en lo que ya paso el formulario).
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
-  const body = await readValidatedBody(event, tenantUpdateSchema.parse)
+  const raw = await readBody(event)
+  const [current] = await db.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
+  if (!current) throw createError({ statusCode: 404, statusMessage: 'Organización no encontrada' })
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw createError({ statusCode: 400, statusMessage: 'Datos de configuración inválidos' })
+  const parsed = tenantUpdateSchema.safeParse({ ...raw, country: raw.country ?? current.country, idleTimeoutMinutes: raw.idleTimeoutMinutes ?? current.idleTimeoutMinutes, idleWarningMinutes: raw.idleWarningMinutes ?? current.idleWarningMinutes })
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Revisa los datos', data: { errors: parsed.error.issues.map(issue => ({ field: issue.path.join('.'), message: issue.message })) } })
+  const body = parsed.data
+  if (body.timezone) {
+    try { new Intl.DateTimeFormat('es-MX', { timeZone: body.timezone }) } catch { throw createError({ statusCode: 400, statusMessage: 'Zona horaria inválida' }) }
+  }
 
   const [updated] = await db
     .update(tenants)

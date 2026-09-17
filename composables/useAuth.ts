@@ -3,11 +3,22 @@
 // nunca lo toca directamente, solo consulta /api/auth/me para saber quien
 // esta logueado.
 export interface AuthUser {
+  id: string
+  sessionId?: string
+  tenantName?: string
+  // Dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md): país de la
+  // organización — la nav muestra "Facturación" solo si es 'MX'.
+  country?: string
+  idleTimeoutMinutes?: number
+  idleWarningMinutes?: number
   authenticated: boolean
   tenantId: string
   roleId: string | null
   email: string | null
   fullName: string | null
+  phone?: string | null
+  jobTitle?: string | null
+  timezone?: string | null
   // HU-ERD-83 (parte 2)
   totpEnabled: boolean
 }
@@ -137,12 +148,17 @@ export function useAuth() {
 
   /** HU-ERD-83 (parte 2): renueva el access token via el refresh token (cookie httpOnly aparte). */
   async function refresh(): Promise<void> {
-    await $fetch('/api/auth/refresh', { method: 'POST' })
+    const policy = await $fetch<{ idleTimeoutMinutes: number; idleWarningMinutes: number }>('/api/auth/refresh', { method: 'POST' })
+    if (user.value) {
+      user.value.idleTimeoutMinutes = policy.idleTimeoutMinutes
+      user.value.idleWarningMinutes = policy.idleWarningMinutes
+    }
   }
 
   async function logout(): Promise<void> {
     await $fetch('/api/auth/logout', { method: 'POST' })
     user.value = null
+    clearNuxtData()
   }
 
   return { user, fetchMe, login, loginWithTotp, selectOrganization, refresh, logout }

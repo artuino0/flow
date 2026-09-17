@@ -8,6 +8,7 @@
 export const FIELD_TYPE_LABEL: Record<string, string> = {
   text: 'Texto',
   number: 'Número',
+  currency: 'Monto',
   boolean: 'Booleano',
   date: 'Fecha',
   json: 'JSON',

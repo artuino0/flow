@@ -1,6 +1,9 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-27',
   devtools: { enabled: true },
+  nitro: {
+    experimental: { websocket: true }
+  },
   // HU-ERD-21: Tailwind CSS + tema por defecto.
   modules: ['@nuxtjs/tailwindcss'],
   tailwindcss: {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
-import { ADMIN_TRIGGER_EVENTS, InvalidTriggerConditionError, updateTrigger } from '~/server/utils/triggerAdmin'
+import { ADMIN_TRIGGER_EVENTS, InvalidTriggerActionConfigError, InvalidTriggerConditionError, updateTrigger } from '~/server/utils/triggerAdmin'
 
 // PUT /api/triggers/:id { name?, triggerEvent?, condition?, isActive? } (HU-ERD-51)
 // Todos los campos opcionales - este MISMO endpoint es el toggle
@@ -11,6 +11,7 @@ const bodySchema = z.object({
   name: z.string().trim().min(1).optional(),
   triggerEvent: z.enum(ADMIN_TRIGGER_EVENTS).optional(),
   condition: z.unknown().optional(),
+  decisionCondition: z.unknown().optional(),
   isActive: z.boolean().optional()
 })
 
@@ -23,7 +24,7 @@ export default defineEventHandler(async (event) => {
   try {
     trigger = await updateTrigger(auth.tenantId, id, body)
   } catch (err) {
-    if (err instanceof InvalidTriggerConditionError) {
+    if (err instanceof InvalidTriggerConditionError || err instanceof InvalidTriggerActionConfigError) {
       throw createError({ statusCode: 422, statusMessage: err.message })
     }
     throw err

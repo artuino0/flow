@@ -61,6 +61,17 @@ export function validateFieldValue(field: EntityFieldMeta, rawValue: unknown): F
       }
       return { valid: true }
     }
+    case 'currency': {
+      const text = String(rawValue).trim()
+      const decimals = typeof rules.decimals === 'number' ? rules.decimals : 2
+      const pattern = decimals === 0 ? /^-?\d+$/ : new RegExp(`^-?\\d+(?:\\.\\d{1,${decimals}})?$`)
+      if (!pattern.test(text)) return { valid: false, error: `"${field.label}" debe ser un monto con máximo ${decimals} decimales` }
+      const amount = Number(text)
+      if (rules.allowNegative !== true && amount < 0) return { valid: false, error: `"${field.label}" no puede ser negativo` }
+      if (typeof rules.min === 'number' && amount < rules.min) return { valid: false, error: `"${field.label}" debe ser mayor o igual a ${rules.min}` }
+      if (typeof rules.max === 'number' && amount > rules.max) return { valid: false, error: `"${field.label}" debe ser menor o igual a ${rules.max}` }
+      return { valid: true }
+    }
     case 'boolean':
       return typeof rawValue === 'boolean' ? { valid: true } : { valid: false, error: `"${field.label}" invalido` }
     case 'date': {

@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { reportParameterSchema } from '~/utils/reportParameters'
-import { sql as dsql } from 'drizzle-orm'
+import { eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
+import { tenants } from '~/server/db/schema'
 import {
   loadTenantFieldContext,
   ReportPathPlanner,
@@ -138,6 +139,8 @@ export interface PrintReportGroup {
 
 export interface PrintReportResultColumn {
   dataType?: string
+  currency?: string
+  decimals?: number
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -158,7 +161,7 @@ export interface PrintReportResult {
   grandTotals: Record<string, number>
 }
 
-const NUMERIC_DATA_TYPES = new Set(['number', 'incremental'])
+const NUMERIC_DATA_TYPES = new Set(['number', 'currency', 'incremental'])
 const PIVOTABLE_DATA_TYPES = new Set(['boolean', 'select'])
 
 function assertNumericField(field: EntityFieldMeta, columnLabel: string): void {
@@ -213,6 +216,8 @@ function groupAlias(index: number): string {
 interface ResolvedLeaf {
   identityAlias?: string
   dataType?: string
+  currency?: string
+  decimals?: number
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -233,6 +238,15 @@ interface ResolvedLeaf {
 export async function executePrintReport(tenantId: string, dsl: PrintReportDsl): Promise<PrintReportResult> {
   if (dsl.mode === 'summary' && !dsl.columns.some(column => column.kind !== 'detalle')) throw new PrintReportError('El resumen necesita al menos una columna con totales.')
   return withTenant(tenantId, async (tx) => {
+    const [tenant] = await tx.select({ defaultCurrency: tenants.defaultCurrency }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+    const moneyMeta = (field: EntityFieldMeta) => {
+      if (field.dataType !== 'currency') return {}
+      const rules = (field.validationRules ?? {}) as Record<string, unknown>
+      return {
+        currency: typeof rules.currency === 'string' && rules.currency !== 'tenant' ? rules.currency : (tenant?.defaultCurrency ?? 'MXN'),
+        decimals: typeof rules.decimals === 'number' ? rules.decimals : 2
+      }
+    }
     const ctx = await loadTenantFieldContext(tx, tenantId)
 
     const baseEntity = ctx.entitiesBySlug.get(dsl.baseEntity)
@@ -284,12 +298,12 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
       if (col.kind === 'detalle') {
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ dataType: field.dataType, key: col.key, label: col.label, kind: 'detalle', inRows: true, inTotals: false, sourceSide: col.source.side, valueAlias: alias })
+        leaves.push({ dataType: field.dataType, ...moneyMeta(field), key: col.key, label: col.label, kind: 'detalle', inRows: true, inTotals: false, sourceSide: col.source.side, valueAlias: alias })
       } else if (col.kind === 'sumar') {
         assertNumericField(field, col.label)
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ dataType: field.dataType, key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
+        leaves.push({ dataType: field.dataType, ...moneyMeta(field), key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
       } else {
         assertNumericField(field, col.label)
         if (col.conditionSource.side !== col.source.side) {
@@ -306,7 +320,8 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
             key: `${col.key}__${sanitizeAliasHint(opt.rawValue)}`,
             label: opt.label,
             kind: 'repartir',
-            dataType: 'number',
+            dataType: field.dataType,
+            ...moneyMeta(field),
             pivotOf: col.key,
             inRows: true,
             inTotals: true,
@@ -346,7 +361,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
         continue
       }
       const value = planner.valueSql(filter.source)
-      const numeric = field.dataType === 'number' || field.dataType === 'incremental'
+      const numeric = field.dataType === 'number' || field.dataType === 'currency' || field.dataType === 'incremental'
       if (field.dataType === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value) || !Number.isFinite(Date.parse(filter.value)) || new Date(filter.value).toISOString().slice(0, 10) !== filter.value)) throw new PrintReportError(`El filtro de ${field.label} requiere una fecha válida.`)
       if (field.dataType === 'boolean' && (filter.operator !== 'eq' || !['true', 'false'].includes(filter.value))) throw new PrintReportError(`El filtro de ${field.label} debe ser igual a true o false.`)
       if (numeric && !Number.isFinite(Number(filter.value))) throw new PrintReportError(`El filtro de ${field.label} requiere un número.`)
@@ -363,7 +378,7 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
     const orderParts = (dsl.orderBy ?? []).map(order => {
       const { field } = planner.resolve(order.source)
       const value = planner.valueSql(order.source)
-      const expression = field.dataType === 'number' || field.dataType === 'incremental' ? dsql`nullif(${value}, '')::numeric` : value
+      const expression = field.dataType === 'number' || field.dataType === 'currency' || field.dataType === 'incremental' ? dsql`nullif(${value}, '')::numeric` : value
       return dsql`${expression} ${dsql.raw(order.direction === 'desc' ? 'desc' : 'asc')} nulls last`
     })
     // With no user ordering, keep groups stable and readable instead of
@@ -536,7 +551,7 @@ export function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf
     // que no hace falta filtrar por inRows aca.
     columns: leaves.filter(l => dsl.mode !== 'summary' || l.inTotals).reduce<PrintReportResultColumn[]>((acc, l) => {
       if (acc.some((c) => c.key === l.key)) return acc
-      acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf, dataType: l.dataType })
+      acc.push({ key: l.key, label: l.label, kind: l.kind, pivotOf: l.pivotOf, dataType: l.dataType, currency: l.currency, decimals: l.decimals })
       return acc
     }, dsl.mode === 'summary' ? [{ key: '__summary_label', label: 'Concepto', kind: 'detalle' }] : []),
     groups,

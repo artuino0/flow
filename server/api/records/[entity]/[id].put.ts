@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
-import { entityFields, records } from '~/server/db/schema'
+import { entityFields, records, recordActivities } from '~/server/db/schema'
 import { fireTriggersForRecord } from '~/server/utils/triggers'
 import { recordNotDeleted } from '~/server/utils/records'
 
@@ -30,6 +30,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  let previousData: Record<string, unknown> | undefined
   const row = await withTenant(auth.tenantId, async (tx) => {
     // Pedido directo del usuario (2026-09-04): un campo 'incremental' es
     // "100% automatico y de solo lectura, nunca editable a mano" - esta edicion
@@ -54,7 +55,22 @@ export default defineEventHandler(async (event) => {
 
     const customData = { ...parsed.data } as Record<string, unknown>
     const currentCustomData = current.customData as Record<string, unknown>
+    previousData = currentCustomData
     for (const name of incrementalFieldNames) customData[name] = currentCustomData[name]
+
+    // Detectar cambios (diff) para guardar en la bitácora
+    const changes = []
+    for (const key of Object.keys(customData)) {
+      if (JSON.stringify(customData[key]) !== JSON.stringify(currentCustomData[key])) {
+        changes.push({ field: key, old: currentCustomData[key], new: customData[key] })
+      }
+    }
+    // Detectar campos eliminados (estaban en el anterior pero no en el nuevo, asumiendo que un campo puede borrarse del customData)
+    for (const key of Object.keys(currentCustomData)) {
+      if (!(key in customData) && currentCustomData[key] !== undefined && currentCustomData[key] !== null) {
+         changes.push({ field: key, old: currentCustomData[key], new: null })
+      }
+    }
 
     const [r] = await tx
       .update(records)
@@ -64,6 +80,17 @@ export default defineEventHandler(async (event) => {
       .set({ customData, isDirty: false, updatedAt: new Date() })
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted))
       .returning()
+      
+    if (changes.length > 0) {
+      await tx.insert(recordActivities).values({
+        tenantId: auth.tenantId,
+        recordId: id,
+        userId: auth.sub,
+        actionType: 'UPDATED',
+        details: { changes }
+      })
+    }
+    
     return r
   })
 
@@ -73,7 +100,7 @@ export default defineEventHandler(async (event) => {
 
   // HU-ERD-48: mismo criterio "fire-and-forget" que el create - ver comentario
   // largo en index.post.ts.
-  fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.id, row.customData as Record<string, unknown>)
+  fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.id, row.customData as Record<string, unknown>, previousData)
 
   return row
 })

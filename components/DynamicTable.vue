@@ -29,6 +29,10 @@ const props = defineProps<{
   // GET /api/records/:entity como relationLabels. Opcional (default {})
   // para no romper ningun uso previo del componente que todavia no lo pasa.
   relationLabels?: Record<string, Record<string, string>>
+  rounded?: boolean
+  inset?: boolean
+  borderless?: boolean
+  actionsSticky?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -68,6 +72,8 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
       const d = new Date(v as string)
       return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString()
     }
+    case 'currency':
+      return formatCurrencyValue(v, field.validationRules)
     case 'json':
       return typeof v === 'string' ? v : JSON.stringify(v)
     // HU-ERD-73: la celda muestra la etiqueta configurada (validationRules.options),
@@ -100,7 +106,14 @@ function onDelete(id: string) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div
+      class="overflow-x-auto bg-brand-surface"
+      :class="{
+        'rounded-lg': rounded !== false,
+        'border border-brand-border-light shadow-[0_1px_3px_0_#33475B14]': !borderless,
+        'border-b border-brand-border-light': borderless
+      }"
+    >
       <table class="min-w-full text-sm">
         <thead class="border-b border-brand-border-light bg-brand-bg">
           <tr>
@@ -113,7 +126,10 @@ function onDelete(id: string) {
               {{ field.label }}
               <span v-if="sortBy === field.name" class="ml-1 text-brand-blue">{{ sortDir === 'asc' ? '↑' : '↓' }}</span>
             </th>
-            <th class="px-4 py-2.5 text-right text-[12px] font-bold tracking-wide text-brand-text-secondary">
+            <th 
+              class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary"
+              :class="actionsSticky ? 'sticky right-0 z-10 bg-brand-bg shadow-[inset_1px_0_0_0_#e5e7eb]' : ''"
+            >
               Acciones
             </th>
           </tr>
@@ -122,12 +138,15 @@ function onDelete(id: string) {
           <tr v-if="rows.length === 0">
             <td :colspan="fields.length + 1" class="px-4 py-6 text-center text-sm text-brand-text-muted">Sin registros.</td>
           </tr>
-          <tr v-for="row in rows" :key="row.id" class="hover:bg-brand-bg">
+          <tr v-for="row in rows" :key="row.id" class="bg-brand-surface hover:bg-brand-bg">
             <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-3 text-brand-text">
               {{ cellValue(field, row) }}
             </td>
-            <td class="whitespace-nowrap px-4 py-3">
-              <div class="flex justify-end gap-2">
+            <td 
+              class="whitespace-nowrap px-4 py-3"
+              :class="actionsSticky ? 'sticky right-0 z-10 bg-inherit shadow-[inset_1px_0_0_0_#e5e7eb]' : ''"
+            >
+              <div class="flex justify-center gap-2">
                 <!-- HU-ERD-74: ficha de solo lectura - siempre disponible
                      (ya se llegó a este listado con canRead), no depende de
                      canUpdate/canDelete como las otras dos acciones. -->
@@ -140,7 +159,7 @@ function onDelete(id: string) {
                 </NuxtLink>
                 <NuxtLink
                   v-if="permissions.canUpdate"
-                  :to="`/registros/${entitySlug}/${row.id}/editar`"
+                  :to="`/registros/${entitySlug}/${row.id}?mode=edit`"
                   title="Editar"
                   class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary hover:bg-brand-bg"
                 >
@@ -162,7 +181,7 @@ function onDelete(id: string) {
       </table>
     </div>
 
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between" :class="{ 'px-5 pb-4': inset }">
       <span class="text-[13px] text-brand-text-secondary">{{ total }} registro{{ total === 1 ? '' : 's' }} - página {{ page }} de {{ totalPages }}</span>
       <div class="flex items-center gap-1.5">
         <button

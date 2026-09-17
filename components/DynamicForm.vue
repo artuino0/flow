@@ -76,6 +76,7 @@ function onInput(field: EntityFieldMeta, raw: unknown) {
   let value: unknown = raw
   if (field.dataType === 'number' && raw !== '') value = Number(raw)
   if (field.dataType === 'number' && raw === '') value = null
+  if (field.dataType === 'currency' && raw === '') value = null
   setValue(field.name, value)
 }
 
@@ -141,6 +142,26 @@ defineExpose({ validateAll })
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
+
+      <!-- currency: conserva el decimal como texto canónico para no perder
+           centavos por aritmética de punto flotante. -->
+      <div v-else-if="field.dataType === 'currency'" class="relative">
+        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-brand-text-secondary">{{ currencyCode(field.validationRules) }}</span>
+        <input
+          :id="`field-${field.name}`"
+          type="number"
+          inputmode="decimal"
+          :disabled="disabled"
+          :min="field.validationRules?.allowNegative ? (field.validationRules?.min as number) : Math.max(0, Number(field.validationRules?.min ?? 0))"
+          :max="field.validationRules?.max as number"
+          :step="1 / Math.pow(10, currencyDecimals(field.validationRules))"
+          class="w-full rounded border py-[9px] pl-14 pr-3 text-right tabular-nums text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+          :value="displayValue(field.name)"
+          placeholder="0.00"
+          @input="onInput(field, ($event.target as HTMLInputElement).value)"
+        />
+      </div>
 
       <!-- boolean -->
       <label v-else-if="field.dataType === 'boolean'" class="flex items-center gap-2 text-sm text-brand-text">

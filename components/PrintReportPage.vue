@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PrintReportResult, PrintReportRow } from '~/composables/usePrintReports'
+import { formatReportCell } from '~/utils/reportCellFormat'
 export type ReportLine =
   | { kind: 'group'; level: number; label: string }
   | { kind: 'row'; row: PrintReportRow; number: number }
@@ -8,20 +9,16 @@ const props = defineProps<{
   result: PrintReportResult; lines: ReportLine[]; company: string; rfc?: string; address?: string; contact?: string;
   logo?: string; issued: string; page: number; pages: number; rowCount: number
 }>()
-const formatter = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const detailFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
-function cell(value: unknown, dataType?: string, aggregate = false) {
-  if (value == null || value === '') return '—'
-  if (dataType === 'boolean') return value === true || value === 'true' ? 'Sí' : 'No'
-  if (typeof value === 'number' || (dataType === 'number' && Number.isFinite(Number(value)))) return (aggregate ? formatter : detailFormatter).format(Number(value))
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value.split('-').reverse().join('/')
-  return String(value)
-}
 const labelIndex = computed(() => props.result.columns.findIndex(c => c.kind === 'detalle'))
 const columnWidths = computed(() => {
-  const weights = props.result.columns.map(column => column.kind === 'detalle' ? 1.8 : 1)
+  const weights = props.result.columns.map(column => {
+    if (column.dataType === 'currency') return 1.35
+    if (column.dataType === 'date') return 1.3
+    if (column.dataType === 'number') return 1.05
+    return column.kind === 'detalle' ? 1.45 : 1.15
+  })
   const sum = weights.reduce((a, b) => a + b, 0)
-  return weights.map(weight => `${weight / sum * 100}%`)
+  return weights.map(weight => `${weight / sum * 95}%`)
 })
 // Meta impresa (2026-09-11, mock tCiL7/WCbXm): una sola línea con los tres
 // segmentos ("Fecha de emisión: ... · Criterios: ... · Registros: ...") en
@@ -54,13 +51,13 @@ const meta = computed(() => {
             <tr v-if="line.kind === 'group'" data-report-line class="report-group" :class="{ 'report-group-inner': line.level > 0 }"><th :colspan="result.columns.length + 1" scope="rowgroup" :style="{ paddingLeft: `${3 + line.level * 3}mm` }">{{ line.label }}</th></tr>
             <tr v-else-if="line.kind === 'row'" data-report-line :class="{ 'report-deleted': line.row.isDeleted, 'report-alternate': line.number % 2 === 0 }">
               <td class="report-index">{{ line.number }}<span v-if="line.row.isDeleted" class="report-deleted-label">Eliminado</span></td>
-              <td v-for="column in result.columns" :key="column.key" :class="{ 'report-numeric': column.kind !== 'detalle' || column.dataType === 'number' || typeof line.row.values[column.key] === 'number' }">{{ cell(line.row.values[column.key], column.dataType, column.kind !== 'detalle') }}</td>
+              <td v-for="column in result.columns" :key="column.key" :class="{ 'report-numeric': column.kind !== 'detalle' || column.dataType === 'number' || column.dataType === 'currency' || typeof line.row.values[column.key] === 'number', 'report-date': column.dataType === 'date' }">{{ formatReportCell(line.row.values[column.key], column.dataType, column.kind !== 'detalle', column.currency, column.decimals) }}</td>
             </tr>
             <tr v-else data-report-line class="report-total" :class="{ 'report-grand-total': line.grand }">
               <td class="report-index"><span v-if="labelIndex < 0">Σ</span></td>
               <td v-for="(column, ci) in result.columns" :key="column.key" :class="{ 'report-numeric': column.kind !== 'detalle' }">
                 <span v-if="ci === labelIndex" class="report-total-label">{{ line.label }}</span>
-                <template v-if="column.kind !== 'detalle'"><span v-if="ci === 0 && labelIndex < 0" class="report-total-label report-numeric-label">{{ line.label }}</span>{{ formatter.format(line.values[column.key] ?? 0) }}</template>
+                <template v-if="column.kind !== 'detalle'"><span v-if="ci === 0 && labelIndex < 0" class="report-total-label report-numeric-label">{{ line.label }}</span>{{ formatReportCell(line.values[column.key] ?? 0, column.dataType, true, column.currency, column.decimals) }}</template>
               </td>
             </tr>
           </template>

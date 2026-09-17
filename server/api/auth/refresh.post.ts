@@ -1,7 +1,8 @@
 import { eq, and } from 'drizzle-orm'
-import { withTenant } from '~/server/db'
-import { users } from '~/server/db/schema'
+import { db, withTenant } from '~/server/db'
+import { users, tenants } from '~/server/db/schema'
 import { REFRESH_COOKIE_NAME, verifyRefreshToken, issueSessionCookies } from '~/server/utils/auth'
+import { validateSession } from '~/server/utils/sessions'
 
 // POST /api/auth/refresh (HU-ERD-83 parte 2): renueva el access token (15
 // min) usando el refresh token (7 dias, cookie separada erp_refresh_token) -
@@ -23,7 +24,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const config = useRuntimeConfig()
-  let pending: { sub: string; tenantId: string }
+  let pending: { sub: string; tenantId: string; sid?: string }
   try {
     pending = verifyRefreshToken(refreshToken, config.jwtSecret as string)
   } catch {
@@ -42,8 +43,11 @@ export default defineEventHandler(async (event) => {
   if (!user || !user.isActive) {
     throw createError({ statusCode: 401, statusMessage: 'Sesion invalida' })
   }
+  if (!pending.sid) throw createError({ statusCode: 401, statusMessage: 'Vuelve a iniciar sesión para actualizar la seguridad de tu cuenta' })
 
-  issueSessionCookies(event, { sub: user.id, tenantId: user.tenantId, roleId: user.roleId }, config.jwtSecret as string)
+  await validateSession(pending, true)
+  await issueSessionCookies(event, { sub: user.id, tenantId: user.tenantId, roleId: user.roleId, sid: pending.sid }, config.jwtSecret as string)
 
-  return { ok: true }
+  const [policy] = await db.select({ idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes }).from(tenants).where(eq(tenants.id, pending.tenantId)).limit(1)
+  return { ok: true, ...policy }
 })

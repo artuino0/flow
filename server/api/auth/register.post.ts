@@ -65,6 +65,7 @@ export default defineEventHandler(async (event) => {
   // diseño - best-effort (nunca bloquea el registro, ya completado).
   try {
     await sendPlainEmail({
+      tenantId: result.tenantId,
       to: body.email,
       subject: `Tu organización ${body.organizationName} está lista en FlowERP`,
       html: `<p>Hola ${escapeHtml(body.fullName)}, tu organización <strong>${escapeHtml(body.organizationName)}</strong> ya está lista. Ingresá con tu correo y contraseña cuando quieras.</p>`
@@ -79,7 +80,7 @@ export default defineEventHandler(async (event) => {
   // termina logueada, ej. aceptar invitación NO hace esto porque ahi la
   // organización no es "propia" del invitado en el mismo sentido).
   const config = useRuntimeConfig()
-  issueSessionCookies(event, { sub: result.userId, tenantId: result.tenantId, roleId: result.adminRoleId }, config.jwtSecret as string)
+  await issueSessionCookies(event, { sub: result.userId, tenantId: result.tenantId, roleId: result.adminRoleId }, config.jwtSecret as string)
 
   return {
     ok: true,

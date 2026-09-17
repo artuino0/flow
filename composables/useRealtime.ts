@@ -1,0 +1,157 @@
+import type { Ref } from 'vue'
+
+export interface ClientRealtimeEnvelope<T = unknown> {
+  type: string
+  payload: T
+  sentAt: string
+}
+
+interface RealtimeConnectionState {
+  connected: boolean
+  reconnecting: boolean
+  everConnected: boolean
+}
+
+type RealtimeListener = (event: ClientRealtimeEnvelope) => void
+
+let socket: WebSocket | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let reconnectAttempt = 0
+let consumerCount = 0
+let stopped = true
+let currentState: Ref<RealtimeConnectionState> | null = null
+const listeners = new Map<string, Set<RealtimeListener>>()
+
+function websocketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/realtime`
+}
+
+function dispatch(event: ClientRealtimeEnvelope) {
+  for (const listener of listeners.get(event.type) ?? []) listener(event)
+  for (const listener of listeners.get('*') ?? []) listener(event)
+}
+
+function clearReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer)
+  reconnectTimer = null
+}
+
+async function refreshAccessCookie() {
+  try { await $fetch('/api/auth/refresh', { method: 'POST' }) }
+  catch { /* El upgrade del socket vuelve a validar la sesión. */ }
+}
+
+function scheduleReconnect(state: Ref<RealtimeConnectionState>) {
+  if (stopped || reconnectTimer || !navigator.onLine) return
+  if (state.value.everConnected) state.value.reconnecting = true
+  const base = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectAttempt, 5))
+  const delay = Math.round(base * (0.8 + Math.random() * 0.4))
+  reconnectAttempt += 1
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    void connect(state)
+  }, delay)
+}
+
+async function connect(state: Ref<RealtimeConnectionState>) {
+  if (!import.meta.client || stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+  clearReconnect()
+  await refreshAccessCookie()
+  if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+
+  const next = new WebSocket(websocketUrl())
+  socket = next
+  next.addEventListener('open', () => {
+    if (socket !== next) return
+    reconnectAttempt = 0
+    state.value.connected = true
+    state.value.everConnected = true
+    state.value.reconnecting = false
+  })
+  next.addEventListener('message', message => {
+    if (socket !== next || typeof message.data !== 'string') return
+    try {
+      const event = JSON.parse(message.data) as ClientRealtimeEnvelope
+      if (!event || typeof event.type !== 'string') return
+      if (event.type === 'realtime.ping') {
+        next.send(JSON.stringify({ type: 'realtime.pong', payload: { at: Date.now() } }))
+        return
+      }
+      dispatch(event)
+    } catch {
+      // Un mensaje malformado del servidor se ignora; la siguiente consulta
+      // HTTP de cada consumidor sigue siendo la fuente de verdad.
+    }
+  })
+  next.addEventListener('close', () => {
+    if (socket !== next) return
+    socket = null
+    state.value.connected = false
+    scheduleReconnect(state)
+  })
+  next.addEventListener('error', () => {
+    // `close` centraliza el estado y la reconexión. Algunos navegadores no
+    // emiten close inmediatamente después de un upgrade rechazado.
+    if (next.readyState === WebSocket.OPEN) next.close()
+  })
+}
+
+function wakeConnection() {
+  if (!currentState || stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+  reconnectAttempt = 0
+  void connect(currentState)
+}
+
+export function useRealtime() {
+  const state = useState<RealtimeConnectionState>('realtime-connection', () => ({ connected: false, reconnecting: false, everConnected: false }))
+  let active = false
+
+  function start() {
+    if (!import.meta.client || active) return
+    active = true
+    consumerCount += 1
+    currentState = state
+    if (consumerCount === 1) {
+      stopped = false
+      window.addEventListener('online', wakeConnection)
+      document.addEventListener('visibilitychange', wakeConnection)
+      void connect(state)
+    }
+  }
+
+  function stop() {
+    if (!import.meta.client || !active) return
+    active = false
+    consumerCount = Math.max(0, consumerCount - 1)
+    if (consumerCount > 0) return
+    stopped = true
+    clearReconnect()
+    window.removeEventListener('online', wakeConnection)
+    document.removeEventListener('visibilitychange', wakeConnection)
+    const current = socket
+    socket = null
+    current?.close(1000, 'Sin consumidores activos')
+    state.value.connected = false
+    state.value.reconnecting = false
+  }
+
+  function subscribe<T = unknown>(type: string, listener: (event: ClientRealtimeEnvelope<T>) => void): () => void {
+    const typeListeners = listeners.get(type) ?? new Set<RealtimeListener>()
+    const compatible = listener as RealtimeListener
+    typeListeners.add(compatible)
+    listeners.set(type, typeListeners)
+    return () => {
+      typeListeners.delete(compatible)
+      if (!typeListeners.size) listeners.delete(type)
+    }
+  }
+
+  function send(type: string, payload: unknown): boolean {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false
+    socket.send(JSON.stringify({ type, payload }))
+    return true
+  }
+
+  return { state, start, stop, subscribe, send }
+}

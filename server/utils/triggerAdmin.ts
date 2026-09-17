@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
-import { conditionNodeSchema } from '~/server/utils/triggers'
-import { emailConfigSchema, retryTriggerLog, updateFieldConfigSchema, webhookConfigSchema } from '~/server/utils/triggerActions'
+import { entities, entityFields, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
+import { collectConditionFields, conditionNodeSchema, type ConditionNode } from '~/server/utils/triggers'
+import { emailConfigSchema, notificationConfigSchema, retryTriggerLog, updateFieldConfigSchema, webhookConfigSchema } from '~/server/utils/triggerActions'
 
 // HU-ERD-51: UI de administracion de triggers - hasta esta HU (ERD-47 a
 // ERD-50), triggers/trigger_actions/trigger_logs solo podian tocarse por SQL
@@ -34,7 +34,7 @@ export class InvalidTriggerActionOrderError extends Error {}
 export const ADMIN_TRIGGER_EVENTS = ['on_create', 'on_update', 'on_delete'] as const
 export type AdminTriggerEvent = (typeof ADMIN_TRIGGER_EVENTS)[number]
 
-export const TRIGGER_ACTION_TYPES = ['webhook', 'email', 'update_field'] as const
+export const TRIGGER_ACTION_TYPES = ['webhook', 'email', 'notification', 'update_field'] as const
 export type TriggerActionType = (typeof TRIGGER_ACTION_TYPES)[number]
 
 // Una condicion "sin configurar todavia" ({} , el default de la columna) es
@@ -54,10 +54,20 @@ async function assertEntityInTenant(tx: Tx, tenantId: string, entityId: string):
 }
 
 function validateActionConfig(actionType: string, config: unknown): void {
-  const schema = actionType === 'webhook' ? webhookConfigSchema : actionType === 'email' ? emailConfigSchema : updateFieldConfigSchema
+  const schema = actionType === 'webhook'
+    ? webhookConfigSchema
+    : actionType === 'email'
+      ? emailConfigSchema
+      : actionType === 'notification'
+        ? notificationConfigSchema
+        : updateFieldConfigSchema
   const parsed = schema.safeParse(config)
   if (!parsed.success) {
     throw new InvalidTriggerActionConfigError(`Configuración inválida para la acción "${actionType}": ${JSON.stringify(parsed.error.flatten().fieldErrors)}`)
+  }
+  const branch = (config as { branch?: unknown } | null)?.branch
+  if (branch !== undefined && branch !== 'yes' && branch !== 'no') {
+    throw new InvalidTriggerActionConfigError('La rama de una acción debe ser Sí cumple o No cumple.')
   }
 }
 
@@ -163,6 +173,7 @@ export interface TriggerDetail {
   entityName: string
   triggerEvent: string
   condition: unknown
+  decisionCondition: unknown
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -188,6 +199,7 @@ async function getTriggerWithTx(tx: Tx, tenantId: string, id: string): Promise<T
       entityName: entities.name,
       triggerEvent: triggers.triggerEvent,
       condition: triggers.condition,
+      decisionCondition: triggers.decisionCondition,
       isActive: triggers.isActive,
       createdAt: triggers.createdAt,
       updatedAt: triggers.updatedAt
@@ -217,27 +229,30 @@ export interface CreateTriggerInput {
   name: string
   triggerEvent: AdminTriggerEvent
   condition?: unknown
+  decisionCondition?: unknown
 }
 
 /**
  * Crea un trigger "en blanco" (sin acciones todavia - se agregan aparte via
- * createTriggerAction) con isActive: true por default. La entidad debe
+ * createTriggerAction) inactivo hasta que el usuario lo active. La entidad debe
  * existir en el tenant; la condicion, si viene, debe ser un
  * conditionNodeSchema valido o {} (sin configurar todavia, ver comentario de
  * triggerConditionSchema arriba).
  */
 export async function createTrigger(tenantId: string, input: CreateTriggerInput): Promise<TriggerDetail> {
   const condition = triggerConditionSchema.safeParse(input.condition ?? {})
+  const decisionCondition = triggerConditionSchema.safeParse(input.decisionCondition ?? {})
   if (!condition.success) {
     throw new InvalidTriggerConditionError('La condición no tiene una forma válida (revisa el constructor de campo/operador/valor)')
   }
+  if (!decisionCondition.success) throw new InvalidTriggerConditionError('La decisión no tiene una forma válida.')
 
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, input.entityId)
 
     const [created] = await tx
       .insert(triggers)
-      .values({ tenantId, entityId: input.entityId, name: input.name, triggerEvent: input.triggerEvent, condition: condition.data })
+      .values({ tenantId, entityId: input.entityId, name: input.name, triggerEvent: input.triggerEvent, condition: condition.data, decisionCondition: decisionCondition.data, isActive: false })
       .returning({ id: triggers.id })
 
     const detail = await getTriggerWithTx(tx, tenantId, created.id)
@@ -249,6 +264,7 @@ export interface UpdateTriggerInput {
   name?: string
   triggerEvent?: AdminTriggerEvent
   condition?: unknown
+  decisionCondition?: unknown
   isActive?: boolean
 }
 
@@ -271,12 +287,42 @@ export async function updateTrigger(tenantId: string, id: string, input: UpdateT
     }
     condition = parsed.data
   }
+  let decisionCondition: unknown | undefined
+  if (input.decisionCondition !== undefined) {
+    const parsed = triggerConditionSchema.safeParse(input.decisionCondition)
+    if (!parsed.success) throw new InvalidTriggerConditionError('La decisión no tiene una forma válida.')
+    decisionCondition = parsed.data
+  }
 
   return withTenant(tenantId, async (tx) => {
     const patch: Partial<typeof triggers.$inferInsert> = { updatedAt: new Date() }
+    const current = await getTriggerWithTx(tx, tenantId, id)
+    if (!current) return null
+    if (input.isActive ?? current.isActive) {
+      const parsed = conditionNodeSchema.safeParse(condition ?? current.condition)
+      if (!parsed.success) throw new InvalidTriggerConditionError('Configura las condiciones o selecciona todos los registros antes de activar.')
+      const fields = await tx.select({ name: entityFields.name }).from(entityFields).where(eq(entityFields.entityId, current.entityId))
+      const names = new Set(fields.map(f => f.name))
+      if (collectConditionFields(parsed.data).some(field => !names.has(field))) throw new InvalidTriggerConditionError('Una condición hace referencia a un campo que ya no existe.')
+      const hasChanged = (node: ConditionNode): boolean => 'field' in node ? node.operator === 'changed' : 'and' in node ? node.and.some(hasChanged) : 'or' in node ? node.or.some(hasChanged) : false
+      if (hasChanged(parsed.data) && (input.triggerEvent ?? current.triggerEvent) !== 'on_update') throw new InvalidTriggerConditionError('La condición «cambió» requiere el evento Al actualizar.')
+      const parsedDecision = decisionCondition !== undefined ? conditionNodeSchema.safeParse(decisionCondition) : conditionNodeSchema.safeParse(current.decisionCondition)
+      if (!parsedDecision.success && current.actions.some(action => ['yes', 'no'].includes(String((action.config as Record<string, unknown>).branch)))) throw new InvalidTriggerConditionError('Configura una decisión para las acciones de las ramas.')
+      if (parsedDecision.success) {
+        if (hasChanged(parsedDecision.data) && (input.triggerEvent ?? current.triggerEvent) !== 'on_update') throw new InvalidTriggerConditionError('La decisión «cambió» requiere el evento Al actualizar.')
+        const missingDecisionField = collectConditionFields(parsedDecision.data).find(field => !names.has(field))
+        if (missingDecisionField) throw new InvalidTriggerConditionError('La decisión hace referencia a un campo que ya no existe.')
+      }
+      if (!current.actions.length) throw new InvalidTriggerConditionError('Agrega al menos una acción antes de activar.')
+      for (const action of current.actions) {
+        validateActionConfig(action.actionType, action.config)
+        if (action.actionType === 'update_field' && !names.has((action.config as { field: string }).field)) throw new InvalidTriggerConditionError('Una acción hace referencia a un campo que ya no existe.')
+      }
+    }
     if (input.name !== undefined) patch.name = input.name
     if (input.triggerEvent !== undefined) patch.triggerEvent = input.triggerEvent
     if (condition !== undefined) patch.condition = condition
+    if (decisionCondition !== undefined) patch.decisionCondition = decisionCondition
     if (input.isActive !== undefined) patch.isActive = input.isActive
 
     const [updated] = await tx

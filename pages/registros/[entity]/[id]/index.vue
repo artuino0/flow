@@ -64,6 +64,9 @@ function onDeleted() {
       :can-update="data.permissions.canUpdate"
       :can-delete="data.permissions.canDelete"
       :label-field="data.entity.labelField"
+      :start-in-edit="route.query.mode === 'edit'"
+      :initial-pane="route.query.tab === 'activity' ? 'activity' : 'associations'"
+      :initial-activity-id="typeof route.query.activityId === 'string' ? route.query.activityId : undefined"
       @deleted="onDeleted"
     />
   </div>

@@ -57,6 +57,15 @@ describe('buildFieldType', () => {
     })
   })
 
+  describe('currency', () => {
+    it('conserva el monto como decimal y respeta los centavos configurados', () => {
+      const type = buildFieldType({ name: 'total', dataType: 'currency', validationRules: { currency: 'tenant', decimals: 2, allowNegative: false }, isRequired: true })
+      expect(type.safeParse('1250.50')).toMatchObject({ success: true, data: '1250.50' })
+      expect(type.safeParse('1250.567').success).toBe(false)
+      expect(type.safeParse('-1.00').success).toBe(false)
+    })
+  })
+
   describe('boolean', () => {
     it('solo acepta booleanos', () => {
       const type = buildFieldType({ name: 'activo', dataType: 'boolean', validationRules: {}, isRequired: true })

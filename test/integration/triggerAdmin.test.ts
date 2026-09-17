@@ -173,9 +173,9 @@ describe('getTrigger', () => {
 })
 
 describe('createTrigger', () => {
-  it('crea un trigger "en blanco" (condition {} por defecto) con isActive true', async () => {
+  it('crea un borrador inactivo aunque todavía no tenga condiciones ni acciones', async () => {
     const created = await createTrigger(TENANT_A, { entityId, name: 'Recien creado', triggerEvent: 'on_create' })
-    expect(created.isActive).toBe(true)
+    expect(created.isActive).toBe(false)
     expect(created.condition).toEqual({})
     expect(created.actions).toEqual([])
   })
@@ -202,6 +202,24 @@ describe('createTrigger', () => {
 })
 
 describe('updateTrigger', () => {
+  it('rechaza activar un borrador incompleto y conserva su estado', async () => {
+    const draft = await createTrigger(TENANT_A, { entityId, name: 'Borrador', triggerEvent: 'on_create' })
+    await expect(updateTrigger(TENANT_A, draft.id, { isActive: true })).rejects.toThrow(InvalidTriggerConditionError)
+    await expect(updateTrigger(TENANT_A, draft.id, { isActive: true, condition: { always: true } })).rejects.toThrow(InvalidTriggerConditionError)
+    expect((await getTrigger(TENANT_A, draft.id))?.isActive).toBe(false)
+  })
+
+  it('activa solamente con campos existentes, acciones y un evento compatible', async () => {
+    const draft = await createTrigger(TENANT_A, { entityId, name: 'Cambio de estado', triggerEvent: 'on_create' })
+    await createTriggerAction(TENANT_A, draft.id, { actionType: 'update_field', config: { field: 'estado', value: 'listo' } })
+    await expect(updateTrigger(TENANT_A, draft.id, { isActive: true, condition: { field: 'inexistente', operator: 'eq', value: 'x' } })).rejects.toThrow(InvalidTriggerConditionError)
+    const condition = { field: 'estado', operator: 'changed', value: null }
+    await expect(updateTrigger(TENANT_A, draft.id, { isActive: true, condition })).rejects.toThrow(InvalidTriggerConditionError)
+    const activated = await updateTrigger(TENANT_A, draft.id, { isActive: true, triggerEvent: 'on_update', condition })
+    expect(activated?.isActive).toBe(true)
+    expect(activated?.condition).toEqual(condition)
+  })
+
   it('actualiza campos parciales, incluido isActive (el toggle del listado)', async () => {
     const triggerId = await insertTriggerRow(TENANT_A, 'A actualizar')
     const updated = await updateTrigger(TENANT_A, triggerId, { isActive: false })
@@ -213,6 +231,7 @@ describe('updateTrigger', () => {
     const triggerId = await insertTriggerRow(TENANT_A, 'Original')
     const updated = await updateTrigger(TENANT_A, triggerId, {
       name: 'Renombrado',
+      isActive: false,
       triggerEvent: 'on_delete',
       condition: { field: 'estado', operator: 'neq', value: 'activo' }
     })

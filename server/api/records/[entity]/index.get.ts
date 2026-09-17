@@ -5,6 +5,7 @@ import { withTenant } from '~/server/db'
 import { records, entityFields } from '~/server/db/schema'
 import { resolveRelationLabels } from '~/server/utils/relationLabels'
 import { recordNotDeleted } from '~/server/utils/records'
+import { listFilterOperators, isListFilterable, type ListFilterOperator } from '~/utils/listFilters'
 
 // GET /api/records/:entity?page=1&pageSize=20&sortBy=createdAt&sortDir=desc&search=...&filterField=...&filterValues=a,b
 // (HU-ERD-16, orden HU-ERD-24, search HU-ERD-72, filtro HU-ERD-73)
@@ -40,7 +41,8 @@ const querySchema = z.object({
   // reemplazarlo, no una combinatoria de filtros; sumar eso queda para un
   // ticket futuro si hace falta.
   filterField: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).optional(),
-  filterValues: z.string().trim().min(1).optional()
+  filterValues: z.string().trim().min(1).optional(),
+  filterOperator: z.enum(['eq','neq','contains','gt','gte','lt','lte','between','is_true','is_false']).default('eq')
 })
 
 export default defineEventHandler(async (event) => {
@@ -77,8 +79,35 @@ export default defineEventHandler(async (event) => {
       if (!field) {
         throw createError({ statusCode: 422, statusMessage: `"${query.filterField}" no es un campo de esta entidad` })
       }
+      if (!isListFilterable(field.dataType)) throw createError({ statusCode: 422, statusMessage: 'Este campo no admite filtros' })
+      const allowed = listFilterOperators(field.dataType).map((operator) => operator.value)
+      if (!allowed.includes(query.filterOperator as ListFilterOperator)) throw createError({ statusCode: 422, statusMessage: 'Comparación no válida para este tipo de campo' })
 
       const values = query.filterValues.split(',').map((v) => v.trim()).filter(Boolean)
+      const pgArray = (vals: string[]) => dsql`ARRAY[${dsql.join(vals.map((v) => dsql`${v}`), dsql.raw(', '))}]::text[]`
+      const operator = query.filterOperator
+      const scalar = dsql`${records.customData}->>${query.filterField}`
+      const numeric = field.dataType === 'number' || field.dataType === 'currency'
+      if (numeric && values.some((value) => !Number.isFinite(Number(value)))) throw createError({ statusCode: 422, statusMessage: 'El filtro requiere un valor numérico' })
+      const comparable = numeric ? dsql`nullif(${scalar}, '')::numeric` : scalar
+      const comparableValues: Array<string | number> = numeric ? values.map(Number) : values
+      if (operator === 'is_true' || operator === 'is_false') {
+        where = and(where, dsql`${records.customData}->${query.filterField} = ${operator === 'is_true' ? dsql.raw("'true'::jsonb") : dsql.raw("'false'::jsonb")}`)
+      } else if (operator === 'between') {
+        if (values.length !== 2) throw createError({ statusCode: 422, statusMessage: 'El filtro entre requiere dos valores' })
+        where = and(where, dsql`${comparable} >= ${comparableValues[0]} AND ${comparable} <= ${comparableValues[1]}`)
+      } else if (operator === 'contains') {
+        where = and(where, dsql`${scalar} ILIKE ${'%' + values[0] + '%'}`)
+      } else if (operator === 'neq') {
+        where = and(where, dsql`${comparable} <> ${comparableValues[0]}`)
+      } else if (operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte') {
+        const op = { gt: '>', gte: '>=', lt: '<', lte: '<=' }[operator]
+        where = and(where, dsql`${comparable} ${dsql.raw(op)} ${comparableValues[0]}`)
+      } else if (field.dataType === 'multiselect') {
+        where = and(where, dsql`${records.customData}->${query.filterField} ?| ${pgArray(values)}`)
+      } else {
+        where = and(where, dsql`${comparable} = ${comparableValues[0]}`)
+      }
       // OJO con `sql`...${values}...``: drizzle-orm NO bindea un array JS
       // como un unico parametro Postgres - lo expande como lista de valores
       // separados por coma (pensado para armar "IN (${lista})"), asi que
@@ -88,8 +117,6 @@ export default defineEventHandler(async (event) => {
       // construirlo explicitamente con ARRAY[...] a partir de placeholders
       // individuales (sql.join) - pgArray() de abajo. Documentado aca porque
       // no es obvio y ya causo un 500 en runtime antes de esta nota.
-      const pgArray = (vals: string[]) => dsql`ARRAY[${dsql.join(vals.map((v) => dsql`${v}`), dsql.raw(', '))}]::text[]`
-
       // "es alguno de" (multiselect, criterio de aceptacion explicito de
       // HU-ERD-73): el valor guardado es un array jsonb (['urgente','...']) -
       // el operador `?|` de Postgres compara ese array contra el array de
@@ -98,11 +125,6 @@ export default defineEventHandler(async (event) => {
       // campo escalar) el valor guardado es un solo string - "es"/"es alguno
       // de" se resuelven ambos con `= ANY(...)` (un solo value es el caso
       // particular de "es").
-      const filterExpr =
-        field.dataType === 'multiselect'
-          ? dsql`${records.customData}->${query.filterField} ?| ${pgArray(values)}`
-          : dsql`${records.customData}->>${query.filterField} = ANY(${pgArray(values)})`
-      where = and(where, filterExpr)
     }
 
     const data = await tx.select().from(records).where(where).orderBy(orderBy).limit(query.pageSize).offset(offset)

@@ -34,6 +34,7 @@
 // para esta version simple, decision explicita del usuario 2026-09-01).
 import { Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
+import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
 import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 
 definePageMeta({ layout: 'default' })
@@ -68,6 +69,8 @@ interface ModuleDetail {
 // pestañas (Información general/Campos/Vista previa, sin "Diseño del
 // detalle" ni "Diseño del listado" propias) - se agregan esas 2 como
 // pestañas mas siguiendo el mismo look, decision confirmada con el usuario.
+// La pestaña API vive dentro del módulo para mantener la documentación junto
+// a sus campos y permisos reales.
 const TABS = [
   { key: 'basica', label: 'Información general' },
   { key: 'campos', label: 'Campos' },
@@ -75,7 +78,8 @@ const TABS = [
   { key: 'navegacion', label: 'Ubicación en menú' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
-  { key: 'preview', label: 'Vista previa' }
+  { key: 'preview', label: 'Vista previa' },
+  { key: 'api', label: 'API' }
 ] as const
 type StepKey = (typeof TABS)[number]['key']
 
@@ -200,6 +204,7 @@ async function onDeleteModule() {
 // SSR no lleva la cookie de sesion y el endpoint responde 401.
 const { data: fieldsData, refresh: refreshFields } = await useFetch<{
   fields: EntityFieldMeta[]
+  permissions: { canRead: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean }
   inverseRelations: InverseRelation[]
   detailLayout: DetailLayout
   listLayout: ListLayout
@@ -544,6 +549,9 @@ async function onSaveListLayout() {
       <template v-else-if="step === 'navegacion'">
         <ModuleNavigationEditor v-if="currentModule.moduleKind === 'hecho'" :entity-id="currentModule.id" :entity-name="currentModule.name" />
         <p v-else class="text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
+      </template>
+      <template v-else-if="step === 'api'">
+        <ModuleApiDocs :entity-name="currentModule.name" :entity-slug="currentModule.slug" :fields="fields" :permissions="fieldsData?.permissions" />
       </template>
       <template v-else>
         <div class="mx-auto w-full max-w-[480px]">

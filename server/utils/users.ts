@@ -200,10 +200,11 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
   })
 
   if (outcome.kind === 'new') {
-    await sendInvitationEmail({ to: outcome.person.email, tenantName: outcome.tenantName, inviterName: inviterFullName, roleName: outcome.roleName, token: outcome.token })
+    await sendInvitationEmail({ tenantId, to: outcome.person.email, tenantName: outcome.tenantName, inviterName: inviterFullName, roleName: outcome.roleName, token: outcome.token })
   } else {
     try {
       await sendPlainEmail({
+        tenantId,
         to: outcome.person.email,
         subject: `Te agregaron a ${outcome.tenantName} en FlowERP`,
         html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(outcome.tenantName)} con el rol de ${escapeHtml(outcome.roleName)}. Iniciá sesión con tu contraseña habitual y vas a poder elegir esta organización.</p>`
@@ -267,7 +268,7 @@ export async function resendInvitation(tenantId: string, userId: string, inviter
     return { membershipRow, person: person!, tenantName, roleName: role.name }
   })
 
-  await sendInvitationEmail({ to: person.email, tenantName, inviterName: inviterFullName, roleName, token })
+  await sendInvitationEmail({ tenantId, to: person.email, tenantName, inviterName: inviterFullName, roleName, token })
 
   return {
     user: {

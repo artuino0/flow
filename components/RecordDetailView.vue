@@ -24,7 +24,7 @@
 // ningún historial de auditoría en el esquema hoy - se muestra un aviso
 // honesto en vez de datos inventados; el historial real queda para una HU futura.
 import { computed, reactive, ref, watch } from 'vue'
-import { Calendar, Clock, Pencil, Plus, Trash2 } from '@lucide/vue'
+import { Calendar, Clock, FileText, Pencil, Plus, Trash2, WalletCards } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation } from '~/composables/useEntityFields'
 
 interface RecordData {
@@ -53,11 +53,36 @@ const props = defineProps<{
   // el mismo concepto que labelField configura para cuando esta entidad es
   // destino de una relacion en OTRO lado - mismo criterio, mismo dato.
   labelField?: string | null
+  startInEdit?: boolean
+  initialPane?: 'associations' | 'activity'
+  initialActivityId?: string
 }>()
 
 const emit = defineEmits<{
   deleted: []
 }>()
+
+// --- Puente al dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md, fase C) ----
+// Los registros dinámicos que originan documentos fiscales ganan un acceso
+// directo a /facturacion con el vínculo de origen pre-llenado
+// (source_record_id / cobro). Convención de slugs de la Business Suite; la
+// entrada es admin + país MX, mismo gate que la nav y los endpoints
+// (requireMxBillingAdmin). En modo preview (record=null) nunca aparece.
+const FISCAL_SOURCE_SLUGS: Record<string, { tipo: 'I' | 'P'; label: string }> = {
+  cuentas_por_cobrar: { tipo: 'I', label: 'Generar factura' },
+  embarques: { tipo: 'I', label: 'Generar factura' },
+  cobros_cliente: { tipo: 'P', label: 'Complemento de pago' }
+}
+const { data: isAdminForFiscal } = useIsAdmin()
+const { user: fiscalUser } = useAuth()
+const fiscalAction = computed(() => {
+  if (!props.record || !isAdminForFiscal.value || fiscalUser.value?.country !== 'MX') return null
+  const def = FISCAL_SOURCE_SLUGS[props.entitySlug]
+  if (!def) return null
+  if (def.tipo === 'P' && props.record.customData?.estado !== 'aplicado') return null
+  const param = def.tipo === 'P' ? `cobro=${props.record.id}` : `sourceRecord=${props.record.id}`
+  return { label: def.label, to: `/facturacion/nuevo?tipo=${def.tipo}&${param}`, icon: def.tipo === 'P' ? WalletCards : FileText }
+})
 
 const visibleProperties = computed(() =>
   props.layout.properties
@@ -93,6 +118,8 @@ function formatValue(field: EntityFieldMeta, value: unknown): string {
       const d = new Date(value as string)
       return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString()
     }
+    case 'currency':
+      return formatCurrencyValue(value, field.validationRules)
     case 'select':
     case 'multiselect': {
       const options = Array.isArray(field.validationRules?.options) ? (field.validationRules.options as Array<{ value: string; label: string }>) : []
@@ -128,7 +155,7 @@ interface RelatedTableState {
 }
 const relatedTables = reactive<Record<string, RelatedTableState>>({})
 const readOnlyPermissions: EntityPermissions = { canRead: true, canCreate: false, canUpdate: false, canDelete: false }
-const activePane = ref<'associations' | 'activity'>('associations')
+const activePane = ref<'associations' | 'activity'>(props.initialPane ?? (props.initialActivityId ? 'activity' : 'associations'))
 
 async function loadRelatedTable(entitySlug: string, fieldName: string) {
   if (!props.record) return
@@ -190,16 +217,52 @@ async function onDelete() {
     deleting.value = false
   }
 }
+const isEditing = ref(false)
+const submittingEdit = ref(false)
+const editFormValues = ref<Record<string, unknown>>({})
+const expandedProperties = ref(false)
+
+function startEditing() {
+  if (!props.record) return
+  editFormValues.value = JSON.parse(JSON.stringify(props.record.customData))
+  isEditing.value = true
+}
+watch(() => props.startInEdit, (value) => {
+  if (value && props.record && props.canUpdate) startEditing()
+}, { immediate: true })
+
+function cancelEditing() {
+  isEditing.value = false
+}
+
+async function saveEdit() {
+  if (!props.record) return
+  submittingEdit.value = true
+  try {
+    await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, {
+      method: 'PUT',
+      body: { customData: editFormValues.value }
+    })
+    toast.success('Registro actualizado', 'Los cambios se guardaron correctamente.')
+    // Refetch the data (since we rely on external data, we can emit or just reload window, 
+    // but the easiest is just updating props if possible, or reload)
+    window.location.reload()
+  } catch (err: any) {
+    toast.error('Error al guardar', err?.data?.statusMessage || 'No se pudo actualizar el registro')
+  } finally {
+    submittingEdit.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-5" :class="record ? 'lg:grid-cols-12' : ''">
-    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]" :class="record ? 'lg:col-span-4' : ''">
+  <div class="grid grid-cols-1 gap-5" :class="record ? 'lg:grid-cols-[360px_1fr]' : ''">
+    <div class="flex flex-col h-fit self-start rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
       <div class="flex flex-col gap-3 border-b border-brand-border-light p-5">
         <div class="flex min-w-0 items-start gap-3">
           <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-blue-bg text-sm font-bold text-brand-blue">{{ initials }}</span>
           <div class="flex min-w-0 flex-col gap-0.5">
-            <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Acerca de</p>
+            <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Detalle de {{ entityName }}</p>
             <h2 class="break-words text-[17px] font-bold leading-snug text-brand-text">{{ displayLabel }}</h2>
             <p v-if="record?.createdAt" class="flex items-center gap-1 text-xs text-brand-text-muted">
               <Calendar class="h-3 w-3 shrink-0" :stroke-width="1.75" />
@@ -208,25 +271,55 @@ async function onDelete() {
             <p v-else-if="!record" class="text-xs text-brand-text-muted">Así se verá la ficha de un registro de {{ entityName || 'este módulo' }}</p>
           </div>
         </div>
-        <div v-if="record && (canUpdate || canDelete)" class="flex items-center gap-2">
-          <NuxtLink
-            v-if="canUpdate"
-            :to="`/registros/${entitySlug}/${record.id}/editar`"
-            class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
-          >
-            <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
-            Editar
-          </NuxtLink>
-          <button
-            v-if="canDelete"
-            type="button"
-            :disabled="deleting"
-            title="Eliminar"
-            class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
-            @click="onDelete"
-          >
-            <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
-          </button>
+        
+        <div v-if="record && (canUpdate || canDelete || fiscalAction)" class="flex items-center gap-2">
+          <template v-if="!isEditing">
+            <NuxtLink
+              v-if="fiscalAction"
+              :to="fiscalAction.to"
+              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-blue hover:bg-brand-blue-bg"
+            >
+              <component :is="fiscalAction.icon" class="h-3.5 w-3.5" :stroke-width="1.75" />
+              {{ fiscalAction.label }}
+            </NuxtLink>
+            <button
+              v-if="canUpdate"
+              type="button"
+              @click="startEditing"
+              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
+            >
+              <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
+              Editar
+            </button>
+            <button
+              v-if="canDelete"
+              type="button"
+              :disabled="deleting"
+              title="Eliminar"
+              class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
+              @click="onDelete"
+            >
+              <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
+            </button>
+          </template>
+          <template v-else>
+            <button
+              type="button"
+              :disabled="submittingEdit"
+              @click="cancelEditing"
+              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              :disabled="submittingEdit"
+              @click="saveEdit"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover"
+            >
+              Guardar
+            </button>
+          </template>
         </div>
       </div>
 
@@ -234,17 +327,32 @@ async function onDelete() {
 
       <div class="flex flex-col gap-5 p-5">
         <div v-if="visibleProperties.length === 0" class="text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
-        <dl v-else class="grid grid-cols-1 gap-3">
-          <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-0.5">
-            <dt class="text-xs font-semibold text-brand-text-secondary">{{ field.label }}</dt>
-            <dd class="text-sm text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+        <template v-else>
+          <div v-if="isEditing">
+            <DynamicForm v-model="editFormValues" :fields="visibleProperties" :entity-id="record!.id" :disabled="submittingEdit" />
           </div>
-        </dl>
+          <div v-else class="flex flex-col gap-3">
+            <dl class="grid grid-cols-1 gap-3">
+              <div v-for="field in (expandedProperties ? visibleProperties : visibleProperties.slice(0, 8))" :key="field.id" class="flex flex-col gap-0.5">
+                <dt class="text-xs font-semibold text-brand-text-secondary">{{ field.label }}</dt>
+                <dd class="text-sm text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+              </div>
+            </dl>
+            <button 
+              v-if="visibleProperties.length > 8" 
+              type="button" 
+              class="-mx-5 -mb-5 mt-2 rounded-b-lg border-t border-brand-border-light py-3 text-center text-xs font-semibold text-brand-blue hover:bg-brand-bg hover:underline"
+              @click="expandedProperties = !expandedProperties"
+            >
+              {{ expandedProperties ? 'Ver menos' : `Ver ${visibleProperties.length - 8} ${visibleProperties.length - 8 === 1 ? 'propiedad' : 'propiedades'} más` }}
+            </button>
+          </div>
+        </template>
       </div>
     </div>
 
-    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]" :class="record ? 'lg:col-span-8' : ''">
-      <div class="flex items-center gap-1 border-b border-brand-border-light px-5" role="tablist" aria-label="Asociaciones y actividad">
+    <div class="flex flex-col rounded-lg min-w-0">
+      <div class="flex items-center gap-1 border-b border-brand-border-light" role="tablist" aria-label="Asociaciones y actividad">
         <button
           type="button"
           role="tab"
@@ -267,7 +375,7 @@ async function onDelete() {
         </button>
       </div>
 
-      <div v-if="activePane === 'associations'" class="flex flex-col gap-5 p-5">
+      <div v-if="activePane === 'associations'" class="flex flex-col gap-5 pt-5">
         <p v-if="visibleRelations.length === 0" class="text-sm text-brand-text-muted">Ningún otro módulo tiene un campo de relación apuntando a este.</p>
         <div
           v-for="rel in visibleRelations"
@@ -288,12 +396,12 @@ async function onDelete() {
               Agregar
             </NuxtLink>
           </div>
-          <div class="p-4">
+          <div>
             <p v-if="!record" class="text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
             <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
-              <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="text-xs text-brand-text-muted">Cargando...</p>
+              <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="text-xs text-brand-text-muted p-6 text-center">Cargando...</p>
               <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0">
-                <p class="text-xs text-brand-text-muted">Sin registros relacionados.</p>
+                <p class="text-xs text-brand-text-muted p-6 text-center">Sin registros relacionados.</p>
               </template>
               <template v-else>
                 <DynamicTable
@@ -305,7 +413,11 @@ async function onDelete() {
                   :total="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total"
                   sort-by="createdAt"
                   sort-dir="desc"
+                  :rounded="false"
                   :permissions="readOnlyPermissions"
+                  :inset="true"
+                  :borderless="true"
+                  :actions-sticky="true"
                   :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
                 />
                 <NuxtLink
@@ -321,11 +433,11 @@ async function onDelete() {
         </div>
       </div>
 
-      <div v-else class="p-5">
-        <div class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
+      <div v-else class="pt-4">
+        <ActivityTimeline v-if="record" :key="`${entitySlug}:${record.id}`" :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
+        <div v-else class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
           <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
-          <span v-if="!record">Línea de tiempo de actividad visible</span>
-          <span v-else>La línea de tiempo de actividad todavía no está disponible - requiere un historial de auditoría (HU futura).</span>
+          <span>Guarda el registro primero para empezar a registrar actividad.</span>
         </div>
       </div>
     </div>

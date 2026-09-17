@@ -24,6 +24,7 @@
 // Recepción ("necesitamos poder decidir que se muestra de la relacion").
 import { Check, ChevronDown, GripVertical } from '@lucide/vue'
 import type { EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
+import { isListFilterable } from '~/utils/listFilters'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
@@ -38,14 +39,7 @@ function fieldMeta(name: string): EntityFieldMeta | undefined {
   return props.fields.find((f) => f.name === name)
 }
 
-// HU-ERD-73: los unicos campos con un operador de filtro real hoy son
-// Select/Multiselect - mismo calculo que server/api/entities/[entity]/fields.get.ts
-// (filterFields de listLayout nunca puede ofrecer nada fuera de este conjunto,
-// criterio de aceptacion explicito de la HU). El mock de "FILTROS DISPONIBLES"
-// muestra tambien columnas Relación/Fecha como ejemplo - no se toma como
-// cambio de alcance sin confirmarlo con el usuario, se mantiene la regla ya
-// aceptada y testeada.
-const filterableCandidates = computed(() => props.fields.filter((f) => f.dataType === 'select' || f.dataType === 'multiselect'))
+const filterableCandidates = computed(() => props.fields.filter((f) => f.name !== 'id' && isListFilterable(f.dataType)))
 
 // Reportado por el usuario (2026-09-03): props.fields ahora siempre trae el
 // campo sintetico "id" (ver fields.get.ts) - listLayout.defaultSort.field
@@ -323,7 +317,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
       <div class="flex flex-col gap-1.5 border-t border-brand-border-light pt-4">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Filtros disponibles</p>
         <p v-if="filterableCandidates.length === 0" class="text-xs text-brand-text-muted">
-          Este módulo todavía no tiene campos Select o Multiselect (los únicos que se pueden ofrecer como filtro).
+          Este módulo todavía no tiene campos compatibles con filtros.
         </p>
         <label
           v-for="f in filterableCandidates"

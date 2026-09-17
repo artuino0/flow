@@ -3,7 +3,7 @@ import { requireAdminRole } from '~/server/utils/rbac'
 import { ADMIN_TRIGGER_EVENTS, createTrigger, InvalidTriggerConditionError, TriggerEntityNotFoundError } from '~/server/utils/triggerAdmin'
 
 // POST /api/triggers { entityId, name, triggerEvent, condition? } (HU-ERD-51)
-// Crea un trigger "en blanco" (isActive: true, sin acciones todavia - se
+// Crea un trigger "en blanco" (isActive: false, sin acciones todavia - se
 // agregan aparte via POST /api/trigger-actions). `condition` es opcional:
 // sin ella queda {} (sin configurar todavia, ver triggerAdmin.ts) - el
 // constructor visual del frontend puede terminar de armarla despues con un
@@ -12,7 +12,8 @@ const bodySchema = z.object({
   entityId: z.string().uuid(),
   name: z.string().trim().min(1, 'El nombre es obligatorio'),
   triggerEvent: z.enum(ADMIN_TRIGGER_EVENTS),
-  condition: z.unknown().optional()
+  condition: z.unknown().optional(),
+  decisionCondition: z.unknown().optional()
 })
 
 export default defineEventHandler(async (event) => {

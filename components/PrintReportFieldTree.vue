@@ -58,6 +58,7 @@ const TYPE_BADGE: Record<string, { label: string; bg: string; text: string }> = 
   text: { label: 'Texto', bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text' },
   date: { label: 'Fecha', bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text' },
   number: { label: 'N.º', bg: 'bg-brand-blue-bg', text: 'text-brand-blue' },
+  currency: { label: 'Monto', bg: 'bg-brand-success-bg', text: 'text-brand-success-text' },
   incremental: { label: 'N.º', bg: 'bg-brand-blue-bg', text: 'text-brand-blue' },
   boolean: { label: 'Sí/No', bg: 'bg-brand-success-bg', text: 'text-brand-success-text' },
   select: { label: 'Selección', bg: 'bg-brand-info-bg', text: 'text-brand-info-text' },

@@ -1,6 +1,6 @@
 {
   "name": "erp-dinamico-frontback",
-  "version": "0.85.1",
+  "version": "0.88.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed-dev-user": "node scripts/seed-dev-user.mjs",
     "db:seed": "node scripts/seed.mjs",
-    "db:seed-empaque": "node scripts/seedEmpaque.mjs"
+    "db:seed-empaque": "node scripts/seedEmpaque.mjs",
+    "db:seed-business-suite": "node scripts/seedBusinessSuite.mjs"
   },
   "dependencies": {
     "@lucide/vue": "^1.35.0",

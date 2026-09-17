@@ -196,6 +196,8 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
             const n = Number(trimmed)
             resolvedRow[field.name] = Number.isNaN(n) ? trimmed : n
           }
+        } else if (field.dataType === 'currency') {
+          resolvedRow[field.name] = trimmed === '' ? undefined : trimmed.replace(/[$,\s]/g, '')
         } else if (field.dataType === 'boolean') {
           resolvedRow[field.name] = ['true', '1', 'si', 'sí', 'x'].includes(trimmed.toLowerCase())
         } else if (trimmed === '') {

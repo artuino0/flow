@@ -20,6 +20,7 @@
 import { FileBarChart2, FilePlus, FileText, Filter, Plus, Settings2, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import { formatRelativeTime } from '~/utils/relativeTime'
+import { isListFilterable, listFilterOperators, type ListFilterOperator } from '~/utils/listFilters'
 
 definePageMeta({ layout: 'default' })
 
@@ -75,17 +76,23 @@ const visibleFields = computed<EntityFieldMeta[]>(() => {
 // explicito de HU-ERD-73).
 const filterableFields = computed(() => {
   const offeredNames = new Set(meta.value?.listLayout.filterFields ?? [])
-  return (meta.value?.fields ?? []).filter((f) => (f.dataType === 'select' || f.dataType === 'multiselect') && offeredNames.has(f.name))
+  return (meta.value?.fields ?? []).filter((f) => isListFilterable(f.dataType) && offeredNames.has(f.name))
 })
 
 const appliedFilterField = ref<string | null>(null)
 const appliedFilterValues = ref<string[]>([])
+const appliedFilterOperator = ref<ListFilterOperator>('eq')
 
 const filterPopoverOpen = ref(false)
 const draftFieldName = ref<string | null>(null)
 const draftValues = ref<string[]>([])
+const draftOperator = ref<ListFilterOperator>('eq')
 
 const draftField = computed(() => filterableFields.value.find((f) => f.name === draftFieldName.value) ?? null)
+const draftOperators = computed(() => listFilterOperators(draftField.value?.dataType ?? 'text'))
+const draftOperatorMeta = computed(() => draftOperators.value.find((op) => op.value === draftOperator.value) ?? draftOperators.value[0])
+const draftInput = computed({ get: () => draftValues.value[0] ?? '', set: (v: string) => { draftValues.value = v ? [v, ...(draftValues.value.slice(1))] : [] } })
+const draftSecondInput = computed({ get: () => draftValues.value[1] ?? '', set: (v: string) => { draftValues.value = [draftValues.value[0] ?? '', v] } })
 const draftOptions = computed<Array<{ value: string; label: string; color?: string }>>(() => {
   const raw = draftField.value?.validationRules?.options
   return Array.isArray(raw) ? (raw as Array<{ value: string; label: string; color?: string }>) : []
@@ -94,8 +101,14 @@ const draftOptions = computed<Array<{ value: string; label: string; color?: stri
 function openFilterPopover() {
   draftFieldName.value = appliedFilterField.value ?? filterableFields.value[0]?.name ?? null
   draftValues.value = [...appliedFilterValues.value]
+  draftOperator.value = appliedFilterOperator.value
   filterPopoverOpen.value = true
   reportMenuOpen.value = false
+}
+
+function resetDraftField() {
+  draftValues.value = []
+  draftOperator.value = listFilterOperators(draftField.value?.dataType ?? 'text')[0]?.value ?? 'eq'
 }
 
 function toggleDraftValue(value: string) {
@@ -105,8 +118,11 @@ function toggleDraftValue(value: string) {
 }
 
 function applyFilter() {
-  appliedFilterField.value = draftValues.value.length > 0 ? draftFieldName.value : null
-  appliedFilterValues.value = draftValues.value.length > 0 ? [...draftValues.value] : []
+  const count = draftOperatorMeta.value?.values ?? 1
+  const values = count === 0 ? ['true'] : draftValues.value.filter(Boolean)
+  appliedFilterField.value = draftFieldName.value && values.length >= count ? draftFieldName.value : null
+  appliedFilterValues.value = appliedFilterField.value ? values : []
+  appliedFilterOperator.value = draftOperator.value
   filterPopoverOpen.value = false
   page.value = 1
 }
@@ -114,6 +130,7 @@ function applyFilter() {
 function clearFilter() {
   appliedFilterField.value = null
   appliedFilterValues.value = []
+  appliedFilterOperator.value = 'eq'
   draftValues.value = []
   filterPopoverOpen.value = false
   page.value = 1
@@ -126,6 +143,7 @@ const appliedFilterLabels = computed(() => {
     : []
   return appliedFilterValues.value.map((v) => options.find((o) => o.value === v)?.label ?? v)
 })
+const appliedFilterOperatorLabel = computed(() => listFilterOperators(appliedFilterFieldMeta.value?.dataType ?? 'text').find((op) => op.value === appliedFilterOperator.value)?.label ?? 'Es igual a')
 
 // ERD-88 (Diseñador de reportes imprimibles): boton "Generar reporte" +
 // "Entry Menu" del listado - fiel a Screen/Generar reporte (punto de
@@ -197,14 +215,15 @@ const {
   error: recordsError,
   refresh: refreshRecords
 } = await useFetch<RecordsResponse>(`/api/records/${slug}`, {
-  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedFilterField.value}-${appliedFilterValues.value.join(',')}`,
+  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}`,
   query: computed(() => ({
     page: page.value,
     pageSize: 20,
     sortBy: sortBy.value,
     sortDir: sortDir.value,
     filterField: appliedFilterField.value ?? undefined,
-    filterValues: appliedFilterValues.value.length > 0 ? appliedFilterValues.value.join(',') : undefined
+    filterValues: appliedFilterValues.value.length > 0 ? appliedFilterValues.value.join(',') : undefined,
+    filterOperator: appliedFilterField.value ? appliedFilterOperator.value : undefined
   })),
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
@@ -284,13 +303,18 @@ async function onDelete(id: string) {
             <select
               v-model="draftFieldName"
               class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              @change="draftValues = []"
+              @change="resetDraftField"
             >
               <option v-for="f in filterableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
             </select>
 
-            <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Es alguno de</label>
-            <div class="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
+            <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Comparación</label>
+            <select v-model="draftOperator" class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+              <option v-for="operator in draftOperators" :key="operator.value" :value="operator.value">{{ operator.label }}</option>
+            </select>
+
+            <label v-if="draftOperatorMeta?.values" class="mb-1 block text-xs font-semibold text-brand-text-secondary">Valor</label>
+            <div v-if="draftField?.dataType === 'select' || draftField?.dataType === 'multiselect'" class="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
               <p v-if="draftOptions.length === 0" class="text-xs text-brand-text-muted">Este campo no tiene opciones configuradas.</p>
               <label
                 v-for="opt in draftOptions"
@@ -301,6 +325,13 @@ async function onDelete(id: string) {
                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
                 {{ opt.label }}
               </label>
+            </div>
+            <select v-else-if="draftField?.dataType === 'boolean'" v-model="draftInput" class="mb-4 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text">
+              <option value="true">Sí</option><option value="false">No</option>
+            </select>
+            <div v-else-if="draftOperatorMeta?.values" class="mb-4 flex gap-2">
+              <input v-model="draftInput" :type="['number','currency','incremental'].includes(draftField?.dataType ?? '') ? 'number' : ['date','datetime'].includes(draftField?.dataType ?? '') ? 'date' : 'text'" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" :placeholder="draftField?.dataType === 'relation' ? 'ID del registro relacionado' : 'Valor'" />
+              <input v-if="draftOperatorMeta.values === 2" v-model="draftSecondInput" type="date" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" placeholder="Hasta" />
             </div>
 
             <div class="flex items-center justify-between">
@@ -405,6 +436,7 @@ async function onDelete(id: string) {
         :sort-dir="sortDir"
         :permissions="meta.permissions"
         :relation-labels="recordsData.relationLabels"
+        :actions-sticky="true"
         @update:page="page = $event"
         @update:sort="onSort"
         @delete="onDelete"

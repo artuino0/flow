@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
-import { entityFields } from '~/server/db/schema'
+import { entityFields, tenants } from '~/server/db/schema'
 import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/detailLayout'
 import { resolveListLayout } from '~/server/utils/listLayout'
+import { isListFilterable } from '~/utils/listFilters'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
 //
@@ -59,10 +60,10 @@ export default defineEventHandler(async (event) => {
   // HU-ERD-75: mismo criterio - resuelto aca para que el listado real
   // (pages/registros/:entity/index.vue) y el configurador (paso "Diseño del
   // listado") lean siempre el mismo layout ya reconciliado. Los "filtrables"
-  // son exactamente los campos Select/Multiselect (unicos con un operador de
-  // filtro real hoy, HU-ERD-73) - filterFields de listLayout nunca puede
-  // exceder este conjunto (criterio de aceptacion explicito de la HU).
-  const filterableFieldNames = fields.filter((f) => f.dataType === 'select' || f.dataType === 'multiselect').map((f) => f.name)
+  // son todos los campos cuyo tipo tiene un control y operadores definidos en
+  // utils/listFilters.ts. Los campos de presentación (archivo, tabla, JSON)
+  // no se ofrecen porque no tienen una comparación útil en el listado.
+  const filterableFieldNames = fields.filter((f) => isListFilterable(f.dataType)).map((f) => f.name)
   const listLayout = resolveListLayout(entity.listLayout, fields.map((f) => f.name), filterableFieldNames)
 
   // Reportado por el usuario (2026-09-03, "en el array de campos siempre debe
@@ -93,5 +94,18 @@ export default defineEventHandler(async (event) => {
     isRequired: false
   }
 
-  return { entity, fields: [idField, ...fields], permissions, inverseRelations, detailLayout, listLayout }
+  const [tenant] = await withTenant(auth.tenantId, (tx) => tx.select({ defaultCurrency: tenants.defaultCurrency }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1))
+  const responseFields = fields.map((field) => field.dataType === 'currency'
+    ? {
+        ...field,
+        validationRules: {
+          ...((field.validationRules ?? {}) as Record<string, unknown>),
+          resolvedCurrency: (field.validationRules as Record<string, unknown> | null)?.currency === 'tenant'
+            ? (tenant?.defaultCurrency ?? 'MXN')
+            : ((field.validationRules as Record<string, unknown> | null)?.currency ?? 'MXN')
+        }
+      }
+    : field)
+
+  return { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout }
 })

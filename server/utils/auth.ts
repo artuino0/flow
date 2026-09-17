@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import type { H3Event } from 'h3'
+import { createSession } from '~/server/utils/sessions'
 
 const BCRYPT_ROUNDS = 12
 
@@ -45,6 +46,7 @@ export function verifyPassword(plain: string, hash: string): Promise<boolean> {
 }
 
 export interface AuthTokenPayload {
+  sid?: string
   sub: string // user id
   tenantId: string
   roleId: string | null
@@ -59,21 +61,22 @@ export function verifyAuthToken(token: string, secret: string): AuthTokenPayload
 }
 
 interface RefreshTokenPayload {
+  sid?: string
   sub: string
   tenantId: string
   purpose: 'refresh'
 }
 
-export function signRefreshToken(payload: { sub: string; tenantId: string }, secret: string): string {
+export function signRefreshToken(payload: { sub: string; tenantId: string; sid?: string }, secret: string): string {
   return jwt.sign({ ...payload, purpose: 'refresh' }, secret, { expiresIn: REFRESH_TOKEN_EXPIRES_IN })
 }
 
-export function verifyRefreshToken(token: string, secret: string): { sub: string; tenantId: string } {
+export function verifyRefreshToken(token: string, secret: string): { sub: string; tenantId: string; sid?: string } {
   const decoded = jwt.verify(token, secret) as RefreshTokenPayload
   if (decoded.purpose !== 'refresh') {
     throw new Error('Token no es de tipo refresh')
   }
-  return { sub: decoded.sub, tenantId: decoded.tenantId }
+  return { sub: decoded.sub, tenantId: decoded.tenantId, sid: decoded.sid }
 }
 
 /**
@@ -83,9 +86,10 @@ export function verifyRefreshToken(token: string, secret: string): { sub: string
  * puntos donde arranca o se renueva una sesion real, para no repetir las
  * opciones de cookie (httpOnly/sameSite/secure/path) tres veces.
  */
-export function issueSessionCookies(event: H3Event, payload: AuthTokenPayload, secret: string): void {
+export async function issueSessionCookies(event: H3Event, payload: AuthTokenPayload, secret: string): Promise<void> {
+  payload = { ...payload, sid: payload.sid || await createSession(event, payload) }
   const accessToken = signAuthToken(payload, secret)
-  const refreshToken = signRefreshToken({ sub: payload.sub, tenantId: payload.tenantId }, secret)
+  const refreshToken = signRefreshToken({ sub: payload.sub, tenantId: payload.tenantId, sid: payload.sid }, secret)
 
   const commonOptions = {
     httpOnly: true,

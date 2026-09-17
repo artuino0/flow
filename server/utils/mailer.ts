@@ -1,4 +1,11 @@
 import nodemailer from 'nodemailer'
+import fs from 'node:fs'
+import path from 'node:path'
+import { getTenantLogo } from '~/server/utils/tenantLogo'
+import { eq } from 'drizzle-orm'
+import { db, withTenant } from '~/server/db'
+import { tenantEmailSettings } from '~/server/db/schema'
+import { decryptSetting } from '~/server/utils/settingsCrypto'
 
 // HU-ERD-84: utilidad SMTP minima para el correo de invitacion de usuarios.
 // La plataforma no tenia NINGUNA capacidad de enviar correos reales hasta
@@ -31,12 +38,15 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-interface SmtpConfig {
+export interface SmtpConfig {
   host: string
   port: number
   user: string
   password: string
   from: string
+  fromName?: string
+  replyTo?: string
+  security?: 'tls' | 'ssl' | 'none'
 }
 
 /**
@@ -45,7 +55,7 @@ interface SmtpConfig {
  * mensaje accionable en el endpoint (server/api/users/index.post.ts), nunca
  * un fallback silencioso a "no enviar nada".
  */
-function readSmtpConfig(): SmtpConfig {
+export function readSmtpConfig(): SmtpConfig {
   const host = process.env.SMTP_HOST
   const port = process.env.SMTP_PORT
   const user = process.env.SMTP_USER
@@ -63,7 +73,43 @@ function readSmtpConfig(): SmtpConfig {
     throw new SmtpNotConfiguredError(`SMTP_PORT invalido: "${port}"`)
   }
 
-  return { host, port: portNumber, user, password, from }
+  return { host, port: portNumber, user, password, from, security: portNumber === 465 ? 'ssl' : 'tls' }
+}
+
+/** Resuelve la configuración personalizada del tenant y cae al .env cuando
+ * no existe una fila válida. Los endpoints de Ajustes usan la misma función
+ * para que probar y enviar nunca tengan reglas distintas. */
+export async function resolveSmtpConfig(tenantId?: string): Promise<SmtpConfig> {
+  if (tenantId) {
+    try {
+      const row = await withTenant(tenantId, async (tx) => {
+        const [value] = await tx.select().from(tenantEmailSettings).where(eq(tenantEmailSettings.tenantId, tenantId)).limit(1)
+        return value ?? null
+      })
+      if (row) {
+        if (row.provider !== 'smtp') throw new SmtpNotConfiguredError(`El proveedor "${row.provider}" todavía no está disponible`)
+        if (!row.host || !row.port || !row.username || !row.passwordEncrypted) {
+          throw new SmtpNotConfiguredError('La configuración SMTP personalizada está incompleta')
+        }
+        return {
+          host: row.host,
+          port: row.port,
+          user: row.username,
+          password: decryptSetting(row.passwordEncrypted),
+          from: row.fromEmail,
+          fromName: row.fromName ?? undefined,
+          replyTo: row.replyTo ?? undefined,
+          security: (row.security as SmtpConfig['security']) || 'tls'
+        }
+      }
+    } catch (error) {
+      if (error instanceof SmtpNotConfiguredError) throw error
+      // Una instalación que todavía no aplicó la migración puede seguir
+      // enviando con el .env; cualquier otro error de configuración se
+      // traduce al mismo fallback seguro.
+    }
+  }
+  return readSmtpConfig()
 }
 
 /**
@@ -71,16 +117,18 @@ function readSmtpConfig(): SmtpConfig {
  * https://app.midominio.com). Sin variable seteada, cae a localhost:3000
  * (APP_PORT, HU-ERD-13) - suficiente para desarrollo local, pero un
  * deployment real DEBE setear APP_BASE_URL o el enlace del correo apuntara
- * a una URL que el invitado no puede abrir.
+ * a una URL que el invitado no puede abrir. En local el valor por defecto
+ * coincide con el puerto de desarrollo de FlowERP (3001).
  */
-function getAppBaseUrl(): string {
+export function getAppBaseUrl(): string {
   const raw = process.env.APP_BASE_URL
   if (raw) return raw.replace(/\/+$/, '')
-  const port = process.env.APP_PORT || '3000'
+  const port = process.env.APP_PORT || '3001'
   return `http://localhost:${port}`
 }
 
 export interface InvitationEmailParams {
+  tenantId?: string
   to: string
   tenantName: string
   inviterName: string
@@ -97,8 +145,8 @@ export interface InvitationEmailParams {
  * de tailwind.config.ts (brand.orange, brand.text, etc.) para que el correo
  * se vea consistente con el resto de la app.
  */
-export function buildInvitationEmailHtml(params: InvitationEmailParams & { inviteUrl: string }): string {
-  const { tenantName, inviterName, roleName, inviteUrl, to } = params
+export function buildInvitationEmailHtml(params: InvitationEmailParams & { inviteUrl: string; logoSrc?: string }): string {
+  const { tenantName, inviterName, roleName, inviteUrl, to, logoSrc = 'flow-logo' } = params
   const year = new Date().getFullYear()
   const escape = escapeHtml
 
@@ -110,7 +158,7 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
     <tr><td align="center">
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;">
         <tr><td style="padding:28px 32px 0 32px;">
-          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;">FlowERP</p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;"><img src="${logoSrc}" alt="FlowERP" style="display:block;max-width:150px;max-height:42px;width:auto;height:auto;"><span style="display:none;">FlowERP</span></p>
         </td></tr>
         <tr><td style="padding:20px 32px 0 32px;">
           <p style="margin:0;font-size:22px;font-weight:700;color:#33475B;">Te invitaron a unirte a ${escape(tenantName)}</p>
@@ -154,43 +202,71 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
  * persiste (createTransport/sendMail no tocan la base).
  */
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<void> {
-  const smtp = readSmtpConfig()
+  const smtp = await resolveSmtpConfig(params.tenantId)
   const inviteUrl = `${getAppBaseUrl()}/invitacion/${params.token}`
 
   const transporter = createTransporter(smtp)
 
+  const logo = params.tenantId ? await getTenantLogo(params.tenantId).catch(() => null) : null
+  const defaultLogoPath = process.env.FLOWERP_DEFAULT_LOGO_PATH || path.join(process.cwd(), 'public', 'brand', 'logo-color.png')
+  const logoAvailable = !!logo && fs.existsSync(logo.fullPath)
   await transporter.sendMail({
     from: smtp.from,
+    replyTo: smtp.replyTo,
     to: params.to,
     subject: `Te invitaron a unirte a ${params.tenantName} en FlowERP`,
-    html: buildInvitationEmailHtml({ ...params, inviteUrl })
+    html: buildInvitationEmailHtml({ ...params, inviteUrl, logoSrc: logoAvailable ? 'cid:flowerp-tenant-logo' : 'cid:flowerp-default-logo' }),
+    attachments: logoAvailable
+      ? [{ filename: logo!.fileName, path: logo!.fullPath, cid: 'flowerp-tenant-logo' }]
+      : fs.existsSync(defaultLogoPath) ? [{ filename: 'flowerp-logo.png', path: defaultLogoPath, cid: 'flowerp-default-logo' }] : []
   })
 }
 
-function createTransporter(smtp: SmtpConfig) {
+export function createTransporter(smtp: SmtpConfig) {
   return nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
-    secure: smtp.port === 465,
+    secure: smtp.security === 'ssl' || (!smtp.security && smtp.port === 465),
+    requireTLS: smtp.security === 'tls',
     auth: { user: smtp.user, pass: smtp.password }
   })
 }
 
 export interface PlainEmailParams {
+  tenantId?: string
   to: string
   subject: string
   html: string
+  recordUrl?: string
+}
+
+/** Marco común para todos los correos transaccionales de FlowERP. */
+export function buildGeneralEmailHtml(params: PlainEmailParams & { logoSrc?: string }): string {
+  const logoSrc = params.logoSrc ?? 'cid:flowerp-default-logo'
+  const detail = params.recordUrl ? `<p style="margin:24px 0 0;text-align:center;"><a href="${escapeHtml(params.recordUrl)}" style="display:inline-block;background:#FF7A59;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;padding:11px 22px;">Ver detalle del registro</a></p><p style="margin:10px 0 0;text-align:center;font-size:12px;color:#8DA1B5;">Si el botón no funciona, copia este enlace:<br><span style="word-break:break-all;color:#33475B;">${escapeHtml(params.recordUrl)}</span></p>` : ''
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:32px 16px;background:#EEF1F5;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;"><tr><td style="padding:28px 32px 20px;border-bottom:1px solid #E5EAF0;"><img src="${escapeHtml(logoSrc)}" alt="FlowERP" style="display:block;max-width:170px;max-height:44px;width:auto;height:auto;"></td></tr><tr><td style="padding:28px 32px;color:#33475B;font-size:14px;line-height:1.6;">${params.html}${detail}</td></tr><tr><td style="padding:20px 32px 28px;border-top:1px solid #E5EAF0;color:#8DA1B5;font-size:12px;line-height:1.5;">Este correo fue enviado a ${escapeHtml(params.to)} desde FlowERP.</td></tr></table></td></tr></table></body></html>`
 }
 
 /**
  * Envio de correo generico (sin plantilla propia) - HU-ERD-50, usado por la
  * accion "email" de un trigger (server/utils/triggerActions.ts), que arma su
- * propio HTML interpolando variables del record. Misma configuracion SMTP
- * que sendInvitationEmail() (ERD-84) - lanza SmtpNotConfiguredError si falta
- * alguna variable de entorno, nunca un fallback silencioso.
+ * propio HTML interpolando variables del record. Usa la configuración SMTP
+ * personalizada del tenant y cae a las variables de entorno si no existe.
  */
 export async function sendPlainEmail(params: PlainEmailParams): Promise<void> {
-  const smtp = readSmtpConfig()
+  const smtp = await resolveSmtpConfig(params.tenantId)
   const transporter = createTransporter(smtp)
-  await transporter.sendMail({ from: smtp.from, to: params.to, subject: params.subject, html: params.html })
+  const logo = params.tenantId ? await getTenantLogo(params.tenantId).catch(() => null) : null
+  const defaultLogoPath = process.env.FLOWERP_DEFAULT_LOGO_PATH || path.join(process.cwd(), 'public', 'brand', 'logo-color.png')
+  const customLogo = !!logo && fs.existsSync(logo.fullPath)
+  await transporter.sendMail({
+    from: smtp.from,
+    replyTo: smtp.replyTo,
+    to: params.to,
+    subject: params.subject,
+    html: buildGeneralEmailHtml({ ...params, logoSrc: customLogo ? 'cid:flowerp-tenant-logo' : 'cid:flowerp-default-logo' }),
+    attachments: customLogo
+      ? [{ filename: logo!.fileName, path: logo!.fullPath, cid: 'flowerp-tenant-logo' }]
+      : fs.existsSync(defaultLogoPath) ? [{ filename: 'flowerp-logo.png', path: defaultLogoPath, cid: 'flowerp-default-logo' }] : []
+  })
 }

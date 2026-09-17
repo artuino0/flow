@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, GripVertical, Hash, KeyRound, Link2, List, ListChecks, ListOrdered, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, CircleDollarSign, GripVertical, Hash, KeyRound, Link2, List, ListChecks, ListOrdered, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -43,6 +43,7 @@ const realFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
 const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: string; label: string }> = {
   text: { icon: TypeIcon, bg: 'bg-brand-neutral-bg', text: 'text-brand-neutral-text', label: 'Texto' },
   number: { icon: Hash, bg: 'bg-brand-success-bg', text: 'text-brand-success-text', label: 'Número' },
+  currency: { icon: CircleDollarSign, bg: 'bg-brand-success-bg', text: 'text-brand-success-text', label: 'Monto' },
   boolean: { icon: ToggleLeft, bg: 'bg-brand-warning-bg', text: 'text-brand-warning-text', label: 'Booleano' },
   date: { icon: Calendar, bg: 'bg-brand-pink-bg', text: 'text-brand-pink-text', label: 'Fecha' },
   json: { icon: Braces, bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text', label: 'JSON' },

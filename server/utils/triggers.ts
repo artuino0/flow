@@ -11,7 +11,7 @@ import { executeTriggerActions } from '~/server/utils/triggerActions'
 // base o del usuario; el "motor" es simplemente recorrer un arbol de objetos
 // ya validado con Zod.
 
-export const CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains'] as const
+export const CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'changed'] as const
 export type ConditionOperator = (typeof CONDITION_OPERATORS)[number]
 
 export interface ConditionLeaf {
@@ -25,7 +25,7 @@ export interface ConditionAnd {
 export interface ConditionOr {
   or: ConditionNode[]
 }
-export type ConditionNode = ConditionLeaf | ConditionAnd | ConditionOr
+export type ConditionNode = ConditionLeaf | ConditionAnd | ConditionOr | { always: true }
 
 // z.any() hace que Zod infiera "value" como opcional (undefined extends any),
 // aunque ConditionLeaf.value no lo sea - un leaf sin "value" (o con value:
@@ -48,6 +48,7 @@ const conditionLeafSchema = z
 // tipo, la forma que valida en runtime no cambia.
 export const conditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
   z.union([
+    z.object({ always: z.literal(true) }).strict(),
     conditionLeafSchema,
     z.object({ and: z.array(conditionNodeSchema).min(1) }).strict(),
     z.object({ or: z.array(conditionNodeSchema).min(1) }).strict()
@@ -60,15 +61,18 @@ function isLeaf(node: ConditionNode): node is ConditionLeaf {
 
 /** Nombres de campo referenciados en TODO el arbol (recursivo), para validarlos contra entity_fields. */
 export function collectConditionFields(node: ConditionNode): string[] {
+  if ('always' in node) return []
   if (isLeaf(node)) return [node.field]
   if ('and' in node) return node.and.flatMap(collectConditionFields)
   return node.or.flatMap(collectConditionFields)
 }
 
-function evaluateLeaf(leaf: ConditionLeaf, data: Record<string, unknown>): boolean {
+function evaluateLeaf(leaf: ConditionLeaf, data: Record<string, unknown>, previous?: Record<string, unknown>): boolean {
   const actual = data[leaf.field]
   const expected = leaf.value
   switch (leaf.operator) {
+    case 'changed':
+      return previous !== undefined && JSON.stringify(previous[leaf.field]) !== JSON.stringify(actual)
     case 'eq':
       return actual === expected
     case 'neq':
@@ -90,10 +94,11 @@ function evaluateLeaf(leaf: ConditionLeaf, data: Record<string, unknown>): boole
   }
 }
 
-function evaluateNode(node: ConditionNode, data: Record<string, unknown>): boolean {
-  if (isLeaf(node)) return evaluateLeaf(node, data)
-  if ('and' in node) return node.and.every((n) => evaluateNode(n, data))
-  return node.or.some((n) => evaluateNode(n, data))
+function evaluateNode(node: ConditionNode, data: Record<string, unknown>, previous?: Record<string, unknown>): boolean {
+  if ('always' in node) return true
+  if (isLeaf(node)) return evaluateLeaf(node, data, previous)
+  if ('and' in node) return node.and.every((n) => evaluateNode(n, data, previous))
+  return node.or.some((n) => evaluateNode(n, data, previous))
 }
 
 /**
@@ -108,9 +113,9 @@ function evaluateNode(node: ConditionNode, data: Record<string, unknown>): boole
  * quien realmente decide "invalido" vs "false"). Esta funcion sola, sobre
  * algo que no matchea el schema, tira - el caller decide que hacer con eso.
  */
-export function evaluateCondition(condition: unknown, data: Record<string, unknown>): boolean {
+export function evaluateCondition(condition: unknown, data: Record<string, unknown>, previous?: Record<string, unknown>): boolean {
   const node = conditionNodeSchema.parse(condition)
-  return evaluateNode(node, data)
+  return evaluateNode(node, data, previous)
 }
 
 export type TriggerEventName = 'on_create' | 'on_update' | 'on_delete' | 'on_transition'
@@ -118,6 +123,7 @@ export type TriggerEventName = 'on_create' | 'on_update' | 'on_delete' | 'on_tra
 export interface MatchedTrigger {
   id: string
   name: string
+  decision?: boolean
 }
 
 export interface InvalidTrigger {
@@ -152,11 +158,12 @@ export async function evaluateTriggersForRecord(
   tenantId: string,
   entityId: string,
   event: TriggerEventName,
-  customData: Record<string, unknown>
+  customData: Record<string, unknown>,
+  previousData?: Record<string, unknown>
 ): Promise<TriggerEvaluationResult> {
   return withTenant(tenantId, async (tx) => {
     const activeTriggers = await tx
-      .select({ id: triggers.id, name: triggers.name, condition: triggers.condition })
+      .select({ id: triggers.id, name: triggers.name, condition: triggers.condition, decisionCondition: triggers.decisionCondition })
       .from(triggers)
       .where(and(eq(triggers.tenantId, tenantId), eq(triggers.entityId, entityId), eq(triggers.triggerEvent, event), eq(triggers.isActive, true)))
 
@@ -184,8 +191,18 @@ export async function evaluateTriggersForRecord(
         continue
       }
 
-      if (evaluateNode(parsedCondition.data, customData)) {
-        matched.push({ id: trigger.id, name: trigger.name })
+      if (evaluateNode(parsedCondition.data, customData, previousData)) {
+        let decision: boolean | undefined
+        const parsedDecision = conditionNodeSchema.safeParse(trigger.decisionCondition)
+        if (parsedDecision.success) {
+          const missingDecisionField = collectConditionFields(parsedDecision.data).find((f) => !validFieldNames.has(f))
+          if (missingDecisionField) {
+            invalid.push({ id: trigger.id, name: trigger.name, reason: `El campo "${missingDecisionField}" de la decisión no existe en esta entidad` })
+            continue
+          }
+          decision = evaluateNode(parsedDecision.data, customData, previousData)
+        }
+        matched.push({ id: trigger.id, name: trigger.name, decision })
       }
     }
 
@@ -220,9 +237,10 @@ export function fireTriggersForRecord(
   entityId: string,
   event: TriggerEventName,
   recordId: string,
-  customData: Record<string, unknown>
+  customData: Record<string, unknown>,
+  previousData?: Record<string, unknown>
 ): void {
-  evaluateTriggersForRecord(tenantId, entityId, event, customData)
+  evaluateTriggersForRecord(tenantId, entityId, event, customData, previousData)
     .then((result) => {
       if (result.matched.length === 0) return
 
@@ -234,7 +252,7 @@ export function fireTriggersForRecord(
       })
 
       for (const matched of result.matched) {
-        executeTriggerActions(tenantId, entityId, matched.id, matched.name, recordId, event, customData).catch((err) => {
+        executeTriggerActions(tenantId, entityId, matched.id, matched.name, recordId, event, customData, previousData, matched.decision).catch((err) => {
           logger.error('fallo ejecutando acciones de trigger', {
             tenantId,
             entityId,

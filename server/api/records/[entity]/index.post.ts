@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { withTenant } from '~/server/db'
-import { entityFields, records } from '~/server/db/schema'
+import { entityFields, records, recordActivities } from '~/server/db/schema'
 import { fireTriggersForRecord } from '~/server/utils/triggers'
 import { generateIncrementalValue, MissingIncrementalPrefixError } from '~/server/utils/incrementalField'
 
@@ -51,6 +51,15 @@ export default defineEventHandler(async (event) => {
       }
 
       const [r] = await tx.insert(records).values({ entityId: entity.id, tenantId: auth.tenantId, customData }).returning()
+      
+      await tx.insert(recordActivities).values({
+        tenantId: auth.tenantId,
+        recordId: r.id,
+        userId: auth.sub,
+        actionType: 'CREATED',
+        details: { customData }
+      })
+      
       return r
     })
   } catch (err) {

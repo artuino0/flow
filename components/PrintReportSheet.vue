@@ -110,9 +110,10 @@ onBeforeUnmount(() => { revision++; emit('ready', false) })
 .report-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.5pt; }
 .report-table th, .report-table td { padding: 2mm; border-bottom: .2mm solid #DCDCDC; vertical-align: top; overflow-wrap: anywhere; text-align: left; }
 .report-table thead th { background: #EAEAEA; border-bottom: .3mm solid #B8B8B8; color: #2B2B2B; font-size: 8pt; font-weight: 700; }
-.report-index-column { width: 10mm; }
+.report-index-column { width: 5%; }
 .report-table .report-index { font-size: 7pt; color: #666666; text-align: center; }
-.report-table .report-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.report-table .report-numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+.report-table .report-date { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 .report-group th { background: #E4E4E4; color: #1F1F1F; font-weight: 700; border-bottom: .2mm solid #CFCFCF; }
 .report-group-inner th { background: #EDEDED; font-size: 8pt; }
 .report-alternate { background: #FFFFFF; }

@@ -114,6 +114,13 @@ export async function requirePermission(
       .limit(1)
     if (!perm) return { entity, allowed: false, inactive: false }
 
+    const apiKeyScopes = event.context.apiKeyScopes as Record<string, Record<string, boolean>> | undefined
+    if (apiKeyScopes) {
+      const scope = apiKeyScopes[entity.slug]
+      const actionMap: Record<PermissionAction, string> = { canRead: 'read', canCreate: 'create', canUpdate: 'update', canDelete: 'delete' }
+      if (!scope?.[actionMap[action]]) return { entity, allowed: false, inactive: false }
+    }
+
     return { entity, allowed: Boolean(perm[action]), inactive: false }
   })
 
@@ -207,6 +214,12 @@ export async function getPermissionFlags(auth: AuthTokenPayload, entityId: strin
  */
 export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload> {
   const auth = requireAuth(event)
+
+  // Las API keys sirven para operar datos con scopes, nunca para entrar a la
+  // configuración administrativa ni modificar permisos/credenciales.
+  if (event.context.apiKeyId) {
+    throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar la organización' })
+  }
 
   const isAdmin = await withTenant(auth.tenantId, async (tx) => {
     const [role] = await tx

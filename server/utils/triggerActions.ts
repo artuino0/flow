@@ -1,11 +1,13 @@
+import { templateRelationData } from '~/server/utils/templateRelations'
 import { createHmac } from 'node:crypto'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { withTenant, db } from '~/server/db'
-import { records, tenants, triggers, triggerActions, triggerLogs } from '~/server/db/schema'
+import { entities, records, tenants, triggers, triggerActions, triggerLogs } from '~/server/db/schema'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { logger } from '~/server/utils/logger'
-import { escapeHtml, sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { escapeHtml, getAppBaseUrl, sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { createNotifications, publishNotifications } from '~/server/utils/notifications'
 
 // HU-ERD-49: ejecucion real de las acciones de un trigger que matcheo
 // (ERD-48 solo resolvia QUE triggers disparan, nunca ejecutaba nada). Se
@@ -25,6 +27,8 @@ export interface TriggerActionRow {
   executionOrder: number
 }
 
+type WorkflowBranch = 'yes' | 'no' | undefined
+
 // Config esperada por tipo de accion (JSONB de trigger_actions.config, ERD-47).
 // .passthrough(): config puede crecer a futuro (ej. headers custom de webhook)
 // sin que una clave extra rompa una accion ya configurada. Exportados desde
@@ -35,6 +39,20 @@ export const webhookConfigSchema = z.object({ url: z.string().url(), secret: z.s
 export const updateFieldConfigSchema = z.object({ field: z.string().min(1), value: z.any() }).passthrough()
 // HU-ERD-50: to/subject/body admiten plantilla ({{campo}}, ver interpolateTemplate())
 export const emailConfigSchema = z.object({ to: z.string().min(1), subject: z.string().min(1), body: z.string().min(1) }).passthrough()
+// Las notificaciones del workflow se entregan a usuarios concretos o a todos
+// los usuarios que pertenezcan a un rol. El label se guarda como snapshot para
+// que el constructor pueda pintar las píldoras sin otra consulta, pero nunca
+// se usa para autorizar: al ejecutar se vuelven a resolver los ids en el tenant.
+export const notificationRecipientSchema = z.object({
+  type: z.enum(['user', 'role']),
+  id: z.string().uuid(),
+  label: z.string().min(1).optional()
+})
+export const notificationConfigSchema = z.object({
+  recipients: z.array(notificationRecipientSchema).min(1),
+  title: z.string().min(1).max(160),
+  message: z.string().min(1).max(4000)
+}).passthrough()
 
 interface ActionOutcome {
   ok: boolean
@@ -73,11 +91,23 @@ function signPayload(rawBody: string, secret: string): string {
  * record se interpola como cadena vacia (no revienta la plantilla).
  */
 export function interpolateTemplate(template: string, data: Record<string, unknown>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, fieldName: string) => {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+){0,3})\s*\}\}/g, (_match, fieldName: string) => {
     const value = data[fieldName]
     if (value === undefined || value === null) return ''
     const asString = typeof value === 'string' ? value : JSON.stringify(value)
     return escapeHtml(asString)
+  })
+}
+
+// Las notificaciones se pintan como texto mediante Vue (que ya escapa el
+// contenido al renderizar), así que no deben recibir entidades HTML como
+// `&amp;` visibles en la bandeja. El correo conserva interpolateTemplate(),
+// porque su cuerpo sí se envía como HTML.
+function interpolateTextTemplate(template: string, data: Record<string, unknown>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+){0,3})\s*\}\}/g, (_match, fieldName: string) => {
+    const value = data[fieldName]
+    if (value === undefined || value === null) return ''
+    return typeof value === 'string' ? value : JSON.stringify(value)
   })
 }
 
@@ -179,7 +209,7 @@ async function runUpdateFieldAction(tenantId: string, entityId: string, recordId
  * autenticacion, timeout del propio servidor) es transitorio - mismo
  * criterio de reintento que un webhook caido.
  */
-async function runEmailAction(config: unknown, data: Record<string, unknown>): Promise<ActionOutcome> {
+async function runEmailAction(tenantId: string, config: unknown, data: Record<string, unknown>, recordUrl?: string): Promise<ActionOutcome> {
   const parsed = emailConfigSchema.safeParse(config)
   if (!parsed.success) {
     return { ok: false, retryable: false, error: 'Configuración de email inválida (faltan "to"/"subject"/"body")' }
@@ -194,13 +224,57 @@ async function runEmailAction(config: unknown, data: Record<string, unknown>): P
   }
 
   try {
-    await sendPlainEmail({ to, subject, html })
+    await sendPlainEmail({ tenantId, to, subject, html, recordUrl })
     return { ok: true, retryable: false }
   } catch (err) {
     if (err instanceof SmtpNotConfiguredError) {
       return { ok: false, retryable: false, error: err.message }
     }
     return { ok: false, retryable: true, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Acción de notificación: crea una notificación in-app por usuario y publica
+ * las filas recién insertadas en el bus SSE. Los roles se expanden dentro de
+ * createNotifications, siempre filtrando por tenant y usuarios activos.
+ */
+async function runNotificationAction(
+  tenantId: string,
+  config: unknown,
+  data: Record<string, unknown>,
+  entitySlug?: string,
+  recordId?: string,
+  recordUrl?: string
+): Promise<ActionOutcome> {
+  const parsed = notificationConfigSchema.safeParse(config)
+  if (!parsed.success) {
+    return { ok: false, retryable: false, error: 'Configuración de notificación inválida (agrega destinatarios, título y mensaje)' }
+  }
+
+  const title = interpolateTextTemplate(parsed.data.title, data)
+  const message = interpolateTextTemplate(parsed.data.message, data)
+  const userIds = parsed.data.recipients.filter(recipient => recipient.type === 'user').map(recipient => recipient.id)
+  const roleIds = parsed.data.recipients.filter(recipient => recipient.type === 'role').map(recipient => recipient.id)
+
+  try {
+    const rows = await withTenant(tenantId, tx => createNotifications(tx, {
+      tenantId,
+      entitySlug,
+      recordId,
+      actionUrl: recordUrl,
+      type: 'WORKFLOW',
+      title,
+      message,
+      recipients: { userIds, roleIds }
+    }))
+    if (!rows.length) {
+      return { ok: false, retryable: false, error: 'La notificación no tiene destinatarios activos disponibles.' }
+    }
+    publishNotifications(rows)
+    return { ok: true, retryable: false }
+  } catch (error) {
+    return { ok: false, retryable: false, error: error instanceof Error ? error.message : 'No se pudo crear la notificación.' }
   }
 }
 
@@ -227,7 +301,8 @@ async function runActionsPipeline(
   entityId: string,
   recordId: string | null,
   actions: TriggerActionRow[],
-  payload: TriggerPayload
+  payload: TriggerPayload,
+  branch?: WorkflowBranch
 ): Promise<{ anyFailed: boolean; anyRetryable: boolean; lastError?: string; lastResponseStatus?: number }> {
   const rawBody = JSON.stringify(payload)
   const templateData = payload.record?.data ?? {}
@@ -237,7 +312,13 @@ async function runActionsPipeline(
   let lastError: string | undefined
   let lastResponseStatus: number | undefined
 
-  for (const action of actions) {
+  const [entity] = await withTenant(tenantId, tx => tx.select({ slug: entities.slug }).from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1))
+  const recordUrl = entity && recordId ? `${getAppBaseUrl()}/registros/${entity.slug}/${recordId}` : undefined
+  const branchActions = branch === undefined ? actions : actions.filter(action => {
+    const actionBranch = (action.config as { branch?: WorkflowBranch } | null)?.branch
+    return !actionBranch || actionBranch === branch
+  })
+  for (const action of branchActions) {
     let outcome: ActionOutcome
     if (action.actionType === 'webhook') {
       outcome = await runWebhookAction(action.config, rawBody)
@@ -246,7 +327,17 @@ async function runActionsPipeline(
         ? await runUpdateFieldAction(tenantId, entityId, recordId, action.config)
         : { ok: false, retryable: false, error: 'El registro ya no existe' }
     } else if (action.actionType === 'email') {
-      outcome = await runEmailAction(action.config, templateData)
+      try {
+        const config = action.config as Record<string, unknown>
+        const resolved = await templateRelationData(tenantId, entityId, templateData, [String(config.to ?? ''), String(config.subject ?? ''), String(config.body ?? '')])
+        outcome = await runEmailAction(tenantId, action.config, resolved, recordUrl)
+      } catch (error) { outcome = { ok: false, retryable: false, error: error instanceof Error ? error.message : 'No se pudieron resolver las variables.' } }
+    } else if (action.actionType === 'notification') {
+      try {
+        const config = action.config as Record<string, unknown>
+        const resolved = await templateRelationData(tenantId, entityId, templateData, [String(config.title ?? ''), String(config.message ?? '')])
+        outcome = await runNotificationAction(tenantId, action.config, resolved, entity?.slug, recordId ?? undefined, recordUrl)
+      } catch (error) { outcome = { ok: false, retryable: false, error: error instanceof Error ? error.message : 'No se pudieron resolver las variables.' } }
     } else {
       // Tipos futuros: hasta que existan, marcados como fallo permanente
       // explicito - nunca silencioso.
@@ -279,7 +370,9 @@ export async function executeTriggerActions(
   triggerName: string,
   recordId: string,
   event: string,
-  customData: Record<string, unknown>
+  customData: Record<string, unknown>,
+  previousData?: Record<string, unknown>,
+  decision?: boolean
 ): Promise<void> {
   const actions = await fetchOrderedActions(tenantId, triggerId)
   const payload = {
@@ -298,7 +391,7 @@ export async function executeTriggerActions(
     return
   }
 
-  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, entityId, recordId, actions, payload)
+  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, entityId, recordId, actions, payload, decision === undefined ? undefined : decision ? 'yes' : 'no')
   const status = resolveStatus(anyFailed, anyRetryable, 1)
 
   await withTenant(tenantId, (tx) =>

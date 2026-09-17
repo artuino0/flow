@@ -128,12 +128,7 @@ const editError = ref<string | null>(null)
 const editSaving = ref(false)
 
 function openEditModal(user: UserRow) {
-  editUser.value = user
-  editRoleId.value = user.roleId
-  editRoleSelectorOpen.value = false
-  editIsActive.value = user.isActive
-  editError.value = null
-  editOpen.value = true
+  void navigateTo(`/usuarios/${user.id}`)
 }
 
 async function onSaveEdit() {

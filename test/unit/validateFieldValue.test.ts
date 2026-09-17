@@ -144,6 +144,13 @@ describe('validateFieldValue', () => {
       expect(result.valid).toBe(false)
     })
 
+    it('currency: valida decimales y montos negativos', () => {
+      const amount = field({ dataType: 'currency', label: 'Total', validationRules: { decimals: 2, allowNegative: false } })
+      expect(validateFieldValue(amount, '1250.50').valid).toBe(true)
+      expect(validateFieldValue(amount, '1250.555').valid).toBe(false)
+      expect(validateFieldValue(amount, '-1.00').valid).toBe(false)
+    })
+
     it('relation: exige forma de uuid', () => {
       const result = validateFieldValue(field({ dataType: 'relation', label: 'Cliente' }), 'no-es-uuid')
       expect(result.valid).toBe(false)

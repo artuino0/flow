@@ -18,7 +18,7 @@ export const parameterInputs = [
   { value: 'checkbox', label: 'Casilla (Sí / No)' }, { value: 'toggle', label: 'Interruptor (Sí / No)' }
 ] as const
 export function inputsForType(type: string) {
-  const allowed = type === 'boolean' ? ['checkbox', 'toggle'] : type === 'date' ? ['date', 'dateRange'] : ['number', 'incremental'].includes(type) ? ['number', 'numberRange'] : type === 'text' ? ['text', 'select'] : type === 'select' ? ['select'] : []
+  const allowed = type === 'boolean' ? ['checkbox', 'toggle'] : type === 'date' ? ['date', 'dateRange'] : ['number', 'currency', 'incremental'].includes(type) ? ['number', 'numberRange'] : type === 'text' ? ['text', 'select'] : type === 'select' ? ['select'] : []
   return parameterInputs.filter(input => allowed.includes(input.value))
 }
 type ResolvedFilter = { source: ReportParameter['source']; value: string; operator: 'eq' | 'contains' | 'gte' | 'lte' | 'lt' | 'gt'; recordId: boolean }

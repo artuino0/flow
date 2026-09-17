@@ -83,6 +83,8 @@ export interface PrintReportGroup {
 
 export interface PrintReportResultColumn {
   dataType?: string
+  currency?: string
+  decimals?: number
   key: string
   label: string
   kind: PrintReportColumn['kind']
@@ -141,7 +143,7 @@ export function usePrintReportPreviewDraft() {
   return useState<PrintReportPreviewDraft | null>('printReportPreviewDraft', () => null)
 }
 
-const NUMERIC_DATA_TYPES = new Set(['number', 'incremental'])
+const NUMERIC_DATA_TYPES = new Set(['number', 'currency', 'incremental'])
 export function isNumericFieldType(dataType: string): boolean {
   return NUMERIC_DATA_TYPES.has(dataType)
 }

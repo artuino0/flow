@@ -58,7 +58,7 @@ function fingerprint(rows: EntityFieldRow[]): string {
 // (server/utils/incrementalField.ts) exactamente igual de intocable que el "id"
 // sintetico (ver fields.get.ts), pero a diferencia de "id" SI es una fila real de
 // entity_fields (necesita guardar su propia configuracion: digits/prefixSource).
-export const KNOWN_DATA_TYPES = ['text', 'number', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file', 'incremental'] as const
+export const KNOWN_DATA_TYPES = ['text', 'number', 'currency', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file', 'incremental'] as const
 export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
 
 // Tipos permitidos para una columna dentro de un campo 'tabla' - deliberadamente
@@ -144,6 +144,15 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
       min: z.number().optional(),
       max: z.number().optional(),
       integer: z.boolean().optional()
+    })
+    .strict(),
+  currency: z
+    .object({
+      currency: z.union([z.literal('tenant'), z.string().regex(/^[A-Z]{3}$/)]).default('tenant'),
+      decimals: z.number().int().min(0).max(4).default(2),
+      allowNegative: z.boolean().default(false),
+      min: z.number().optional(),
+      max: z.number().optional()
     })
     .strict(),
   boolean: z.object({}).strict(),
@@ -263,6 +272,20 @@ export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
       if (typeof rules.max === 'number') n = n.max(rules.max)
       if (rules.integer === true) n = n.int()
       base = n
+      break
+    }
+    case 'currency': {
+      const decimals = typeof rules.decimals === 'number' ? rules.decimals : 2
+      const decimalPattern = decimals === 0 ? /^-?\d+$/ : new RegExp(`^-?\\d+(?:\\.\\d{1,${decimals}})?$`)
+      const min = typeof rules.min === 'number' ? rules.min : null
+      const max = typeof rules.max === 'number' ? rules.max : null
+      base = z
+        .union([z.string(), z.number()])
+        .transform((value) => String(value).trim())
+        .refine((value) => decimalPattern.test(value), `Debe ser un monto con máximo ${decimals} decimales`)
+        .refine((value) => rules.allowNegative === true || Number(value) >= 0, 'El monto no puede ser negativo')
+        .refine((value) => min === null || Number(value) >= min, `El monto debe ser mayor o igual a ${min}`)
+        .refine((value) => max === null || Number(value) <= max, `El monto debe ser menor o igual a ${max}`)
       break
     }
     case 'boolean':

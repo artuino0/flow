@@ -38,7 +38,7 @@
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
 import { computed, reactive, ref, watch } from 'vue'
-import { Braces, Calendar, Check, ChevronDown, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -78,6 +78,7 @@ interface TypeOption {
 const TYPE_OPTIONS: TypeOption[] = [
   { value: 'text', label: 'Texto', icon: TypeIcon },
   { value: 'number', label: 'Número', icon: Hash },
+  { value: 'currency', label: 'Monto', icon: CircleDollarSign },
   { value: 'boolean', label: 'Booleano', icon: ToggleLeft },
   { value: 'date', label: 'Fecha', icon: Calendar },
   { value: 'json', label: 'JSON', icon: Braces },
@@ -109,6 +110,8 @@ const TABLE_COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: 'date', label: 'Fecha' },
   { value: 'relation', label: 'Relación' }
 ]
+
+const MONEY_CURRENCIES = ['MXN', 'USD', 'EUR', 'CAD', 'GBP', 'BRL', 'ARS', 'COP', 'CLP', 'PEN', 'GTQ']
 
 interface OptionDraft {
   label: string
@@ -153,6 +156,9 @@ const form = reactive({
   min: null as number | null,
   max: null as number | null,
   integer: false,
+  currency: 'tenant',
+  currencyDecimals: 2,
+  allowNegative: false,
   dateMin: '',
   dateMax: '',
   options: [] as OptionDraft[],
@@ -269,6 +275,9 @@ watch(
     form.min = typeof rules.min === 'number' ? rules.min : null
     form.max = typeof rules.max === 'number' ? rules.max : null
     form.integer = rules.integer === true
+    form.currency = typeof rules.currency === 'string' ? rules.currency : 'tenant'
+    form.currencyDecimals = typeof rules.decimals === 'number' ? rules.decimals : 2
+    form.allowNegative = rules.allowNegative === true
     form.dateMin = typeof rules.min === 'string' ? rules.min : ''
     form.dateMax = typeof rules.max === 'string' ? rules.max : ''
     form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
@@ -430,6 +439,16 @@ function validationRulesForSubmit(): Record<string, unknown> {
       if (form.min !== null) rules.min = form.min
       if (form.max !== null) rules.max = form.max
       if (form.integer) rules.integer = true
+      return rules
+    }
+    case 'currency': {
+      const rules: Record<string, unknown> = {
+        currency: form.currency,
+        decimals: form.currencyDecimals,
+        allowNegative: form.allowNegative
+      }
+      if (form.min !== null) rules.min = form.min
+      if (form.max !== null) rules.max = form.max
       return rules
     }
     case 'date': {
@@ -668,6 +687,34 @@ function onSubmit() {
             <input v-model="form.integer" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
             Solo permitir números enteros
           </label>
+        </div>
+
+        <div v-else-if="form.dataType === 'currency'" class="flex flex-col gap-3">
+          <div>
+            <p class="text-[13px] font-semibold text-brand-text">Formato monetario</p>
+            <p class="mt-0.5 text-xs text-brand-text-muted">Se mostrará con símbolo, separadores y centavos en formularios, listados y reportes.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[13px] font-semibold text-brand-text">Moneda</label>
+              <select v-model="form.currency" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+                <option value="tenant">Predeterminada de la empresa</option>
+                <option v-for="code in MONEY_CURRENCIES" :key="code" :value="code">{{ code }}</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[13px] font-semibold text-brand-text">Decimales</label>
+              <select v-model.number="form.currencyDecimals" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+                <option :value="0">Sin decimales</option><option :value="2">2 decimales</option><option :value="3">3 decimales</option><option :value="4">4 decimales</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5"><label class="text-[13px] font-semibold text-brand-text">Monto mínimo</label><input v-model.number="form.min" type="number" step="any" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" /></div>
+            <div class="flex flex-col gap-1.5"><label class="text-[13px] font-semibold text-brand-text">Monto máximo</label><input v-model.number="form.max" type="number" step="any" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" /></div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-brand-text"><input v-model="form.allowNegative" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />Permitir montos negativos</label>
+          <div class="rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-sm text-brand-text-secondary">Vista previa: {{ new Intl.NumberFormat('es-MX', { style: 'currency', currency: form.currency === 'tenant' ? 'MXN' : form.currency, minimumFractionDigits: form.currencyDecimals, maximumFractionDigits: form.currencyDecimals }).format(1250.5) }}</div>
         </div>
 
         <div v-else-if="form.dataType === 'date'" class="flex flex-col gap-2">

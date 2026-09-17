@@ -13,6 +13,7 @@ const CODIGO_POSTAL_REGEX = /^\d{5}$/
 
 export const mxFiscalDataSchema = z
   .object({
+    razonSocial: z.string().max(250).nullable().optional(),
     rfc: z.string().regex(RFC_REGEX, 'RFC con formato invalido').nullable().optional(),
     regimenFiscal: z.string().min(1, 'Regimen fiscal requerido').nullable().optional(),
     codigoPostal: z.string().regex(CODIGO_POSTAL_REGEX, 'Codigo postal invalido').nullable().optional(),
@@ -34,6 +35,9 @@ export function getFiscalDataSchema(country: string): z.ZodTypeAny {
 export const tenantUpdateSchema = z
   .object({
     name: z.string().min(1).optional(),
+    address: z.string().max(1000).nullable().optional(),
+    idleTimeoutMinutes: z.number().int().min(5).max(1440).optional(),
+    idleWarningMinutes: z.number().int().min(1).max(10).optional(),
     email: z.string().email().nullable().optional(),
     phone: z.string().nullable().optional(),
     defaultCurrency: z.string().length(3).optional(),
@@ -42,6 +46,7 @@ export const tenantUpdateSchema = z
     fiscalData: z.record(z.string(), z.unknown()).optional()
   })
   .superRefine((body, ctx) => {
+    if (body.idleTimeoutMinutes !== undefined && body.idleWarningMinutes !== undefined && body.idleWarningMinutes >= body.idleTimeoutMinutes) ctx.addIssue({ code: 'custom', path: ['idleWarningMinutes'], message: 'El aviso debe ser anterior al cierre' });
     if (body.fiscalData === undefined) return
     const schema = getFiscalDataSchema(body.country ?? 'MX')
     const result = schema.safeParse(body.fiscalData)

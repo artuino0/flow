@@ -52,6 +52,23 @@ afterAll(async () => {
 })
 
 describe('evaluateTriggersForRecord (Postgres real)', () => {
+  it('evalúa el cambio de campo con el estado anterior del registro', async () => {
+    const triggerId = await insertTrigger('Estado modificado', 'on_update', { field: 'estado', operator: 'changed', value: null })
+    const changed = await evaluateTriggersForRecord(TENANT_A, entityId, 'on_update', { estado: 'listo' }, { estado: 'pendiente' })
+    const unchanged = await evaluateTriggersForRecord(TENANT_A, entityId, 'on_update', { estado: 'listo' }, { estado: 'listo' })
+    expect(changed.matched.map(row => row.id)).toContain(triggerId)
+    expect(unchanged.matched.map(row => row.id)).not.toContain(triggerId)
+  })
+
+  it('devuelve la salida de una decisión interna para seleccionar una rama', async () => {
+    const triggerId = await insertTrigger('Rama aprobada', 'on_update', { field: 'estado', operator: 'eq', value: 'listo' })
+    await admin`update triggers set decision_condition = ${JSON.stringify({ field: 'monto', operator: 'eq', value: 100 })} where id = ${triggerId}`
+    const yes = await evaluateTriggersForRecord(TENANT_A, entityId, 'on_update', { estado: 'listo', monto: 100 })
+    const no = await evaluateTriggersForRecord(TENANT_A, entityId, 'on_update', { estado: 'listo', monto: 200 })
+    expect(yes.matched.find(row => row.id === triggerId)?.decision).toBe(true)
+    expect(no.matched.find(row => row.id === triggerId)?.decision).toBe(false)
+  })
+
   it('una condicion que evalua a true queda en matched', async () => {
     const triggerId = await insertTrigger('Pedido nuevo', 'on_create', { field: 'estado', operator: 'eq', value: 'nuevo' })
 

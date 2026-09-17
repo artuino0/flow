@@ -1,0 +1,21 @@
+import { and, eq, inArray } from 'drizzle-orm'
+import { z } from 'zod'
+import { requireAdminRole } from '~/server/utils/rbac'
+import { withTenant } from '~/server/db'
+import { notificationGroupMembers, notificationGroups, users } from '~/server/db/schema'
+
+const bodySchema = z.object({ name: z.string().trim().min(1).max(100), userIds: z.array(z.string().uuid()).max(500).default([]) })
+
+export default defineEventHandler(async event => {
+  const auth = await requireAdminRole(event)
+  const body = await readValidatedBody(event, bodySchema.parse)
+  const group = await withTenant(auth.tenantId, async tx => {
+    const validUsers = body.userIds.length ? await tx.select({ id: users.id }).from(users).where(and(eq(users.tenantId, auth.tenantId), eq(users.isActive, true), inArray(users.id, body.userIds))) : []
+    if (validUsers.length !== new Set(body.userIds).size) throw createError({ statusCode: 400, statusMessage: 'Uno o más usuarios no pertenecen a esta organización o están inactivos.' })
+    const [created] = await tx.insert(notificationGroups).values({ tenantId: auth.tenantId, name: body.name }).returning()
+    if (validUsers.length) await tx.insert(notificationGroupMembers).values(validUsers.map(user => ({ groupId: created.id, userId: user.id })))
+    return created
+  })
+  setResponseStatus(event, 201)
+  return group
+})

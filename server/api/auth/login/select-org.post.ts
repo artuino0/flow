@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'No tenes acceso a esa organización' })
   }
 
-  issueSessionCookies(event, { sub: membership.userId, tenantId: body.tenantId, roleId: membership.roleId }, config.jwtSecret as string)
+  await issueSessionCookies(event, { sub: membership.userId, tenantId: body.tenantId, roleId: membership.roleId }, config.jwtSecret as string)
 
   return { ok: true }
 })

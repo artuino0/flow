@@ -32,6 +32,9 @@
 // para una sola HU. Tambien se decide NO crear un componente de layout
 // compartido con editar.vue (quedan simetricas pero duplicadas), siguiendo el
 // mismo criterio que esas dos paginas ya usaban entre si desde ERD-23.
+
+import { Clock } from '@lucide/vue'
+
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
@@ -104,12 +107,19 @@ async function onSubmit() {
 
   submitting.value = true
   try {
-    await $fetch(`/api/records/${slug}`, {
+    const res = await $fetch<any>(`/api/records/${slug}`, {
       method: 'POST',
       body: { customData: formValues.value }
     })
     toast.success('Registro creado', `Se creó un nuevo registro en ${data.value?.entity?.singularName || data.value?.entity?.name || slug}.`)
-    await navigateTo(returnTo.value)
+    
+    // Redirect to the newly created record's detail view
+    const newId = res.id
+    if (newId) {
+      await navigateTo(`/registros/${slug}/${newId}`)
+    } else {
+      await navigateTo(returnTo.value)
+    }
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo crear el registro'
     toast.error('No se pudo crear el registro', submitError.value)
@@ -132,59 +142,75 @@ async function onSubmit() {
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">No se pudo cargar la definicion de esta entidad.</p>
 
     <template v-else-if="data">
-      <div class="flex flex-col gap-1">
-        <h1 class="text-[22px] font-bold text-brand-text">Nuevo {{ data.entity.singularName || data.entity.name }}</h1>
-        <p class="text-sm text-brand-text-secondary">Completa los campos para crear un nuevo registro en la entidad {{ data.entity.singularName || data.entity.name }}.</p>
-      </div>
-
-      <p v-if="data.fields.length === 0" class="text-sm text-brand-text-muted">Esta entidad todavía no tiene campos configurados.</p>
-
-      <form v-else class="flex flex-col gap-5" @submit.prevent="onSubmit">
-        <div class="grid grid-cols-1 gap-5" :class="hasTablaFields ? 'lg:grid-cols-12' : ''">
-          <div :class="hasTablaFields ? 'lg:col-span-4' : ''">
-            <div v-if="visibleGeneralFields.length > 0" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-              <div class="border-b border-brand-border-light p-5">
-                <h2 class="text-[15px] font-bold text-brand-text">Información general</h2>
-              </div>
-              <div class="p-5">
-                <DynamicForm ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" />
+      <form class="grid grid-cols-1 gap-5 lg:grid-cols-[360px_1fr]" @submit.prevent="onSubmit">
+        <!-- COLUMNA IZQUIERDA: Detalle (Card Form) -->
+        <div class="flex flex-col h-fit self-start rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+          <div class="flex flex-col gap-3 border-b border-brand-border-light p-5">
+            <div class="flex min-w-0 items-start gap-3">
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">NUEVO REGISTRO</p>
+                <h2 class="break-words text-[17px] font-bold leading-snug text-brand-text">{{ data.entity.singularName || data.entity.name }}</h2>
+                <p class="text-xs text-brand-text-muted">Completa los campos para crear la ficha.</p>
               </div>
             </div>
           </div>
+          
+          <div class="p-5">
+            <DynamicForm v-if="visibleGeneralFields.length > 0" ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" />
+            <p v-else class="text-sm text-brand-text-muted">No hay campos generales configurados.</p>
+            
+            <p v-if="submitError" class="mt-4 text-sm text-brand-error-text">{{ submitError }}</p>
 
-          <div v-if="hasTablaFields" class="flex flex-col gap-5 lg:col-span-8">
-            <div
-              v-for="field in tablaFields"
-              :key="field.id"
-              class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
-            >
-              <div class="border-b border-brand-border-light p-5">
-                <h2 class="text-[15px] font-bold text-brand-text">{{ field.label }}</h2>
-                <p class="mt-0.5 text-xs text-brand-text-muted">Agrega las filas que necesites.</p>
-              </div>
-              <div class="p-5">
-                <DynamicForm ref="tablaFormRefs" v-model="formValues" :fields="[field]" :entity-id="data.entity.id" :disabled="submitting" hide-labels />
-              </div>
+            <div class="mt-6 flex flex-col gap-2">
+              <button
+                type="submit"
+                :disabled="submitting"
+                class="w-full rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {{ submitting ? 'Guardando...' : 'Guardar y continuar' }}
+              </button>
+              <NuxtLink
+                :to="returnTo"
+                class="w-full text-center rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg"
+              >
+                Cancelar
+              </NuxtLink>
             </div>
           </div>
         </div>
 
-        <p v-if="submitError" class="text-sm text-brand-error-text">{{ submitError }}</p>
+        <!-- COLUMNA DERECHA: Asociaciones / Actividad (Placeholder) -->
+        <div class="flex flex-col rounded-lg min-w-0">
+          <div class="flex items-center gap-1 border-b border-brand-border-light" role="tablist">
+            <button type="button" class="border-b-2 px-4 py-3 text-sm font-semibold border-brand-orange text-brand-text">
+              Asociaciones
+            </button>
+            <button type="button" class="border-b-2 px-4 py-3 text-sm font-semibold border-transparent text-brand-text-muted">
+              Actividad
+            </button>
+          </div>
 
-        <div class="flex justify-end gap-2">
-          <NuxtLink
-            :to="returnTo"
-            class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg"
-          >
-            Cancelar
-          </NuxtLink>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {{ submitting ? 'Guardando...' : 'Guardar' }}
-          </button>
+          <div class="flex flex-col gap-5 pt-5">
+            <template v-if="hasTablaFields">
+              <div
+                v-for="field in tablaFields"
+                :key="field.id"
+                class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
+              >
+                <div class="border-b border-brand-border-light px-4 py-3">
+                  <h3 class="text-sm font-bold text-brand-text">{{ field.label }}</h3>
+                </div>
+                <div class="p-4">
+                  <DynamicForm ref="tablaFormRefs" v-model="formValues" :fields="[field]" :entity-id="data.entity.id" :disabled="submitting" hide-labels />
+                </div>
+              </div>
+            </template>
+            
+            <div class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
+              <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
+              <span>Guarda el registro a la izquierda para empezar a registrar actividad y vincular otras relaciones.</span>
+            </div>
+          </div>
         </div>
       </form>
     </template>

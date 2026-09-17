@@ -1,4 +1,6 @@
 import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/utils/auth'
+import { resolveApiKeyAuth } from '~/server/utils/apiKeyAuth'
+import { validateSession } from '~/server/utils/sessions'
 
 // Middleware global (HU-ERD-15): valida el JWT de cualquier ruta /api/* salvo
 // las publicas, y deja el payload disponible en event.context.auth para que
@@ -28,7 +30,7 @@ const PUBLIC_PATHS = new Set([
   '/api/tenants/check-slug'
 ])
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
 
   if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) {
@@ -55,11 +57,17 @@ export default defineEventHandler((event) => {
     // Mismo motivo exacto para "org-pending" (HU multi-organizacion,
     // 2026-09-04): solo sirve para POST /api/auth/login/select-org.
     const purpose = (payload as unknown as { purpose?: string }).purpose
-    if (purpose === 'totp-pending' || purpose === 'org-pending') {
+    if (purpose) {
       throw new Error('Token pendiente (2FA u organizacion), no es una sesion valida')
     }
+    await validateSession(payload)
     event.context.auth = payload
   } catch {
-    throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
+    const apiAuth = await resolveApiKeyAuth(token).catch(() => null)
+    if (!apiAuth) throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
+    if (path.startsWith('/api/auth/')) throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar cuentas o sesiones' })
+    event.context.auth = apiAuth.auth
+    event.context.apiKeyId = apiAuth.apiKeyId
+    event.context.apiKeyScopes = apiAuth.scopes
   }
 })

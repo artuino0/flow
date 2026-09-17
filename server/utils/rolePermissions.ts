@@ -1,6 +1,6 @@
 import { and, count, eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, roleEntityPermissions, roles, users } from '~/server/db/schema'
+import { entities, roleChatPermissions, roleEntityPermissions, roles, users } from '~/server/db/schema'
 
 // HU-ERD-33: logica de la pantalla de gestion de roles y permisos, separada
 // de los endpoints (mismo patron que dashboardMetrics.ts/HU-ERD-31) para
@@ -117,6 +117,7 @@ export interface CreateRoleResult extends RoleSummary {
 export async function createRole(tenantId: string, name: string, copyFromRoleId?: string | null): Promise<CreateRoleResult> {
   return withTenant(tenantId, async (tx) => {
     let sourcePerms: (typeof roleEntityPermissions.$inferSelect)[] = []
+    let sourceChatPerms: typeof roleChatPermissions.$inferSelect | null = null
     if (copyFromRoleId) {
       const [sourceRole] = await tx
         .select({ id: roles.id })
@@ -127,6 +128,7 @@ export async function createRole(tenantId: string, name: string, copyFromRoleId?
         throw new ReferenceRoleNotFoundError('El rol de referencia no existe')
       }
       sourcePerms = await tx.select().from(roleEntityPermissions).where(eq(roleEntityPermissions.roleId, copyFromRoleId))
+      ;[sourceChatPerms] = await tx.select().from(roleChatPermissions).where(eq(roleChatPermissions.roleId, copyFromRoleId)).limit(1)
     }
 
     let role: typeof roles.$inferSelect
@@ -156,6 +158,15 @@ export async function createRole(tenantId: string, name: string, copyFromRoleId?
       })
       copiedPermissionCount += trueCount
     }
+
+    await tx.insert(roleChatPermissions).values({
+      tenantId,
+      roleId: role.id,
+      canAccess: sourceChatPerms?.canAccess ?? true,
+      canStartDirect: sourceChatPerms?.canStartDirect ?? true,
+      canSendAttachments: sourceChatPerms?.canSendAttachments ?? true,
+      canCreateGroups: sourceChatPerms?.canCreateGroups ?? false
+    })
 
     return { id: role.id, name: role.name, isSystem: role.isSystem, userCount: 0, copiedPermissionCount }
   })

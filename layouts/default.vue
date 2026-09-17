@@ -9,9 +9,10 @@
 // componente AppHeader del .pen). No hay endpoint de nombre de tenant hoy
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
-import { Bell, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X } from '@lucide/vue'
+import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings } from '@lucide/vue'
 
 const { user, logout } = useAuth()
+const { dirty: settingsDirty, saveHandler, discardHandler } = useSettingsDirty()
 
 // Bug reportado por el usuario (2026-09-07): "el menu no se colapsa tiene el
 // icono pero no funciona" - el icono `panel-left-close` de la barra "MENÚ"
@@ -27,15 +28,23 @@ const { user, logout } = useAuth()
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'flowerp-sidebar-collapsed'
 const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
+const profileMenuOpen = ref(false)
 const navRoute = useRoute()
-watch(() => navRoute.path, () => { mobileMenuOpen.value = false })
+const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
+// El chat es una superficie de trabajo de borde a borde. A diferencia de
+// formularios y listados, no debe heredar el padding ni el scroll general del
+// layout: sus propios paneles controlan el desplazamiento interno.
+const fullBleedRoute = computed(() => navRoute.path === '/chat' || navRoute.path.startsWith('/chat/'))
+watch(() => navRoute.path, () => { mobileMenuOpen.value = false; profileMenuOpen.value = false })
 onMounted(() => {
   try {
     sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
   } catch {
     // localStorage no disponible - se queda con el default (expandido).
   }
+  window.addEventListener('click', closeProfileMenu)
 })
+onBeforeUnmount(() => window.removeEventListener('click', closeProfileMenu))
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   try {
@@ -45,10 +54,15 @@ function toggleSidebar() {
   }
 }
 
+function closeProfileMenu(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('[data-profile-menu]')) profileMenuOpen.value = false
+}
+
 // HU-ERD-83 (parte 2): sesion deslizante + aviso de inactividad - ver
 // composables/useIdleTimeout.ts. Solo tiene sentido en el layout autenticado
 // (login.vue usa layout: false).
-const { showWarning, countdown, confirmActive } = useIdleTimeout(async () => {
+const { showWarning, countdown, warningSeconds, confirmActive } = useIdleTimeout(async () => {
   await onLogout('inactividad')
 })
 
@@ -67,41 +81,50 @@ async function onLogout(reason?: 'inactividad') {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-brand-bg font-sans">
+  <div class="flex h-screen flex-col overflow-hidden bg-brand-bg font-sans">
     <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
       <div class="flex items-center gap-2">
-        <button type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
+        <button v-if="!editorFullscreen" type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
         <img src="/brand/isotipo.png" alt="FlowERP" class="h-7 w-7 object-contain" />
         <span class="text-base font-bold text-brand-text">FlowERP</span>
       </div>
 
-      <div class="flex items-center gap-4">
-        <button
-          type="button"
-          title="Notificaciones"
-          class="flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg"
-        >
-          <Bell class="h-[17px] w-[17px]" :stroke-width="1.75" />
-        </button>
+      <GlobalSearch />
+      <div class="flex items-center gap-2 sm:gap-4">
+        <NotificationCenter />
 
         <div class="h-6 w-px bg-brand-border-light" />
 
-        <NuxtLink to="/mi-cuenta" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg">
-          <div class="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-brand-blue-bg">
-            <span class="text-xs font-bold text-brand-blue">{{ initials }}</span>
-          </div>
-          <span v-if="user" class="text-sm font-semibold text-brand-text">{{ user.fullName || user.email }}</span>
-          <ChevronDown class="h-[15px] w-[15px] text-brand-text-muted" :stroke-width="2" />
-        </NuxtLink>
+        <div class="relative" data-profile-menu>
+          <button
+            type="button"
+            aria-label="Abrir menú de cuenta"
+            :aria-expanded="profileMenuOpen"
+            class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"
+            @click.stop="profileMenuOpen = !profileMenuOpen"
+          >
+            <div class="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-brand-blue-bg">
+              <span class="text-xs font-bold text-brand-blue">{{ initials }}</span>
+            </div>
+            <span v-if="user" class="hidden text-sm font-semibold text-brand-text sm:inline">{{ user.fullName || user.email }}</span>
+            <ChevronDown class="h-[15px] w-[15px] text-brand-text-muted transition-transform" :class="profileMenuOpen ? 'rotate-180' : ''" :stroke-width="2" />
+          </button>
 
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
-          @click="onLogout()"
-        >
-          <LogOut class="h-4 w-4" :stroke-width="2" />
-          Salir
-        </button>
+          <div v-if="profileMenuOpen" class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+            <div class="border-b border-brand-border-light px-4 py-3">
+              <p class="truncate text-sm font-semibold text-brand-text">{{ user?.fullName || user?.email }}</p>
+              <p v-if="user?.fullName" class="truncate text-xs text-brand-text-muted">{{ user.email }}</p>
+            </div>
+            <NuxtLink to="/ajustes?section=perfil" class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-text-secondary hover:bg-brand-bg">
+              <Settings class="h-4 w-4 text-brand-text-muted" :stroke-width="1.8" />
+              Ajustes de cuenta
+            </NuxtLink>
+            <button type="button" class="flex w-full items-center gap-3 border-t border-brand-border-light px-4 py-3 text-left text-sm font-medium text-brand-text-secondary hover:bg-brand-bg" @click="onLogout()">
+              <LogOut class="h-4 w-4 text-brand-text-muted" :stroke-width="1.8" />
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -112,16 +135,17 @@ async function onLogout(reason?: 'inactividad') {
     <InactivityWarningModal
       v-if="showWarning"
       :countdown="countdown"
-      :total="WARNING_DURATION_SECONDS"
+      :total="warningSeconds"
       @confirm="confirmActive"
       @logout="onLogout()"
     />
 
-    <div class="flex flex-1">
+    <div class="relative flex min-h-0 flex-1">
       <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-black/30 sm:hidden" @click="mobileMenuOpen = false" />
       <aside
-        class="shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:static sm:flex"
-        :class="[sidebarCollapsed ? 'w-16' : 'w-60', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
+        v-if="!editorFullscreen"
+        class="z-20 h-full shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:static sm:flex"
+        :class="[sidebarCollapsed ? 'w-16' : 'w-80', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
         @keydown.esc="mobileMenuOpen = false"
       >
         <div class="flex items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
@@ -137,15 +161,22 @@ async function onLogout(reason?: 'inactividad') {
             <PanelLeftClose v-else class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
-        <div class="flex flex-1 flex-col gap-px overflow-y-auto p-2.5">
+        <div class="sidebar-scroll flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overflow-x-hidden p-2.5">
           <AppNav :compact="sidebarCollapsed" />
         </div>
       </aside>
 
-      <main class="flex-1 overflow-x-auto p-8">
+      <main class="min-h-0 min-w-0 flex-1" :class="fullBleedRoute ? 'overflow-hidden p-0' : editorFullscreen ? 'overflow-auto p-0' : 'overflow-auto p-8 pb-24'">
         <slot />
       </main>
     </div>
+
+    <div v-if="settingsDirty" class="fixed bottom-0 right-0 z-30 flex items-center justify-between gap-4 border-t border-brand-border-light bg-white px-6 py-4 shadow-[0_-2px_8px_#33475B12]" :class="sidebarCollapsed ? 'left-16' : 'left-60'">
+      <span class="text-xs font-medium text-brand-warning-text">Cambios sin guardar</span>
+      <div class="flex gap-3"><button class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="discardHandler?.()">Descartar</button><button class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="saveHandler?.()">Guardar cambios</button></div>
+    </div>
+
+    <ChatFloatingDock />
 
     <!-- Pedido directo del usuario ("aplica los toast, checa donde deben ir"):
     montado una sola vez aca (layout autenticado) para que cualquier pantalla
@@ -154,3 +185,10 @@ async function onLogout(reason?: 'inactividad') {
     <ToastContainer />
   </div>
 </template>
+
+<style scoped>
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.sidebar-scroll::-webkit-scrollbar { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.sidebar-scroll::-webkit-scrollbar-button { display: none; }
+</style>

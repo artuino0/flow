@@ -137,7 +137,7 @@ export async function resolveLoginResult(event: H3Event, personId: string, secre
   }
   if (memberships.length === 1) {
     const membership = memberships[0]
-    issueSessionCookies(event, { sub: membership.userId, tenantId: membership.tenantId, roleId: membership.roleId }, secret)
+    await issueSessionCookies(event, { sub: membership.userId, tenantId: membership.tenantId, roleId: membership.roleId }, secret)
     return { ok: true, requiresTotp: false, requiresOrgSelection: false }
   }
   const pendingToken = signPendingOrgToken({ sub: personId }, secret)
