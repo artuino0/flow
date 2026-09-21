@@ -14,12 +14,11 @@ export const entities = pgTable('entities', {
   // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, 2026-09-01):
   // switch "Módulo activo" - true por defecto (todo modulo existente antes de
   // esta columna sigue activo, sin migracion de datos aparte). Cuando esta en
-  // false, requirePermission() (server/utils/rbac.ts) bloquea con 403 el
-  // acceso a records/campos de esta entidad para cualquier rol NO
-  // administrador (roles.isSystem) - un administrador siempre puede seguir
-  // viendo/editando el modulo (para poder reactivarlo). No borra ni oculta
-  // datos, solo bloquea el acceso mientras esta apagado.
+  // false, los registros siguen legibles con canRead, pero ninguna escritura
+  // nueva se acepta, incluso para administradores. deletedAt distingue los
+  // módulos borrados (restaurables) de los desactivados manualmente.
   isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   // HU-ERD-74: configuracion del "Diseño del detalle" (que propiedades y
   // relaciones inversas se muestran en la ficha de un registro, en que orden,
   // y si se muestra la linea de tiempo de actividad). Null = sin configurar
@@ -109,6 +108,14 @@ export const entities = pgTable('entities', {
   // Mismo criterio de "automatico/heuristica + override opcional, nunca
   // rompe lo existente" que detailLayout/listLayout/labelField de arriba.
   singularName: text('singular_name'),
+  // Integración fiscal opcional: define qué campos de este módulo alimentan
+  // al receptor/emisor de un CFDI. La configuración es explícita; nunca se
+  // infiere por nombres y no duplica el catálogo del módulo.
+  fiscalConfig: jsonb('fiscal_config'),
+  // Configuración opcional de etiquetas imprimibles. Vive en el módulo para
+  // que cada catálogo (por ejemplo Productos) pueda activar y diseñar su
+  // propia etiqueta sin crear una tabla paralela por cada tamaño.
+  labelConfig: jsonb('label_config'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
@@ -816,6 +823,142 @@ export const userChatPermissionOverrides = pgTable('user_chat_permission_overrid
   tenantIdx: index('user_chat_permission_overrides_tenant_idx').on(table.tenantId)
 }))
 
+// Aplicaciones fijas de Flow. Core y Ajustes permanecen disponibles por
+// defecto; las demás pueden habilitarse por organización sin convertirlas en
+// módulos dinámicos ni mezclar su seguridad con role_entity_permissions.
+export const tenantApps = pgTable('tenant_apps', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  appKey: text('app_key').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  config: jsonb('config').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantAppUnique: uniqueIndex('tenant_apps_tenant_app_unique').on(table.tenantId, table.appKey),
+  tenantIdx: index('tenant_apps_tenant_idx').on(table.tenantId)
+}))
+
+// Permisos funcionales de aplicaciones fijas. Las claves se validan en
+// utils/flowCapabilities.ts; una fila ausente conserva el valor compatible
+// con el comportamiento anterior.
+export const roleCapabilities = pgTable('role_capabilities', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  capabilityKey: text('capability_key').notNull(),
+  allowed: boolean('allowed').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  roleKeyUnique: uniqueIndex('role_capabilities_role_key_unique').on(table.roleId, table.capabilityKey),
+  tenantIdx: index('role_capabilities_tenant_idx').on(table.tenantId)
+}))
+
+export const userCapabilityOverrides = pgTable('user_capability_overrides', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  capabilityKey: text('capability_key').notNull(),
+  allowed: boolean('allowed'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  userKeyUnique: uniqueIndex('user_capability_overrides_user_key_unique').on(table.userId, table.capabilityKey),
+  tenantIdx: index('user_capability_overrides_tenant_idx').on(table.tenantId)
+}))
+
+// Sites es una aplicacion fija: sus paginas no son entities dinamicas de
+// Flow Core. Todo el contenido pertenece al tenant y conserva versiones para
+// que publicar nunca exponga un borrador en curso.
+export const sites = pgTable('sites', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  status: text('status').notNull().default('draft'),
+  locale: text('locale').notNull().default('es-MX'),
+  settings: jsonb('settings').notNull().default({}),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantSlugUnique: uniqueIndex('sites_tenant_slug_unique').on(table.tenantId, table.slug),
+  tenantIdx: index('sites_tenant_idx').on(table.tenantId)
+}))
+
+export const sitePages = pgTable('site_pages', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+  title: text('title').notNull(),
+  kind: text('kind').notNull().default('website'), // website | landing
+  status: text('status').notNull().default('draft'),
+  seo: jsonb('seo').notNull().default({}),
+  draftVersionId: uuid('draft_version_id'),
+  publishedVersionId: uuid('published_version_id'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  sitePathUnique: uniqueIndex('site_pages_site_path_unique').on(table.siteId, table.path),
+  tenantIdx: index('site_pages_tenant_idx').on(table.tenantId),
+  siteIdx: index('site_pages_site_idx').on(table.siteId)
+}))
+
+export const siteDomains = pgTable('site_domains', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  hostname: text('hostname').notNull(),
+  status: text('status').notNull().default('pending'),
+  isPrimary: boolean('is_primary').notNull().default(false),
+  rootPageId: uuid('root_page_id').references(() => sitePages.id, { onDelete: 'set null' }),
+  provider: text('provider').notNull().default('vercel'),
+  providerData: jsonb('provider_data').notNull().default({}),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  hostnameUnique: uniqueIndex('site_domains_hostname_unique').on(table.hostname),
+  tenantIdx: index('site_domains_tenant_idx').on(table.tenantId),
+  siteIdx: index('site_domains_site_idx').on(table.siteId)
+}))
+export const sitePageVersions = pgTable('site_page_versions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  pageId: uuid('page_id').notNull().references(() => sitePages.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  status: text('status').notNull().default('draft'),
+  html: text('html').notNull().default(''),
+  css: text('css').notNull().default(''),
+  formManifest: jsonb('form_manifest').notNull().default([]),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  pageVersionUnique: uniqueIndex('site_page_versions_page_version_unique').on(table.pageId, table.version),
+  tenantIdx: index('site_page_versions_tenant_idx').on(table.tenantId),
+  pageIdx: index('site_page_versions_page_idx').on(table.pageId)
+}))
+export const siteFormConnections = pgTable('site_form_connections', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  pageId: uuid('page_id').notNull().references(() => sitePages.id, { onDelete: 'cascade' }),
+  formKey: text('form_key').notNull(),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
+  fieldMapping: jsonb('field_mapping').notNull().default({}),
+  status: text('status').notNull().default('active'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  formUnique: uniqueIndex('site_form_connections_form_unique').on(table.tenantId, table.siteId, table.pageId, table.formKey),
+  tenantIdx: index('site_form_connections_tenant_idx').on(table.tenantId),
+  entityIdx: index('site_form_connections_entity_idx').on(table.entityId)
+}))
 export const chatConversations = pgTable('chat_conversations', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -854,6 +997,10 @@ export const chatMessages = pgTable('chat_messages', {
   senderUserId: uuid('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
   clientMessageId: uuid('client_message_id').notNull(),
   body: text('body').notNull().default(''),
+  gifUrl: text('gif_url'),
+  // Enlace opcional a un registro. Se conserva como referencia estable y se
+  // filtra al serializar según el permiso del lector.
+  sharedRecord: jsonb('shared_record').$type<{ entitySlug: string; recordId: string; label: string; url: string } | null>(),
   replyToMessageId: uuid('reply_to_message_id'),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -992,6 +1139,30 @@ export const cfdiDocuments = pgTable('cfdi_documents', {
   serieIdx: index('cfdi_documents_serie_idx').on(table.serieId),
   sourceIdx: index('cfdi_documents_source_idx').on(table.sourceEntityId, table.sourceRecordId),
   relacionadoIdx: index('cfdi_documents_relacionado_idx').on(table.cfdiRelacionadoId)
+}))
+
+// Relaciones fiscales universales. Un CFDI puede originarse en varios
+// registros (pedido, venta, servicio, embarque, CxC, etc.); por eso el
+// vínculo no vive como una sola columna en cfdi_documents. Se conserva
+// source_* por compatibilidad con la primera versión y esta tabla es la
+// fuente nueva para consultar el grafo fiscal completo.
+export const cfdiDocumentLinks = pgTable('cfdi_document_links', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => cfdiDocuments.id, { onDelete: 'cascade' }),
+  entityId: uuid('entity_id').notNull(),
+  recordId: uuid('record_id').notNull(),
+  relationType: text('relation_type').notNull().default('source'),
+  amount: numeric('amount', { precision: 18, scale: 2 }),
+  currency: text('currency'),
+  metadata: jsonb('metadata').notNull().default({}),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  uniqueLink: uniqueIndex('cfdi_document_links_unique').on(table.tenantId, table.documentId, table.entityId, table.recordId, table.relationType),
+  documentIdx: index('cfdi_document_links_document_idx').on(table.documentId),
+  recordIdx: index('cfdi_document_links_record_idx').on(table.tenantId, table.entityId, table.recordId),
+  tenantIdx: index('cfdi_document_links_tenant_idx').on(table.tenantId)
 }))
 
 // Conceptos (lineas) del CFDI. clave_prod_serv/clave_unidad e impuestos son
