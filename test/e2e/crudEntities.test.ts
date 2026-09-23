@@ -750,7 +750,7 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
     expect(emptyRes.status).toBe(400)
   })
 
-  it('DELETE /api/entities/:id borra un modulo sin records, pero 409 si tiene records', async () => {
+  it('DELETE /api/entities/:id deshabilita un módulo sin borrar sus registros y permite restaurarlo', async () => {
     const createRes = await api('/api/entities', {
       method: 'POST',
       body: JSON.stringify({ name: 'Descartable', slug: 'descartable-e2e' })
@@ -760,23 +760,18 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
     const deleteRes = await api(`/api/entities/${entity.id}`, { method: 'DELETE' })
     expect(deleteRes.status).toBe(200)
     expect((await deleteRes.json()).deleted).toBe(true)
+    expect((await (await api('/api/entities?deleted=only')).json()).entities.some((row: { id: string }) => row.id === entity.id)).toBe(true)
+    expect((await (await api('/api/entities')).json()).entities.some((row: { id: string }) => row.id === entity.id)).toBe(false)
 
-    // "proyectos" ya tiene un record (test anterior) - debe bloquear el borrado.
-    const proyectosListRes = await api('/api/records/proyectos?pageSize=1')
-    const proyectosList = await proyectosListRes.json()
-    const proyectosId = (await (await api('/api/roles/' + adminRoleId + '/permissions')).json()).permissions.find(
-      (p: { entitySlug: string }) => p.entitySlug === 'proyectos'
-    ).entityId
-    expect(proyectosList.data.length).toBeGreaterThan(0)
-
-    const blockedRes = await api(`/api/entities/${proyectosId}`, { method: 'DELETE' })
-    expect(blockedRes.status).toBe(409)
-
-    const nonAdminRes = await fetch(`${baseUrl}/api/entities/${proyectosId}`, {
+    const nonAdminRes = await fetch(`${baseUrl}/api/entities/${entity.id}`, {
       method: 'DELETE',
       headers: { cookie: nonAdminCookie }
     })
     expect(nonAdminRes.status).toBe(403)
+
+    const restoreRes = await api(`/api/entities/${entity.id}/restore`, { method: 'POST' })
+    expect(restoreRes.status).toBe(200)
+    expect((await restoreRes.json()).isActive).toBe(true)
   })
 })
 
@@ -1419,7 +1414,7 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     expect(nonAdminHtml).not.toContain('Módulos')
   })
 
-  it('DELETE de un modulo con registros existentes devuelve un mensaje 409 claro (con el conteo), no un error generico', async () => {
+  it('DELETE de un módulo con registros existentes conserva esos datos para consulta', async () => {
     const createRes = await api('/api/entities', {
       method: 'POST',
       body: JSON.stringify({ name: 'Con Datos E2E', slug: 'con-datos-listado-e2e' })
@@ -1428,10 +1423,9 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     await api(`/api/records/${entity.slug}`, { method: 'POST', body: JSON.stringify({ customData: {} }) })
 
     const deleteRes = await api(`/api/entities/${entity.id}`, { method: 'DELETE' })
-    expect(deleteRes.status).toBe(409)
-    const body = await deleteRes.json()
-    expect(body.statusMessage).toContain('registro')
-    expect(body.statusMessage).toContain('1')
+    expect(deleteRes.status).toBe(200)
+    expect((await (await api(`/api/records/${entity.slug}`)).json()).total).toBe(1)
+    expect((await api(`/api/records/${entity.slug}`, { method: 'POST', body: JSON.stringify({ customData: {} }) })).status).toBe(403)
   })
 
   it('GET /api/entities incluye recordCount/fieldCount reales por modulo (columnas "Registros"/"Campos" del diseno)', async () => {
@@ -2527,20 +2521,22 @@ describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso p
     expect(res.status).toBe(200)
   })
 
-  it('PUT /api/entities/:id { isActive: false } lo desactiva, y bloquea con 403 el acceso a fields/records para el rol no-admin (aunque tenga canRead otorgado)', async () => {
+  it('PUT /api/entities/:id { isActive: false } conserva lectura histórica y bloquea nuevas escrituras', async () => {
     const putRes = await api(`/api/entities/${redesignEntityId}`, { method: 'PUT', body: JSON.stringify({ isActive: false }) })
     expect(putRes.status).toBe(200)
     expect((await putRes.json()).isActive).toBe(false)
 
     const fieldsRes = await fetch(`${baseUrl}/api/entities/${redesignEntitySlug}/fields`, { headers: { cookie: redesignNonAdminCookie } })
-    expect(fieldsRes.status).toBe(403)
-    expect((await fieldsRes.json()).statusMessage).toContain('desactivado')
+    expect(fieldsRes.status).toBe(200)
+    expect((await fieldsRes.json()).permissions.canCreate).toBe(false)
 
     const recordsRes = await fetch(`${baseUrl}/api/records/${redesignEntitySlug}`, { headers: { cookie: redesignNonAdminCookie } })
-    expect(recordsRes.status).toBe(403)
+    expect(recordsRes.status).toBe(200)
+    const createRes = await api(`/api/records/${redesignEntitySlug}`, { method: 'POST', body: JSON.stringify({ customData: {} }) })
+    expect(createRes.status).toBe(403)
   })
 
-  it('un administrador sigue teniendo acceso completo a un modulo desactivado (para poder reactivarlo)', async () => {
+  it('un administrador puede consultar un modulo desactivado para reactivarlo', async () => {
     const res = await api(`/api/entities/${redesignEntitySlug}/fields`)
     expect(res.status).toBe(200)
   })
@@ -2553,13 +2549,14 @@ describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso p
     expect(fieldsRes.status).toBe(200)
   })
 
-  it('SSR: pages/modulos/[id]/editar.vue renderiza la barra de pestañas nueva (incluidas Diseño del detalle/Diseño del listado/Vista previa), el campo "Ruta" y la Zona de peligro', async () => {
+  it('SSR: el editor muestra diseño del detalle y listado sin pestaña Vista previa', async () => {
     const res = await fetch(`${baseUrl}/modulos/${redesignEntityId}/editar`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    for (const label of ['Información general', 'Campos', 'Diseño del detalle', 'Diseño del listado', 'Vista previa', 'Ruta', 'Módulo activo', 'Zona de peligro', 'Eliminar módulo']) {
+    for (const label of ['Información general', 'Campos', 'Diseño del detalle', 'Diseño del listado', 'Ruta', 'Módulo activo', 'Zona de peligro', 'Eliminar módulo']) {
       expect(html).toContain(label)
     }
+    expect(html).not.toContain('>Vista previa</span>')
   })
 
   it('SSR: pages/modulos/index.vue muestra la columna "Estado" con el badge Activo/Inactivo real de cada modulo', async () => {

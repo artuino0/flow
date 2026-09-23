@@ -1,6 +1,7 @@
 // HU-ERD-23: metadatos de una entidad (campos + tipo + reglas), usados por
 // el Form Builder (DynamicForm.vue) para saber que renderizar. Consume
 // GET /api/entities/:slug/fields (agregado como parte de esta HU).
+import type { LabelConfig } from '~/utils/labelTemplates'
 export interface EntityFieldMeta {
   id: string
   name: string
@@ -24,6 +25,7 @@ export interface EntityMeta {
   // null/undefined = las pantallas de crear/editar registro usan `name` tal
   // cual (comportamiento de siempre).
   singularName?: string | null
+  labelConfig?: LabelConfig | null
 }
 
 export interface EntityPermissions {
@@ -75,6 +77,14 @@ export interface ListLayout {
   defaultSort: ListLayoutDefaultSort | null
 }
 
+export interface BoardConfig {
+  enabled: boolean
+  statusField: string | null
+  titleField: string | null
+  secondaryFields: string[]
+  defaultView: 'table' | 'board'
+}
+
 export interface EntityFieldsResponse {
   entity: EntityMeta
   fields: EntityFieldMeta[]
@@ -82,6 +92,7 @@ export interface EntityFieldsResponse {
   inverseRelations: InverseRelation[]
   detailLayout: DetailLayout
   listLayout: ListLayout
+  boardConfig: BoardConfig
 }
 
 export function useEntityFields(slug: string) {

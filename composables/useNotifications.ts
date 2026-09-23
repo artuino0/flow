@@ -60,7 +60,10 @@ export function useNotifications() {
     const notification = new Notification(item.title, { body: item.message, tag: `notification-${item.id}` })
     notification.onclick = () => {
       window.focus()
-      if (item.actionUrl) void navigateTo(item.actionUrl, { external: !item.actionUrl.startsWith('/') })
+      if (item.actionUrl) {
+        const target = resolveNotificationActionUrl(item.actionUrl, window.location.origin)
+        void navigateTo(target, { external: !target.startsWith('/') })
+      }
       notification.close()
     }
   }
@@ -93,6 +96,12 @@ export function useNotifications() {
     unsubscribeRealtime = realtime.subscribe<NotificationItem>('notification.created', event => {
       addIncoming(event.payload)
     })
+    const unsubscribePoll = realtime.subscribe('realtime.poll', () => void refresh())
+    const unsubscribeEvents = unsubscribeRealtime
+    unsubscribeRealtime = () => {
+      unsubscribeEvents()
+      unsubscribePoll()
+    }
     realtime.start()
     // Respaldo para reconexiones y despliegues con varias instancias mientras
     // el bus del servidor todavía no se conecte a Redis Pub/Sub.

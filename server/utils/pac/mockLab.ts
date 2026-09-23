@@ -53,13 +53,13 @@ function totalesXml(subtotal: number, trasladoTotal: number, retencionTotal: num
 
 function tfd(uuid: string, stampedAt: Date): string {
   return `  <cfdi:Complemento>
-    <tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xsi:schemaLocation="http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd" Version="1.1" UUID="${uuid}" FechaTimbrado="${stampedAt.toISOString()}" SelloCFD="LABORATORIO-FLOWERP" NoCertificadoSAT="LAB0000000000000000000" SelloSAT="SIMULADO-LABORATORIO-FLOWERP" RfcProvCertif="LAB010101AAA"/>
+    <tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xsi:schemaLocation="http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd" Version="1.1" UUID="${uuid}" FechaTimbrado="${stampedAt.toISOString()}" SelloCFD="LABORATORIO-FLOW" NoCertificadoSAT="LAB0000000000000000000" SelloSAT="SIMULADO-LABORATORIO-FLOW" RfcProvCertif="LAB010101AAA"/>
   </cfdi:Complemento>`
 }
 
 function buildInvoiceXml(input: PacStampInput, uuid: string, stampedAt: Date, subtotal: number, trasladoTotal: number, retencionTotal: number): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- LABORATORIO FlowERP: documento SIMULADO, sin valor fiscal. No fue timbrado por un PAC autorizado. -->
+<!-- LABORATORIO Flow: documento SIMULADO, sin valor fiscal. No fue timbrado por un PAC autorizado. -->
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="4.0" Serie="${xmlEsc(input.serie)}" Folio="${input.folio}" Fecha="${stampedAt.toISOString()}" FormaPago="${input.formaPago ?? '99'}" MetodoPago="${input.metodoPago}" Moneda="${input.moneda}" SubTotal="${money(subtotal)}" Total="${money(subtotal + trasladoTotal - retencionTotal)}" Exportacion="${input.exportacion}" LugarExpedicion="${xmlEsc(input.emisor.codigoPostal)}" Sello="LABORATORIO" NoCertificado="LAB0000000000000000000">
   <cfdi:Emisor Rfc="${xmlEsc(input.emisor.rfc)}" Nombre="${xmlEsc(input.emisor.nombre)}" RegimenFiscal="${xmlEsc(input.emisor.regimenFiscal)}"/>
   <cfdi:Receptor Rfc="${xmlEsc(input.receptor.rfc)}" Nombre="${xmlEsc(input.receptor.nombre)}" DomicilioFiscalReceptor="${xmlEsc(input.receptor.codigoPostal)}" RegimenFiscalReceptor="${xmlEsc(input.receptor.regimenFiscal)}" UsoCFDI="${xmlEsc(input.usoCfdi)}"/>
@@ -78,7 +78,7 @@ function buildPaymentXml(input: PacPaymentStampInput, uuid: string, stampedAt: D
     )
     .join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- LABORATORIO FlowERP: documento SIMULADO, sin valor fiscal. No fue timbrado por un PAC autorizado. -->
+<!-- LABORATORIO Flow: documento SIMULADO, sin valor fiscal. No fue timbrado por un PAC autorizado. -->
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0" Serie="${xmlEsc(input.serie)}" Folio="${input.folio}" Fecha="${stampedAt.toISOString()}" Total="${money(input.montoTotal)}" SubTotal="${money(input.montoTotal)}" Moneda="${input.moneda}" Exportacion="01" LugarExpedicion="${xmlEsc(input.emisor.codigoPostal)}" Sello="LABORATORIO">
   <cfdi:Emisor Rfc="${xmlEsc(input.emisor.rfc)}" Nombre="${xmlEsc(input.emisor.nombre)}" RegimenFiscal="${xmlEsc(input.emisor.regimenFiscal)}"/>
   <cfdi:Receptor Rfc="${xmlEsc(input.receptor.rfc)}" Nombre="${xmlEsc(input.receptor.nombre)}" DomicilioFiscalReceptor="${xmlEsc(input.receptor.codigoPostal)}" RegimenFiscalReceptor="${xmlEsc(input.receptor.regimenFiscal)}" UsoCFDI="P01"/>
@@ -125,7 +125,7 @@ export class MockLabProvider implements PacProvider {
   readonly name = 'lab'
 
   async verifyCredentials(): Promise<{ ok: boolean; message: string }> {
-    return { ok: true, message: 'Laboratorio local FlowERP activo (sin PAC externo)' }
+    return { ok: true, message: 'Laboratorio local Flow activo (sin PAC externo)' }
   }
 
   async stamp(input: PacStampInput): Promise<PacStampResult> {
@@ -141,7 +141,7 @@ export class MockLabProvider implements PacProvider {
       `Receptor: ${input.receptor.nombre} (${input.receptor.rfc})`,
       `SubTotal: ${money(subtotal)}  Total: ${money(subtotal + trasladoTotal - retencionTotal)} ${input.moneda}`,
       '',
-      'Documento SIMULADO por el laboratorio local de FlowERP.',
+      'Documento SIMULADO por el laboratorio local de Flow.',
       'No tiene valor fiscal ni sello real del SAT.'
     ])
     return { uuidFiscal: uuid, providerDocumentId: `lab-${uuid}`, fechaTimbrado: stampedAt, xml: Buffer.from(xml, 'utf8'), pdf }
@@ -157,7 +157,7 @@ export class MockLabProvider implements PacProvider {
       `Monto total: ${money(input.montoTotal)} ${input.moneda}`,
       `Documentos relacionados: ${input.doctos.length}`,
       '',
-      'Documento SIMULADO por el laboratorio local de FlowERP.'
+      'Documento SIMULADO por el laboratorio local de Flow.'
     ])
     return { uuidFiscal: uuid, providerDocumentId: `lab-${uuid}`, fechaTimbrado: stampedAt, xml: Buffer.from(xml, 'utf8'), pdf }
   }
@@ -165,7 +165,7 @@ export class MockLabProvider implements PacProvider {
   /** Regenera binarios desde el UUID embebido en el id (`lab-{uuid}`), sin conceptos (stateless). */
   async fetchBinaries(providerDocumentId: string): Promise<{ xml: Buffer; pdf: Buffer }> {
     const uuid = providerDocumentId.startsWith('lab-') ? providerDocumentId.slice(4).toUpperCase() : providerDocumentId.toUpperCase()
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- LABORATORIO FlowERP: binarios REGENERADOS para recovery, sin conceptos. -->\n<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0">\n${tfd(uuid, new Date())}\n</cfdi:Comprobante>\n`
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- LABORATORIO Flow: binarios REGENERADOS para recovery, sin conceptos. -->\n<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0">\n${tfd(uuid, new Date())}\n</cfdi:Comprobante>\n`
     const pdf = buildLabPdf(`CFDI de laboratorio (regenerado)`, [`UUID (simulado): ${uuid}`, 'Binarios regenerados por el recovery del laboratorio.'])
     return { xml: Buffer.from(xml, 'utf8'), pdf }
   }

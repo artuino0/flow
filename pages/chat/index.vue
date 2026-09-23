@@ -13,6 +13,7 @@ const groupEditOpen = ref(false)
 const users = ref<ChatPerson[]>([])
 const usersLoading = ref(false)
 const threadLoading = ref(false)
+const sharedRecord = ref<{ entitySlug: string; recordId: string; label: string; url: string } | null>(null)
 const toast = useToast()
 
 const current = computed(() => chat.state.value.selectedId ? chat.conversation(chat.state.value.selectedId) : null)
@@ -21,6 +22,9 @@ const list = computed(() => tab.value === 'archived' ? chat.state.value.archived
 onMounted(async () => {
   chat.state.value.chatViewActive = true
   await chat.initialize()
+  if (typeof route.query.shareEntity === 'string' && typeof route.query.shareRecord === 'string' && typeof route.query.shareLabel === 'string') {
+    sharedRecord.value = { entitySlug: route.query.shareEntity, recordId: route.query.shareRecord, label: route.query.shareLabel, url: `/registros/${route.query.shareEntity}/${route.query.shareRecord}` }
+  }
   const requested = typeof route.query.conversation === 'string' ? route.query.conversation : null
   if (requested && chat.conversation(requested)) await openConversation(requested, false)
 })
@@ -46,7 +50,7 @@ async function updateGroup(title: string, userIds: string[]) { if (!current.valu
 async function createDirect(userId: string) { try { const id = await chat.createDirect(userId); newOpen.value = false; await openConversation(id) } catch (error: any) { toast.error('No se pudo iniciar el chat', error?.data?.statusMessage) } }
 async function createGroup(title: string, userIds: string[]) { try { const id = await chat.createGroup(title, userIds); newOpen.value = false; await openConversation(id) } catch (error: any) { toast.error('No se pudo crear el grupo', error?.data?.statusMessage) } }
 async function upload(file: File, done: (value?: any) => void) { try { done(await chat.uploadAttachment(file)) } catch (error: any) { done(); toast.error('No se pudo adjuntar el archivo', error?.data?.statusMessage) } }
-async function send(body: string, reply: string | null, files: string[]) { try { await chat.sendMessage(current.value!.id, body, { replyToMessageId: reply, attachmentIds: files }) } catch (error: any) { toast.error('No se pudo enviar el mensaje', error?.data?.statusMessage) } }
+async function send(body: string, reply: string | null, files: string[], record: { entitySlug: string; recordId: string; label: string; url: string } | null, gifUrl: string | null) { try { await chat.sendMessage(current.value!.id, body, { replyToMessageId: reply, attachmentIds: files, sharedRecord: record, gifUrl }); sharedRecord.value = null } catch (error: any) { toast.error('No se pudo enviar el mensaje', error?.data?.statusMessage) } }
 </script>
 
 <template>
@@ -66,7 +70,7 @@ async function send(body: string, reply: string | null, files: string[]) { try {
           </div>
           <ChatConversationList :conversations="list" :selected-id="chat.state.value.selectedId" :current-user-id="user?.id || ''" :loading="chat.state.value.loading" :archived="tab === 'archived'" :presence="chat.state.value.presence" @select="openConversation" @float="chat.openFloating" @archive="chat.archiveConversation" />
         </aside>
-        <ChatThread v-if="current" :conversation="current" :messages="chat.state.value.messages[current.id] ?? []" :current-user-id="user?.id || ''" :can-attach="Boolean(chat.state.value.permissions?.effective.canSendAttachments)" :loading="threadLoading" :typing-user-ids="chat.state.value.typing[current.id]" :users="users.length ? users : current.participants" :presence="chat.state.value.presence" @back="closeThread" @archive="chat.archiveConversation(chat.state.value.selectedId!)" @float="chat.openFloating(chat.state.value.selectedId!)" @manage="openGroupEdit" @send="send" @edit="chat.editMessage" @delete="chat.deleteMessage" @typing="value => chat.setTyping(chat.state.value.selectedId!, value)" @upload="upload" @load-older="chat.loadMessages(chat.state.value.selectedId!, true)" />
+        <ChatThread v-if="current" :conversation="current" :messages="chat.state.value.messages[current.id] ?? []" :current-user-id="user?.id || ''" :can-attach="Boolean(chat.state.value.permissions?.effective.canSendAttachments)" :can-send="current.canSend" :send-blocked-reason="current.sendBlockedReason" :loading="threadLoading" :typing-user-ids="chat.state.value.typing[current.id]" :users="users.length ? users : current.participants" :presence="chat.state.value.presence" :shared-record="sharedRecord" @back="closeThread" @archive="chat.archiveConversation(chat.state.value.selectedId!)" @float="chat.openFloating(chat.state.value.selectedId!)" @manage="openGroupEdit" @send="send" @edit="chat.editMessage" @delete="chat.deleteMessage" @typing="value => chat.setTyping(chat.state.value.selectedId!, value)" @upload="upload" @load-older="chat.loadMessages(chat.state.value.selectedId!, true)" />
         <div v-else class="hidden min-w-0 flex-1 flex-col items-center justify-center gap-4 bg-brand-bg text-center md:flex"><span class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-blue-bg"><MessageCircle class="h-7 w-7 text-brand-blue" :stroke-width="1.5" /></span><div><h2 class="text-base font-bold text-brand-text">Selecciona una conversación</h2><p class="mt-1 text-sm text-brand-text-muted">Elige un chat para ver sus mensajes.</p></div></div>
       </div>
     </template>

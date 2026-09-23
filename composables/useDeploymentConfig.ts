@@ -6,6 +6,7 @@
 // falta en los demas composables de este estilo.
 export interface PublicAppConfig {
   appMode: 'saas' | 'dedicated'
+  realtimeTransport: 'websocket' | 'polling'
   featureFlags: {
     dashboard: boolean
   }

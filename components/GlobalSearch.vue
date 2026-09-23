@@ -93,12 +93,12 @@ onBeforeUnmount(() => { clearTimeout(timer); controller?.abort(); document.remov
 
 <template>
   <button ref="trigger" type="button" aria-label="Buscar registros (Control K)" aria-haspopup="dialog" :aria-expanded="open" class="global-search-trigger mx-3 flex h-9 min-w-9 items-center gap-2 rounded-md border border-brand-border-light bg-brand-bg px-2.5 text-brand-text-secondary hover:border-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue md:w-72" @click="show">
-    <Search class="h-4 w-4 shrink-0" /><span class="hidden flex-1 text-left text-[13px] md:block">Buscar en FlowERP…</span><kbd class="hidden rounded border border-brand-border bg-brand-surface px-1.5 py-0.5 text-[10px] md:block">Ctrl K</kbd>
+    <Search class="h-4 w-4 shrink-0" /><span class="hidden flex-1 text-left text-[13px] md:block">Buscar en Flow…</span><kbd class="hidden rounded border border-brand-border bg-brand-surface px-1.5 py-0.5 text-[10px] md:block">Ctrl K</kbd>
   </button>
   <Teleport to="body">
     <Transition name="global-search">
       <div v-if="open" class="fixed inset-0 z-[80] flex items-start justify-center bg-brand-navy/30 px-3 pt-[8vh] sm:pt-[12vh]" @mousedown.self="close">
-        <section ref="panel" role="dialog" aria-modal="true" aria-label="Buscar en FlowERP" class="flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-brand-border-light bg-brand-surface text-brand-text shadow-2xl">
+        <section ref="panel" role="dialog" aria-modal="true" aria-label="Buscar en Flow" class="flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-brand-border-light bg-brand-surface text-brand-text shadow-2xl">
           <div class="flex items-center gap-3 border-b border-brand-border-light px-5 py-4">
             <Search class="h-5 w-5 shrink-0 text-brand-blue" />
             <input ref="input" v-model="query" maxlength="100" role="combobox" aria-label="Buscar registros y acciones" aria-autocomplete="list" aria-controls="global-search-results" :aria-expanded="true" :aria-activedescendant="options.length ? `global-result-${active}` : undefined" placeholder="Busca un folio, nombre o módulo…" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-brand-text-muted" />

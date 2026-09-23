@@ -37,6 +37,8 @@ export const entities = pgTable('entities', {
   // para Clientes/Empresas/Empleados. Ver server/utils/listLayout.ts. Misma
   // decision de "sin tabla nueva" que detailLayout (ERD-74) y Tabla/Select (ERD-68).
   listLayout: jsonb('list_layout'),
+  // Vista Kanban opcional; sus columnas se derivan del campo Select elegido.
+  boardConfig: jsonb('board_config'),
   // Pedido directo del usuario (2026-09-01): "un selector de iconos, para
   // poder elegir el icono que usara el modulo, se puede editar" - primero se
   // implemento con un set curado de 24 iconos, pero el mismo dia el usuario
@@ -332,6 +334,9 @@ export const tenants = pgTable('tenants', {
   logoMimeType: text('logo_mime_type'),
   logoFileName: text('logo_file_name'),
   logoSizeBytes: integer('logo_size_bytes'),
+  // Cuota de archivos del tenant. bigint permite planes que rebasen 2 GB.
+  storageLimitBytes: bigint('storage_limit_bytes', { mode: 'number' }).notNull().default(2 * 1024 * 1024 * 1024),
+  storageUsedBytes: bigint('storage_used_bytes', { mode: 'number' }).notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
@@ -427,6 +432,94 @@ export const users = pgTable('users', {
 
 // Configuracion SMTP personalizada por organizacion. Los secretos nunca se
 // guardan en claro: server/utils/settingsCrypto.ts los cifra antes de insertar.
+// Catálogo comercial global de Flow. Los tenants no editan estos precios: Stripe
+// cobra con el Price ID configurado aquí y Flow conserva los límites que aplica.
+export const subscriptionPlans = pgTable('subscription_plans', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  monthlyPriceCents: integer('monthly_price_cents').notNull().default(0),
+  annualPriceCents: integer('annual_price_cents').notNull().default(0),
+  currency: text('currency').notNull().default('MXN'),
+  limits: jsonb('limits').notNull().default({}),
+  stripeMonthlyPriceId: text('stripe_monthly_price_id'),
+  stripeAnnualPriceId: text('stripe_annual_price_id'),
+  isPublic: boolean('is_public').notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ codeUnique: uniqueIndex('subscription_plans_code_unique').on(table.code) }))
+
+// Fuente de verdad interna de la suscripción. Stripe provee el cobro, pero
+// Flow mantiene el estado aplicable para cuotas, soporte y on-premise.
+export const tenantSubscriptions = pgTable('tenant_subscriptions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  planId: uuid('plan_id').notNull().references(() => subscriptionPlans.id),
+  provider: text('provider').notNull().default('manual'),
+  status: text('status').notNull().default('trialing'),
+  billingInterval: text('billing_interval').notNull().default('month'),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripePriceId: text('stripe_price_id'),
+  currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantUnique: uniqueIndex('tenant_subscriptions_tenant_unique').on(table.tenantId),
+  stripeSubscriptionUnique: uniqueIndex('tenant_subscriptions_stripe_subscription_unique').on(table.stripeSubscriptionId),
+  tenantIdx: index('tenant_subscriptions_tenant_idx').on(table.tenantId)
+}))
+
+// Historial inmutable de las facturas de la suscripción SaaS; es distinto de
+// Facturación CFDI, que pertenece al negocio del tenant.
+export const tenantBillingInvoices = pgTable('tenant_billing_invoices', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  subscriptionId: uuid('subscription_id').references(() => tenantSubscriptions.id, { onDelete: 'set null' }),
+  provider: text('provider').notNull().default('stripe'),
+  providerInvoiceId: text('provider_invoice_id'),
+  status: text('status').notNull(),
+  currency: text('currency').notNull().default('MXN'),
+  subtotalCents: integer('subtotal_cents').notNull().default(0),
+  totalCents: integer('total_cents').notNull().default(0),
+  amountPaidCents: integer('amount_paid_cents').notNull().default(0),
+  periodStart: timestamp('period_start', { withTimezone: true }),
+  periodEnd: timestamp('period_end', { withTimezone: true }),
+  issuedAt: timestamp('issued_at', { withTimezone: true }),
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  hostedInvoiceUrl: text('hosted_invoice_url'),
+  invoicePdfUrl: text('invoice_pdf_url'),
+  providerData: jsonb('provider_data').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  providerInvoiceUnique: uniqueIndex('tenant_billing_invoices_provider_invoice_unique').on(table.provider, table.providerInvoiceId),
+  tenantIssuedIdx: index('tenant_billing_invoices_tenant_issued_idx').on(table.tenantId, table.issuedAt)
+}))
+
+// Una muestra diaria por recurso permite comparar tendencia contra el límite,
+// incluso si el tenant cambia de plan más adelante.
+export const tenantUsageSnapshots = pgTable('tenant_usage_snapshots', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  subscriptionId: uuid('subscription_id').references(() => tenantSubscriptions.id, { onDelete: 'set null' }),
+  resourceKey: text('resource_key').notNull(),
+  quantity: bigint('quantity', { mode: 'number' }).notNull().default(0),
+  limitValue: bigint('limit_value', { mode: 'number' }),
+  capturedOn: date('captured_on').notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  source: text('source').notNull().default('daily')
+}, table => ({
+  tenantResourceDayUnique: uniqueIndex('tenant_usage_snapshots_tenant_resource_day_unique').on(table.tenantId, table.resourceKey, table.capturedOn),
+  tenantDayIdx: index('tenant_usage_snapshots_tenant_day_idx').on(table.tenantId, table.capturedOn)
+}))
 export const authSessions = pgTable('auth_sessions', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -567,6 +660,22 @@ export const triggerActions = pgTable('trigger_actions', {
 // criterio que un log de acceso no desaparece si el recurso auditado se
 // borra. Índice compuesto (status, created_at) para el barrido de
 // reintentos (ERD-49: recorre 'retrying' ordenado por antigüedad).
+// Resultado durable de acciones que crean/actualizan otro registro. La clave
+// (acción, origen) evita duplicados durante reintentos del workflow.
+export const triggerActionOutputs = pgTable('trigger_action_outputs', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull(),
+  triggerActionId: uuid('trigger_action_id').notNull().references(() => triggerActions.id, { onDelete: 'cascade' }),
+  sourceRecordId: uuid('source_record_id').references(() => records.id, { onDelete: 'set null' }),
+  targetRecordId: uuid('target_record_id').references(() => records.id, { onDelete: 'set null' }),
+  result: jsonb('result').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('trigger_action_outputs_tenant_idx').on(table.tenantId),
+  sourceUnique: uniqueIndex('trigger_action_outputs_action_source_unique').on(table.triggerActionId, table.sourceRecordId)
+}))
+
 export const triggerLogs = pgTable('trigger_logs', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull(),
@@ -905,6 +1014,23 @@ export const sitePages = pgTable('site_pages', {
   siteIdx: index('site_pages_site_idx').on(table.siteId)
 }))
 
+// HTML/CSS de Sites sigue versionado en site_page_versions. Esta tabla solo
+// referencia binarios publicados: imágenes, fuentes y otros assets del sitio.
+export const siteAssets = pgTable('site_assets', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  storageKey: text('storage_key').notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('site_assets_tenant_idx').on(table.tenantId),
+  siteIdx: index('site_assets_site_idx').on(table.siteId)
+}))
+
 export const siteDomains = pgTable('site_domains', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -950,6 +1076,8 @@ export const siteFormConnections = pgTable('site_form_connections', {
   formKey: text('form_key').notNull(),
   entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
   fieldMapping: jsonb('field_mapping').notNull().default({}),
+  defaultValues: jsonb('default_values').notNull().default({}),
+  valueMappings: jsonb('value_mappings').notNull().default({}),
   status: text('status').notNull().default('active'),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -958,6 +1086,38 @@ export const siteFormConnections = pgTable('site_form_connections', {
   formUnique: uniqueIndex('site_form_connections_form_unique').on(table.tenantId, table.siteId, table.pageId, table.formKey),
   tenantIdx: index('site_form_connections_tenant_idx').on(table.tenantId),
   entityIdx: index('site_form_connections_entity_idx').on(table.entityId)
+}))
+export const siteFormSubmissions = pgTable('site_form_submissions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  pageId: uuid('page_id').notNull().references(() => sitePages.id, { onDelete: 'cascade' }),
+  connectionId: uuid('connection_id').references(() => siteFormConnections.id, { onDelete: 'set null' }),
+  formKey: text('form_key').notNull(),
+  payload: jsonb('payload').notNull().default({}),
+  originMetadata: jsonb('origin_metadata').notNull().default({}),
+  status: text('status').notNull().default('received'),
+  errorMessage: text('error_message'),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('site_form_submissions_tenant_idx').on(table.tenantId),
+  formIdx: index('site_form_submissions_form_idx').on(table.siteId, table.pageId, table.formKey, table.createdAt),
+  originGinIdx: index('site_form_submissions_origin_gin_idx').using('gin', table.originMetadata)
+}))
+export const siteFormSubmissionTargets = pgTable('site_form_submission_targets', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  submissionId: uuid('submission_id').notNull().references(() => siteFormSubmissions.id, { onDelete: 'cascade' }),
+  entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'restrict' }),
+  recordId: uuid('record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
+  action: text('action').notNull().default('created'),
+  mappingSnapshot: jsonb('mapping_snapshot').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({
+  tenantIdx: index('site_form_submission_targets_tenant_idx').on(table.tenantId),
+  submissionIdx: index('site_form_submission_targets_submission_idx').on(table.submissionId),
+  recordIdx: index('site_form_submission_targets_record_idx').on(table.recordId)
 }))
 export const chatConversations = pgTable('chat_conversations', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),

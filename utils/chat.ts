@@ -22,6 +22,7 @@ export interface ChatPerson {
   name: string
   email: string
   jobTitle: string | null
+  active: boolean
 }
 
 export interface ChatAttachment {
@@ -37,6 +38,8 @@ export interface ChatMessage {
   conversationId: string
   clientMessageId: string
   body: string
+  gifUrl: string | null
+  sharedRecord: { entitySlug: string; recordId: string; label: string; url: string } | { unavailable: true } | null
   sender: ChatPerson | null
   replyTo: { id: string; body: string; senderName: string } | null
   attachments: ChatAttachment[]
@@ -52,9 +55,11 @@ export interface ChatConversation {
   title: string
   participants: ChatPerson[]
   participantCount: number
-  lastMessage: (Pick<ChatMessage, 'id' | 'body' | 'createdAt' | 'deletedAt'> & { senderId: string | null; senderName: string | null }) | null
+  lastMessage: (Pick<ChatMessage, 'id' | 'body' | 'createdAt' | 'deletedAt'> & { senderId: string | null; senderName: string | null; sharedRecord?: boolean; gif?: boolean }) | null
   lastMessageAt: string
   unreadCount: number
   archivedAt: string | null
   canManage: boolean
+  canSend: boolean
+  sendBlockedReason: string | null
 }

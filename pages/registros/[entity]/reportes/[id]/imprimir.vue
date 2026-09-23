@@ -9,11 +9,8 @@
 // server/db/schema.ts junto a la tabla print_reports.
 //
 // A diferencia de vista-previa.vue, acá SÍ hay un reportId, así que el Print
-// Bar suma un botón "Editar" (que faltaba en el mock A0UnX, pensado como la
-// vista previa sin guardar del Diseñador) hacia
-// pages/registros/[entity]/reportes/[id]/editar.vue - ese archivo ya lo
-// documentaba como su punto de entrada real antes de que esta pantalla
-// existiera.
+// Bar muestra "Editar" solo a administradores y lleva al diseñador.
+// Los demás usuarios con permiso de lectura conservan la generación.
 import { resolveSourceLabel, usePrintReportFieldTree, type PrintReportDsl, type PrintReportResult } from '~/composables/usePrintReports'
 import type { ParameterAnswers } from '~/utils/reportParameters'
 
@@ -23,6 +20,7 @@ const route = useRoute()
 const router = useRouter()
 const slug = route.params.entity as string
 const reportId = route.params.id as string
+const { data: isAdmin } = await useIsAdmin()
 
 interface PrintReportRecord {
   id: string
@@ -77,5 +75,5 @@ function onEdit() {
 
 <template>
   <PrintReportParameterModal v-if="parameterModal && report" :dsl="report.dsl" @cancel="result ? parameterModal = false : onClose()" @generate="loadPreview" />
-  <PrintReportPreview :title="report?.title || 'Vista previa'" :result="result" :loading="loadingReport || loading" :error="reportError ? 'No se pudo cargar este reporte.' : errorMessage" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" :initial-layout="report?.dsl.layout" :has-parameters="!!report?.dsl.parameters?.length" editable @close="onClose" @edit="onEdit" @change-filters="parameterModal = true" />
+  <PrintReportPreview :title="report?.title || 'Vista previa'" :result="result" :loading="loadingReport || loading" :error="reportError ? 'No se pudo cargar este reporte.' : errorMessage" :group-field-labels="groupFieldLabels" :generated-at="generatedAt" :initial-layout="report?.dsl.layout" :has-parameters="!!report?.dsl.parameters?.length" :editable="!!isAdmin" @close="onClose" @edit="onEdit" @change-filters="parameterModal = true" />
 </template>

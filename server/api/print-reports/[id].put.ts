@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requireAuth, requirePermission } from '~/server/utils/rbac'
+import { requireAdminRole, requirePermission } from '~/server/utils/rbac'
 import { printReportDslSchema } from '~/server/utils/printReport'
 import { getPrintReport, updatePrintReport, PrintReportNotFoundError } from '~/server/utils/printReports'
 import { requirePrintReportAccess } from '~/server/utils/printReportAccess'
@@ -17,7 +17,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const auth = requireAuth(event)
+  const auth = await requireAdminRole(event)
   const id = getRouterParam(event, 'id')!
   const body = await readValidatedBody(event, bodySchema.parse)
 

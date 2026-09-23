@@ -303,6 +303,17 @@ describe('moduleEntityFields - incremental (Postgres real)', () => {
     expect(field.dataType).toBe('incremental')
   })
 
+  it('acepta un incremental con prefijo fijo', async () => {
+    const field = await createEntityField(TENANT_A, entityIncremental, {
+      name: 'folio_fijo',
+      label: 'Folio fijo',
+      dataType: 'incremental',
+      validationRules: { digits: 6, prefix: 'FAC-' },
+      isRequired: false
+    })
+    expect(field.validationRules).toEqual({ digits: 6, prefix: 'FAC-' })
+  })
+
   it('acepta un incremental con prefixSource valido (campo relation propio + campo texto de la entidad relacionada)', async () => {
     const relField = await createEntityField(TENANT_A, entityIncremental, {
       name: 'mercado',

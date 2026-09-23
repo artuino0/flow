@@ -65,9 +65,9 @@ const meta = computed(() => {
         </tbody>
       </table>
     </div>
-    <!-- Pie con "FlowERP · {empresa}" - pedido explícito del usuario
+    <!-- Pie con "Flow · {empresa}" - pedido explícito del usuario
          (2026-09-11) de mantenerlo así; el mock tCiL7 solo mostraba el
          nombre de la empresa, no revertir sin pedido explícito. -->
-    <footer class="report-footer"><span>FlowERP · {{ company }}</span><span>Página {{ page }} de {{ pages }}</span></footer>
+    <footer class="report-footer"><span>Flow · {{ company }}</span><span>Página {{ page }} de {{ pages }}</span></footer>
   </article>
 </template>

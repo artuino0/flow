@@ -13,7 +13,7 @@ const bodySchema = z.object({
   username: z.string().trim().min(1),
   password: z.string().optional(),
   fromEmail: z.string().trim().email(),
-  fromName: z.string().trim().max(120).optional().default('FlowERP'),
+  fromName: z.string().trim().max(120).optional().default('Flow'),
   replyTo: z.string().trim().email().optional().or(z.literal('')).default('')
 })
 

@@ -4,7 +4,7 @@
 import { resolvePrintLayout, paperDimensions } from '~/utils/printLayout'
 import { inputsForType, type ReportParameter, type ParameterAnswers } from '~/utils/reportParameters'
 import { moveReportColumn, readReportFieldDrop } from '~/utils/reportDesigner'
-import { AlertTriangle, Ban, Calculator, Eye, FileText, FileWarning, Save, Settings2, SlidersHorizontal, SplitSquareHorizontal, Table2, Trash2, X } from '@lucide/vue'
+import { AlertTriangle, ArrowLeft, Ban, Calculator, ChevronDown, Eye, GripVertical, Plus, Search, FileWarning, Save, Settings2, Table2, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
 import {
   collectBaseLeaves,
   resolveSourceLabel,
@@ -33,6 +33,7 @@ const toast = useToast()
 const router = useRouter()
 
 const { data: treeData, pending: treePending, error: treeError } = usePrintReportFieldTree(props.entitySlug)
+const baseEntityName = computed(() => treeData.value?.entityName || props.entitySlug)
 
 // Ver el comentario grande de usePrintReportPreviewDraft(): si quedó un
 // borrador de ESTE MISMO reporte (mismo reportId/entidad) de una vuelta
@@ -58,11 +59,24 @@ onMounted(() => watch(treeData, () => {
 }, { immediate: true }))
 const orderBy = ref<NonNullable<PrintReportDsl['orderBy']>>(JSON.parse(JSON.stringify(initialSource?.orderBy ?? [])))
 const fieldSearch = ref('')
+const fieldSearchInput = ref<HTMLInputElement | null>(null)
 const inlineResult = ref<PrintReportResult | null>(null)
 const inlineLoading = ref(false)
 const inlineError = ref('')
 const inlineDate = ref(new Date())
 const previewVisible = ref(false)
+const structureZoom = ref(100)
+const resultZoom = ref(100)
+const currentZoom = computed(() => previewVisible.value ? resultZoom.value : structureZoom.value)
+function changeZoom(delta: number) {
+  const target = previewVisible.value ? resultZoom : structureZoom
+  target.value = Math.min(150, Math.max(50, target.value + delta))
+}
+function setZoom(value: number) {
+  if (!Number.isFinite(value)) return
+  const target = previewVisible.value ? resultZoom : structureZoom
+  target.value = Math.min(150, Math.max(50, value))
+}
 let previewRevision = 0
 
 const title = ref(initialSource?.title ?? props.initialTitle ?? '')
@@ -81,6 +95,8 @@ const columnDataTypes = ref<Record<string, string>>({})
 
 const selectedKey = ref<string | null>(null)
 const selectedColumn = computed(() => columns.value.find((c) => c.key === selectedKey.value) ?? null)
+const activeSettingsSection = ref<'filters' | 'order' | 'columns' | 'calculations' | null>('filters')
+watch(selectedKey, key => { if (key) activeSettingsSection.value = 'columns' })
 
 const detailConfigOpen = ref(false)
 const saving = ref(false)
@@ -106,6 +122,7 @@ function nextKey(label: string): string {
 }
 
 const detailCandidates = computed<FieldTreeBranch[]>(() => topLevelDetailCandidates(treeData.value?.fields ?? []))
+const detailEntityName = computed(() => detailCandidates.value.find(branch => branch.fieldName === detail.value?.fieldName && branch.entitySlug === detail.value?.entitySlug)?.entityName || detail.value?.entitySlug)
 const baseLeaves = computed<FlatLeaf[]>(() => collectBaseLeaves(treeData.value?.fields ?? []))
 const availableLeaves = computed(() => [...baseLeaves.value.map(leaf => ({ ...leaf, side: 'base' as const })), ...detailLeaves.value.map(leaf => ({ ...leaf, side: 'detail' as const }))])
 const detailLeaves = computed<FlatLeaf[]>(() => {
@@ -184,7 +201,7 @@ function moveSelectedColumn(offset: number) {
 
 function onSelectDetailBranch(branch: FieldTreeBranch) {
   if (detail.value && (detail.value.fieldName !== branch.fieldName || detail.value.entitySlug !== branch.entitySlug)) {
-    toast.error('Este reporte ya tiene una tabla relacionada', `Ya se está usando "${detail.value.entitySlug}" - un reporte imprimible solo admite una.`)
+    toast.error('Este reporte ya tiene una tabla relacionada', `Ya se está usando "${detailEntityName.value}" - un reporte imprimible solo admite una.`)
     return
   }
   if (!detail.value) {
@@ -216,7 +233,7 @@ function setColumnKind(col: PrintReportColumn, kind: PrintReportColumn['kind']) 
   if (kind === 'detalle') {
     columns.value[idx] = { kind: 'detalle', key: col.key, label: col.label, source: col.source }
   } else if (kind === 'sumar') {
-    columns.value[idx] = { kind: 'sumar', key: col.key, label: col.label, source: col.source }
+    columns.value[idx] = { kind: 'sumar', key: col.key, label: col.label, source: col.source, ...(col.kind === 'sumar' && col.signRule ? { signRule: col.signRule } : {}) }
   } else {
     columns.value[idx] = {
       kind: 'repartir',
@@ -242,6 +259,60 @@ function conditionLeafKey(source: { forwardHops: string[]; field: string }): str
   return [...source.forwardHops, source.field].join('.')
 }
 
+function signCandidates(col: Extract<PrintReportColumn, { kind: 'sumar' }>): FlatLeaf[] {
+  return conditionCandidates(col.source.side).filter(leaf =>
+    leaf.forwardHops.length === col.source.forwardHops.length
+    && leaf.forwardHops.every((hop, index) => hop === col.source.forwardHops[index])
+    && (leaf.options?.length ?? 0) > 0
+  )
+}
+
+function signRuleLeaf(col: Extract<PrintReportColumn, { kind: 'sumar' }>): FlatLeaf | undefined {
+  if (!col.signRule) return undefined
+  return signCandidates(col).find(leaf => conditionLeafKey(leaf) === conditionLeafKey(col.signRule!.source))
+}
+
+function factorsForLeaf(leaf: FlatLeaf, previous: Record<string, -1 | 0 | 1> = {}): Record<string, -1 | 0 | 1> {
+  return Object.fromEntries((leaf.options ?? []).map(option => [option.value, previous[option.value] ?? 1]))
+}
+
+function setSignRuleEnabled(col: Extract<PrintReportColumn, { kind: 'sumar' }>, enabled: boolean) {
+  const idx = columns.value.findIndex(column => column.key === col.key)
+  if (idx === -1) return
+  if (!enabled) {
+    const { signRule: _signRule, ...withoutSignRule } = col
+    columns.value[idx] = withoutSignRule
+    return
+  }
+  const leaf = signCandidates(col)[0]
+  if (!leaf) return
+  columns.value[idx] = {
+    ...col,
+    signRule: {
+      source: { side: col.source.side, forwardHops: leaf.forwardHops, field: leaf.field },
+      factors: factorsForLeaf(leaf)
+    }
+  }
+}
+
+function setSignField(col: Extract<PrintReportColumn, { kind: 'sumar' }>, leaf: FlatLeaf) {
+  const idx = columns.value.findIndex(column => column.key === col.key)
+  if (idx === -1) return
+  columns.value[idx] = {
+    ...col,
+    signRule: {
+      source: { side: col.source.side, forwardHops: leaf.forwardHops, field: leaf.field },
+      factors: factorsForLeaf(leaf)
+    }
+  }
+}
+
+function setSignFactor(col: Extract<PrintReportColumn, { kind: 'sumar' }>, rawValue: string, factor: -1 | 0 | 1) {
+  const idx = columns.value.findIndex(column => column.key === col.key)
+  if (idx === -1 || !col.signRule) return
+  columns.value[idx] = { ...col, signRule: { ...col.signRule, factors: { ...col.signRule.factors, [rawValue]: factor } } }
+}
+
 function updateLabel(col: PrintReportColumn, label: string) {
   const idx = columns.value.findIndex((c) => c.key === col.key)
   if (idx === -1) return
@@ -256,6 +327,12 @@ function addGroupLevel() {
 }
 function removeGroupLevel(index: number) {
   groupBy.value.splice(index, 1)
+}
+function updateGroupLevel(index: number, value: string) {
+  const [side, path] = value.split('|')
+  const parts = path?.split('.') ?? []
+  if (!side || !parts.length) return
+  groupBy.value[index] = { side: side as 'base' | 'detail', forwardHops: parts.slice(0, -1), field: parts[parts.length - 1]! }
 }
 interface SidedLeaf extends FlatLeaf {
   side: 'base' | 'detail'
@@ -345,6 +422,8 @@ async function onPreview() {
   await router.push(`/registros/${props.entitySlug}/reportes/vista-previa`)
 }
 
+const initialReportSnapshot = JSON.stringify(buildDsl())
+const hasUnsavedChanges = computed(() => JSON.stringify(buildDsl()) !== initialReportSnapshot)
 const sumColumns = computed(() => columns.value.filter((c) => c.kind === 'sumar' || c.kind === 'repartir'))
 function validateDataOptions() {
   if (parameters.value.some(parameter => !parameter.label.trim())) {
@@ -395,72 +474,66 @@ function clearDetail() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="flex items-center gap-1 text-[13px]">
-      <span class="text-brand-text-secondary">Inicio</span>
-      <span class="text-brand-text-muted">/</span>
-      <span class="text-brand-text-secondary">Módulos</span>
-      <span class="text-brand-text-muted">/</span>
-      <NuxtLink :to="`/registros/${entitySlug}`" class="text-brand-text-secondary hover:underline">{{ entitySlug }}</NuxtLink>
-      <span class="text-brand-text-muted">/</span>
-      <span class="text-brand-text-secondary">Reportes</span>
-      <span class="text-brand-text-muted">/</span>
-      <span class="font-bold text-brand-text">Diseñador</span>
-    </div>
-
-    <div class="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-4">
-      <div class="flex min-w-[280px] flex-1 items-center gap-3">
-        <div class="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded bg-brand-blue-bg">
-          <FileText class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
-        </div>
-        <div class="flex max-w-[320px] flex-1 flex-col gap-1">
-          <label class="text-xs font-semibold text-brand-text-secondary">Nombre del reporte</label>
-          <input
-            v-model="title"
-            type="text"
-            placeholder="Ej. Remito de carga"
-            class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          />
-          <span class="text-[11px] text-brand-text-muted">Así vas a identificarlo en "Reportes guardados".</span>
-        </div>
+  <div class="flex h-full min-h-0 flex-col overflow-hidden bg-brand-bg">
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-border-light bg-brand-surface px-4 py-3 lg:px-8">
+      <div class="flex min-w-0 items-center gap-3">
+        <NuxtLink :to="`/registros/${entitySlug}`" class="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-brand-text-secondary hover:text-brand-blue">
+          <ArrowLeft class="h-4 w-4" :stroke-width="1.75" /> Volver a {{ baseEntityName }}
+        </NuxtLink>
+        <span class="h-6 w-px shrink-0 bg-brand-border-light" />
+        <input v-model="title" type="text" aria-label="Nombre del reporte" placeholder="Nombre del reporte" class="min-w-0 w-72 max-w-[35vw] bg-transparent text-base font-bold text-brand-text outline-none placeholder:text-brand-text-muted focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-blue/25" />
+        <span class="hidden max-w-48 truncate rounded-full bg-brand-neutral-bg px-2.5 py-1 text-xs font-semibold text-brand-text-secondary md:inline">{{ baseEntityName }}</span>
       </div>
       <div class="flex items-center gap-2">
-        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="onDiscard">
-          <SlidersHorizontal class="h-4 w-4" :stroke-width="1.75" />
-          Descartar
-        </button>
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60"
-          :disabled="saving"
-          @click="onSave"
-        >
-          <Save class="h-4 w-4" :stroke-width="1.75" />
-          {{ saving ? 'Guardando...' : 'Guardar reporte' }}
-        </button>
+        <span v-if="hasUnsavedChanges" class="hidden items-center gap-1.5 rounded-full bg-brand-warning-bg px-2.5 py-1 text-xs font-semibold text-brand-warning-text sm:inline-flex"><span class="h-1.5 w-1.5 rounded-full bg-brand-warning-text" />Cambios sin guardar</span>
+        <span class="mx-1 hidden h-6 w-px bg-brand-border-light sm:block" />
+        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="onDiscard">Descartar</button>
+        <button type="button" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="onSave"><Save class="h-4 w-4" :stroke-width="1.75" />{{ saving ? 'Guardando...' : 'Guardar reporte' }}</button>
       </div>
     </div>
-
+    <div class="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-brand-border-light bg-brand-surface px-4 py-2.5 lg:px-8">
+      <label class="flex items-center gap-2 text-xs font-semibold text-brand-text-muted">Mostrar
+        <select v-model="mode" aria-label="Contenido del reporte" class="rounded border border-brand-border bg-white px-2.5 py-1.5 text-xs font-normal text-brand-text"><option value="detail">Detalle y totales</option><option value="summary">Solo grupos y totales</option></select>
+      </label>
+      <PrintReportLayoutControls v-model="layout" />
+      <div class="flex items-center gap-2" role="group" aria-label="Zoom del lienzo">
+        <span class="text-xs font-semibold text-brand-text-muted">Zoom</span>
+        <div class="flex h-[36px] items-center rounded-md border border-brand-border bg-white focus-within:ring-2 focus-within:ring-brand-blue/25">
+          <button type="button" class="flex h-full w-[34px] shrink-0 items-center justify-center rounded-l-[5px] text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none disabled:opacity-40" aria-label="Alejar lienzo" :disabled="currentZoom <= 50" @click="changeZoom(-25)"><ZoomOut class="h-4 w-4" :stroke-width="1.75" /></button>
+          <span class="h-5 w-px shrink-0 bg-brand-border-light" />
+          <ReportOptionSelect label="Zoom" label-hidden :model-value="String(currentZoom)" :options="[50, 75, 100, 125, 150].map(value => ({ value: String(value), label: `${value} %` }))" joined @update:model-value="setZoom(Number($event))" />
+          <span class="h-5 w-px shrink-0 bg-brand-border-light" />
+          <button type="button" class="flex h-full w-[34px] shrink-0 items-center justify-center rounded-r-[5px] text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none disabled:opacity-40" aria-label="Acercar lienzo" :disabled="currentZoom >= 150" @click="changeZoom(25)"><ZoomIn class="h-4 w-4" :stroke-width="1.75" /></button>
+        </div>
+      </div>
+      <div class="flex-1" />
+      <button type="button" class="rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" :aria-pressed="!previewVisible" @click="previewVisible = false">Diseñar estructura</button>
+      <button type="button" class="rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg disabled:opacity-50" :disabled="inlineLoading" @click="refreshInlinePreview()">{{ inlineLoading ? 'Consultando…' : 'Probar con datos' }}</button>
+      <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" @click="onPreview"><Eye class="h-3.5 w-3.5" :stroke-width="1.75" /> Vista previa</button>
+    </div>
     <p v-if="saveError" role="alert" class="text-sm text-brand-error-text">{{ saveError }}</p>
     <p v-if="legacyConverted" class="text-sm text-brand-text-secondary">Los filtros anteriores ahora se preguntarán al generar. Guarda para actualizar esta plantilla.</p>
-    <PrintReportDataControls v-model:mode="mode" v-model:filters="parameters" v-model:order-by="orderBy" :leaves="availableLeaves" :base-name="entitySlug" :detail-name="detail?.entitySlug" />
     <PrintReportParameterModal v-if="parameterModal" :dsl="buildDsl()" @cancel="parameterModal = false" @generate="refreshInlinePreview" />
 
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+    <div class="min-h-0 flex-1 overflow-x-auto">
+      <div class="grid h-full min-w-[1100px] grid-cols-[280px_minmax(0,1fr)_380px]">
       <!-- Panel Campos -->
-      <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface lg:col-span-3">
-        <div class="border-b border-brand-border-light p-3.5">
+      <aside class="flex h-full min-h-0 flex-col border-r border-brand-border-light bg-brand-surface">
+        <div class="shrink-0 border-b border-brand-border-light p-4">
           <h2 class="text-sm font-bold text-brand-text">Campos disponibles</h2>
-          <input v-model="fieldSearch" type="search" aria-label="Buscar campos" placeholder="Buscar un campo…" class="mt-3 w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm" />
-          <p class="mt-2 text-xs text-brand-text-muted">Los vínculos traen un valor. Las tablas de detalle contienen varios registros.</p>
+          <p class="mt-1 text-xs leading-5 text-brand-text-muted">Cada fila representa un registro de {{ baseEntityName }}.</p>
+          <div class="mt-3 flex items-center gap-2 rounded border border-brand-border bg-brand-bg px-2.5 py-1.5">
+            <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+            <input ref="fieldSearchInput" v-model="fieldSearch" type="search" aria-label="Buscar campos" placeholder="Buscar un campo…" class="min-w-0 w-full bg-transparent text-xs text-brand-text outline-none placeholder:text-brand-text-muted" />
+          </div>
         </div>
-        <div class="max-h-[560px] overflow-y-auto p-2">
+        <div class="min-h-0 flex-1 overflow-y-auto p-2">
           <!-- Fila fija con el nombre de la entidad base (fiel a "branch Manifiestos"
           del mock: un renglón no-clicable arriba del árbol, para ubicar de qué
           módulo salen los campos de abajo). -->
           <div class="mb-1 flex items-center gap-1.5 rounded bg-brand-bg px-2 py-1.5">
             <Table2 class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
-            <span class="truncate text-xs font-bold text-brand-text">{{ entitySlug }}</span>
+            <span class="truncate text-xs font-bold text-brand-text">{{ baseEntityName }}</span>
           </div>
           <p v-if="treePending" class="p-2 text-xs text-brand-text-muted">Cargando campos...</p>
           <p v-else-if="treeError" class="p-2 text-xs text-brand-error-text">No se pudieron cargar los campos de esta entidad.</p>
@@ -473,111 +546,78 @@ function clearDetail() {
             @select-detail-branch="onSelectDetailBranch"
           />
         </div>
-      </div>
+      </aside>
 
-      <!-- Canvas: dibuja la hoja en 4 zonas apiladas (Encabezado/regla/Parámetros/
-      Tabla), fiel a `WIPhW`/`NAbkH` del mock - ver el comentario grande de arriba
-      sobre qué zona es real (Encabezado con el título en vivo, Tabla con las
-      columnas ya agregadas) y cuál es solo estructura visual (Parámetros, fuera
-      de alcance). Acepta drop de una hoja del árbol en cualquier punto del
-      lienzo, no solo sobre la Zona Tabla - más forgiving que exigir soltar
-      pixel-perfecto adentro de esa caja. -->
-      <div class="flex flex-col gap-2 lg:col-span-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-brand-text">{{ title || 'Reporte sin nombre' }}</h2>
-          <button
-            v-if="detail"
-            type="button"
-            class="flex items-center gap-1.5 rounded border border-brand-border-light bg-brand-surface px-2.5 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg"
-            @click="detailConfigOpen = true"
-          >
-            <Settings2 class="h-3.5 w-3.5" :stroke-width="1.75" />
-            Configurar tabla relacionada
-          </button>
-        </div>
-
-        <PrintReportLayoutControls v-model="layout" />
-        <div class="flex flex-wrap gap-2" aria-label="Vista del editor">
-          <button type="button" class="rounded border border-brand-border px-3 py-2 text-sm" :aria-pressed="!previewVisible" @click="previewVisible = false">Diseñar estructura</button>
-          <button type="button" class="rounded border border-brand-border px-3 py-2 text-sm text-brand-blue disabled:opacity-50" :disabled="inlineLoading" @click="refreshInlinePreview()">{{ inlineLoading ? 'Consultando…' : 'Probar con datos' }}</button>
-        </div>
+      <section class="relative min-h-0 min-w-0 overflow-y-auto bg-brand-bg p-5 xl:p-8" aria-label="Lienzo del reporte">
         <div v-if="previewVisible" class="overflow-auto rounded-lg bg-brand-bg p-3" aria-label="Resultado dentro del editor">
           <p v-if="inlineLoading" role="status" class="p-6 text-sm">Preparando el reporte…</p>
           <p v-else-if="inlineError" role="alert" class="p-6 text-sm text-brand-error-text">{{ inlineError }}</p>
           <p v-else-if="!inlineResult" class="p-6 text-sm">El diseño cambió. Pulsa «Probar con datos» para actualizar el resultado.</p>
-          <div v-else style="zoom: 0.55"><PrintReportSheet :result="inlineResult" :generated-at="inlineDate" :layout="layout" :group-field-labels="groupBy.map(source => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, source))" /></div>
+          <div v-else :style="{ zoom: resultZoom / 100 }"><PrintReportSheet :result="inlineResult" :generated-at="inlineDate" :layout="layout" :group-field-labels="groupBy.map(source => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, source))" /></div>
         </div>
-        <div v-else class="relative flex flex-1 items-start justify-center rounded-lg bg-[#E9ECF0] p-7 pb-20" aria-label="Lienzo del reporte" @dragover.prevent @drop="onCanvasDrop($event)">
-          <div class="flex w-full flex-col gap-4 border border-[#DADADA] bg-white p-6 shadow-sm" :style="{ aspectRatio: `${paperSize.width} / ${paperSize.height}` }">
-            <div class="flex items-center gap-3 border-b-2 border-brand-navy pb-3">
-              <img v-if="reportBranding?.hasLogo" :src="'/api/tenant/logo'" alt="" class="h-10 w-14 object-contain" />
-              <p class="text-xs font-semibold text-brand-text">{{ reportBranding?.name || 'Organización' }}</p>
+        <div v-else class="relative mx-auto flex min-h-full w-full max-w-[900px] items-start justify-center pb-20" aria-label="Lienzo del reporte" @dragover.prevent @drop="onCanvasDrop($event)">
+          <div class="flex w-full flex-col gap-4 rounded-sm border border-brand-border-light bg-white p-8 shadow-[0_4px_20px_#33475B33]" :style="{ aspectRatio: `${paperSize.width} / ${paperSize.height}`, zoom: structureZoom / 100 }">
+            <div class="flex items-center gap-3 border-b border-brand-border-light pb-4">
+              <img v-if="reportBranding?.hasLogo" :src="'/api/tenant/logo'" alt="" class="h-9 w-12 object-contain" />
+              <p class="text-lg font-bold text-brand-text">{{ reportBranding?.name || 'Organización' }}</p>
             </div>
-            <div><p class="mb-1 text-[9px] uppercase tracking-widest text-brand-text-secondary">Reporte operativo</p><h3 class="break-words text-base font-bold text-brand-navy">{{ title || 'Reporte sin nombre' }}</h3></div>
-            <p class="text-[10px] text-brand-text-secondary">{{ layout.paper === 'letter' ? 'Carta' : 'A4' }} · {{ layout.orientation === 'portrait' ? 'Vertical' : 'Horizontal' }} · Márgenes de 12 mm</p>
-
-            <div class="rounded border border-dashed border-brand-border p-3" aria-label="Zona de agrupación" @dragover.prevent @drop.stop="onGroupDrop">
-              <p class="text-xs font-semibold text-brand-text">Agrupaciones</p>
-              <p class="mt-1 text-xs text-brand-text-muted">{{ groupBy.length ? groupBy.map(level => [...level.forwardHops, level.field].join(' › ')).join(' / ') : 'Arrastra aquí una fecha, finca u otro campo para crear grupos.' }}</p>
+            <div class="space-y-1">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Reporte operativo</p>
+              <h3 class="break-words text-[22px] font-bold text-brand-text">{{ title || 'Reporte sin nombre' }}</h3>
+              <p class="text-xs text-brand-text-muted">{{ layout.paper === 'letter' ? 'Carta' : 'A4' }} · {{ layout.orientation === 'portrait' ? 'Vertical' : 'Horizontal' }} · Márgenes de 12 mm</p>
             </div>
-            <!-- Zone Tabla: encabezado real de las columnas ya agregadas, clic o
-            drop acá también agrega/selecciona. -->
-            <div class="flex flex-col gap-1.5 rounded border border-[#D0D3D8] bg-[#FCFCFD] p-3.5">
-              <p class="truncate text-[9px] font-bold tracking-wide text-[#9AA0A6]">
-                {{ detail ? `TABLA RELACIONADA — ${detail.entitySlug}` : 'COLUMNAS DEL REPORTE' }}
-              </p>
-
-              <p v-if="columns.length === 0" class="rounded border border-dashed border-[#CBD6E2] px-3 py-4 text-center text-xs text-brand-text-muted">
-                Arrastrá un campo del árbol hasta acá, o hacé clic en una hoja.
-              </p>
-
-              <div v-else class="flex overflow-x-auto border border-[#B8B8B8]">
-                <button
-                  v-for="col in columns"
-                  :key="col.key"
-                  type="button"
-                  draggable="true"
-                  :aria-label="`Columna ${col.label}`"
-                  @dragstart="startColumnDrag($event, col.key)"
-                  @dragover.prevent
-                  @drop.stop="onCanvasDrop($event, col.key)"
-                  class="flex items-center justify-between gap-1.5 border-r border-[#B8B8B8] px-2.5 py-1.5 text-left text-[11px] font-bold text-[#1F1F1F] last:border-r-0"
-                  :class="selectedKey === col.key ? 'border border-brand-blue bg-[#DCF1F6]' : 'bg-[#ECECEC] hover:bg-[#E2E2E2]'"
-                  @click="selectedKey = col.key"
-                >
-                  <span class="break-words">{{ col.label }}</span>
-                  <Calculator v-if="col.kind === 'sumar'" class="h-3 w-3 shrink-0" :stroke-width="2" />
-                  <SplitSquareHorizontal v-else-if="col.kind === 'repartir'" class="h-3 w-3 shrink-0" :stroke-width="2" />
-                  <Settings2 v-else class="h-3 w-3 shrink-0 text-[#9AA0A6]" :stroke-width="1.75" />
-                </button>
+            <div class="rounded border border-brand-border-light bg-brand-bg px-3.5 py-2.5" aria-label="Zona de agrupación" @dragover.prevent @drop.stop="onGroupDrop">
+              <p class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Agrupaciones</p>
+              <p class="mt-1 text-[13px] font-semibold text-brand-text">{{ groupBy.length ? groupBy.map(level => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, level)).join(' · ') : 'Arrastra aquí un campo para agrupar' }}</p>
+            </div>
+            <div class="space-y-2">
+              <p class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">{{ detail ? 'TABLA RELACIONADA · ' + detailEntityName : 'COLUMNAS DEL REPORTE' }}</p>
+              <div class="overflow-x-auto border border-brand-border-light">
+                <p v-if="!columns.length" class="p-6 text-center text-xs text-brand-text-muted">Selecciona un campo de la izquierda para agregar la primera columna.</p>
+                <div v-else class="flex min-w-max border-b border-brand-border-light bg-brand-bg">
+                  <button v-for="col in columns" :key="col.key" type="button" draggable="true" :aria-label="`Columna ${col.label}`" class="flex min-w-28 flex-1 items-center justify-between gap-2 px-3.5 py-3 text-left text-[11px] font-bold text-brand-text-secondary hover:bg-brand-blue-bg" :class="selectedKey === col.key ? 'bg-brand-blue-bg text-brand-blue' : ''" @click="selectedKey = col.key" @dragstart="startColumnDrag($event, col.key)" @dragover.prevent @drop.stop="onCanvasDrop($event, col.key)">
+                    <span class="truncate">{{ col.label }}</span>
+                    <Calculator v-if="col.kind !== 'detalle'" class="h-3 w-3 shrink-0" :stroke-width="1.75" />
+                  </button>
+                </div>
+                <div v-if="columns.length" class="flex min-w-max border-b border-brand-border-light bg-white">
+                  <span v-for="col in columns" :key="col.key" class="min-w-28 flex-1 px-3.5 py-4 text-xs text-brand-text-muted">—</span>
+                </div>
+                <div v-if="columns.length && sumColumns.length" class="flex justify-end gap-5 bg-brand-bg px-5 py-3 text-xs font-bold text-brand-text"><span v-for="col in sumColumns" :key="col.key">{{ col.label }}: —</span></div>
               </div>
-            </div>
-
-            <!-- Subtotal -->
-            <div v-if="sumColumns.length > 0" class="flex justify-end rounded bg-[#EDEDED] px-3 py-2">
-              <span class="text-[11.5px] font-bold text-[#1A1A1A]">Subtotal: {{ sumColumns.map((c) => c.label).join(' · ') }}</span>
             </div>
           </div>
 
-          <!-- Vista previa FAB -->
-          <button
-            type="button"
-            class="absolute bottom-5 right-5 flex items-center gap-1.5 rounded border border-brand-border bg-white px-4 py-2.5 text-[13px] font-semibold text-brand-text shadow-sm hover:bg-brand-bg"
-            @click="onPreview"
-          >
-            <Eye class="h-4 w-4" :stroke-width="1.75" />
-            Vista previa
-          </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Panel Propiedades -->
-      <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface lg:col-span-3">
-        <div class="border-b border-brand-border-light p-3.5">
-          <h2 class="text-sm font-bold text-brand-text">Propiedades</h2>
+      <aside class="flex h-full min-h-0 flex-col border-l border-brand-border-light bg-brand-surface">
+        <div class="flex shrink-0 items-center gap-2 border-b border-brand-border-light px-4 py-3.5">
+          <Settings2 class="h-4 w-4 text-brand-text-secondary" :stroke-width="1.75" />
+          <h2 class="text-sm font-bold text-brand-text">Propiedades del reporte</h2>
         </div>
-        <div class="flex flex-col gap-4 p-3.5">
-          <p v-if="!selectedColumn" class="text-xs text-brand-text-muted">Elegí una columna del reporte para configurarla.</p>
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <PrintReportDataControls v-model:filters="parameters" v-model:order-by="orderBy" :leaves="availableLeaves" :tree="treeData?.fields ?? []" :base-name="baseEntityName" :detail-name="detailEntityName" :detail-field-name="detail?.fieldName" :active-section="activeSettingsSection" @update:active-section="activeSettingsSection = $event" />
+          <section class="border-b border-brand-border-light">
+            <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-brand-bg" :aria-expanded="activeSettingsSection === 'columns'" @click="activeSettingsSection = activeSettingsSection === 'columns' ? null : 'columns'">
+              <Table2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+              <span class="min-w-0 flex-1 text-[13px] font-bold text-brand-text">Columnas</span>
+              <span class="text-xs font-semibold text-brand-blue">{{ columns.length }} columnas</span>
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted transition-transform" :class="activeSettingsSection === 'columns' ? '' : '-rotate-90'" :stroke-width="1.75" />
+            </button>
+            <div v-if="activeSettingsSection === 'columns'" class="flex flex-col gap-2 px-4 pb-4">
+              <p class="text-xs leading-5 text-brand-text-muted">Arrastra para reordenar. Así se verán en el reporte.</p>
+              <div role="listbox" aria-label="Columnas del reporte" class="flex flex-col gap-1.5">
+                <div v-for="col in columns" :key="col.key" role="option" tabindex="0" draggable="true" :aria-selected="selectedKey === col.key" class="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-xs text-brand-text outline-none hover:border-brand-blue/40 hover:bg-brand-blue-bg focus-visible:ring-2 focus-visible:ring-brand-blue/25" :class="selectedKey === col.key ? 'border-brand-blue bg-brand-blue-bg' : 'border-transparent bg-brand-bg'" @click="selectedKey = col.key" @keydown.enter="selectedKey = col.key" @dragstart="startColumnDrag($event, col.key)" @dragover.prevent @drop.stop="onCanvasDrop($event, col.key)">
+                  <GripVertical class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+                  <span class="min-w-0 flex-1 truncate">{{ col.label }}</span>
+                  <span v-if="col.kind === 'sumar'" class="rounded bg-brand-blue-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand-blue">Suma</span>
+                  <button type="button" :aria-label="`Quitar ${col.label}`" class="text-brand-text-muted hover:text-brand-error-text" @click.stop="removeColumn(col.key)"><X class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
+                </div>
+              </div>
+              <button type="button" class="flex items-center gap-1.5 self-start py-1 text-xs font-semibold text-brand-blue hover:underline" @click="fieldSearch = ''; fieldSearchInput?.focus()"><Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar columna</button>
+        <div class="flex flex-col gap-4 border-t border-brand-border-light pt-4">
+          <p v-if="!selectedColumn" class="text-xs text-brand-text-muted">Selecciona una columna para configurar su encabezado y agregación.</p>
 
           <template v-else>
             <div class="flex flex-wrap gap-2">
@@ -616,6 +656,53 @@ function clearDetail() {
               </p>
             </div>
 
+            <div v-if="selectedColumn.kind === 'sumar'" class="flex flex-col gap-3 rounded border border-brand-border-light bg-brand-bg p-3">
+              <label class="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4"
+                  :checked="!!selectedColumn.signRule"
+                  :disabled="!signCandidates(selectedColumn).length"
+                  @change="setSignRuleEnabled(selectedColumn, ($event.target as HTMLInputElement).checked)"
+                />
+                <span>
+                  <span class="block text-xs font-bold text-brand-text">Sumar o restar según otro campo</span>
+                  <span class="mt-0.5 block text-xs leading-5 text-brand-text-muted">La cantidad se captura positiva. El valor elegido define si entra, sale o no afecta el total.</span>
+                </span>
+              </label>
+
+              <template v-if="selectedColumn.signRule">
+                <label class="text-xs font-semibold text-brand-text-secondary">Campo que define el movimiento</label>
+                <select
+                  class="rounded border border-brand-border bg-white px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  :value="conditionLeafKey(selectedColumn.signRule.source)"
+                  @change="setSignField(selectedColumn, signCandidates(selectedColumn).find(leaf => conditionLeafKey(leaf) === ($event.target as HTMLSelectElement).value)!)"
+                >
+                  <option v-for="leaf in signCandidates(selectedColumn)" :key="conditionLeafKey(leaf)" :value="conditionLeafKey(leaf)">{{ leaf.label }}</option>
+                </select>
+
+                <div class="flex flex-col divide-y divide-brand-border-light rounded border border-brand-border-light bg-white px-2.5">
+                  <label v-for="option in signRuleLeaf(selectedColumn)?.options ?? []" :key="option.value" class="flex items-center gap-3 py-2">
+                    <span class="min-w-0 flex-1 truncate text-xs font-semibold text-brand-text">{{ option.label }}</span>
+                    <select
+                      class="w-28 rounded border border-brand-border bg-white px-2 py-1.5 text-xs text-brand-text"
+                      :value="selectedColumn.signRule.factors[option.value] ?? 0"
+                      @change="setSignFactor(selectedColumn, option.value, Number(($event.target as HTMLSelectElement).value) as -1 | 0 | 1)"
+                    >
+                      <option :value="1">Sumar (+)</option>
+                      <option :value="-1">Restar (−)</option>
+                      <option :value="0">Ignorar</option>
+                    </select>
+                  </label>
+                </div>
+              </template>
+
+              <p v-else-if="!signCandidates(selectedColumn).length" class="flex items-center gap-1.5 text-xs text-brand-text-muted">
+                <FileWarning class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
+                Agrega un campo de selección o Sí/No en el mismo registro para definir el signo.
+              </p>
+            </div>
+
             <div v-if="selectedColumn.kind === 'repartir'" class="flex flex-col gap-2 rounded border border-brand-border-light bg-brand-bg p-3">
               <p class="text-xs font-bold text-brand-text">Repartir «{{ selectedColumn.label }}» por condición</p>
               <label class="text-xs font-semibold text-brand-text-secondary">Campo condición</label>
@@ -643,41 +730,34 @@ function clearDetail() {
               Quitar columna
             </button>
           </template>
-        <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">
-          <div class="flex items-center justify-between">
-            <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Agrupar filas</p>
-            <button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4" @click="addGroupLevel">
-              + Agregar nivel
-            </button>
-          </div>
-          <p class="text-xs text-brand-text-muted">Agrupa por fecha, finca u otro campo. Las columnas configuradas como Sumar generan subtotales.</p>
-
-          <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
-            <span class="w-16 shrink-0 text-xs font-semibold text-brand-text-secondary">Nivel {{ index + 1 }}</span>
-            <select
-              class="min-w-0 flex-1 rounded border border-brand-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              :value="groupLevelSelectedValue(level)"
-              :aria-label="`Agrupar nivel ${index + 1}`"
-              @change="
-                (() => {
-                  const [side, path] = ($event.target as HTMLSelectElement).value.split('|')
-                  const parts = path.split('.')
-                  groupBy[index] = { side: side as 'base' | 'detail', forwardHops: parts.slice(0, -1), field: parts[parts.length - 1] }
-                })()
-              "
-            >
-              <option v-for="leaf in groupLevelLeaves()" :key="groupLevelOptionValue(leaf)" :value="groupLevelOptionValue(leaf)">
-                {{ [leaf.side === 'detail' ? 'Detalle' : '', ...leaf.forwardHops, leaf.label].filter(Boolean).join(' › ') }}
-              </option>
-            </select>
-            <button type="button" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)">
-              <Trash2 class="h-4 w-4" :stroke-width="1.75" />
-            </button>
-          </div>
-          <p v-if="groupBy.length === 0" class="text-xs text-brand-text-muted">Sin niveles configurados, el reporte se imprime como una sola lista.</p>
         </div>
+            </div>
+          </section>
+          <section class="border-b border-brand-border-light">
+            <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-brand-bg" :aria-expanded="activeSettingsSection === 'calculations'" @click="activeSettingsSection = activeSettingsSection === 'calculations' ? null : 'calculations'">
+              <Calculator class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+              <span class="min-w-0 flex-1 text-[13px] font-bold text-brand-text">Cálculos y totales</span>
+              <span class="text-xs font-semibold text-brand-blue">{{ groupBy.length ? 'Agrupado' : 'Sin agrupar' }}</span>
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted transition-transform" :class="activeSettingsSection === 'calculations' ? '' : '-rotate-90'" :stroke-width="1.75" />
+            </button>
+            <div v-if="activeSettingsSection === 'calculations'" class="flex flex-col gap-4 px-4 pb-4">
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Agrupar filas por</p><button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4 || !groupLevelLeaves().length" @click="addGroupLevel">+ Agregar</button></div>
+                <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
+                  <select class="min-w-0 flex-1 rounded border border-brand-border bg-white px-2.5 py-2 text-xs text-brand-text" :value="groupLevelSelectedValue(level)" :aria-label="`Agrupar nivel ${index + 1}`" @change="updateGroupLevel(index, ($event.target as HTMLSelectElement).value)">
+                    <option v-for="leaf in groupLevelLeaves()" :key="groupLevelOptionValue(leaf)" :value="groupLevelOptionValue(leaf)">{{ resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, leaf) }}</option>
+                  </select>
+                  <button type="button" :aria-label="`Quitar agrupación ${index + 1}`" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)"><Trash2 class="h-4 w-4" :stroke-width="1.75" /></button>
+                </div>
+                <p v-if="!groupBy.length" class="text-xs text-brand-text-muted">Sin agrupaciones.</p>
+              </div>
+              <div class="border-t border-brand-border-light pt-3"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Totales (sumar)</p><p class="mt-1.5 text-xs text-brand-text">{{ sumColumns.length ? sumColumns.map(col => col.label).join(' · ') : 'Sin columnas para sumar' }}</p></div>
+              <button v-if="detail" type="button" class="flex items-center gap-1.5 self-start text-xs font-semibold text-brand-blue hover:underline" @click="detailConfigOpen = true"><Settings2 class="h-3.5 w-3.5" :stroke-width="1.75" /> Configurar tabla relacionada</button>
+            </div>
+          </section>
         </div>
-      </div>
+      </aside>
+    </div>
     </div>
 
     <!-- Modal "Configurar tabla relacionada" (ERD-88 #292 - agrupamiento + papelera) -->
@@ -690,17 +770,17 @@ function clearDetail() {
           </button>
         </div>
 
-        <p class="text-sm text-brand-text-secondary">Cada fila representa un registro de {{ detail.entitySlug }}. Los campos del módulo principal acompañan sus detalles.</p>
+        <p class="text-sm text-brand-text-secondary">Cada fila representa un registro de {{ detailEntityName }}. Los campos del módulo principal acompañan sus detalles.</p>
         <button type="button" class="self-start text-sm text-brand-error-text underline" @click="clearDetail">Quitar tabla de detalle y sus campos del reporte</button>
 
         <div class="flex flex-col gap-2 border-b border-brand-border-light pb-4">
           <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Datos</p>
           <label class="flex items-center justify-between gap-3 text-sm text-brand-text">
-            Incluir registros eliminados de "{{ detail.entitySlug }}"
+            Incluir registros eliminados de "{{ detailEntityName }}"
             <input v-model="detail.includeDeleted" type="checkbox" class="h-4 w-4" />
           </label>
           <label class="flex items-center justify-between gap-3 text-sm text-brand-text">
-            Incluir registros eliminados de "{{ entitySlug }}"
+            Incluir registros eliminados de "{{ baseEntityName }}"
             <input v-model="includeDeletedBase" type="checkbox" class="h-4 w-4" />
           </label>
           <p class="flex items-center gap-1.5 text-xs text-brand-text-muted">

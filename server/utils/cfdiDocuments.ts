@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
 import type { db } from '~/server/db'
-import { cfdiConceptos, cfdiDocuments, cfdiEvents, cfdiPaymentDocs, cfdiSeries, records } from '~/server/db/schema'
+import { cfdiConceptos, cfdiDocuments, cfdiDocumentLinks, cfdiEvents, cfdiPaymentDocs, cfdiSeries, records } from '~/server/db/schema'
 import { CP_REGEX_SRC, FORMAS_PAGO, METODOS_PAGO, RFC_REGEX_SRC, REGIMENES_FISCALES, TIPOS_RELACION, USOS_CFDI, enCatalogo } from '~/utils/cfdiCatalogos'
 
 type Tx = typeof db
@@ -352,6 +352,18 @@ export async function createDocument(tenantId: string, userId: string | null, in
         }))
       )
     }
+    if (input.sourceRecordId && sourceEntityId) {
+      await tx.insert(cfdiDocumentLinks).values({
+        tenantId,
+        documentId: doc.id,
+        entityId: sourceEntityId,
+        recordId: input.sourceRecordId,
+        relationType: 'source',
+        currency: input.moneda,
+        amount: String(totales.total),
+        createdBy: userId
+      }).onConflictDoNothing()
+    }
     return { id: doc.id }
   })
 }
@@ -380,6 +392,17 @@ export async function updateDocument(tenantId: string, userId: string | null, id
     if (input.observaciones !== undefined) patch.observaciones = input.observaciones || null
     if (input.customerEntityId !== undefined) patch.customerEntityId = input.customerEntityId
     if (input.customerRecordId !== undefined) patch.customerRecordId = input.customerRecordId
+    let sourceEntityId: string | null | undefined
+    if (input.sourceRecordId !== undefined) {
+      sourceEntityId = null
+      if (input.sourceRecordId) {
+        const [source] = await tx.select({ entityId: records.entityId }).from(records).where(and(eq(records.id, input.sourceRecordId), eq(records.tenantId, tenantId))).limit(1)
+        if (!source) throw new CfdiDocumentError('El registro de origen no existe en esta organización', 404)
+        sourceEntityId = source.entityId
+      }
+      patch.sourceRecordId = input.sourceRecordId
+      patch.sourceEntityId = sourceEntityId
+    }
 
     let conceptosNuevos: ConceptoComputado[] | null = null
     let descuentoDocumento = Number(doc.descuento)
@@ -428,6 +451,24 @@ export async function updateDocument(tenantId: string, userId: string | null, id
     }
 
     await tx.update(cfdiDocuments).set(patch).where(eq(cfdiDocuments.id, doc.id))
+    if (input.sourceRecordId !== undefined) {
+      await tx.delete(cfdiDocumentLinks).where(and(eq(cfdiDocumentLinks.documentId, doc.id), eq(cfdiDocumentLinks.relationType, 'source')))
+      if (input.sourceRecordId && sourceEntityId) {
+        const total = conceptosNuevos || input.descuentoDocumento !== undefined
+          ? Number(patch.total)
+          : Number(doc.total)
+        await tx.insert(cfdiDocumentLinks).values({
+          tenantId,
+          documentId: doc.id,
+          entityId: sourceEntityId,
+          recordId: input.sourceRecordId,
+          relationType: 'source',
+          amount: String(total),
+          currency: input.moneda ?? doc.moneda,
+          createdBy: userId
+        })
+      }
+    }
     return { id: doc.id }
   })
 }
@@ -534,6 +575,11 @@ export async function getDocumentDetail(tenantId: string, id: string) {
           .where(eq(cfdiDocuments.id, doc.documento.cfdiRelacionadoId))
           .limit(1)
       : []
+    const relaciones = await tx
+      .select()
+      .from(cfdiDocumentLinks)
+      .where(and(eq(cfdiDocumentLinks.tenantId, tenantId), eq(cfdiDocumentLinks.documentId, id)))
+      .orderBy(asc(cfdiDocumentLinks.createdAt))
 
     return {
       documento: doc.documento,
@@ -541,6 +587,7 @@ export async function getDocumentDetail(tenantId: string, id: string) {
       conceptos: conceptos.map(mapConceptoRow),
       pagos: pagos.map((p) => ({ ...p.fila, relacionado: p.relacionado })),
       relacionado: relacionado[0] ?? null,
+      relaciones,
       events
     }
   })

@@ -26,6 +26,7 @@ export interface IncrementalFieldRow {
 
 interface IncrementalConfig {
   digits: number
+  prefix?: string
   prefixSource?: { relationField: string; sourceField: string }
 }
 
@@ -33,12 +34,13 @@ interface IncrementalConfig {
 function parseConfig(validationRules: unknown): IncrementalConfig {
   const rules = (validationRules ?? {}) as Record<string, unknown>
   const digits = typeof rules.digits === 'number' && rules.digits >= 1 ? rules.digits : 6
+  const prefix = typeof rules.prefix === 'string' && rules.prefix.trim() ? rules.prefix.trim() : undefined
   const raw = rules.prefixSource as { relationField?: unknown; sourceField?: unknown } | undefined
   const prefixSource =
     raw && typeof raw.relationField === 'string' && typeof raw.sourceField === 'string'
       ? { relationField: raw.relationField, sourceField: raw.sourceField }
       : undefined
-  return { digits, prefixSource }
+  return { digits, prefix, prefixSource }
 }
 
 /**
@@ -121,7 +123,7 @@ export async function generateIncrementalValue(
   customData: Record<string, unknown>
 ): Promise<string> {
   const config = parseConfig(field.validationRules)
-  const prefix = config.prefixSource ? await resolvePrefix(tx, tenantId, config.prefixSource, customData) : ''
+  const prefix = config.prefixSource ? await resolvePrefix(tx, tenantId, config.prefixSource, customData) : config.prefix ?? ''
   const value = await nextCounterValue(tx, field.id, prefix)
   // Si el contador supera `digits` (ej. mas de 999999 con digits=6), padStart
   // no trunca - el numero simplemente crece mas alla de lo configurado (mejor

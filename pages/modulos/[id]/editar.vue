@@ -35,7 +35,8 @@
 import { Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
-import type { DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
+import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/utils/labelTemplates'
 
 definePageMeta({ layout: 'default' })
 
@@ -47,6 +48,7 @@ interface ModuleDetail {
   // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, revisado con las
   // herramientas de Pencil antes de este cambio) - switch "Módulo activo".
   isActive: boolean
+  deletedAt: string | null
   // Pedido directo del usuario (2026-09-01): icono editable del modulo - ver
   // comentario largo en server/db/schema.ts.
   icon: string | null
@@ -57,16 +59,17 @@ interface ModuleDetail {
   // Pedido directo del usuario (2026-09-05) - ver comentario largo en
   // server/db/schema.ts (entities.singularName).
   singularName: string | null
+  labelConfig?: LabelConfig | null
 }
 
 // Rediseno "Editar Módulo": el indicador de 4 pasos con circulos se
 // reemplaza por una barra de pestañas (Tab/Active - Tab/Default del .pen),
-// con una 5ta pestaña "Vista previa" que no existia antes. Se mantienen las
+// sin una pestaña separada de vista previa. Se mantienen las
 // mismas 5 secciones/claves internas de siempre (name/description/isActive
 // en "basica", ModuleFieldsCard en "campos", los mismos configuradores de
 // ERD-74/75 en "detalle"/"listado") - el rediseno solo cambia la NAVEGACION
 // entre ellas, no su contenido ni su forma de guardar. El .pen solo dibuja 3
-// pestañas (Información general/Campos/Vista previa, sin "Diseño del
+// pestañas (Información general/Campos, sin "Diseño del
 // detalle" ni "Diseño del listado" propias) - se agregan esas 2 como
 // pestañas mas siguiendo el mismo look, decision confirmada con el usuario.
 // La pestaña API vive dentro del módulo para mantener la documentación junto
@@ -74,11 +77,10 @@ interface ModuleDetail {
 const TABS = [
   { key: 'basica', label: 'Información general' },
   { key: 'campos', label: 'Campos' },
-  { key: 'relaciones', label: 'Relaciones' },
   { key: 'navegacion', label: 'Ubicación en menú' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
-  { key: 'preview', label: 'Vista previa' },
+  { key: 'etiquetas', label: 'Etiquetas' },
   { key: 'api', label: 'API' }
 ] as const
 type StepKey = (typeof TABS)[number]['key']
@@ -103,6 +105,7 @@ const step = ref<StepKey>('basica')
 // cacheado y no encontrar un catalogo abierto desde /catalogos.
 const { data, pending, error: fetchError, refresh } = await useFetch<{ entities: ModuleDetail[] }>('/api/entities', {
   key: 'entities-all-list',
+  query: { deleted: 'all' },
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
 
@@ -116,13 +119,14 @@ const listBackTo = computed(() => (currentModule.value?.moduleKind === 'dimensio
 // HU-ERD-77: opciones para el select "Entidad relacionada" de
 // ModuleRelationsCard.vue - reusa el mismo listado de modulos ya cargado
 // arriba (GET /api/entities), sin sumar otro fetch aparte solo para esto.
-const entityOptions = computed(() => (data.value?.entities ?? []).map((m) => ({ id: m.id, name: m.name })))
+const entityOptions = computed(() => (data.value?.entities ?? []).filter((m) => m.isActive && !m.deletedAt).map((m) => ({ id: m.id, name: m.name })))
 
 const name = ref('')
 const description = ref('')
 const isActive = ref(true)
 const icon = ref<string | null>(null)
 const singularName = ref('')
+const labelConfig = ref<LabelConfig>({ ...DEFAULT_LABEL_CONFIG })
 // Seguimiento (2026-09-05, mismo dia): "queria que con js en el menu se
 // pusiera en plural, no queria un campo nuevo" - ver comentario largo en
 // components/ModuleWizard.vue (mismo campo, misma vista previa).
@@ -134,6 +138,9 @@ watchEffect(() => {
     isActive.value = currentModule.value.isActive
     icon.value = currentModule.value.icon
     singularName.value = currentModule.value.singularName ?? ''
+    labelConfig.value = labelConfigSchema.safeParse(currentModule.value.labelConfig).success
+      ? { ...DEFAULT_LABEL_CONFIG, ...(currentModule.value.labelConfig as LabelConfig) }
+      : { ...DEFAULT_LABEL_CONFIG }
   }
 })
 
@@ -172,21 +179,34 @@ async function onSave() {
   }
 }
 
+const savingLabelConfig = ref(false)
+async function onSaveLabelConfig() {
+  savingLabelConfig.value = true
+  try {
+    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { labelConfig: labelConfig.value } })
+    toast.updated('Diseño de etiquetas guardado', labelConfig.value.enabled ? 'Ya puedes imprimir etiquetas desde el módulo.' : 'La impresión de etiquetas quedó desactivada.')
+    await refresh()
+  } catch (err: any) {
+    toast.error('No se pudo guardar la etiqueta', err?.data?.statusMessage || 'Revisa los campos seleccionados.')
+  } finally {
+    savingLabelConfig.value = false
+  }
+}
+
 // Rediseno "Editar Módulo": "Zona de peligro" (Card Danger del .pen) - mismo
-// mecanismo de borrado que pages/modulos/index.vue (DELETE /api/entities/:id,
-// bloqueado con 409 si el modulo tiene records - HU-ERD-66), ahora tambien
+// mecanismo de borrado recuperable que pages/modulos/index.vue, ahora tambien
 // disponible desde la propia pagina de edicion, no solo desde el listado.
 const deleteError = ref<string | null>(null)
 const deleting = ref(false)
 async function onDeleteModule() {
   if (!currentModule.value) return
-  if (!confirm(`Eliminar el modulo "${currentModule.value.name}"? Esta accion no se puede deshacer.`)) return
+  if (!confirm(`¿Deshabilitar el módulo "${currentModule.value.name}"? Sus datos y referencias seguirán disponibles para consulta.`)) return
 
   deleteError.value = null
   deleting.value = true
   try {
     await $fetch(`/api/entities/${moduleId}`, { method: 'DELETE' })
-    toast.success('Módulo eliminado', `"${currentModule.value.name}" se eliminó correctamente.`)
+    toast.success('Módulo deshabilitado', `"${currentModule.value.name}" se puede restaurar desde módulos borrados.`)
     await router.push(listBackTo.value)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || 'No se pudo eliminar el módulo'
@@ -208,6 +228,7 @@ const { data: fieldsData, refresh: refreshFields } = await useFetch<{
   inverseRelations: InverseRelation[]
   detailLayout: DetailLayout
   listLayout: ListLayout
+  boardConfig: BoardConfig
 }>(
   () => `/api/entities/${currentModule.value?.slug ?? ''}/fields`,
   {
@@ -253,8 +274,12 @@ async function onSaveDetailLayout() {
 // arriba (borrador local sincronizado desde el layout ya resuelto por el
 // servidor, guardado explicito via "Guardar diseño").
 const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
+const boardConfig = ref<BoardConfig>({ enabled: false, statusField: null, titleField: null, secondaryFields: [], defaultView: 'table' })
 watchEffect(() => {
-  if (fieldsData.value) listLayout.value = fieldsData.value.listLayout
+  if (fieldsData.value) {
+    listLayout.value = fieldsData.value.listLayout
+    boardConfig.value = fieldsData.value.boardConfig
+  }
 })
 
 const savingListLayout = ref(false)
@@ -263,7 +288,7 @@ async function onSaveListLayout() {
   listLayoutError.value = null
   savingListLayout.value = true
   try {
-    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value } })
+    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value, boardConfig: boardConfig.value } })
     toast.updated('Diseño del listado guardado', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
@@ -301,8 +326,8 @@ async function onSaveListLayout() {
             <span class="text-[15px] font-bold text-brand-text">{{ currentModule.name }}</span>
             <span
               class="rounded-full px-2 py-0.5 text-xs font-semibold"
-              :class="currentModule.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
-            >{{ currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
+              :class="currentModule.deletedAt ? 'bg-brand-error-bg text-brand-error-text' : currentModule.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+            >{{ currentModule.deletedAt ? 'Borrado' : currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
           </div>
           <span class="text-xs text-brand-text-secondary">
             <span class="font-mono">/{{ currentModule.slug }}</span> · {{ fields.length }} campo{{ fields.length === 1 ? '' : 's' }}
@@ -412,12 +437,13 @@ async function onSaveListLayout() {
                 <div class="flex items-center justify-between">
                   <div class="flex flex-col gap-0.5">
                     <p class="text-sm font-semibold text-brand-text">Módulo activo</p>
-                    <p class="text-xs text-brand-text-muted">Los usuarios podrán ver y usar este módulo</p>
+                    <p class="text-xs text-brand-text-muted">Si está deshabilitado, sus registros siguen disponibles para consulta.</p>
                   </div>
                   <button
                     type="button"
                     class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors"
                     :class="isActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
+                    :disabled="!!currentModule.deletedAt"
                     @click="isActive = !isActive"
                   >
                     <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
@@ -431,7 +457,7 @@ async function onSaveListLayout() {
                 <NuxtLink :to="listBackTo" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
                 <button
                   type="button"
-                  :disabled="saving || !name"
+                  :disabled="saving || !name || !!currentModule.deletedAt"
                   class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
                   @click="onSave"
                 >
@@ -452,11 +478,11 @@ async function onSaveListLayout() {
               <div class="flex items-center justify-between gap-4 p-5">
                 <div class="flex flex-col gap-0.5">
                   <p class="text-sm font-semibold text-brand-text">Eliminar módulo</p>
-                  <p class="text-xs text-brand-text-muted">Esta acción no se puede deshacer. Se eliminarán todos los registros de {{ currentModule.name }}.</p>
+                  <p class="text-xs text-brand-text-muted">Se ocultará del menú y no admitirá registros ni referencias nuevas. Los datos existentes se conservan y podrás restaurarlo.</p>
                 </div>
                 <button
                   type="button"
-                  :disabled="deleting"
+                  :disabled="deleting || !!currentModule.deletedAt"
                   class="flex shrink-0 items-center gap-1.5 rounded border border-brand-error-text bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
                   @click="onDeleteModule"
                 >
@@ -477,12 +503,6 @@ async function onSaveListLayout() {
           <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
         </div>
-      </template>
-
-      <!-- HU-ERD-77: pestaña "Relaciones" - administra relation_definitions
-           de este modulo (ver components/ModuleRelationsCard.vue). -->
-      <template v-else-if="step === 'relaciones'">
-        <ModuleRelationsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :entity-options="entityOptions" />
       </template>
 
       <!-- HU-ERD-74: paso 3 - ver components/ModuleDetailLayoutCard.vue
@@ -529,7 +549,7 @@ async function onSaveListLayout() {
           </button>
         </div>
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleListLayoutCard v-model="listLayout" :fields="fields" />
+          <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" :fields="fields" />
           <ModuleListPreviewCard
             :entity-slug="currentModule.slug"
             :entity-name="currentModule.name"
@@ -539,24 +559,27 @@ async function onSaveListLayout() {
         </div>
       </template>
 
-      <!-- Rediseno "Editar Módulo": pestaña "Vista previa" (Tab Vista Previa
-           del .pen) - sin mock propio en el archivo (las 2 pantallas
-           revisadas solo muestran "Información general"/"Campos" activas),
-           asi que se interpreta como el mismo ModulePreviewCard de siempre
-           pero a ancho completo, en vez de compartir columna con un
-           configurador - le da a la vista previa el foco central que su
-           nombre de pestaña promete. -->
+      <template v-else-if="step === 'etiquetas'">
+        <div class="mb-4 flex items-center justify-between gap-4">
+          <p class="max-w-2xl text-sm text-brand-text-secondary">Activa la impresión para este módulo y crea una etiqueta con sus propios campos. Los registros se imprimirán respetando el tamaño real seleccionado.</p>
+          <button
+            type="button"
+            :disabled="savingLabelConfig"
+            class="shrink-0 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            @click="onSaveLabelConfig"
+          >
+            {{ savingLabelConfig ? 'Guardando...' : 'Guardar etiqueta' }}
+          </button>
+        </div>
+        <ModuleLabelEditor v-model="labelConfig" :fields="fields" :module-name="currentModule.name" />
+      </template>
+
       <template v-else-if="step === 'navegacion'">
         <ModuleNavigationEditor v-if="currentModule.moduleKind === 'hecho'" :entity-id="currentModule.id" :entity-name="currentModule.name" />
         <p v-else class="text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
       </template>
       <template v-else-if="step === 'api'">
         <ModuleApiDocs :entity-name="currentModule.name" :entity-slug="currentModule.slug" :fields="fields" :permissions="fieldsData?.permissions" />
-      </template>
-      <template v-else>
-        <div class="mx-auto w-full max-w-[480px]">
-          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
-        </div>
       </template>
     </template>
   </div>

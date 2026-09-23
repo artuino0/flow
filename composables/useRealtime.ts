@@ -10,16 +10,19 @@ interface RealtimeConnectionState {
   connected: boolean
   reconnecting: boolean
   everConnected: boolean
+  transport: 'unknown' | 'websocket' | 'polling'
 }
 
 type RealtimeListener = (event: ClientRealtimeEnvelope) => void
 
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 let reconnectAttempt = 0
 let consumerCount = 0
 let stopped = true
 let currentState: Ref<RealtimeConnectionState> | null = null
+let transportPromise: Promise<'websocket' | 'polling'> | null = null
 const listeners = new Map<string, Set<RealtimeListener>>()
 
 function websocketUrl(): string {
@@ -37,9 +40,34 @@ function clearReconnect() {
   reconnectTimer = null
 }
 
+function startPolling() {
+  if (pollTimer) return
+  const poll = () => {
+    if (!stopped && document.visibilityState === 'visible') {
+      dispatch({ type: 'realtime.poll', payload: null, sentAt: new Date().toISOString() })
+    }
+  }
+  poll()
+  pollTimer = setInterval(poll, 8_000)
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = null
+}
+
 async function refreshAccessCookie() {
   try { await $fetch('/api/auth/refresh', { method: 'POST' }) }
   catch { /* El upgrade del socket vuelve a validar la sesión. */ }
+}
+
+async function resolveTransport(): Promise<'websocket' | 'polling'> {
+  if (!transportPromise) {
+    transportPromise = $fetch<{ realtimeTransport?: 'websocket' | 'polling' }>('/api/config')
+      .then(config => config.realtimeTransport === 'polling' ? 'polling' : 'websocket')
+      .catch(() => window.location.hostname.endsWith('.vercel.app') ? 'polling' : 'websocket')
+  }
+  return transportPromise
 }
 
 function scheduleReconnect(state: Ref<RealtimeConnectionState>) {
@@ -57,6 +85,14 @@ function scheduleReconnect(state: Ref<RealtimeConnectionState>) {
 async function connect(state: Ref<RealtimeConnectionState>) {
   if (!import.meta.client || stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
   clearReconnect()
+  const transport = await resolveTransport()
+  state.value.transport = transport
+  if (transport === 'polling') {
+    state.value.connected = false
+    state.value.reconnecting = false
+    startPolling()
+    return
+  }
   await refreshAccessCookie()
   if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
 
@@ -104,7 +140,7 @@ function wakeConnection() {
 }
 
 export function useRealtime() {
-  const state = useState<RealtimeConnectionState>('realtime-connection', () => ({ connected: false, reconnecting: false, everConnected: false }))
+  const state = useState<RealtimeConnectionState>('realtime-connection', () => ({ connected: false, reconnecting: false, everConnected: false, transport: 'unknown' }))
   let active = false
 
   function start() {
@@ -127,6 +163,7 @@ export function useRealtime() {
     if (consumerCount > 0) return
     stopped = true
     clearReconnect()
+    stopPolling()
     window.removeEventListener('online', wakeConnection)
     document.removeEventListener('visibilitychange', wakeConnection)
     const current = socket

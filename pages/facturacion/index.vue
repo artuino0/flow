@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FileText, FileMinus, WalletCards, Plus, RefreshCw, Search, Hash, ChevronLeft, ChevronRight, Ban, CircleCheck } from '@lucide/vue'
+import { FileText, FileMinus, WalletCards, Plus, Hash, ChevronLeft, ChevronRight, Ban, CircleCheck } from '@lucide/vue'
 import { ESTADOS_CFDI, TIPO_CFDI_LABEL, TIPOS_COMPROBANTE, formatoDinero, formatoFechaHora } from '~/utils/cfdiCatalogos'
 
 // Fase C de DOCS/HU_Timbrado_CFDI_PAC.md: listado del dominio fiscal fijo.
@@ -133,27 +133,48 @@ function folioTexto(row: DocRow) {
 
 <template>
   <div class="min-h-[calc(100vh-120px)] pb-16">
-    <header class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <p class="text-xs text-brand-text-secondary">Operación <span class="mx-1 text-brand-text-muted">/</span> <strong class="text-brand-text">Facturación</strong></p>
-        <h1 class="mt-1 text-[22px] font-bold text-brand-text">Facturación electrónica</h1>
-        <p class="mt-1 text-sm text-brand-text-secondary">CFDI 4.0 timbrados con tu PAC, vinculados a tus cobros y embarques</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="rounded border border-brand-border bg-white px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="showSeries = !showSeries">
+    <ListPageHeader
+      v-model:search="filters.q"
+      title="Facturación electrónica"
+      description="CFDI 4.0 timbrados con tu PAC, vinculados a tus cobros y operaciones."
+      :count="total"
+      count-noun="documento"
+      search-placeholder="Buscar por receptor, RFC, UUID o folio..."
+      :refreshing="loading"
+      @refresh="load"
+    >
+      <template #actions>
+        <button type="button" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="showSeries = !showSeries">
           <span class="flex items-center gap-1.5"><Hash class="h-4 w-4" :stroke-width="1.75" />Series ({{ series.length }})</span>
         </button>
-        <NuxtLink to="/facturacion/nuevo?tipo=P" class="rounded border border-brand-border bg-white px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
+        <NuxtLink to="/facturacion/nuevo?tipo=P" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
           <span class="flex items-center gap-1.5"><WalletCards class="h-4 w-4" :stroke-width="1.75" />Complemento de pago</span>
         </NuxtLink>
-        <NuxtLink to="/facturacion/nuevo?tipo=E" class="rounded border border-brand-border bg-white px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
+        <NuxtLink to="/facturacion/nuevo?tipo=E" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
           <span class="flex items-center gap-1.5"><FileMinus class="h-4 w-4" :stroke-width="1.75" />Nota de crédito</span>
         </NuxtLink>
-        <NuxtLink to="/facturacion/nuevo?tipo=I" class="rounded bg-brand-orange px-3 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+        <NuxtLink to="/facturacion/nuevo?tipo=I" class="flex h-[35px] items-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
           <span class="flex items-center gap-1.5"><Plus class="h-4 w-4" :stroke-width="2" />Nueva factura</span>
         </NuxtLink>
-      </div>
-    </header>
+      </template>
+      <template #toolbar-left>
+        <select v-model="filters.tipo" class="h-[30px] rounded border border-brand-border bg-white px-3 text-[13px] focus:border-brand-blue focus:outline-none">
+          <option value="">Todos los tipos</option>
+          <option value="I">Facturas (I)</option>
+          <option value="E">Notas de crédito (E)</option>
+          <option value="P">Complementos (P)</option>
+        </select>
+        <select v-model="filters.estado" class="h-[30px] rounded border border-brand-border bg-white px-3 text-[13px] focus:border-brand-blue focus:outline-none">
+          <option value="">Todos los estados</option>
+          <option value="borrador">Borrador</option>
+          <option value="timbrando">Timbrando</option>
+          <option value="timbrada">Timbrada</option>
+          <option value="error">Error</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+        <button type="button" class="h-[30px] rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="buscar">Buscar</button>
+      </template>
+    </ListPageHeader>
 
     <section v-if="showSeries" class="mt-5 rounded-lg border border-brand-border-light bg-white p-5">
       <h2 class="text-[15px] font-bold text-brand-text">Series fiscales</h2>
@@ -208,30 +229,6 @@ function folioTexto(row: DocRow) {
     </section>
 
     <section class="mt-5 rounded-lg border border-brand-border-light bg-white">
-      <div class="flex flex-wrap items-center gap-2 border-b border-brand-border-light p-4">
-        <div class="relative min-w-52 flex-1">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-muted" :stroke-width="1.75" />
-          <input v-model="filters.q" type="search" placeholder="Buscar por receptor, RFC, UUID o folio…" class="w-full rounded border border-brand-border py-2 pl-9 pr-3 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @keydown.enter="buscar" />
-        </div>
-        <select v-model="filters.tipo" class="rounded border border-brand-border bg-white px-3 py-2 text-sm focus:border-brand-blue focus:outline-none">
-          <option value="">Todos los tipos</option>
-          <option value="I">Facturas (I)</option>
-          <option value="E">Notas de crédito (E)</option>
-          <option value="P">Complementos (P)</option>
-        </select>
-        <select v-model="filters.estado" class="rounded border border-brand-border bg-white px-3 py-2 text-sm focus:border-brand-blue focus:outline-none">
-          <option value="">Todos los estados</option>
-          <option value="borrador">Borrador</option>
-          <option value="timbrando">Timbrando</option>
-          <option value="timbrada">Timbrada</option>
-          <option value="error">Error</option>
-          <option value="cancelada">Cancelada</option>
-        </select>
-        <button type="button" class="rounded border border-brand-border px-3 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="buscar">Buscar</button>
-        <button type="button" class="rounded border border-brand-border p-2 text-brand-text-secondary hover:bg-brand-bg" title="Recargar" @click="load">
-          <RefreshCw class="h-4 w-4" :stroke-width="1.75" :class="loading && 'animate-spin'" />
-        </button>
-      </div>
 
       <p v-if="loadError" role="alert" class="p-6 text-sm text-brand-error-text">{{ loadError }}</p>
       <p v-else-if="loading && !rows.length" role="status" class="p-6 text-sm text-brand-text-muted">Cargando documentos…</p>

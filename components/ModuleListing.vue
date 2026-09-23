@@ -8,7 +8,7 @@
 // propias (/modulos, /catalogos - cada una con su entrada de menu y su
 // titulo de pestaña) pero con el MISMO componente por dentro, mismo criterio
 // que components/ModuleWizard.vue para el asistente.
-import { Blocks, ChevronRight, Eye, Plus, Search, Settings2, Trash2 } from '@lucide/vue'
+import { Blocks, Eye, Plus, RotateCcw, Settings2, Trash2 } from '@lucide/vue'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
 
@@ -36,15 +36,17 @@ interface ModuleRow {
   name: string
   description: string | null
   isActive: boolean
+  deletedAt: string | null
   createdAt: string
   recordCount: number
   fieldCount: number
   icon: string | null
 }
 
+const showDeleted = ref(false)
 const { data, pending, error: fetchError, refresh } = await useFetch<{ entities: ModuleRow[] }>('/api/entities', {
   key: `${props.moduleKind}-list`,
-  query: { moduleKind: props.moduleKind },
+  query: computed(() => ({ moduleKind: props.moduleKind, deleted: showDeleted.value ? 'only' : 'exclude' })),
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
 
@@ -70,17 +72,32 @@ const deletingId = ref<string | null>(null)
 const toast = useToast()
 
 async function onDelete(module: ModuleRow) {
-  if (!confirm(`Eliminar el ${props.noun} "${module.name}"? Esta accion no se puede deshacer.`)) return
+  if (!confirm(`¿Deshabilitar el ${props.noun} "${module.name}"? Sus registros y referencias seguirán disponibles para consulta.`)) return
 
   deleteError.value = null
   deletingId.value = module.id
   try {
     await $fetch(`/api/entities/${module.id}`, { method: 'DELETE' })
     await refresh()
-    toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} eliminado`, `"${module.name}" se eliminó correctamente.`)
+    toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} deshabilitado`, `"${module.name}" se puede restaurar desde módulos borrados.`)
   } catch (err: any) {
     deleteError.value = err?.data?.statusMessage || `No se pudo eliminar el ${props.noun}`
     toast.error(`No se pudo eliminar el ${props.noun}`, deleteError.value)
+  } finally {
+    deletingId.value = null
+  }
+}
+
+async function onRestore(module: ModuleRow) {
+  deletingId.value = module.id
+  deleteError.value = null
+  try {
+    await $fetch(`/api/entities/${module.id}/restore`, { method: 'POST' })
+    await refresh()
+    toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} restaurado`, `"${module.name}" vuelve a estar disponible.`)
+  } catch (err: any) {
+    deleteError.value = err?.data?.statusMessage || `No se pudo restaurar el ${props.noun}`
+    toast.error('No se pudo restaurar', deleteError.value)
   } finally {
     deletingId.value = null
   }
@@ -89,11 +106,23 @@ async function onDelete(module: ModuleRow) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center gap-1 text-[13px]">
-      <span class="text-brand-text-secondary">Inicio</span>
-      <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
-      <span class="font-bold text-brand-text">{{ sectionLabel }}</span>
-    </div>
+    <ListPageHeader
+      v-model:search="search"
+      :title="sectionLabel"
+      :description="subtitle"
+      :count="data?.entities.length"
+      :count-noun="noun"
+      :search-placeholder="searchPlaceholder"
+      @refresh="refresh"
+    >
+      <template #actions>
+        <NuxtLink to="/organizacion" class="flex h-[35px] items-center rounded border border-brand-border px-4 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
+        <NuxtLink :to="basePath + '/nuevo'" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover">
+          <Blocks class="h-4 w-4" :stroke-width="1.75" />
+          {{ createLabel }}
+        </NuxtLink>
+      </template>
+    </ListPageHeader>
 
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
@@ -101,43 +130,20 @@ async function onDelete(module: ModuleRow) {
     </p>
 
     <template v-else-if="data">
-      <div class="flex items-center justify-between">
-        <div class="flex flex-col gap-1">
-          <h1 class="text-[22px] font-bold text-brand-text">{{ sectionLabel }}</h1>
-          <p class="text-sm text-brand-text-secondary">{{ subtitle }}</p>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <div class="flex w-60 items-center gap-2 rounded border border-brand-border bg-brand-surface px-3 py-2">
-            <Search class="h-[15px] w-[15px] shrink-0 text-brand-text-muted" :stroke-width="1.75" />
-            <input
-              v-model="search"
-              type="text"
-              :placeholder="searchPlaceholder"
-              class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
-            />
-          </div>
-            <NuxtLink to="/organizacion" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
-            <NuxtLink
-              :to="`${basePath}/nuevo`"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-          >
-            <Blocks class="h-4 w-4" :stroke-width="1.75" />
-            {{ createLabel }}
-          </NuxtLink>
-        </div>
-      </div>
-
       <p v-if="deleteError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">
         {{ deleteError }}
       </p>
+
+      <label class="flex w-fit cursor-pointer items-center gap-2 text-sm font-semibold text-brand-text-secondary">
+        <input v-model="showDeleted" type="checkbox" class="accent-brand-orange" /> Ver módulos borrados
+      </label>
 
       <!-- Screen/Listado Módulos - Vacío del .pen ("checa esto" del usuario,
       2026-09-03): antes era solo texto plano, este es el estado vacío real
       (icono + heading + subtítulo + CTA), reusado tal cual para Catálogos
       con noun/createLabel/basePath (mismo criterio que el resto del
       componente). -->
-      <div v-if="data.entities.length === 0" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
+      <div v-if="data.entities.length === 0 && !showDeleted" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
         <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg">
           <Blocks class="h-7 w-7 text-brand-text-muted" :stroke-width="1.75" />
         </div>
@@ -155,7 +161,7 @@ async function onDelete(module: ModuleRow) {
           {{ createLabel }}
         </NuxtLink>
       </div>
-      <p v-else-if="filteredModules.length === 0" class="text-sm text-brand-text-muted">Ningún {{ noun }} coincide con "{{ search }}".</p>
+      <p v-else-if="filteredModules.length === 0" class="text-sm text-brand-text-muted">{{ showDeleted ? 'No hay módulos borrados' : `Ningún ${noun} coincide con "${search}".` }}</p>
 
       <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
         <table class="min-w-full text-sm">
@@ -185,8 +191,8 @@ async function onDelete(module: ModuleRow) {
               <td class="px-4 py-3">
                 <span
                   class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                  :class="module.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
-                >{{ module.isActive ? 'Activo' : 'Inactivo' }}</span>
+                  :class="module.deletedAt ? 'bg-brand-error-bg text-brand-error-text' : module.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+                >{{ module.deletedAt ? 'Borrado' : module.isActive ? 'Activo' : 'Inactivo' }}</span>
               </td>
               <td class="px-4 py-3 text-right text-brand-text">{{ module.recordCount }}</td>
               <td class="px-4 py-3 text-right text-brand-text">{{ module.fieldCount }}</td>
@@ -194,7 +200,7 @@ async function onDelete(module: ModuleRow) {
               <td class="px-4 py-3">
                 <div class="flex gap-1.5">
                   <NuxtLink
-                    v-if="showViewRecordsAction"
+                    v-if="showViewRecordsAction || module.deletedAt"
                     :to="`/registros/${module.slug}`"
                     title="Ver registros"
                     class="flex h-[26px] w-[26px] items-center justify-center rounded bg-brand-surface text-brand-text-secondary hover:bg-brand-bg"
@@ -202,15 +208,23 @@ async function onDelete(module: ModuleRow) {
                     <Eye class="h-3.5 w-3.5" :stroke-width="1.75" />
                   </NuxtLink>
                   <NuxtLink
+                    v-if="!module.deletedAt"
                     :to="`/modulos/${module.id}/editar`"
                     title="Editar"
                     class="flex h-[26px] w-[26px] items-center justify-center rounded bg-brand-surface text-brand-text-secondary hover:bg-brand-bg"
                   >
                     <Settings2 class="h-3.5 w-3.5" :stroke-width="1.75" />
                   </NuxtLink>
-                  <button
+                  <button v-if="module.deletedAt"
                     type="button"
-                    title="Eliminar"
+                    title="Restaurar"
+                    :disabled="deletingId === module.id"
+                    class="flex h-[26px] w-[26px] items-center justify-center rounded bg-brand-surface text-brand-blue hover:bg-brand-blue-bg disabled:opacity-60"
+                    @click="onRestore(module)"
+                  ><RotateCcw class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
+                  <button v-else
+                    type="button"
+                    title="Deshabilitar"
                     :disabled="deletingId === module.id"
                     class="flex h-[26px] w-[26px] items-center justify-center rounded bg-brand-surface text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
                     @click="onDelete(module)"

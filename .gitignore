@@ -7,3 +7,9 @@ node_modules
 # en disco local, ver server/utils/fileStorage.ts. Nunca se commitean.
 /uploads
 .continue/
+
+.vercel
+.env*
+# La clave privada del emisor y las licencias locales nunca van al repositorio.
+/.license-issuer/
+/data/license/

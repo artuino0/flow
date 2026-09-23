@@ -5,6 +5,7 @@ import { logger } from '~/server/utils/logger'
 import { makeRealtimeEnvelope, realtimeUserTopic, subscribeRealtime } from '~/server/utils/realtime'
 import { validateSession } from '~/server/utils/sessions'
 import { publishChatPresence, publishTyping } from '~/server/utils/chat'
+import { getLicenseStatus } from '~/server/utils/license'
 
 const HEARTBEAT_MS = 25_000
 const STALE_CONNECTION_MS = 75_000
@@ -101,6 +102,12 @@ async function heartbeat(peer: Peer): Promise<void> {
   const context = peerContext(peer)
   const now = Date.now()
 
+  if (!getLicenseStatus().activated) {
+    peer.close(4003, 'Instalación sin licencia activa')
+    cleanup(peer)
+    return
+  }
+
   if (now - context.lastPongAt > STALE_CONNECTION_MS) {
     peer.close(4000, 'Conexión inactiva')
     cleanup(peer)
@@ -125,6 +132,7 @@ async function heartbeat(peer: Peer): Promise<void> {
 
 export default defineWebSocketHandler({
   async upgrade(request) {
+    if (!getLicenseStatus().activated) throw new Response('Instalación sin licencia activa', { status: 423 })
     if (!allowedOrigin(request as Request)) throw new Response('Origen no permitido', { status: 403 })
 
     const token = resolveAuthToken(

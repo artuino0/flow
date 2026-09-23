@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { buildInvitationEmailHtml } from '../../server/utils/mailer'
+import { afterEach, describe, it, expect } from 'vitest'
+import { buildInvitationEmailHtml, getAppBaseUrl } from '../../server/utils/mailer'
 
 // HU-ERD-84: prueba pura de buildInvitationEmailHtml (sin Postgres, sin
 // SMTP), mismo criterio que test/unit/totp.test.ts - confirma que el HTML
@@ -19,15 +19,17 @@ describe('buildInvitationEmailHtml', () => {
 
   it('incluye el copy exacto del diseño real', () => {
     const html = buildInvitationEmailHtml(base)
-    expect(html).toContain('FlowERP')
+    expect(html).toContain('Flow')
+    expect(html).not.toContain('FlowERP')
+    expect(html).not.toContain('src="flow-logo"')
     expect(html).toContain('Te invitaron a unirte a Acme Corp')
-    expect(html).toContain('Juan Pérez te invitó a colaborar en el espacio de trabajo de Acme Corp en FlowERP. Te vas a unir con el rol de Ventas.')
+    expect(html).toContain('Juan Pérez te invitó a colaborar en el espacio de trabajo de Acme Corp en Flow. Te vas a unir con el rol de Ventas.')
     expect(html).toContain('Rol asignado')
     expect(html).toContain('Aceptar invitación')
     expect(html).toContain('Este enlace expira en 7 días')
     expect(html).toContain('¿El botón no funciona? Copia y pega este enlace en tu navegador:')
     expect(html).toContain('https://app.erpdinamico.test/invitacion/abc123')
-    expect(html).toContain('Este correo fue enviado a maria.garcia@acme.com porque fue invitada a FlowERP.')
+    expect(html).toContain('Este correo fue enviado a maria.garcia@acme.com porque fue invitada a Flow.')
   })
 
   it('el botón enlaza al inviteUrl real', () => {
@@ -46,5 +48,35 @@ describe('buildInvitationEmailHtml', () => {
     expect(html).toContain('&lt;script&gt;')
     expect(html).not.toContain('<b>Malicioso</b>')
     expect(html).toContain('A &amp; B')
+  })
+})
+
+describe('getAppBaseUrl', () => {
+  const original = {
+    APP_BASE_URL: process.env.APP_BASE_URL,
+    VERCEL: process.env.VERCEL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    NUXT_ENV_VERCEL_ENV: process.env.NUXT_ENV_VERCEL_ENV,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL: process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL
+  }
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  it('respeta una URL pública configurada', () => {
+    process.env.APP_BASE_URL = 'https://flow.example.com/'
+    expect(getAppBaseUrl()).toBe('https://flow.example.com')
+  })
+
+  it('ignora localhost en Vercel y usa el dominio de producción de Nuxt', () => {
+    process.env.APP_BASE_URL = 'http://localhost:3001'
+    process.env.VERCEL = '1'
+    process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL = 'flow-roan-pi.vercel.app'
+    expect(getAppBaseUrl()).toBe('https://flow-roan-pi.vercel.app')
   })
 })

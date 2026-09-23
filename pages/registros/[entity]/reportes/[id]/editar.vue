@@ -1,12 +1,10 @@
 <script setup lang="ts">
 // ERD-88: reabre una plantilla de reporte imprimible guardada en el
-// Diseñador de 3 columnas - alcanzable desde el botón "Editar" de Vista
-// previa impresión (pages/registros/[entity]/reportes/vista-previa.vue,
-// ERD-88 #293), NO desde el Entry Menu del listado (que va directo a
-// imprimir - ver el comentario largo en pages/registros/[entity]/index.vue).
+// Diseñador de 3 columnas - alcanzable desde el lápiz del listado o desde
+// la vista previa. Ambas entradas y la API de guardado exigen administrador.
 import type { PrintReportDsl } from '~/composables/usePrintReports'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', editorFullscreen: true, fullBleed: true, middleware: 'report-admin' })
 
 const route = useRoute()
 const slug = route.params.entity as string

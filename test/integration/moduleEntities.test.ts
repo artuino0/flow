@@ -6,6 +6,7 @@ import type {
   createEntity as CreateEntity,
   updateEntity as UpdateEntity,
   deleteEntity as DeleteEntity,
+  restoreEntity as RestoreEntity,
   listEntities as ListEntities,
   listVisibleEntities as ListVisibleEntities,
   DuplicateSlugError as DuplicateSlugErrorType
@@ -24,6 +25,7 @@ let admin: postgres.Sql
 let createEntity: typeof CreateEntity
 let updateEntity: typeof UpdateEntity
 let deleteEntity: typeof DeleteEntity
+let restoreEntity: typeof RestoreEntity
 let listEntities: typeof ListEntities
 let listVisibleEntities: typeof ListVisibleEntities
 let DuplicateSlugError: typeof DuplicateSlugErrorType
@@ -42,7 +44,7 @@ beforeAll(async () => {
   await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_B}, 'Administrador', true)`
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ createEntity, updateEntity, deleteEntity, listEntities, listVisibleEntities, DuplicateSlugError } = await import(
+  ;({ createEntity, updateEntity, deleteEntity, restoreEntity, listEntities, listVisibleEntities, DuplicateSlugError } = await import(
     '../../server/utils/moduleEntities'
   ))
 }, 60_000)
@@ -101,27 +103,55 @@ describe('moduleEntities (Postgres real)', () => {
     expect(clearedAgain).toMatchObject({ labelField: null })
   })
 
-  it('deleteEntity borra un modulo sin records', async () => {
+  it('deleteEntity deshabilita un modulo sin records y permite restaurarlo', async () => {
     const entity = await createEntity(TENANT_A, { name: 'Descartable', slug: 'descartable', description: null })
     const result = await deleteEntity(TENANT_A, entity.id)
     expect(result).toEqual({ status: 'deleted' })
+    expect((await listEntities(TENANT_A)).find((row) => row.id === entity.id)).toBeUndefined()
+    expect((await listEntities(TENANT_A, undefined, 'only')).find((row) => row.id === entity.id)?.isActive).toBe(false)
+    expect(await restoreEntity(TENANT_A, entity.id)).toMatchObject({ id: entity.id, isActive: true, deletedAt: null })
+    expect((await listEntities(TENANT_A)).find((row) => row.id === entity.id)).toBeDefined()
   })
 
-  it('deleteEntity bloquea el borrado (409 en el endpoint) si el modulo tiene records', async () => {
+  it('deleteEntity conserva un modulo con registros y sus referencias históricas', async () => {
     const entity = await createEntity(TENANT_A, { name: 'Pedidos', slug: 'pedidos', description: null })
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entity.id}, '{}')`
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entity.id}, '{}')`
 
     const result = await deleteEntity(TENANT_A, entity.id)
-    expect(result).toEqual({ status: 'has-records', recordCount: 2 })
+    expect(result).toEqual({ status: 'deleted' })
 
-    // No borro nada - sigue existiendo.
-    const rows = await admin`select id from entities where id = ${entity.id}`
+    const rows = await admin`select id, is_active, deleted_at from entities where id = ${entity.id}`
     expect(rows).toHaveLength(1)
+    expect(rows[0].is_active).toBe(false)
+    expect(rows[0].deleted_at).toBeTruthy()
+    expect(await admin`select id from records where entity_id = ${entity.id}`).toHaveLength(2)
   })
 
   it('deleteEntity devuelve "not-found" si el modulo no existe o es de otro tenant', async () => {
     expect(await deleteEntity(TENANT_A, randomUUID())).toEqual({ status: 'not-found' })
+  })
+
+  it('bloquea referencias nuevas a un módulo borrado y conserva las anteriores, también dentro de tablas', async () => {
+    const target = await createEntity(TENANT_A, { name: 'Histórico', slug: 'historico-relacion', description: null })
+    const existingId = randomUUID()
+    const newId = randomUUID()
+    await deleteEntity(TENANT_A, target.id)
+    const { assertWritableRelations } = await import('../../server/utils/relationWriteGuard')
+    const { withTenant } = await import('../../server/db')
+    const fields = [
+      { name: 'cliente', dataType: 'relation', validationRules: { relationEntity: target.slug } },
+      { name: 'renglones', dataType: 'tabla', validationRules: { columns: [{ name: 'origen', type: 'relation', relationEntity: target.slug }] } }
+    ]
+    await withTenant(TENANT_A, (tx) => assertWritableRelations(tx, TENANT_A, fields,
+      { cliente: existingId, renglones: [{ origen: existingId }] },
+      { cliente: existingId, renglones: [{ origen: existingId }] }))
+    await expect(withTenant(TENANT_A, (tx) => assertWritableRelations(tx, TENANT_A, fields,
+      { cliente: newId, renglones: [{ origen: existingId }] },
+      { cliente: existingId, renglones: [{ origen: existingId }] }))).rejects.toThrow('deshabilitado')
+    await expect(withTenant(TENANT_A, (tx) => assertWritableRelations(tx, TENANT_A, fields,
+      { cliente: existingId, renglones: [{ origen: existingId }, { origen: existingId }] },
+      { cliente: existingId, renglones: [{ origen: existingId }] }))).rejects.toThrow('deshabilitado')
   })
 
   // HU-ERD-69: soporte de listado para pages/modulos/index.vue (siguiendo
@@ -217,7 +247,7 @@ describe('moduleEntities (Postgres real)', () => {
       ])
     })
 
-    it('un rol admin (isSystem=true) ve un modulo inactivo igual; un rol no-admin con canRead no lo ve', async () => {
+    it('un modulo inactivo no aparece en el menú de ningún rol, pero sigue en el listado administrativo', async () => {
       const tenant = randomUUID()
       await admin`insert into tenants (id, name) values (${tenant}, 'Tenant Nav Inactivo')`
       const [adminRole] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Administrador', true) returning id`
@@ -231,8 +261,8 @@ describe('moduleEntities (Postgres real)', () => {
       await updateEntity(tenant, entity.id, { isActive: false })
 
       expect((await listVisibleEntities(tenant, vendedor.id, 'hecho')).map((r) => r.slug)).toEqual([])
-      // El admin ya tiene CRUD auto-otorgado por createEntity() - sigue viendolo.
-      expect((await listVisibleEntities(tenant, adminRole.id, 'hecho')).map((r) => r.slug)).toEqual(['inactivo'])
+      expect((await listVisibleEntities(tenant, adminRole.id, 'hecho')).map((r) => r.slug)).toEqual([])
+      expect((await listEntities(tenant, 'hecho')).map((r) => r.slug)).toEqual(['inactivo'])
     })
 
     it('devuelve [] para un rol sin ningun permiso otorgado', async () => {

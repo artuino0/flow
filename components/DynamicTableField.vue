@@ -142,18 +142,23 @@ function formatNumber(n: number): string {
 interface RelationEntityMeta {
   fields: EntityFieldMeta[]
   labelField: string | null
+  isActive: boolean
 }
 const entityFieldsCache = reactive<Record<string, RelationEntityMeta>>({})
 async function ensureEntityFields(slug: string): Promise<RelationEntityMeta> {
   if (entityFieldsCache[slug]) return entityFieldsCache[slug]
   try {
-    const res = await $fetch<{ entity: { labelField: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
-    entityFieldsCache[slug] = { fields: res.fields, labelField: res.entity.labelField ?? null }
+    const res = await $fetch<{ entity: { labelField: string | null; isActive: boolean; deletedAt?: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
+    entityFieldsCache[slug] = { fields: res.fields, labelField: res.entity.labelField ?? null, isActive: res.entity.isActive && !res.entity.deletedAt }
   } catch {
-    entityFieldsCache[slug] = { fields: [], labelField: null }
+    entityFieldsCache[slug] = { fields: [], labelField: null, isActive: false }
   }
   return entityFieldsCache[slug]
 }
+function targetDisabled(slug?: string) { return !!slug && entityFieldsCache[slug]?.isActive === false }
+onMounted(() => {
+  for (const col of columns.value) if (col.type === 'relation' && col.relationEntity) void ensureEntityFields(col.relationEntity)
+})
 // labelFieldFor()/labelForRecord(): HU-ERD-74 las extrajo a
 // utils/recordLabel.ts (auto-importado) para reusarlas tal cual en
 // RecordDetailView.vue (encabezado de la ficha de detalle real) - mismo
@@ -244,12 +249,11 @@ async function runSearch(idx: number, col: ColumnDef) {
   }
   state.loading = true
   try {
-    const [meta, res] = await Promise.all([
-      ensureEntityFields(col.relationEntity),
-      $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
+    const meta = await ensureEntityFields(col.relationEntity)
+    if (!meta.isActive) { state.results = []; return }
+    const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
         query: { search: state.query, pageSize: 6 }
       })
-    ])
     state.results = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
     for (const r of state.results) labelCache[cacheKey(col.relationEntity, r.id)] = r.label
   } catch {
@@ -349,12 +353,11 @@ async function runPickerSearch() {
   }
   pickerLoading.value = true
   try {
-    const [meta, res] = await Promise.all([
-      ensureEntityFields(col.relationEntity),
-      $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
+    const meta = await ensureEntityFields(col.relationEntity)
+    if (!meta.isActive) { pickerResults.value = []; return }
+    const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
         query: { search: pickerQuery.value, pageSize: 6 }
       })
-    ])
     pickerResults.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
   } catch {
     pickerResults.value = []
@@ -400,7 +403,8 @@ function addRowFromPicker() {
     relacion - ver isSinglePickerColumn) - reemplaza el flujo generico de
     "Agregar linea + buscar dentro de la fila" por "elegir primero, confirmar
     con + despues", la fila que arma ya sale completa. -->
-    <div v-if="isSinglePickerColumn && !disabled" class="flex items-center gap-2">
+    <p v-if="isSinglePickerColumn && targetDisabled(pickerColumn?.relationEntity)" class="text-xs text-brand-text-muted">El módulo relacionado está deshabilitado.</p>
+    <div v-if="isSinglePickerColumn && !disabled && !targetDisabled(pickerColumn?.relationEntity)" class="flex items-center gap-2">
       <div class="relative flex-1">
         <div class="flex items-center gap-1.5 rounded border border-brand-border px-2.5 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
           <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
@@ -475,7 +479,7 @@ function addRowFromPicker() {
                     <X class="h-3 w-3" :stroke-width="2" />
                   </button>
                 </div>
-                <div v-else-if="!disabled && !isSinglePickerColumn" class="relative">
+                <div v-else-if="!disabled && !isSinglePickerColumn && !targetDisabled(col.relationEntity)" class="relative">
                   <div
                     :ref="(el) => setSearchWrapperRef(idx, col, el as Element | null)"
                     class="flex items-center gap-1.5 rounded border border-brand-border px-2 py-[7px]"

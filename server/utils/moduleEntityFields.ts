@@ -179,7 +179,16 @@ function assertValidationRules(dataType: string, validationRules: unknown): void
  * `prefixSource` (incremental "simple"), no hay nada que validar aca.
  */
 async function assertIncrementalConfig(tx: Tx, tenantId: string, entityId: string, validationRules: unknown): Promise<void> {
-  const rules = (validationRules ?? {}) as { prefixSource?: { relationField?: unknown; sourceField?: unknown } }
+  const rules = (validationRules ?? {}) as {
+    prefix?: unknown
+    prefixSource?: { relationField?: unknown; sourceField?: unknown }
+  }
+  // Un campo incremental usa una sola estrategia de prefijo. Evita que una
+  // configuracion vieja o una peticion directa haga ambiguo si debe resolver
+  // el prefijo desde el catalogo o usar el fijo.
+  if (typeof rules.prefix === 'string' && rules.prefix.trim() && rules.prefixSource) {
+    throw new InvalidValidationRulesError('Un incremental no puede tener prefijo fijo y prefijo de relación al mismo tiempo')
+  }
   if (!rules.prefixSource) return
   const relationField = rules.prefixSource.relationField
   const sourceField = rules.prefixSource.sourceField
@@ -220,6 +229,55 @@ async function assertIncrementalConfig(tx: Tx, tenantId: string, entityId: strin
   }
 }
 
+async function assertCalculatedConfig(
+  tx: Tx,
+  tenantId: string,
+  entityId: string,
+  fieldName: string,
+  dataType: string,
+  validationRules: unknown
+): Promise<void> {
+  if (dataType !== 'number' && dataType !== 'currency') return
+  const rules = (validationRules ?? {}) as Record<string, unknown>
+  const calculation = rules.calculation as Record<string, unknown> | undefined
+  if (!calculation) return
+
+  const ownFields = await tx.select({ name: entityFields.name, dataType: entityFields.dataType })
+    .from(entityFields).where(eq(entityFields.entityId, entityId))
+  const numericNames = new Set(ownFields.filter(field => field.dataType === 'number' || field.dataType === 'currency').map(field => field.name))
+
+  if (calculation.kind === 'formula') {
+    for (const operand of [calculation.leftField, calculation.rightField]) {
+      if (typeof operand !== 'string' || !numericNames.has(operand)) {
+        throw new InvalidValidationRulesError(`"${String(operand)}" no es un campo numérico válido de este módulo`)
+      }
+      if (operand === fieldName) throw new InvalidValidationRulesError('Un campo calculado no puede depender de sí mismo')
+    }
+    return
+  }
+
+  if (calculation.kind !== 'rollup') return
+  const [currentEntity] = await tx.select({ slug: entities.slug }).from(entities)
+    .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1)
+  const [sourceEntity] = await tx.select({ id: entities.id }).from(entities)
+    .where(and(eq(entities.tenantId, tenantId), eq(entities.slug, String(calculation.sourceEntity)))).limit(1)
+  if (!sourceEntity) throw new InvalidValidationRulesError(`El módulo fuente "${String(calculation.sourceEntity)}" no existe`)
+
+  const sourceFields = await tx.select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
+    .from(entityFields).where(eq(entityFields.entityId, sourceEntity.id))
+  const relation = sourceFields.find(field => field.name === calculation.relationField && field.dataType === 'relation')
+  const relationEntity = ((relation?.validationRules ?? {}) as Record<string, unknown>).relationEntity
+  if (!relation || relationEntity !== currentEntity?.slug) {
+    throw new InvalidValidationRulesError(`"${String(calculation.relationField)}" debe ser una relación del módulo fuente hacia este módulo`)
+  }
+  if (calculation.aggregate === 'sum') {
+    const valueField = sourceFields.find(field => field.name === calculation.valueField)
+    if (!valueField || !['number', 'currency'].includes(valueField.dataType)) {
+      throw new InvalidValidationRulesError(`"${String(calculation.valueField)}" no es un campo numérico válido del módulo fuente`)
+    }
+  }
+}
+
 export async function listEntityFields(tenantId: string, entityId: string): Promise<EntityFieldSummary[]> {
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
@@ -249,6 +307,7 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
     if (input.dataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, entityId, input.validationRules)
     }
+    await assertCalculatedConfig(tx, tenantId, entityId, input.name, input.dataType, input.validationRules)
 
     // "El organizador" (pedido del usuario, 2026-09-01): un campo nuevo se
     // agrega siempre al final - mismo criterio que detailLayout.properties
@@ -270,7 +329,7 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
           label: input.label,
           dataType: input.dataType,
           validationRules: input.validationRules ?? {},
-          isRequired: input.isRequired,
+          isRequired: Boolean(((input.validationRules ?? {}) as Record<string, unknown>).calculation) ? false : input.isRequired,
           sortOrder: nextSortOrder
         })
         .returning()
@@ -331,6 +390,7 @@ export async function updateEntityField(
     if (effectiveDataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, current.entityId, effectiveRules)
     }
+    await assertCalculatedConfig(tx, tenantId, current.entityId, current.name, effectiveDataType, effectiveRules)
 
     const changesMetadataShape =
       (input.dataType !== undefined && input.dataType !== current.dataType) ||
@@ -351,7 +411,8 @@ export async function updateEntityField(
     if (input.label !== undefined) setValues.label = input.label
     if (input.dataType !== undefined) setValues.dataType = input.dataType
     if (input.validationRules !== undefined) setValues.validationRules = input.validationRules
-    if (input.isRequired !== undefined) setValues.isRequired = input.isRequired
+    if (Boolean((effectiveRules as Record<string, unknown> | null)?.calculation)) setValues.isRequired = false
+    else if (input.isRequired !== undefined) setValues.isRequired = input.isRequired
 
     const [updated] = await tx.update(entityFields).set(setValues).where(eq(entityFields.id, fieldId)).returning()
 

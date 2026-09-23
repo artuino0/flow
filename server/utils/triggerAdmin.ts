@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
 import { collectConditionFields, conditionNodeSchema, type ConditionNode } from '~/server/utils/triggers'
-import { emailConfigSchema, notificationConfigSchema, retryTriggerLog, updateFieldConfigSchema, webhookConfigSchema } from '~/server/utils/triggerActions'
+import { emailConfigSchema, notificationConfigSchema, retryTriggerLog, updateFieldConfigSchema, upsertRecordConfigSchema, webhookConfigSchema } from '~/server/utils/triggerActions'
 
 // HU-ERD-51: UI de administracion de triggers - hasta esta HU (ERD-47 a
 // ERD-50), triggers/trigger_actions/trigger_logs solo podian tocarse por SQL
@@ -34,7 +34,7 @@ export class InvalidTriggerActionOrderError extends Error {}
 export const ADMIN_TRIGGER_EVENTS = ['on_create', 'on_update', 'on_delete'] as const
 export type AdminTriggerEvent = (typeof ADMIN_TRIGGER_EVENTS)[number]
 
-export const TRIGGER_ACTION_TYPES = ['webhook', 'email', 'notification', 'update_field'] as const
+export const TRIGGER_ACTION_TYPES = ['webhook', 'email', 'notification', 'update_field', 'upsert_record'] as const
 export type TriggerActionType = (typeof TRIGGER_ACTION_TYPES)[number]
 
 // Una condicion "sin configurar todavia" ({} , el default de la columna) es
@@ -60,7 +60,9 @@ function validateActionConfig(actionType: string, config: unknown): void {
       ? emailConfigSchema
       : actionType === 'notification'
         ? notificationConfigSchema
-        : updateFieldConfigSchema
+        : actionType === 'upsert_record'
+          ? upsertRecordConfigSchema
+          : updateFieldConfigSchema
   const parsed = schema.safeParse(config)
   if (!parsed.success) {
     throw new InvalidTriggerActionConfigError(`Configuración inválida para la acción "${actionType}": ${JSON.stringify(parsed.error.flatten().fieldErrors)}`)

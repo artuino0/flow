@@ -33,8 +33,9 @@ async function openNotification(item: typeof state.value.items[number]) {
   if (item.actionUrl) await goToAction(item.actionUrl)
 }
 async function goToAction(url: string) {
-  if (url.startsWith('/')) return await navigateTo(url)
-  return await navigateTo(url, { external: true })
+  const target = resolveNotificationActionUrl(url, window.location.origin)
+  if (target.startsWith('/')) return await navigateTo(target)
+  return await navigateTo(target, { external: true })
 }
 </script>
 

@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 import { withTenant } from '~/server/db'
-import { roleChatPermissions, roles, userChatPermissionOverrides, users } from '~/server/db/schema'
+import { roleCapabilities, roleChatPermissions, roles, userCapabilityOverrides, userChatPermissionOverrides, users } from '~/server/db/schema'
 import { requireAuth } from '~/server/utils/rbac'
 import { CHAT_PERMISSION_KEYS, type ChatPermissionKey, type ChatPermissionValues, type ResolvedChatPermissions } from '~/utils/chat'
 
@@ -79,6 +79,10 @@ export async function setRoleChatPermissions(tenantId: string, roleId: string, v
       target: roleChatPermissions.roleId,
       set: { ...next, updatedAt: new Date() }
     })
+    await tx.insert(roleCapabilities).values({ tenantId, roleId, capabilityKey: 'communications.access', allowed: next.canAccess }).onConflictDoUpdate({
+      target: [roleCapabilities.roleId, roleCapabilities.capabilityKey],
+      set: { allowed: next.canAccess, updatedAt: new Date() }
+    })
     return { role, permissions: next }
   })
 }
@@ -94,6 +98,10 @@ export async function setUserChatPermissionOverrides(
     await tx.insert(userChatPermissionOverrides).values({ tenantId, userId, ...values }).onConflictDoUpdate({
       target: userChatPermissionOverrides.userId,
       set: { ...values, updatedAt: new Date() }
+    })
+    await tx.insert(userCapabilityOverrides).values({ tenantId, userId, capabilityKey: 'communications.access', allowed: values.canAccess }).onConflictDoUpdate({
+      target: [userCapabilityOverrides.userId, userCapabilityOverrides.capabilityKey],
+      set: { allowed: values.canAccess, updatedAt: new Date() }
     })
   })
   return resolveChatPermissions(tenantId, userId)

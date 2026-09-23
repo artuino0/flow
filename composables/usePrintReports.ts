@@ -9,6 +9,7 @@ export interface FieldTreeLeaf {
   fieldName: string
   label: string
   dataType: string
+  options?: Array<{ value: string; label: string }>
 }
 
 export interface FieldTreeBranch {
@@ -40,6 +41,10 @@ export interface PrintReportColumnDetalle extends PrintReportColumnBase {
 }
 export interface PrintReportColumnSumar extends PrintReportColumnBase {
   kind: 'sumar'
+  signRule?: {
+    source: ColumnSource
+    factors: Record<string, -1 | 0 | 1>
+  }
 }
 export interface PrintReportColumnRepartir extends PrintReportColumnBase {
   kind: 'repartir'
@@ -113,7 +118,7 @@ export interface SavedPrintReport {
 
 /** GET /api/print-reports/fields?entity=<slug> - árbol de "Campos disponibles" del panel izquierdo del Diseñador. */
 export function usePrintReportFieldTree(entitySlug: string) {
-  return useFetch<{ fields: FieldTreeNode[] }>('/api/print-reports/fields', {
+  return useFetch<{ entityName: string; fields: FieldTreeNode[] }>('/api/print-reports/fields', {
     key: `print-report-fields-${entitySlug}`,
     query: { entity: entitySlug },
     headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
@@ -158,6 +163,7 @@ export interface FlatLeaf {
   field: string
   label: string
   dataType: string
+  options?: Array<{ value: string; label: string }>
 }
 
 // ReportPathPlanner (server/utils/reportFieldPath.ts) solo resuelve cadenas
@@ -172,7 +178,7 @@ export function collectBaseLeaves(nodes: FieldTreeNode[], forwardHops: string[] 
   const out: FlatLeaf[] = []
   for (const node of nodes) {
     if (node.type === 'leaf') {
-      out.push({ forwardHops, field: node.fieldName, label: node.label, dataType: node.dataType })
+      out.push({ forwardHops, field: node.fieldName, label: node.label, dataType: node.dataType, options: node.options })
     } else if (node.kind === 'forward') {
       out.push(...collectBaseLeaves(node.children, [...forwardHops, node.fieldName]))
     }

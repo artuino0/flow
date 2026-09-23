@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   return {
     openapi: '3.0.3',
     info: { title: `${entity.name} API`, version: '1.0.0', description: `Operaciones CRUD para el módulo ${entity.name}.` },
-    servers: [{ url: `${origin}/api`, description: 'API de FlowERP' }],
+    servers: [{ url: `${origin}/api`, description: 'API de Flow' }],
     security: [{ bearerAuth: [] }],
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'API key' } },
     entity: { id: entity.id, slug: entity.slug, name: entity.name },

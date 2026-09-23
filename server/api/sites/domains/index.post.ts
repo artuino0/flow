@@ -3,7 +3,7 @@ import { requireAdminRole } from '~/server/utils/rbac'
 import { createSiteDomain, DuplicateDomainError } from '~/server/utils/siteDomains'
 const schema = z.object({
   siteId: z.string().uuid(), hostname: z.string().trim().min(4).max(253),
-  rootPageId: z.string().uuid().nullable().optional(), recordType: z.enum(['apex', 'subdomain'])
+  rootPageId: z.string().uuid().nullable().optional()
 })
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)

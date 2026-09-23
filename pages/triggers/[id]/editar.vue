@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Bell, ChevronDown, CircleCheck, CircleHelp, CircleX, ClipboardList, Flag, GitBranch, Mail, MousePointerClick, Pause, Pencil, Play, Plus, RefreshCw, Save, Trash2, Webhook, X, Zap } from '@lucide/vue'
+import { ArrowLeft, Bell, ChevronDown, CircleCheck, CircleHelp, CircleX, ClipboardList, CopyPlus, Flag, GitBranch, Mail, MousePointerClick, Pause, Pencil, Play, Plus, RefreshCw, Save, Trash2, Webhook, X, Zap } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import { workflowValue, workflowInputType } from '~/utils/workflowFields'
 
@@ -7,7 +7,7 @@ definePageMeta({ layout: 'default', editorFullscreen: true })
 
 interface TriggerActionRow {
   id: string
-  actionType: 'webhook' | 'email' | 'notification' | 'update_field'
+  actionType: 'webhook' | 'email' | 'notification' | 'update_field' | 'upsert_record'
   config: Record<string, unknown>
   executionOrder: number
 }
@@ -44,7 +44,8 @@ const ACTION_TYPE_META = {
   webhook: { label: 'Webhook', icon: Webhook, color: 'text-brand-blue', bg: 'bg-brand-blue-bg' },
   email: { label: 'Enviar correo', icon: Mail, color: 'text-brand-success-text', bg: 'bg-brand-success-bg' },
   notification: { label: 'Notificación', icon: Bell, color: 'text-brand-purple-text', bg: 'bg-brand-purple-bg' },
-  update_field: { label: 'Actualizar campo', icon: Pencil, color: 'text-brand-warning-text', bg: 'bg-brand-warning-bg' }
+  update_field: { label: 'Actualizar campo', icon: Pencil, color: 'text-brand-warning-text', bg: 'bg-brand-warning-bg' },
+  upsert_record: { label: 'Crear o actualizar registro', icon: CopyPlus, color: 'text-brand-blue', bg: 'bg-brand-blue-bg' }
 } as const
 
 const STATUS_LABELS: Record<string, string> = {
@@ -349,6 +350,7 @@ async function onAddAction() {
 function actionSummary(row: TriggerActionRow): string {
   if (row.actionType === 'webhook') return String(row.config.url ?? 'Sin URL configurada')
   if (row.actionType === 'email') return 'Para: ' + String(row.config.to ?? '—') + '\n' + String(row.config.subject ?? '')
+  if (row.actionType === 'upsert_record') return 'Crear o actualizar un registro en el módulo configurado'
   if (row.actionType === 'notification') {
     const recipients = Array.isArray(row.config.recipients)
       ? (row.config.recipients as Array<{ type?: string; label?: string }>).map(recipient => `${recipient.type === 'role' ? '&' : '@'}${recipient.label ?? 'destinatario'}`).join(', ')
@@ -449,6 +451,10 @@ const panelActionType = computed({
 })
 const panelActionConfig = computed(() => showAddAction.value ? newActionConfig.value : editDraft.value.config)
 interface WorkflowNotificationRecipient { type: 'user' | 'role'; id: string; label: string }
+function replacePanelActionConfig(value: Record<string, unknown>) {
+  if (showAddAction.value) newActionConfig.value = value
+  else editDraft.value.config = value
+}
 function setPanelActionConfig(key: string, value: unknown) {
   if (showAddAction.value) newActionConfig.value = { ...newActionConfig.value, [key]: value }
   else editDraft.value.config = { ...editDraft.value.config, [key]: value }
@@ -648,10 +654,13 @@ async function moveBranchAction(row: TriggerActionRow, direction: -1 | 1) {
               </template>
               <template v-else-if="panel === 'action'">
                 <label v-if="hasDecision" class="editor-field">Rama de ejecución<select v-model="panelActionBranch"><option value="">Flujo principal</option><option value="yes">Sí cumple</option><option value="no">No cumple</option></select></label>
-                <label class="editor-field">Tipo de acción<select v-model="panelActionType"><option value="update_field">Actualizar campo</option><option value="email">Enviar correo</option><option value="notification">Notificación</option><option value="webhook">Webhook</option></select></label>
+                <label class="editor-field">Tipo de acción<select v-model="panelActionType"><option value="update_field">Actualizar campo</option><option value="upsert_record">Crear o actualizar registro</option><option value="email">Enviar correo</option><option value="notification">Notificación</option><option value="webhook">Webhook</option></select></label>
                 <template v-if="panelActionType === 'update_field'">
                   <label class="editor-field">Campo<select v-model="panelActionConfig.field"><option value="" disabled>Selecciona un campo</option><option v-for="field in entityFields" :key="field.id" :value="field.name">{{ field.label }}</option></select></label>
                   <WorkflowFieldValue v-model="panelActionConfig.value" :field="fieldMeta(String(panelActionConfig.field))" label="Valor nuevo" />
+                </template>
+                <template v-else-if="panelActionType === 'upsert_record'">
+                  <WorkflowUpsertRecordConfig :model-value="panelActionConfig" :source-entity-id="data.entityId" :source-fields="entityFields" @update:model-value="replacePanelActionConfig" />
                 </template>
                 <template v-else-if="panelActionType === 'email'">
                   <label class="editor-field">Para<VariableTextField :model-value="String(panelActionConfig.to ?? '')" :entity="entitySlug" label="Para" :rows="1" placeholder="correo@empresa.com" @update:model-value="panelActionConfig.to = $event" /></label>
@@ -713,7 +722,7 @@ async function moveBranchAction(row: TriggerActionRow, direction: -1 | 1) {
 .status-badge{display:inline-flex;border-radius:999px;padding:4px 11px;font-size:11px;font-weight:600;white-space:nowrap}.status-badge.active{background:#ccf1de;color:#0a7a4f}.status-badge.draft{background:#eaf0f6;color:#516f90}
 .dirty-indicator{font-size:11px;color:#b3720a;white-space:nowrap}.editor-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:4px;padding:9px 13px;font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;cursor:pointer}.editor-button svg{width:15px;height:15px;stroke-width:1.75}.editor-button.secondary{background:#fff;border-color:#cbd6e2;color:#33475b}.editor-button.primary{background:#ff7a59;color:#fff;border-color:#ff7a59}.editor-button.activation{background:#fff;border-color:#ff7a59;color:#e35432}.editor-button:hover{filter:brightness(.97)}.editor-button:disabled{opacity:.5;cursor:wait}
 .workflow-tabs{display:flex;gap:28px;padding:0 32px;background:#fff;border-bottom:1px solid #e5eaf0;height:40px;flex-shrink:0}.workflow-tabs button{position:relative;padding:10px 4px;font-size:13px;font-weight:600;color:#516f90}.workflow-tabs button.active{color:#ff7a59}.workflow-tabs button.active:after{content:'';height:2px;position:absolute;bottom:-1px;left:0;right:0;background:#ff7a59}
-.workflow-body{display:flex;flex:1;min-height:0;position:relative}.workflow-canvas{flex:1;min-width:0;overflow:auto;background:#f5f8fa}.workflow-tree{max-width:1200px;min-width:560px;margin:0 auto;padding:36px 40px 70px;display:flex;flex-direction:column;align-items:center}
+.workflow-body{display:flex;flex:1;min-height:0;position:relative}.workflow-canvas{flex:1;min-width:0;overflow:auto;background-color:#f5f8fa;background-image:radial-gradient(circle,#cbd6e2 1px,transparent 1px);background-position:0 0;background-size:20px 20px}.workflow-tree{max-width:1200px;min-width:560px;margin:0 auto;padding:36px 40px 70px;display:flex;flex-direction:column;align-items:center}
 .flow-node{display:flex;align-items:flex-start;gap:12px;padding:16px;border:1px solid #e5eaf0;background:#fff;border-radius:8px;box-shadow:0 1px 3px #33475b14;text-align:left;position:relative;z-index:1}.flow-node:hover{border-color:#a8cbd4}.flow-node.selected{border-color:#0091ae;box-shadow:0 0 0 1px #0091ae}.trunk-node{width:min(620px,100%)}.flow-icon{height:40px;width:40px;flex-shrink:0;border-radius:8px;display:flex;align-items:center;justify-content:center}.flow-icon svg{width:19px;height:19px;stroke-width:1.75}.blue{background:#eaf3f6;color:#0091ae}.purple{background:#ede7fb;color:#6d3fc4}
 .flow-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}.flow-copy strong{font-size:14px;line-height:1.35;font-weight:700}.flow-copy>span{font-size:13px;color:#516f90;line-height:1.4;overflow-wrap:anywhere}.flow-copy>span.incomplete{color:#b3720a}.flow-copy small{font-size:12px;font-weight:600;color:#6d3fc4}
 .flow-connector{width:2px;height:35px;position:relative;background:#cbd6e2}.flow-connector svg{position:absolute;bottom:-1px;left:-7px;width:16px;height:16px;background:#f5f8fa;color:#8da1b5;stroke-width:1.5}.straight-connector{width:2px;height:34px;background:#cbd6e2;flex-shrink:0}.straight-connector.short{height:16px}
@@ -734,3 +743,4 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:900px){.toolbar-identity{flex-basis:100%;max-width:none}.name-field{max-width:none}.workflow-toolbar{flex-wrap:wrap;gap:8px}.toolbar-actions{margin-left:auto}.workflow-panel{display:none}.workflow-panel.is-open{display:flex;position:absolute;right:0;top:0;bottom:0;width:min(380px,100%);z-index:5;box-shadow:-8px 0 20px #33475b14}.workflow-tree{min-width:0;padding:28px 18px 50px}.flow-branch{max-width:46%}.flow-branches{gap:20px}.flow-branches:before{left:23%;right:23%}.trunk-node{max-width:100%}.workflow-tabs{padding:0 20px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style>
+

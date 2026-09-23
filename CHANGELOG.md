@@ -1,5 +1,16 @@
 # Changelog
 
+### [0.89.0] - 2026-09-21
+#### [feature]
+- Vista Kanban configurable por módulo: columnas generadas desde un campo de selección, tarjetas con datos elegibles, cambio de estado por arrastrar y soltar, alternativa móvil y carga progresiva.
+- Actualización parcial de registros con control de concurrencia para mover tarjetas sin sobrescribir otros datos.
+- Nueva acción de workflow para crear o actualizar registros en otro módulo, mapear campos, evitar duplicados y vincular el registro origen con el destino.
+- Validación previa de transiciones: si una conversión requiere datos obligatorios, el cambio se bloquea y muestra qué información falta antes de ejecutar el workflow.
+
+### [0.88.1] - 2026-09-17
+#### [bug]
+- `/registro` (alta pública de una organización nueva) quedaba atrapado por el guard global de sesión: sin estar logueado, cualquier link o entrada directa a esa pantalla rebotaba de inmediato a `/login?redirect=/registro` sin mostrar nada. Ahora el guard deja pasar `/registro` igual que ya hacía con `/invitacion/*`.
+
 ### [0.85.1] - 2026-09-11
 #### [bug]
 - Empaque y embarque pasa al primer nivel del menú en Salmantino. Los catálogos quedan fuera del menú operativo y conservan su uso en selectores.

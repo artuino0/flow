@@ -76,7 +76,16 @@ const columnSourceSchema = z
 
 const printReportColumnSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('detalle'), key: columnKeySchema, label: z.string().min(1).max(80), source: columnSourceSchema }).strict(),
-  z.object({ kind: z.literal('sumar'), key: columnKeySchema, label: z.string().min(1).max(80), source: columnSourceSchema }).strict(),
+  z.object({
+    kind: z.literal('sumar'),
+    key: columnKeySchema,
+    label: z.string().min(1).max(80),
+    source: columnSourceSchema,
+    signRule: z.object({
+      source: columnSourceSchema,
+      factors: z.record(z.string(), z.union([z.literal(-1), z.literal(0), z.literal(1)]))
+    }).strict().optional()
+  }).strict(),
   z
     .object({
       kind: z.literal('repartir'),
@@ -228,6 +237,8 @@ interface ResolvedLeaf {
   valueAlias: string
   conditionAlias?: string
   pivotRawValue?: string
+  signAlias?: string
+  signFactors?: Record<string, -1 | 0 | 1>
 }
 
 /**
@@ -303,7 +314,17 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
         assertNumericField(field, col.label)
         const alias = rawColumnAlias(col.key, leafCounter++)
         selectParts.push(dsql`${planner.valueSql(col.source)} as ${dsql.raw(alias)}`)
-        leaves.push({ dataType: field.dataType, ...moneyMeta(field), key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias })
+        let signAlias: string | undefined
+        if (col.signRule) {
+          if (col.signRule.source.side !== col.source.side) throw new PrintReportError(`"${col.label}": el campo que define el signo debe estar en el mismo registro que la cantidad`)
+          const valueRecord = planner.resolve(col.source)
+          const signRecord = planner.resolve(col.signRule.source)
+          if (valueRecord.alias !== signRecord.alias) throw new PrintReportError(`"${col.label}": el campo que define el signo debe pertenecer al mismo registro que la cantidad`)
+          resolvePivotOptions(signRecord.field, undefined)
+          signAlias = rawColumnAlias(`${col.key}_sign`, leafCounter++)
+          selectParts.push(dsql`${planner.valueSql(col.signRule.source)} as ${dsql.raw(signAlias)}`)
+        }
+        leaves.push({ dataType: field.dataType, ...moneyMeta(field), key: col.key, label: col.label, kind: 'sumar', inRows: true, inTotals: true, sourceSide: col.source.side, valueAlias: alias, signAlias, signFactors: col.signRule?.factors })
       } else {
         assertNumericField(field, col.label)
         if (col.conditionSource.side !== col.source.side) {
@@ -469,7 +490,8 @@ export function buildPrintReportResult(dsl: PrintReportDsl, leaves: ResolvedLeaf
         const matches = String(raw[leaf.conditionAlias!] ?? '') === leaf.pivotRawValue
         values[leaf.key] = matches ? toNumber(raw[leaf.valueAlias]) : 0
       } else {
-        values[leaf.key] = raw[leaf.valueAlias]
+        const factor = leaf.signAlias ? (leaf.signFactors?.[String(raw[leaf.signAlias] ?? '')] ?? 0) : 1
+        values[leaf.key] = leaf.signAlias ? toNumber(raw[leaf.valueAlias]) * factor : raw[leaf.valueAlias]
       }
     }
     const groupKeys = groupAliases.map((alias) => String(raw[alias] ?? ''))

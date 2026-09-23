@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 import { pluralize } from '~/server/utils/pluralize'
@@ -26,6 +26,7 @@ export interface EntitySummary {
   // Rediseno "Editar Módulo" (ver comentario largo en server/db/schema.ts) -
   // switch "Módulo activo". true por defecto.
   isActive: boolean
+  deletedAt?: Date | null
   // ERD-86: 'hecho' (menu principal) o 'dimension' (Administracion > Catalogos) -
   // ver comentario largo en server/db/schema.ts.
   moduleKind: ModuleKind
@@ -41,6 +42,7 @@ export interface EntitySummary {
   // HU-ERD-75: mismo criterio que detailLayout de arriba - guardado tal cual,
   // resuelto por resolveListLayout() (server/utils/listLayout.ts).
   listLayout?: unknown
+  boardConfig?: unknown
   // Reportado por el usuario (2026-09-03, ver comentario largo en
   // server/db/schema.ts): campo propio de tipo texto (por name, nunca "id")
   // que se usa como etiqueta cuando ESTA entidad es destino de una relacion.
@@ -56,6 +58,8 @@ export interface EntitySummary {
   // pestaña "Información general" de Editar Módulo, como un campo de texto
   // mas junto a Nombre/Descripción, no en un configurador aparte.
   singularName?: string | null
+  fiscalConfig?: unknown
+  labelConfig?: unknown
 }
 
 // Postgres SQLSTATE - la libreria "postgres" expone el codigo en err.code.
@@ -93,7 +97,7 @@ export interface EntityListItem extends EntitySummary {
  * 'dimension' (pages/catalogos/index.vue, nueva) - mismo endpoint y misma
  * funcion para ambas pantallas, solo cambia el filtro.
  */
-export async function listEntities(tenantId: string, moduleKind?: ModuleKind): Promise<EntityListItem[]> {
+export async function listEntities(tenantId: string, moduleKind?: ModuleKind, deleted: 'exclude' | 'only' | 'all' = 'exclude'): Promise<EntityListItem[]> {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select({
@@ -102,13 +106,17 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind): P
         name: entities.name,
         description: entities.description,
         isActive: entities.isActive,
+        deletedAt: entities.deletedAt,
         icon: entities.icon,
         moduleKind: entities.moduleKind,
         singularName: entities.singularName,
+        fiscalConfig: entities.fiscalConfig,
+        labelConfig: entities.labelConfig,
         createdAt: entities.createdAt
       })
       .from(entities)
-      .where(moduleKind ? and(eq(entities.tenantId, tenantId), eq(entities.moduleKind, moduleKind)) : eq(entities.tenantId, tenantId))
+      .where(and(eq(entities.tenantId, tenantId), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined,
+        deleted === 'exclude' ? isNull(entities.deletedAt) : deleted === 'only' ? isNotNull(entities.deletedAt) : undefined))
       .orderBy(entities.name)
 
     if (rows.length === 0) return []
@@ -204,12 +212,16 @@ export async function createEntity(
       name: entity.name,
       description: entity.description,
       isActive: entity.isActive,
+      deletedAt: entity.deletedAt,
       icon: entity.icon,
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
+      boardConfig: entity.boardConfig,
       labelField: entity.labelField,
-      singularName: entity.singularName
+      singularName: entity.singularName,
+      fiscalConfig: entity.fiscalConfig,
+      labelConfig: entity.labelConfig
     }
   })
 }
@@ -224,8 +236,11 @@ export async function updateEntity(
     icon?: string | null
     detailLayout?: unknown
     listLayout?: unknown
+    boardConfig?: unknown
     labelField?: string | null
     singularName?: string | null
+    fiscalConfig?: unknown
+    labelConfig?: unknown
   }
 ): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
@@ -236,13 +251,16 @@ export async function updateEntity(
     if (input.icon !== undefined) setValues.icon = input.icon
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
+    if (input.boardConfig !== undefined) setValues.boardConfig = input.boardConfig
     if (input.labelField !== undefined) setValues.labelField = input.labelField
     if (input.singularName !== undefined) setValues.singularName = input.singularName
+    if (input.fiscalConfig !== undefined) setValues.fiscalConfig = input.fiscalConfig
+    if (input.labelConfig !== undefined) setValues.labelConfig = input.labelConfig
 
     const [entity] = await tx
       .update(entities)
       .set(setValues)
-      .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId)))
+      .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), isNull(entities.deletedAt)))
       .returning()
 
     if (!entity) return null
@@ -252,12 +270,15 @@ export async function updateEntity(
       name: entity.name,
       description: entity.description,
       isActive: entity.isActive,
+      deletedAt: entity.deletedAt,
       icon: entity.icon,
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
       labelField: entity.labelField,
-      singularName: entity.singularName
+      singularName: entity.singularName,
+      fiscalConfig: entity.fiscalConfig,
+      labelConfig: entity.labelConfig
     }
   })
 }
@@ -287,14 +308,8 @@ export interface NavEntity {
  * hardcodear ninguna lista de modulos, y decidir que acciones mostrar en cada
  * uno sin adivinar (mismos 4 flags que getPermissionFlags(), HU-ERD-24).
  *
- * Filtra a role_entity_permissions.can_read = true del rol del usuario -
- * mismo criterio de permiso que requirePermission()/requireAdminRole(). Un
- * modulo desactivado (isActive=false) se excluye tambien para cualquier rol
- * NO administrador, aunque tenga canRead=true, porque igual quedaria
- * bloqueado con 403 al entrar (mismo chequeo que requirePermission()) - no
- * tiene sentido un link de menu que lleva a una pantalla bloqueada. Un
- * administrador (roles.isSystem) sigue viendo el modulo igual, para poder
- * reactivarlo.
+ * Solo incluye módulos activos en el menú. Los módulos apagados conservan
+ * acceso de lectura por URL para consultar datos históricos.
  *
  * moduleKind es opcional. El menú por áreas consulta ambos tipos para
  * incorporar catálogos contextuales. Devuelve entidades legibles aunque
@@ -302,9 +317,6 @@ export interface NavEntity {
  */
 export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
   return withTenant(tenantId, async (tx) => {
-    const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, roleId)).limit(1)
-    const isAdmin = Boolean(role?.isSystem)
-
     const rows = await tx
       .select({
         id: entities.id,
@@ -313,6 +325,7 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
         singularName: entities.singularName,
         icon: entities.icon,
         isActive: entities.isActive,
+        deletedAt: entities.deletedAt,
         moduleKind: entities.moduleKind,
         showInMenu: roleEntityPermissions.showInMenu,
         canRead: roleEntityPermissions.canRead,
@@ -325,26 +338,21 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
         roleEntityPermissions,
         and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId))
       )
-      .where(and(eq(entities.tenantId, tenantId), eq(roleEntityPermissions.canRead, true), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined))
+      .where(and(eq(entities.tenantId, tenantId), eq(entities.isActive, true), isNull(entities.deletedAt), eq(roleEntityPermissions.canRead, true), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined))
       .orderBy(entities.name)
 
     return rows
-      .filter((r) => isAdmin || r.isActive)
-      .map(({ isActive: _isActive, singularName, name, ...rest }) => ({
+      .map(({ isActive: _isActive, deletedAt: _deletedAt, singularName, name, ...rest }) => ({
         ...rest,
         name: singularName ? pluralize(singularName) : name
       }))
   })
 }
 
-export type DeleteEntityResult = { status: 'deleted' } | { status: 'has-records'; recordCount: number } | { status: 'not-found' }
+export type DeleteEntityResult = { status: 'deleted' } | { status: 'not-found' }
 
 /**
- * Elimina un modulo. Bloqueado si tiene records existentes (409 en el
- * endpoint) - nunca borra datos del usuario en cascada. entity_fields y
- * role_entity_permissions SI tienen ON DELETE CASCADE (ERD-6/7/11): metadatos
- * de un modulo vacio se limpian solos, solo los datos cargados por el usuario
- * bloquean el borrado.
+ * Envía un módulo a la papelera sin borrar metadatos ni registros.
  */
 export async function deleteEntity(tenantId: string, entityId: string): Promise<DeleteEntityResult> {
   return withTenant(tenantId, async (tx: Tx) => {
@@ -355,16 +363,18 @@ export async function deleteEntity(tenantId: string, entityId: string): Promise<
       .limit(1)
     if (!entity) return { status: 'not-found' }
 
-    const [{ value: recordCount }] = await tx
-      .select({ value: count() })
-      .from(records)
-      .where(and(eq(records.entityId, entityId), eq(records.tenantId, tenantId)))
-
-    if (recordCount > 0) {
-      return { status: 'has-records', recordCount }
-    }
-
-    await tx.delete(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId)))
+    await tx.update(entities).set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), isNull(entities.deletedAt)))
     return { status: 'deleted' }
+  })
+}
+
+export async function restoreEntity(tenantId: string, entityId: string): Promise<EntitySummary | null> {
+  return withTenant(tenantId, async (tx) => {
+    const [entity] = await tx.update(entities)
+      .set({ isActive: true, deletedAt: null, updatedAt: new Date() })
+      .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), isNotNull(entities.deletedAt)))
+      .returning()
+    return entity ? { ...entity, moduleKind: entity.moduleKind as ModuleKind } : null
   })
 }

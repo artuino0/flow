@@ -1,4 +1,4 @@
-# FlowERP
+# Flow
 
 ## Register
 product
@@ -10,7 +10,7 @@ Personal operativo y administradores que capturan y consultan registros de módu
 Conectar la operación, sus catálogos, reportes e integraciones sin exigir que cada cliente programe sus procesos.
 
 ## Brand Personality
-Clara, cercana y práctica. Las referencias acordadas son los diseños de FlowERP en Pencil y los patrones de navegación y búsqueda de HubSpot.
+Clara, cercana y práctica. Las referencias acordadas son los diseños de Flow en Pencil y los patrones de navegación y búsqueda de HubSpot.
 
 ## Anti-references
 No reemplazar los diseños aprobados por pantallas genéricas, pestañas adicionales sin propósito ni controles inconsistentes.

@@ -165,6 +165,9 @@ const totales = computed(() => {
   const descDoc = round2(Number(descuentoDocumento.value) || 0)
   return { subtotal, trasladado: round2(trasladado), retenido: round2(retenido), total: round2(subtotal - descDoc + round2(trasladado) - round2(retenido)) }
 })
+const receptorCompleto = computed(() => Boolean(receptor.nombre.trim() && receptor.rfc.trim() && receptor.codigoPostal.trim() && receptor.regimenFiscal.trim()))
+const conceptosCompletos = computed(() => conceptos.value.length > 0 && conceptos.value.every(c => Boolean(c.descripcion.trim() && c.claveProdServ.trim() && Number(c.cantidad) > 0 && Number(c.valorUnitario) >= 0)))
+const listaParaTimbrar = computed(() => Boolean(serieId.value && receptorCompleto.value && conceptosCompletos.value))
 
 // --- Relacionado (tipo E / sustituciones) ------------------------------------
 const relacionadoDocumentId = ref<string | null>(typeof route.query.relacionado === 'string' ? route.query.relacionado : null)
@@ -328,7 +331,7 @@ async function hydrateEdicion() {
 onMounted(init)
 watch(tipo, () => { if (!esEdicion.value) serieId.value = seriesDelTipo.value.length === 1 ? seriesDelTipo.value[0].id : '' })
 
-async function submit() {
+async function submit(shouldTimbrar = false) {
   saving.value = true
   formError.value = ''
   try {
@@ -378,11 +381,17 @@ async function submit() {
     }
     if (esEdicion.value) {
       await $fetch(`/api/facturacion/documents/${editId.value}`, { method: 'PUT', body })
-      toast.updated('Documento actualizado', 'Los cambios del borrador se guardaron.')
+      if (shouldTimbrar) {
+        await $fetch(`/api/facturacion/documents/${editId.value}/timbrar`, { method: 'POST' })
+        toast.success('Factura timbrada', 'El comprobante ya tiene respuesta fiscal.')
+      } else toast.updated('Documento actualizado', 'Los cambios del borrador se guardaron.')
       await router.push(`/facturacion/${editId.value}`)
     } else {
       const res = await $fetch<{ id: string }>('/api/facturacion/documents', { method: 'POST', body: { ...body, serieId: serieId.value, tipo: tipo.value } })
-      toast.success('Borrador creado', 'Revisa el documento y tímbrelo cuando esté listo.')
+      if (shouldTimbrar) {
+        await $fetch(`/api/facturacion/documents/${res.id}/timbrar`, { method: 'POST' })
+        toast.success('Factura timbrada', 'El comprobante ya tiene respuesta fiscal.')
+      } else toast.success('Borrador creado', 'Revisa el documento y tímbrelo cuando esté listo.')
       await router.push(`/facturacion/${res.id}`)
     }
   } catch (err: any) {
@@ -395,252 +404,126 @@ async function submit() {
 </script>
 
 <template>
-  <div class="mx-auto min-h-[calc(100vh-120px)] max-w-4xl pb-16">
-    <NuxtLink to="/facturacion" class="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-text-secondary hover:text-brand-blue">
-      <ArrowLeft class="h-4 w-4" :stroke-width="1.75" /> Volver a Facturación
-    </NuxtLink>
-    <header class="mt-3">
-      <h1 class="text-[22px] font-bold text-brand-text">
-        {{ esEdicion ? 'Editar documento' : tipo === 'I' ? 'Nueva factura' : tipo === 'E' ? 'Nueva nota de crédito' : 'Nuevo complemento de pago' }}
-      </h1>
-      <p class="mt-1 text-sm text-brand-text-secondary">
-        {{ tipo === 'P' ? 'Documenta un cobro aplicado con sus facturas timbradas (complemento de pagos 2.0)' : 'Los totales e impuestos los calcula FlowERP; el timbrado valida contra el SAT' }}
-      </p>
-    </header>
-
-    <div v-if="cargando" class="mt-6 text-sm text-brand-text-muted">Cargando…</div>
-
-    <!-- Complemento de pagos -->
-    <section v-else-if="tipo === 'P' && !esEdicion" class="mt-6 space-y-5">
-      <div class="rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Cobro aplicado</h2>
-        <p class="mt-1 text-[13px] text-brand-text-secondary">Del módulo Cobros de clientes (solo estado "aplicado"). Cada aplicación debe apuntar a una cuenta por cobrar con factura timbrada.</p>
-        <div class="relative mt-4">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-muted" :stroke-width="1.75" />
-          <input v-model="cobroBusqueda" type="search" placeholder="Buscar cobro por folio o referencia…" class="w-full rounded border border-brand-border py-2 pl-9 pr-3 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="buscarCobros" @focus="buscarCobros" />
-          <ul v-if="cobroOpciones.length && !cobroElegido" class="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded border border-brand-border-light bg-white shadow-lg">
-            <li v-for="row in cobroOpciones" :key="row.id">
-              <button type="button" class="w-full px-3 py-2 text-left text-sm hover:bg-brand-bg" @click="cobroElegido = row">{{ cobroLabel(row) }}</button>
-            </li>
-          </ul>
-        </div>
-        <div v-if="cobroElegido" class="mt-3 flex items-center justify-between rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-sm">
-          <span class="font-semibold text-brand-text">{{ cobroLabel(cobroElegido) }}</span>
-          <button type="button" class="text-xs font-semibold text-brand-text-secondary hover:text-brand-error-text" @click="cobroElegido = null">Quitar</button>
-        </div>
+  <div class="invoice-page">
+    <div class="invoice-topbar">
+      <div>
+        <div class="invoice-breadcrumb"><NuxtLink to="/facturacion">Inicio</NuxtLink><span>/</span><NuxtLink to="/facturacion">Facturación</NuxtLink><span>/</span><strong>Nueva factura</strong></div>
+        <div class="invoice-title-row"><h1>{{ esEdicion ? 'Editar documento' : tipo === 'I' ? 'Nueva factura' : tipo === 'E' ? 'Nueva nota de crédito' : 'Nuevo complemento de pago' }}</h1><span class="invoice-status">Borrador</span></div>
+        <p>Captura los datos fiscales y conceptos del comprobante</p>
       </div>
-      <div class="rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Datos del complemento</h2>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Forma de pago (SAT)
-            <select v-model="formaPagoComplemento" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option value="" disabled>Selecciona…</option>
-              <option v-for="f in FORMAS_PAGO" :key="f.value" :value="f.value">{{ f.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Serie tipo P (opcional)
-            <select v-model="serieId" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option value="">Primera activa</option>
-              <option v-for="s in seriesDelTipo" :key="s.id" :value="s.id">{{ s.serie }} · CP {{ s.lugarExpedicion }}</option>
-            </select>
-          </label>
-        </div>
-      </div>
+      <div class="invoice-actions"><NuxtLink to="/facturacion" class="invoice-btn invoice-btn-ghost">Cancelar</NuxtLink><button type="button" class="invoice-btn invoice-btn-outline" :disabled="saving" @click="submit(false)">Guardar borrador</button><button type="button" class="invoice-btn invoice-btn-primary" :disabled="saving || !listaParaTimbrar" :title="!listaParaTimbrar ? 'Completa el receptor y agrega al menos un concepto para timbrar' : ''" @click="submit(true)">{{ saving ? 'Timbrando…' : 'Timbrar factura' }}</button></div>
+    </div>
+    <div v-if="cargando" class="invoice-loading">Cargando…</div>
+    <section v-else-if="tipo === 'P' && !esEdicion" class="invoice-single-column">
+      <article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">↔</div><div><h2>Cobro aplicado</h2><p>Selecciona el cobro que vas a documentar con un complemento de pagos.</p></div></header><div class="invoice-card-body">
+        <div class="invoice-field full"><label>Buscar cobro aplicado</label><div class="invoice-search"><Search /><input v-model="cobroBusqueda" placeholder="Buscar por folio, referencia o monto…" @input="buscarCobros" /></div><ul v-if="cobroOpciones.length && !cobroElegido" class="invoice-results"><li v-for="row in cobroOpciones" :key="row.id"><button type="button" @click="cobroElegido = row">{{ cobroLabel(row) }}</button></li></ul></div>
+        <div v-if="cobroElegido" class="invoice-selected"><span>{{ cobroLabel(cobroElegido) }}</span><button type="button" @click="cobroElegido = null">Quitar</button></div>
+        <div class="invoice-grid-2"><label class="invoice-field"><span>Forma de pago (SAT) *</span><select v-model="formaPagoComplemento"><option value="" disabled>Selecciona…</option><option v-for="f in FORMAS_PAGO" :key="f.value" :value="f.value">{{ f.label }}</option></select></label><label class="invoice-field"><span>Serie tipo P</span><select v-model="serieId"><option value="">Primera activa</option><option v-for="s in seriesDelTipo" :key="s.id" :value="s.id">{{ s.serie }} · CP {{ s.lugarExpedicion }}</option></select></label></div>
+      </div></article>
     </section>
-
-    <!-- Factura / nota de crédito -->
-    <template v-else>
-      <section class="mt-6 rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Serie y receptor</h2>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Serie fiscal
-            <select v-model="serieId" :disabled="esEdicion" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none disabled:bg-brand-bg">
-              <option value="" disabled>{{ seriesDelTipo.length ? 'Selecciona…' : 'No hay series activas de este tipo — créala en el listado' }}</option>
-              <option v-for="s in seriesDelTipo" :key="s.id" :value="s.id">{{ s.serie }} · CP {{ s.lugarExpedicion }} · folio {{ s.nextFolio }}</option>
-            </select>
-          </label>
-          <div class="relative flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Cliente (módulo dinámico)
-            <div class="relative">
-              <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-muted" :stroke-width="1.75" />
-              <input v-model="clienteBusqueda" type="search" placeholder="Buscar por nombre…" class="w-full rounded border border-brand-border py-2 pl-9 pr-3 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="clienteAbierto = true; buscarClientes()" />
-              <ul v-if="clienteAbierto && clienteOpciones.length" class="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border border-brand-border-light bg-white shadow-lg">
-                <li v-for="row in clienteOpciones" :key="row.id">
-                  <button type="button" class="w-full px-3 py-2 text-left text-sm font-normal hover:bg-brand-bg" @click="elegirCliente(row)">
-                    {{ row.customData?.nombre }} <span v-if="row.customData?.rfc" class="text-xs text-brand-text-muted">· {{ row.customData.rfc }}</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-            <span class="text-xs font-normal text-brand-text-muted">Autocompleta los datos fiscales si el módulo Clientes los tiene; igual puedes editarlos abajo.</span>
-          </div>
-        </div>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Nombre o razón social *
-            <input v-model="receptor.nombre" maxlength="250" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">RFC *
-            <input v-model="receptor.rfc" maxlength="13" placeholder="AAA010101AAA" class="rounded border border-brand-border px-3 py-2 text-sm font-normal uppercase focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Código postal *
-            <input v-model="receptor.codigoPostal" maxlength="5" inputmode="numeric" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Régimen fiscal *
-            <select v-model="receptor.regimenFiscal" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option value="">Selecciona…</option>
-              <option v-for="r in REGIMENES_FISCALES" :key="r.value" :value="r.value">{{ r.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text sm:col-span-2">Correo (para enviarle el CFDI)
-            <input v-model="receptor.correo" type="email" maxlength="200" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-        </div>
-        <div v-if="!esEdicion" class="mt-4 border-t border-brand-border-light pt-4">
-          <span class="text-[13px] font-semibold text-brand-text">Origen (opcional)</span>
-          <p class="mt-0.5 text-xs font-normal text-brand-text-muted">Vincula la cuenta por cobrar que da lugar a esta factura — es el vínculo que usan los complementos de pago para encontrarla.</p>
-          <div v-if="sourceRecordId" class="mt-2 flex items-center justify-between rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-sm">
-            <span class="font-semibold text-brand-text">{{ sourceLabel }}</span>
-            <button type="button" class="text-xs font-semibold text-brand-text-secondary hover:text-brand-error-text" @click="quitarSource">Quitar</button>
-          </div>
-          <div v-else class="relative mt-2">
-            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-text-muted" :stroke-width="1.75" />
-            <input v-model="sourceBusqueda" type="search" placeholder="Buscar cuenta por cobrar por folio…" class="w-full rounded border border-brand-border py-2 pl-9 pr-3 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="buscarSource" />
-            <ul v-if="sourceAbierto && sourceOpciones.length" class="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border border-brand-border-light bg-white shadow-lg">
-              <li v-for="row in sourceOpciones" :key="row.id">
-                <button type="button" class="w-full px-3 py-2 text-left text-sm hover:bg-brand-bg" @click="elegirSource(row)">{{ sourceRowLabel(row) }}</button>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section v-if="tipo === 'E'" class="mt-5 rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Factura relacionada</h2>
-        <p class="mt-1 text-[13px] text-brand-text-secondary">Una nota de crédito debe relacionar un CFDI timbrado (tipo de relación SAT).</p>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">CFDI relacionado *
-            <select v-model="relacionadoDocumentId" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option :value="null" disabled>Selecciona…</option>
-              <option v-for="r in relacionables" :key="r.id" :value="r.id">{{ r.serie }}-{{ String(r.folio ?? 0).padStart(6, '0') }} · {{ r.receptorNombre }} · {{ formatoDinero(r.total, r.moneda) }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Tipo de relación *
-            <select v-model="relacionadoTipo" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option v-for="t in TIPOS_RELACION" :key="t.value" :value="t.value">{{ t.label }}</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      <section class="mt-5 rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Conceptos</h2>
-        <div v-for="(c, i) in conceptos" :key="i" class="mt-4 rounded border border-brand-border-light p-4">
-          <div class="flex items-start justify-between gap-2">
-            <div class="relative flex-1">
-              <Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-brand-text-muted" :stroke-width="1.75" />
-              <input v-model="productoBusqueda[i]" type="search" placeholder="Buscar producto (opcional)…" class="w-full rounded border border-brand-border py-2 pl-9 pr-3 text-sm focus:border-brand-blue focus:outline-none" @input="buscarProducto(i)" />
-              <ul v-if="productoAbierto[i] && productoOpciones[i]?.length" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-brand-border-light bg-white shadow-lg">
-                <li v-for="row in productoOpciones[i]" :key="row.id">
-                  <button type="button" class="w-full px-3 py-2 text-left text-sm hover:bg-brand-bg" @click="elegirProducto(i, row)">{{ row.customData?.nombre }} <span v-if="row.customData?.sku" class="text-xs text-brand-text-muted">· {{ row.customData.sku }}</span></button>
-                </li>
-              </ul>
-            </div>
-            <button type="button" class="rounded border border-brand-border p-2 text-brand-text-secondary hover:bg-brand-bg disabled:opacity-40" :disabled="conceptos.length <= 1" title="Quitar concepto" @click="quitarConcepto(i)">
-              <Trash2 class="h-4 w-4" :stroke-width="1.75" />
-            </button>
-          </div>
-          <label class="mt-3 flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Descripción *
-            <input v-model="c.descripcion" maxlength="1000" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-          <div class="mt-3 grid gap-3 sm:grid-cols-4">
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">ClaveProdServ *
-              <input v-model="c.claveProdServ" maxlength="8" inputmode="numeric" placeholder="8 dígitos" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">ClaveUnidad
-              <input v-model="c.claveUnidad" maxlength="6" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Cantidad *
-              <input v-model.number="c.cantidad" type="number" min="0.000001" step="any" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Valor unitario *
-              <input v-model.number="c.valorUnitario" type="number" min="0" step="any" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Descuento línea
-              <input v-model.number="c.descuento" type="number" min="0" step="any" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Traslado
-              <select :value="trasladoPresetId(c)" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" @change="setTrasladoPreset(c, String(($event.target as HTMLSelectElement).value))">
-                <option v-for="p in IMPUESTOS_PRESET" :key="p.id" :value="p.id">{{ p.label }}</option>
-              </select>
-            </label>
-            <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text sm:col-span-2">Importe
-              <span class="rounded bg-brand-bg px-3 py-2 text-sm font-semibold tabular-nums">{{ formatoDinero(round6(c.cantidad * c.valorUnitario), moneda) }}</span>
-            </label>
-          </div>
-        </div>
-        <button type="button" class="mt-3 rounded border border-brand-border px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="agregarConcepto">
-          <span class="flex items-center gap-1.5"><Plus class="h-4 w-4" :stroke-width="1.75" />Agregar concepto</span>
-        </button>
-      </section>
-
-      <section class="mt-5 rounded-lg border border-brand-border-light bg-white p-5">
-        <h2 class="text-[15px] font-bold text-brand-text">Datos fiscales y totales</h2>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Uso de CFDI *
-            <select v-model="usoCfdi" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option v-for="u in USOS_CFDI" :key="u.value" :value="u.value">{{ u.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Método de pago
-            <select v-model="metodoPago" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option v-for="m in METODOS_PAGO" :key="m.value" :value="m.value">{{ m.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Forma de pago
-            <select v-model="formaPago" class="rounded border border-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option :value="null">— (obligatoria al timbrar PUE)</option>
-              <option v-for="f in FORMAS_PAGO" :key="f.value" :value="f.value">{{ f.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Moneda
-            <select v-model="moneda" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option value="MXN">MXN · Peso mexicano</option>
-              <option value="USD">USD · Dólar</option>
-              <option value="EUR">EUR · Euro</option>
-            </select>
-          </label>
-          <label v-if="moneda !== 'MXN'" class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Tipo de cambio
-            <input v-model.number="tipoCambio" type="number" min="0" step="any" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Exportación
-            <select v-model="exportacion" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
-              <option v-for="e in EXPORTACION" :key="e.value" :value="e.value">{{ e.label }}</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Descuento global
-            <input v-model.number="descuentoDocumento" type="number" min="0" step="any" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none" />
-          </label>
-          <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Observaciones
-            <input v-model="observaciones" maxlength="500" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-          </label>
-        </div>
-        <div class="mt-5 rounded bg-brand-bg p-4 text-sm">
-          <dl class="grid gap-1.5 sm:grid-cols-2">
-            <div class="flex justify-between"><dt class="text-brand-text-secondary">Subtotal</dt><dd class="tabular-nums">{{ formatoDinero(totales.subtotal, moneda) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-brand-text-secondary">Traslados</dt><dd class="tabular-nums">{{ formatoDinero(totales.trasladado, moneda) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-brand-text-secondary">Retenciones</dt><dd class="tabular-nums">−{{ formatoDinero(totales.retenido, moneda) }}</dd></div>
-            <div class="flex justify-between font-bold"><dt>Total</dt><dd class="tabular-nums">{{ formatoDinero(totales.total, moneda) }}</dd></div>
-          </dl>
-          <p class="mt-2 text-xs text-brand-text-muted">Vista previa: los totales oficiales los recalcula el servidor al guardar.</p>
-        </div>
-      </section>
-    </template>
-
-    <p v-if="formError" role="alert" class="mt-4 rounded bg-brand-error-bg p-3 text-sm text-brand-error-text">{{ formError }}</p>
-    <div class="mt-5 flex items-center gap-3">
-      <button type="button" class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50" :disabled="saving" @click="submit">
-        {{ saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Crear borrador' }}
-      </button>
-      <NuxtLink to="/facturacion" class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg">Cancelar</NuxtLink>
+    <div v-else class="invoice-columns">
+      <main class="invoice-main">
+        <article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">▣</div><div><h2>Datos del comprobante</h2><p>Define el tipo y los datos fiscales de emisión.</p></div></header><div class="invoice-card-body">
+          <div class="invoice-type-row"><button type="button" :class="{ active: tipo === 'I' }" @click="tipo = 'I'">Ingreso</button><button type="button" :class="{ active: tipo === 'E' }" @click="tipo = 'E'">Egreso</button><button type="button" :class="{ active: tipo === 'P' }" @click="tipo = 'P'">Pago</button></div>
+          <div class="invoice-grid-2"><label class="invoice-field"><span>Serie fiscal *</span><select v-model="serieId" :disabled="esEdicion"><option value="" disabled>{{ seriesDelTipo.length ? 'Selecciona…' : 'No hay series activas' }}</option><option v-for="s in seriesDelTipo" :key="s.id" :value="s.id">{{ s.serie }} · CP {{ s.lugarExpedicion }} · folio {{ s.nextFolio }}</option></select></label><label class="invoice-field"><span>Fecha de emisión</span><input type="date" :value="new Date().toISOString().slice(0,10)" disabled /></label><label class="invoice-field"><span>Moneda</span><select v-model="moneda"><option value="MXN">MXN · Peso mexicano</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option></select></label><label v-if="moneda !== 'MXN'" class="invoice-field"><span>Tipo de cambio</span><input v-model.number="tipoCambio" type="number" min="0" step="any" /></label><label class="invoice-field"><span>Exportación</span><select v-model="exportacion"><option v-for="e in EXPORTACION" :key="e.value" :value="e.value">{{ e.label }}</option></select></label></div>
+        </div></article>
+        <article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">♙</div><div><h2>Receptor</h2><p>Busca un cliente y confirma sus datos fiscales.</p></div></header><div class="invoice-card-body">
+          <div class="invoice-field full"><label>Cliente</label><div class="invoice-search"><Search /><input v-model="clienteBusqueda" placeholder="Buscar cliente por nombre, RFC o correo" @input="clienteAbierto = true; buscarClientes()" /></div><ul v-if="clienteAbierto && clienteOpciones.length" class="invoice-results"><li v-for="row in clienteOpciones" :key="row.id"><button type="button" @click="elegirCliente(row)"><strong>{{ row.customData?.nombre }}</strong><small v-if="row.customData?.rfc">{{ row.customData.rfc }}</small></button></li></ul></div>
+          <div v-if="customerRecordId" class="invoice-selected"><span><strong>{{ receptor.nombre }}</strong><small>{{ receptor.rfc || 'RFC pendiente' }} · {{ receptor.regimenFiscal || 'Régimen pendiente' }}</small></span><button type="button" @click="customerRecordId = null">Cambiar cliente</button></div>
+          <div class="invoice-grid-2"><label class="invoice-field"><span>Nombre o razón social *</span><input v-model="receptor.nombre" maxlength="250" /></label><label class="invoice-field"><span>RFC *</span><input v-model="receptor.rfc" maxlength="13" placeholder="AAA010101AAA" /></label><label class="invoice-field"><span>Código postal *</span><input v-model="receptor.codigoPostal" maxlength="5" inputmode="numeric" /></label><label class="invoice-field"><span>Régimen fiscal *</span><select v-model="receptor.regimenFiscal"><option value="">Selecciona…</option><option v-for="r in REGIMENES_FISCALES" :key="r.value" :value="r.value">{{ r.label }}</option></select></label><label class="invoice-field full"><span>Correo para enviar el CFDI</span><input v-model="receptor.correo" type="email" placeholder="receptor@empresa.com" /></label></div>
+          <div v-if="!receptorCompleto" class="invoice-alert">El cliente necesita completar sus datos fiscales antes de timbrar.</div>
+        </div></article>
+        <article v-if="tipo === 'E'" class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">↗</div><div><h2>Factura relacionada</h2><p>Una nota de crédito debe relacionarse con un CFDI timbrado.</p></div></header><div class="invoice-card-body invoice-grid-2"><label class="invoice-field"><span>CFDI relacionado *</span><select v-model="relacionadoDocumentId"><option :value="null" disabled>Selecciona…</option><option v-for="r in relacionables" :key="r.id" :value="r.id">{{ r.serie }}-{{ String(r.folio ?? 0).padStart(6, '0') }} · {{ r.receptorNombre }} · {{ formatoDinero(r.total, r.moneda) }}</option></select></label><label class="invoice-field"><span>Tipo de relación *</span><select v-model="relacionadoTipo"><option v-for="t in TIPOS_RELACION" :key="t.value" :value="t.value">{{ t.label }}</option></select></label></div></article>
+        <article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">▤</div><div><h2>Conceptos</h2><p>Agrega los productos o servicios de la factura.</p></div><span class="invoice-count">{{ conceptos.length }}</span></header><div class="invoice-card-body">
+          <div v-for="(c, i) in conceptos" :key="i" class="concept-row"><div class="concept-row-head"><span>Concepto {{ i + 1 }}</span><button type="button" :disabled="conceptos.length <= 1" @click="quitarConcepto(i)"><Trash2 /></button></div><div class="invoice-field full relative"><label>Producto o servicio</label><div class="invoice-search"><Search /><input v-model="productoBusqueda[i]" placeholder="Buscar en tu catálogo (opcional)" @input="buscarProducto(i)" /></div><ul v-if="productoAbierto[i] && productoOpciones[i]?.length" class="invoice-results"><li v-for="row in productoOpciones[i]" :key="row.id"><button type="button" @click="elegirProducto(i, row)">{{ row.customData?.nombre }} <small v-if="row.customData?.sku">· {{ row.customData.sku }}</small></button></li></ul></div><div class="invoice-field full"><span>Descripción *</span><input v-model="c.descripcion" maxlength="1000" placeholder="Describe el producto o servicio" /></div><div class="invoice-grid-4"><label class="invoice-field"><span>Clave SAT *</span><input v-model="c.claveProdServ" maxlength="8" inputmode="numeric" placeholder="01010101" /></label><label class="invoice-field"><span>Unidad</span><input v-model="c.claveUnidad" maxlength="6" placeholder="H87" /></label><label class="invoice-field"><span>Cantidad *</span><input v-model.number="c.cantidad" type="number" min="0.000001" step="any" /></label><label class="invoice-field"><span>Valor unitario *</span><input v-model.number="c.valorUnitario" type="number" min="0" step="any" /></label></div><div class="invoice-grid-2"><label class="invoice-field"><span>Descuento</span><input v-model.number="c.descuento" type="number" min="0" step="any" /></label><label class="invoice-field"><span>Impuesto trasladado</span><select :value="trasladoPresetId(c)" @change="setTrasladoPreset(c, String(($event.target as HTMLSelectElement).value))"><option v-for="p in IMPUESTOS_PRESET" :key="p.id" :value="p.id">{{ p.label }}</option></select></label></div><div class="concept-amount">Importe <strong>{{ formatoDinero(round6(c.cantidad * c.valorUnitario), moneda) }}</strong></div></div>
+          <button type="button" class="invoice-add" @click="agregarConcepto"><Plus /> Agregar concepto</button>
+        </div></article>
+        <article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">◫</div><div><h2>Datos de pago</h2><p>Información complementaria del CFDI.</p></div></header><div class="invoice-card-body invoice-grid-2"><label class="invoice-field"><span>Uso de CFDI *</span><select v-model="usoCfdi"><option v-for="u in USOS_CFDI" :key="u.value" :value="u.value">{{ u.label }}</option></select></label><label class="invoice-field"><span>Método de pago</span><select v-model="metodoPago"><option v-for="m in METODOS_PAGO" :key="m.value" :value="m.value">{{ m.label }}</option></select></label><label class="invoice-field"><span>Forma de pago</span><select v-model="formaPago"><option :value="null">— Selecciona —</option><option v-for="f in FORMAS_PAGO" :key="f.value" :value="f.value">{{ f.label }}</option></select></label><label class="invoice-field"><span>Descuento global</span><input v-model.number="descuentoDocumento" type="number" min="0" step="any" /></label><label class="invoice-field full"><span>Observaciones</span><textarea v-model="observaciones" rows="2" maxlength="500" placeholder="Notas internas o instrucciones para el receptor"></textarea></label></div></article>
+        <div v-if="formError" class="invoice-error">{{ formError }}</div>
+      </main>
+      <aside class="invoice-aside"><article class="invoice-card invoice-sticky"><header class="invoice-card-header"><div class="invoice-card-icon">◈</div><div><h2>Resumen fiscal</h2><p>Se recalcula al guardar.</p></div></header><div class="invoice-card-body"><dl class="invoice-summary"><div><dt>Subtotal</dt><dd>{{ formatoDinero(totales.subtotal, moneda) }}</dd></div><div><dt>Descuento</dt><dd>−{{ formatoDinero(descuentoDocumento, moneda) }}</dd></div><div><dt>IVA trasladado</dt><dd>{{ formatoDinero(totales.trasladado, moneda) }}</dd></div><div><dt>Retenciones</dt><dd>−{{ formatoDinero(totales.retenido, moneda) }}</dd></div><div class="total"><dt>Total</dt><dd>{{ formatoDinero(totales.total, moneda) }}</dd></div></dl><div class="summary-meta"><span>Moneda <b>{{ moneda }}</b></span><span>Conceptos <b>{{ conceptos.length }}</b></span><span>Estado <b :class="listaParaTimbrar ? 'good' : 'warn'">{{ listaParaTimbrar ? 'Lista para timbrar' : 'Datos incompletos' }}</b></span></div></div></article><article class="invoice-card"><header class="invoice-card-header"><div class="invoice-card-icon">✓</div><div><h2>Validación fiscal</h2><p>Requisitos antes del timbrado.</p></div></header><div class="invoice-card-body validation-list"><div><span :class="serieId ? 'ok' : 'warning'">●</span> Serie configurada</div><div><span :class="receptorCompleto ? 'ok' : 'warning'">●</span> Receptor completo</div><div><span :class="receptor.rfc ? 'ok' : 'warning'">●</span> RFC válido</div><div><span :class="receptor.regimenFiscal ? 'ok' : 'warning'">●</span> Régimen fiscal válido</div><div><span :class="receptor.codigoPostal ? 'ok' : 'warning'">●</span> Código postal válido</div><div><span :class="conceptosCompletos ? 'ok' : 'warning'">●</span> Conceptos completos</div><div><span :class="conceptos.length ? 'ok' : 'warning'">●</span> Impuestos calculados</div></div></article><div class="invoice-bottom-actions"><button type="button" class="invoice-btn invoice-btn-primary w-full" :disabled="saving" @click="submit(false)">{{ saving ? 'Guardando…' : 'Guardar borrador' }}</button><NuxtLink to="/facturacion" class="invoice-btn invoice-btn-ghost w-full">Cancelar</NuxtLink></div></aside>
     </div>
   </div>
 </template>
+
+<style scoped>
+.invoice-page { max-width: 1440px; margin: 0 auto; padding: 8px 32px 72px; color: #33475B; }
+.invoice-topbar { display:flex; justify-content:space-between; gap:28px; align-items:flex-end; margin-bottom:24px; }
+.invoice-breadcrumb { display:flex; gap:8px; align-items:center; font-size:12px; color:#8DA1B5; margin-bottom:12px; }
+.invoice-breadcrumb a:hover { color:#0091AE; }
+.invoice-breadcrumb strong { color:#33475B; }
+.invoice-title-row { display:flex; align-items:center; gap:12px; }
+.invoice-title-row h1 { margin:0; font-size:26px; line-height:1.2; color:#33475B; }
+.invoice-topbar p { margin:6px 0 0; color:#607D98; font-size:14px; }
+.invoice-status { border-radius:999px; background:#EAF7F0; color:#16825D; padding:5px 10px; font-size:11px; font-weight:700; }
+.invoice-actions { display:flex; align-items:center; gap:10px; }
+.invoice-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:38px; border-radius:6px; padding:0 14px; font-size:13px; font-weight:700; border:1px solid #CBD6E2; transition:.15s; }
+.invoice-btn:disabled { opacity:.5; cursor:not-allowed; }
+.invoice-btn-ghost { color:#607D98; background:white; }
+.invoice-btn-outline { color:#33475B; background:white; }
+.invoice-btn-primary { color:#fff; border-color:#FF7A59; background:#FF7A59; }
+.invoice-btn-primary:hover:not(:disabled) { background:#E66B4D; }
+.invoice-columns { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; }
+.invoice-main { display:flex; flex-direction:column; gap:20px; min-width:0; }
+.invoice-aside { display:flex; flex-direction:column; gap:20px; }
+.invoice-sticky { position:sticky; top:20px; }
+.invoice-single-column { max-width:900px; }
+.invoice-card { overflow:visible; border:1px solid #DFE5EB; border-radius:10px; background:#fff; box-shadow:0 1px 3px rgba(51,71,91,.08); }
+.invoice-card-header { display:flex; align-items:center; gap:10px; border-bottom:1px solid #E5EAF0; padding:16px 20px; }
+.invoice-card-header h2 { margin:0; color:#33475B; font-size:16px; font-weight:700; }
+.invoice-card-header p { margin:3px 0 0; color:#607D98; font-size:12px; }
+.invoice-card-icon { display:flex; width:30px; height:30px; align-items:center; justify-content:center; border-radius:7px; background:#EAF7F9; color:#0091AE; font-size:16px; font-weight:700; }
+.invoice-card-body { display:flex; flex-direction:column; gap:20px; padding:24px; }
+.invoice-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 20px; }
+.invoice-grid-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.invoice-field { display:flex; flex-direction:column; gap:6px; position:relative; color:#33475B; font-size:13px; font-weight:600; }
+.invoice-field.full { grid-column:1/-1; }
+.invoice-field input,.invoice-field select,.invoice-field textarea { width:100%; border:1px solid #CBD6E2; border-radius:6px; min-height:38px; background:#fff; color:#33475B; padding:8px 10px; font-size:13px; font-weight:400; outline:none; }
+.invoice-field textarea { resize:vertical; }
+.invoice-field input:focus,.invoice-field select:focus,.invoice-field textarea:focus { border-color:#0091AE; box-shadow:0 0 0 2px #0091AE18; }
+.invoice-search { display:flex; align-items:center; gap:8px; border:1px solid #CBD6E2; border-radius:6px; min-height:40px; padding:0 10px; background:#fff; }
+.invoice-search svg { width:16px; color:#8DA1B5; }
+.invoice-search input { min-height:34px; border:0; padding:0; box-shadow:none; }
+.invoice-results { position:absolute; top:100%; left:0; right:0; z-index:20; max-height:230px; overflow:auto; margin-top:4px; padding:4px; border:1px solid #DFE5EB; border-radius:7px; background:#fff; box-shadow:0 8px 24px rgba(51,71,91,.16); }
+.invoice-results button { display:flex; width:100%; flex-direction:column; gap:2px; padding:9px 10px; border-radius:5px; text-align:left; color:#33475B; font-size:13px; }
+.invoice-results button:hover { background:#F5F8FA; }
+.invoice-results small,.invoice-selected small { display:block; color:#8DA1B5; font-size:11px; font-weight:400; }
+.invoice-selected { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 14px; border:1px solid #B7E7EF; border-radius:7px; background:#F0FBFC; color:#33475B; font-size:13px; }
+.invoice-selected button { color:#0091AE; font-size:12px; font-weight:700; }
+.invoice-type-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.invoice-type-row button { min-height:40px; border:1px solid #CBD6E2; border-radius:6px; background:#fff; color:#607D98; font-size:13px; font-weight:700; }
+.invoice-type-row button.active { border-color:#0091AE; background:#EAF7F9; color:#0091AE; }
+.concept-row { display:flex; flex-direction:column; gap:14px; padding:16px; border:1px solid #E5EAF0; border-radius:8px; background:#fff; }
+.concept-row-head { display:flex; align-items:center; justify-content:space-between; color:#33475B; font-size:13px; font-weight:700; }
+.concept-row-head button { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:5px; color:#8DA1B5; }
+.concept-row-head svg { width:15px; }
+.concept-amount { display:flex; align-items:center; justify-content:space-between; border-top:1px solid #E5EAF0; padding-top:12px; color:#607D98; font-size:12px; }
+.concept-amount strong { color:#33475B; font-size:14px; }
+.invoice-add { display:inline-flex; align-items:center; justify-content:center; align-self:flex-start; gap:6px; min-height:36px; border:1px dashed #9FB3C8; border-radius:6px; padding:0 13px; color:#0091AE; font-size:13px; font-weight:700; }
+.invoice-add:hover { background:#F0FBFC; }
+.invoice-add svg { width:15px; }
+.invoice-count { margin-left:auto; color:#8DA1B5; font-size:12px; }
+.invoice-summary { display:flex; flex-direction:column; gap:11px; margin:0; font-size:13px; }
+.invoice-summary div { display:flex; justify-content:space-between; gap:10px; }
+.invoice-summary dt { color:#607D98; }
+.invoice-summary dd { margin:0; color:#33475B; font-variant-numeric:tabular-nums; }
+.invoice-summary .total { margin-top:8px; border-top:1px solid #E5EAF0; padding-top:14px; }
+.invoice-summary .total dt,.invoice-summary .total dd { color:#33475B; font-size:20px; font-weight:700; }
+.summary-meta { display:flex; flex-direction:column; gap:9px; margin-top:20px; padding-top:16px; border-top:1px solid #E5EAF0; color:#8DA1B5; font-size:12px; }
+.summary-meta span { display:flex; justify-content:space-between; gap:10px; }
+.summary-meta b { color:#607D98; }
+.summary-meta b.good { color:#16825D; }
+.summary-meta b.warn { color:#B7791F; }
+.validation-list { gap:13px; color:#33475B; font-size:13px; }
+.validation-list div { display:flex; align-items:center; gap:9px; }
+.validation-list span { color:#B7791F; font-size:12px; }
+.validation-list span.ok { color:#16825D; }
+.invoice-alert { border-radius:6px; padding:10px 12px; background:#FFF4E5; color:#8A5D00; font-size:12px; }
+.invoice-error { border-radius:7px; padding:12px 14px; background:#FDECEC; color:#C0392B; font-size:13px; }
+.invoice-bottom-actions { display:flex; flex-direction:column; gap:8px; }
+.invoice-loading { padding:48px; text-align:center; color:#8DA1B5; font-size:14px; }
+@media (max-width: 900px) { .invoice-page { padding:8px 20px 72px; } .invoice-topbar { align-items:flex-start; flex-direction:column; } .invoice-actions { width:100%; } .invoice-actions .invoice-btn { flex:1; } .invoice-columns { grid-template-columns:1fr; } .invoice-sticky { position:static; } }
+@media (max-width: 620px) { .invoice-page { padding:4px 14px 60px; } .invoice-grid-2,.invoice-grid-4 { grid-template-columns:1fr; } .invoice-field.full { grid-column:auto; } .invoice-type-row { grid-template-columns:1fr; } .invoice-actions { flex-wrap:wrap; } .invoice-actions .invoice-btn { flex:auto; } .invoice-card-body { padding:18px; } }
+</style>
+
+

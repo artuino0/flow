@@ -1,11 +1,14 @@
 {
   "name": "erp-dinamico-frontback",
-  "version": "0.88.0",
+  "version": "0.89.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "build:onprem": "node scripts/buildOnprem.mjs",
+    "license:keys": "node scripts/licenseKeys.mjs",
+    "license:issue": "node scripts/licenseIssue.mjs",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
@@ -17,12 +20,18 @@
     "db:seed-dev-user": "node scripts/seed-dev-user.mjs",
     "db:seed": "node scripts/seed.mjs",
     "db:seed-empaque": "node scripts/seedEmpaque.mjs",
-    "db:seed-business-suite": "node scripts/seedBusinessSuite.mjs"
+    "db:seed-business-suite": "node scripts/seedBusinessSuite.mjs",
+    "db:seed-nominas": "node scripts/seedNominas.mjs",
+    "db:seed-agenda": "node scripts/seedAgendaSuite.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1137.0",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.12",
     "@lucide/vue": "^1.35.0",
     "@sentry/node": "^10.71.0",
     "bcryptjs": "^2.4.3",
+    "codemirror": "^6.0.2",
     "drizzle-orm": "^0.45.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
@@ -31,7 +40,10 @@
     "otplib": "^13.5.0",
     "papaparse": "^5.4.1",
     "postgres": "^3.4.4",
+    "prettier": "^3.9.8",
     "qrcode": "^1.5.4",
+    "stripe": "^22.6.2",
+    "tldts": "^7.4.13",
     "vue": "^3.5.0",
     "zod": "^3.23.8"
   },

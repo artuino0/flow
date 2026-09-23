@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requirePermission } from '~/server/utils/rbac'
+import { requireAdminRole, requirePermission } from '~/server/utils/rbac'
 import { printReportDslSchema } from '~/server/utils/printReport'
 import { createPrintReport } from '~/server/utils/printReports'
 import { requirePrintReportAccess } from '~/server/utils/printReportAccess'
@@ -14,6 +14,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  await requireAdminRole(event)
   const body = await readValidatedBody(event, bodySchema.parse)
   const { auth } = await requirePermission(event, body.dsl.baseEntity, 'canRead')
 

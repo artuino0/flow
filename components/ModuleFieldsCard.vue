@@ -448,6 +448,7 @@ async function confirmImpactModal() {
       :saving="saving"
       :error="modalError"
       :existing-fields="realFields"
+      :entity-id="entityId"
       @close="closeModal"
       @submit="onSubmit"
     />

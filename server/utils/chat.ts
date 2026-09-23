@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { withTenant, db } from '~/server/db'
-import { chatAttachments, chatConversations, chatMessages, chatParticipants, people, roles, users } from '~/server/db/schema'
+import { chatAttachments, chatConversations, chatMessages, chatParticipants, entities, people, records, roleEntityPermissions, roles, users } from '~/server/db/schema'
 import type { AuthTokenPayload } from '~/server/utils/auth'
 import { resolveChatPermissions } from '~/server/utils/chatPermissions'
 import { publishRealtime, realtimeUserTopic } from '~/server/utils/realtime'
@@ -19,17 +19,40 @@ async function participant(tx: Tx, tenantId: string, conversationId: string, use
 
 async function peopleByUserIds(tx: Tx, tenantId: string, userIds: string[]) {
   if (!userIds.length) return new Map<string, ChatPerson>()
-  const rows = await tx.select({ id: users.id, name: people.fullName, email: people.email, jobTitle: users.jobTitle })
+  const rows = await tx.select({ id: users.id, name: people.fullName, email: people.email, jobTitle: users.jobTitle, active: users.isActive })
     .from(users).innerJoin(people, eq(people.id, users.personId))
     .where(and(eq(users.tenantId, tenantId), inArray(users.id, [...new Set(userIds)])))
-  return new Map(rows.map(row => [row.id, { id: row.id, name: row.name || row.email, email: row.email, jobTitle: row.jobTitle }]))
+  return new Map(rows.map(row => [row.id, { id: row.id, name: row.name || row.email, email: row.email, jobTitle: row.jobTitle, active: row.active }]))
 }
 
 function attachmentDto(row: typeof chatAttachments.$inferSelect): ChatAttachment {
   return { id: row.id, fileName: row.fileName, mimeType: row.mimeType, sizeBytes: row.sizeBytes, url: `/api/chat/attachments/${row.id}` }
 }
 
-async function serializeMessages(tx: Tx, tenantId: string, rows: (typeof chatMessages.$inferSelect)[]): Promise<ChatMessage[]> {
+type SharedRecord = { entitySlug: string; recordId: string; label: string; url: string }
+
+async function canReadSharedRecord(tx: Tx, tenantId: string, userId: string, shared: SharedRecord | null | undefined) {
+  if (!shared) return false
+  const [entity] = await tx.select({ id: entities.id, slug: entities.slug, isActive: entities.isActive })
+    .from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.slug, shared.entitySlug))).limit(1)
+  if (!entity) return false
+  const [record] = await tx.select({ id: records.id }).from(records).where(and(eq(records.tenantId, tenantId), eq(records.id, shared.recordId), eq(records.entityId, entity.id), isNull(records.deletedAt))).limit(1)
+  if (!record) return false
+  const [membership] = await tx.select({ roleId: users.roleId }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.id, userId), eq(users.isActive, true))).limit(1)
+  if (!membership?.roleId) return false
+  const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(and(eq(roles.tenantId, tenantId), eq(roles.id, membership.roleId))).limit(1)
+  if (role?.isSystem) return true
+  const [permission] = await tx.select({ canRead: roleEntityPermissions.canRead }).from(roleEntityPermissions)
+    .where(and(eq(roleEntityPermissions.roleId, membership.roleId), eq(roleEntityPermissions.entityId, entity.id))).limit(1)
+  return Boolean(entity.isActive && permission?.canRead)
+}
+
+async function serializeSharedRecord(tx: Tx, tenantId: string, userId: string | undefined, shared: SharedRecord | null | undefined): Promise<SharedRecord | { unavailable: true } | null> {
+  if (!shared || !userId || !(await canReadSharedRecord(tx, tenantId, userId, shared))) return shared ? { unavailable: true } : null
+  return shared
+}
+
+async function serializeMessages(tx: Tx, tenantId: string, rows: (typeof chatMessages.$inferSelect)[], viewerId?: string): Promise<ChatMessage[]> {
   if (!rows.length) return []
   const ids = rows.map(row => row.id)
   const replyIds = rows.flatMap(row => row.replyToMessageId ? [row.replyToMessageId] : [])
@@ -52,13 +75,15 @@ async function serializeMessages(tx: Tx, tenantId: string, rows: (typeof chatMes
   const readRows = await tx.select({ conversationId: chatParticipants.conversationId, userId: chatParticipants.userId, lastReadAt: chatParticipants.lastReadAt })
     .from(chatParticipants).where(and(eq(chatParticipants.tenantId, tenantId), inArray(chatParticipants.conversationId, [...new Set(rows.map(row => row.conversationId))])))
 
-  return rows.map(row => {
+  return Promise.all(rows.map(async row => {
     const reply = row.replyToMessageId ? replies.get(row.replyToMessageId) : undefined
     return {
       id: row.id,
       conversationId: row.conversationId,
       clientMessageId: row.clientMessageId,
       body: row.deletedAt ? '' : row.body,
+      gifUrl: row.deletedAt ? null : row.gifUrl,
+      sharedRecord: row.deletedAt ? null : await serializeSharedRecord(tx, tenantId, viewerId, row.sharedRecord as SharedRecord | null),
       sender: row.senderUserId ? personMap.get(row.senderUserId) ?? null : null,
       replyTo: reply ? {
         id: reply.id,
@@ -71,7 +96,7 @@ async function serializeMessages(tx: Tx, tenantId: string, rows: (typeof chatMes
       createdAt: row.createdAt.toISOString(),
       readCount: readRows.filter(read => read.conversationId === row.conversationId && read.userId !== row.senderUserId && read.lastReadAt >= row.createdAt).length
     }
-  })
+  }))
 }
 
 export async function assertConversationMember(tx: Tx, auth: AuthTokenPayload, conversationId: string) {
@@ -82,13 +107,13 @@ export async function assertConversationMember(tx: Tx, auth: AuthTokenPayload, c
 
 export async function listChatUsers(auth: AuthTokenPayload, search = '') {
   const term = search.trim().toLowerCase()
-  const candidates = await withTenant(auth.tenantId, tx => tx.select({ id: users.id, name: people.fullName, email: people.email, jobTitle: users.jobTitle })
+  const candidates = await withTenant(auth.tenantId, tx => tx.select({ id: users.id, name: people.fullName, email: people.email, jobTitle: users.jobTitle, active: users.isActive })
     .from(users).innerJoin(people, eq(people.id, users.personId))
     .where(and(eq(users.tenantId, auth.tenantId), eq(users.isActive, true), ne(users.id, auth.sub)))
     .orderBy(people.fullName).limit(100))
   const filtered = term ? candidates.filter(row => `${row.name ?? ''} ${row.email} ${row.jobTitle ?? ''}`.toLowerCase().includes(term)) : candidates
   const allowed = await Promise.all(filtered.map(async row => ({ row, permission: await resolveChatPermissions(auth.tenantId, row.id) })))
-  return allowed.filter(item => item.permission?.effective.canAccess).map(({ row }) => ({ id: row.id, name: row.name || row.email, email: row.email, jobTitle: row.jobTitle }))
+  return allowed.filter(item => item.permission?.effective.canAccess).map(({ row }) => ({ id: row.id, name: row.name || row.email, email: row.email, jobTitle: row.jobTitle, active: row.active }))
 }
 
 export async function createDirectConversation(auth: AuthTokenPayload, targetUserId: string) {
@@ -139,7 +164,7 @@ export async function listConversations(auth: AuthTokenPayload, archived: boolea
       const participantRows = await tx.select().from(chatParticipants).where(eq(chatParticipants.conversationId, item.conversation.id))
       const personMap = await peopleByUserIds(tx, auth.tenantId, participantRows.map(row => row.userId))
       const persons = participantRows.map(row => personMap.get(row.userId)).filter((row): row is ChatPerson => Boolean(row))
-      const [last] = await tx.select().from(chatMessages).where(eq(chatMessages.conversationId, item.conversation.id)).orderBy(desc(chatMessages.createdAt)).limit(1)
+      const [last] = await tx.select({ id: chatMessages.id, body: chatMessages.body, deletedAt: chatMessages.deletedAt, createdAt: chatMessages.createdAt, senderUserId: chatMessages.senderUserId, sharedRecord: chatMessages.sharedRecord, gifUrl: chatMessages.gifUrl }).from(chatMessages).where(eq(chatMessages.conversationId, item.conversation.id)).orderBy(desc(chatMessages.createdAt)).limit(1)
       const [unread] = await tx.select({ count: sql<number>`count(*)::int` }).from(chatMessages).where(and(
         eq(chatMessages.conversationId, item.conversation.id),
         gt(chatMessages.createdAt, item.participant.lastReadAt),
@@ -152,11 +177,15 @@ export async function listConversations(auth: AuthTokenPayload, archived: boolea
         title: item.conversation.type === 'direct' ? directOther?.name ?? 'Conversación' : item.conversation.title || 'Grupo',
         participants: persons,
         participantCount: persons.length,
-        lastMessage: last ? { id: last.id, body: last.deletedAt ? 'Mensaje eliminado' : last.body, createdAt: last.createdAt.toISOString(), deletedAt: last.deletedAt?.toISOString() ?? null, senderId: last.senderUserId, senderName: last.senderUserId ? personMap.get(last.senderUserId)?.name ?? null : null } : null,
+        lastMessage: last ? { id: last.id, body: last.deletedAt ? 'Mensaje eliminado' : last.body || (last.sharedRecord ? 'Registro compartido' : last.gifUrl ? 'GIF' : ''), createdAt: last.createdAt.toISOString(), deletedAt: last.deletedAt?.toISOString() ?? null, senderId: last.senderUserId, senderName: last.senderUserId ? personMap.get(last.senderUserId)?.name ?? null : null, sharedRecord: Boolean(last.sharedRecord), gif: Boolean(last.gifUrl) } : null,
         lastMessageAt: item.conversation.lastMessageAt.toISOString(),
         unreadCount: unread?.count ?? 0,
         archivedAt: item.participant.archivedAt?.toISOString() ?? null,
-        canManage: item.participant.participantRole === 'owner' || Boolean(currentRole?.isSystem)
+        canManage: item.participant.participantRole === 'owner' || Boolean(currentRole?.isSystem),
+        canSend: item.conversation.type !== 'direct' || directOther?.active !== false,
+        sendBlockedReason: item.conversation.type === 'direct' && directOther?.active === false
+          ? 'No puedes enviar mensajes porque este usuario está desactivado.'
+          : null
       })
     }
     return result
@@ -198,7 +227,7 @@ export async function getMessages(auth: AuthTokenPayload, conversationId: string
       : and(eq(chatMessages.tenantId, auth.tenantId), eq(chatMessages.conversationId, conversationId))
     const rows = await tx.select().from(chatMessages).where(condition).orderBy(desc(chatMessages.createdAt)).limit(limit)
     const ordered = rows.reverse()
-    return { items: await serializeMessages(tx, auth.tenantId, ordered), nextCursor: rows.length === limit ? ordered[0]?.createdAt.toISOString() ?? null : null }
+    return { items: await serializeMessages(tx, auth.tenantId, ordered, auth.sub), nextCursor: rows.length === limit ? ordered[0]?.createdAt.toISOString() ?? null : null }
   })
 }
 
@@ -208,12 +237,25 @@ export interface SendChatMessageInput {
   body: string
   replyToMessageId?: string | null
   attachmentIds?: string[]
+  sharedRecord?: SharedRecord | null
+  gifUrl?: string | null
 }
 
 export async function sendChatMessage(auth: AuthTokenPayload, input: SendChatMessageInput): Promise<ChatMessage> {
   const attachmentIds = [...new Set(input.attachmentIds ?? [])]
   const message = await withTenant(auth.tenantId, async tx => {
     await assertConversationMember(tx, auth, input.conversationId)
+    const [conversation] = await tx.select({ type: chatConversations.type }).from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.tenantId, auth.tenantId))).limit(1)
+    if (conversation?.type === 'direct') {
+      const [inactiveParticipant] = await tx.select({ id: users.id }).from(chatParticipants)
+        .innerJoin(users, and(eq(users.id, chatParticipants.userId), eq(users.tenantId, auth.tenantId)))
+        .where(and(eq(chatParticipants.conversationId, input.conversationId), ne(chatParticipants.userId, auth.sub), eq(users.isActive, false)))
+        .limit(1)
+      if (inactiveParticipant) throw createError({ statusCode: 409, statusMessage: 'No puedes enviar mensajes porque este usuario está desactivado.' })
+    }
+    if (input.sharedRecord && !(await canReadSharedRecord(tx, auth.tenantId, auth.sub, input.sharedRecord))) {
+      throw createError({ statusCode: 403, statusMessage: 'No tienes permiso para compartir este registro' })
+    }
     if (input.replyToMessageId) {
       const [reply] = await tx.select({ id: chatMessages.id }).from(chatMessages).where(and(eq(chatMessages.id, input.replyToMessageId), eq(chatMessages.conversationId, input.conversationId))).limit(1)
       if (!reply) throw createError({ statusCode: 422, statusMessage: 'El mensaje respondido ya no existe' })
@@ -228,6 +270,8 @@ export async function sendChatMessage(auth: AuthTokenPayload, input: SendChatMes
       senderUserId: auth.sub,
       clientMessageId: input.clientMessageId,
       body: input.body.trim(),
+      gifUrl: input.gifUrl ?? null,
+      sharedRecord: input.sharedRecord ?? null,
       replyToMessageId: input.replyToMessageId || null
     }).onConflictDoNothing()
     const [row] = await tx.select().from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.senderUserId, auth.sub), eq(chatMessages.clientMessageId, input.clientMessageId))).limit(1)
@@ -236,12 +280,18 @@ export async function sendChatMessage(auth: AuthTokenPayload, input: SendChatMes
     await tx.update(chatConversations).set({ lastMessageAt: row.createdAt, updatedAt: new Date() }).where(eq(chatConversations.id, input.conversationId))
     await tx.update(chatParticipants).set({ lastReadAt: row.createdAt }).where(and(eq(chatParticipants.conversationId, input.conversationId), eq(chatParticipants.userId, auth.sub)))
     await tx.update(chatParticipants).set({ archivedAt: null }).where(and(eq(chatParticipants.conversationId, input.conversationId), ne(chatParticipants.userId, auth.sub)))
-    const [serialized] = await serializeMessages(tx, auth.tenantId, [row])
-    return serialized
+    return row
   })
   const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, input.conversationId)))
-  for (const user of userIds) publishRealtime(realtimeUserTopic(user.id), 'chat.message', message)
-  return message
+  let ownMessage: ChatMessage | null = null
+  for (const user of userIds) {
+    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [message], user.id).then(items => items[0]))
+    if (!serialized) continue
+    if (user.id === auth.sub) ownMessage = serialized
+    publishRealtime(realtimeUserTopic(user.id), 'chat.message', serialized)
+  }
+  if (!ownMessage) throw createError({ statusCode: 500, statusMessage: 'No se pudo preparar el mensaje' })
+  return ownMessage
 }
 
 export async function markConversationRead(auth: AuthTokenPayload, conversationId: string) {
@@ -275,29 +325,43 @@ export async function setConversationArchived(auth: AuthTokenPayload, conversati
 }
 
 export async function editChatMessage(auth: AuthTokenPayload, messageId: string, body: string) {
-  const message = await withTenant(auth.tenantId, async tx => {
+  const messageRow = await withTenant(auth.tenantId, async tx => {
     const [existing] = await tx.select().from(chatMessages).where(and(eq(chatMessages.id, messageId), eq(chatMessages.tenantId, auth.tenantId), eq(chatMessages.senderUserId, auth.sub), isNull(chatMessages.deletedAt))).limit(1)
     if (!existing) throw createError({ statusCode: 404, statusMessage: 'Mensaje no encontrado' })
     await assertConversationMember(tx, auth, existing.conversationId)
     const [row] = await tx.update(chatMessages).set({ body: body.trim(), editedAt: new Date() }).where(eq(chatMessages.id, messageId)).returning()
-    return (await serializeMessages(tx, auth.tenantId, [row]))[0]
+    return row
   })
-  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, message.conversationId)))
-  for (const user of userIds) publishRealtime(realtimeUserTopic(user.id), 'chat.updated', message)
-  return message
+  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
+  let ownMessage: ChatMessage | null = null
+  for (const user of userIds) {
+    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0]))
+    if (!serialized) continue
+    if (user.id === auth.sub) ownMessage = serialized
+    publishRealtime(realtimeUserTopic(user.id), 'chat.updated', serialized)
+  }
+  if (!ownMessage) throw createError({ statusCode: 500, statusMessage: 'No se pudo preparar el mensaje' })
+  return ownMessage
 }
 
 export async function deleteChatMessage(auth: AuthTokenPayload, messageId: string) {
-  const message = await withTenant(auth.tenantId, async tx => {
+  const messageRow = await withTenant(auth.tenantId, async tx => {
     const [existing] = await tx.select().from(chatMessages).where(and(eq(chatMessages.id, messageId), eq(chatMessages.tenantId, auth.tenantId), eq(chatMessages.senderUserId, auth.sub))).limit(1)
     if (!existing) throw createError({ statusCode: 404, statusMessage: 'Mensaje no encontrado' })
     await assertConversationMember(tx, auth, existing.conversationId)
     const [row] = await tx.update(chatMessages).set({ body: '', deletedAt: existing.deletedAt ?? new Date() }).where(eq(chatMessages.id, messageId)).returning()
-    return (await serializeMessages(tx, auth.tenantId, [row]))[0]
+    return row
   })
-  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, message.conversationId)))
-  for (const user of userIds) publishRealtime(realtimeUserTopic(user.id), 'chat.deleted', message)
-  return message
+  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
+  let ownMessage: ChatMessage | null = null
+  for (const user of userIds) {
+    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0]))
+    if (!serialized) continue
+    if (user.id === auth.sub) ownMessage = serialized
+    publishRealtime(realtimeUserTopic(user.id), 'chat.deleted', serialized)
+  }
+  if (!ownMessage) throw createError({ statusCode: 500, statusMessage: 'No se pudo preparar el mensaje' })
+  return ownMessage
 }
 
 export async function publishTyping(auth: AuthTokenPayload, conversationId: string, active: boolean) {

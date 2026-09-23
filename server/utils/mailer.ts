@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getTenantLogo } from '~/server/utils/tenantLogo'
+import { getManagedTenantLogo, readManagedTenantLogo } from '~/server/utils/managedStorage'
 import { eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { tenantEmailSettings } from '~/server/db/schema'
@@ -73,7 +73,7 @@ export function readSmtpConfig(): SmtpConfig {
     throw new SmtpNotConfiguredError(`SMTP_PORT invalido: "${port}"`)
   }
 
-  return { host, port: portNumber, user, password, from, security: portNumber === 465 ? 'ssl' : 'tls' }
+  return { host, port: portNumber, user, password, from: from.replace(/^FlowERP(?=\s*<)/, 'Flow'), security: portNumber === 465 ? 'ssl' : 'tls' }
 }
 
 /** Resuelve la configuración personalizada del tenant y cae al .env cuando
@@ -118,13 +118,55 @@ export async function resolveSmtpConfig(tenantId?: string): Promise<SmtpConfig> 
  * (APP_PORT, HU-ERD-13) - suficiente para desarrollo local, pero un
  * deployment real DEBE setear APP_BASE_URL o el enlace del correo apuntara
  * a una URL que el invitado no puede abrir. En local el valor por defecto
- * coincide con el puerto de desarrollo de FlowERP (3001).
+ * coincide con el puerto de desarrollo de Flow (3001).
  */
 export function getAppBaseUrl(): string {
-  const raw = process.env.APP_BASE_URL
-  if (raw) return raw.replace(/\/+$/, '')
+  const raw = process.env.APP_BASE_URL?.trim()
+  const deployedOnVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NUXT_ENV_VERCEL_ENV)
+  const configuredIsLocal = raw ? /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(raw) : false
+  if (raw && !(deployedOnVercel && configuredIsLocal)) return raw.replace(/\/+$/, '')
+
+  const vercelHost = process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL
+    || process.env.VERCEL_PROJECT_PRODUCTION_URL
+    || process.env.NUXT_ENV_VERCEL_URL
+    || process.env.VERCEL_URL
+  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}`
+
   const port = process.env.APP_PORT || '3001'
   return `http://localhost:${port}`
+}
+
+interface EmailLogo {
+  src: string
+  attachments: Array<{ filename: string; path?: string; content?: Buffer; contentType?: string; cid: string }>
+}
+
+async function resolveEmailLogo(tenantId?: string): Promise<EmailLogo> {
+  if (tenantId) {
+    const logo = await getManagedTenantLogo(tenantId).catch(() => null)
+    if (logo) {
+      const content = await readManagedTenantLogo(logo.storageKey).catch(() => null)
+      if (content) {
+        return {
+          src: 'cid:flowerp-tenant-logo',
+          attachments: [{ filename: logo.fileName, content, contentType: logo.mimeType, cid: 'flowerp-tenant-logo' }]
+        }
+      }
+    }
+  }
+
+  const defaultLogoPath = process.env.FLOWERP_DEFAULT_LOGO_PATH || path.join(process.cwd(), 'public', 'brand', 'isotipo.png')
+  return fs.existsSync(defaultLogoPath)
+    ? { src: 'cid:flowerp-default-logo', attachments: [{ filename: 'flow-isotipo.png', path: defaultLogoPath, cid: 'flowerp-default-logo' }] }
+    : { src: '', attachments: [] }
+}
+
+function emailBrand(logoSrc: string): string {
+  if (!logoSrc) return '<span style="font-size:22px;font-weight:700;color:#0091AE;">Flow</span>'
+  if (logoSrc === 'cid:flowerp-default-logo') {
+    return `<img src="${logoSrc}" alt="" style="display:inline-block;vertical-align:middle;width:32px;height:32px;"><span style="display:inline-block;vertical-align:middle;margin-left:8px;font-size:22px;font-weight:700;color:#0091AE;">Flow</span>`
+  }
+  return `<img src="${escapeHtml(logoSrc)}" alt="Flow" style="display:block;max-width:150px;max-height:42px;width:auto;height:auto;">`
 }
 
 export interface InvitationEmailParams {
@@ -146,7 +188,7 @@ export interface InvitationEmailParams {
  * se vea consistente con el resto de la app.
  */
 export function buildInvitationEmailHtml(params: InvitationEmailParams & { inviteUrl: string; logoSrc?: string }): string {
-  const { tenantName, inviterName, roleName, inviteUrl, to, logoSrc = 'flow-logo' } = params
+  const { tenantName, inviterName, roleName, inviteUrl, to, logoSrc = '' } = params
   const year = new Date().getFullYear()
   const escape = escapeHtml
 
@@ -158,13 +200,13 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
     <tr><td align="center">
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;">
         <tr><td style="padding:28px 32px 0 32px;">
-          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;"><img src="${logoSrc}" alt="FlowERP" style="display:block;max-width:150px;max-height:42px;width:auto;height:auto;"><span style="display:none;">FlowERP</span></p>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#33475B;">${emailBrand(logoSrc)}</p>
         </td></tr>
         <tr><td style="padding:20px 32px 0 32px;">
           <p style="margin:0;font-size:22px;font-weight:700;color:#33475B;">Te invitaron a unirte a ${escape(tenantName)}</p>
         </td></tr>
         <tr><td style="padding:12px 32px 0 32px;">
-          <p style="margin:0;font-size:14px;line-height:1.5;color:#516F90;">${escape(inviterName)} te invitó a colaborar en el espacio de trabajo de ${escape(tenantName)} en FlowERP. Te vas a unir con el rol de ${escape(roleName)}.</p>
+          <p style="margin:0;font-size:14px;line-height:1.5;color:#516F90;">${escape(inviterName)} te invitó a colaborar en el espacio de trabajo de ${escape(tenantName)} en Flow. Te vas a unir con el rol de ${escape(roleName)}.</p>
         </td></tr>
         <tr><td style="padding:20px 32px 0 32px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F8FA;border-radius:6px;">
@@ -175,18 +217,18 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
           </table>
         </td></tr>
         <tr><td style="padding:24px 32px 0 32px;" align="center">
-          <a href="${inviteUrl}" style="display:inline-block;background:#FF7A59;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;padding:12px 28px;">Aceptar invitación</a>
+          <a href="${escape(inviteUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#FF7A59;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;padding:12px 28px;">Aceptar invitación</a>
         </td></tr>
         <tr><td style="padding:12px 32px 0 32px;" align="center">
           <p style="margin:0;font-size:12px;color:#8DA1B5;">Este enlace expira en 7 días</p>
         </td></tr>
-        <tr><td style="padding:20px 32px 0 32px;">
+        <tr><td style="padding:20px 32px 28px 32px;">
           <p style="margin:0;font-size:12px;color:#8DA1B5;">¿El botón no funciona? Copia y pega este enlace en tu navegador:</p>
-          <p style="margin:4px 0 0 0;font-size:12px;font-weight:600;color:#33475B;word-break:break-all;">${escape(inviteUrl)}</p>
+          <p style="margin:4px 0 0 0;font-size:12px;font-weight:600;line-height:1.45;word-break:break-all;"><a href="${escape(inviteUrl)}" target="_blank" rel="noopener noreferrer" style="color:#33475B;text-decoration:none;">${escape(inviteUrl)}</a></p>
         </td></tr>
-        <tr><td style="padding:28px 32px 28px 32px;border-top:1px solid #E5EAF0;margin-top:24px;">
-          <p style="margin:24px 0 0 0;font-size:12px;color:#8DA1B5;">Este correo fue enviado a ${escape(to)} porque fue invitada a FlowERP.</p>
-          <p style="margin:8px 0 0 0;font-size:12px;color:#8DA1B5;">© ${year} FlowERP. Todos los derechos reservados.</p>
+        <tr><td style="padding:18px 32px 22px 32px;border-top:1px solid #E5EAF0;">
+          <p style="margin:0;font-size:12px;color:#8DA1B5;">Este correo fue enviado a ${escape(to)} porque fue invitada a Flow.</p>
+          <p style="margin:8px 0 0 0;font-size:12px;color:#8DA1B5;">© ${year} Flow. Todos los derechos reservados.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -207,18 +249,14 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
 
   const transporter = createTransporter(smtp)
 
-  const logo = params.tenantId ? await getTenantLogo(params.tenantId).catch(() => null) : null
-  const defaultLogoPath = process.env.FLOWERP_DEFAULT_LOGO_PATH || path.join(process.cwd(), 'public', 'brand', 'logo-color.png')
-  const logoAvailable = !!logo && fs.existsSync(logo.fullPath)
+  const emailLogo = await resolveEmailLogo(params.tenantId)
   await transporter.sendMail({
     from: smtp.from,
     replyTo: smtp.replyTo,
     to: params.to,
-    subject: `Te invitaron a unirte a ${params.tenantName} en FlowERP`,
-    html: buildInvitationEmailHtml({ ...params, inviteUrl, logoSrc: logoAvailable ? 'cid:flowerp-tenant-logo' : 'cid:flowerp-default-logo' }),
-    attachments: logoAvailable
-      ? [{ filename: logo!.fileName, path: logo!.fullPath, cid: 'flowerp-tenant-logo' }]
-      : fs.existsSync(defaultLogoPath) ? [{ filename: 'flowerp-logo.png', path: defaultLogoPath, cid: 'flowerp-default-logo' }] : []
+    subject: `Te invitaron a unirte a ${params.tenantName} en Flow`,
+    html: buildInvitationEmailHtml({ ...params, inviteUrl, logoSrc: emailLogo.src }),
+    attachments: emailLogo.attachments
   })
 }
 
@@ -240,11 +278,11 @@ export interface PlainEmailParams {
   recordUrl?: string
 }
 
-/** Marco común para todos los correos transaccionales de FlowERP. */
+/** Marco común para todos los correos transaccionales de Flow. */
 export function buildGeneralEmailHtml(params: PlainEmailParams & { logoSrc?: string }): string {
-  const logoSrc = params.logoSrc ?? 'cid:flowerp-default-logo'
+  const logoSrc = params.logoSrc ?? ''
   const detail = params.recordUrl ? `<p style="margin:24px 0 0;text-align:center;"><a href="${escapeHtml(params.recordUrl)}" style="display:inline-block;background:#FF7A59;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;padding:11px 22px;">Ver detalle del registro</a></p><p style="margin:10px 0 0;text-align:center;font-size:12px;color:#8DA1B5;">Si el botón no funciona, copia este enlace:<br><span style="word-break:break-all;color:#33475B;">${escapeHtml(params.recordUrl)}</span></p>` : ''
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:32px 16px;background:#EEF1F5;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;"><tr><td style="padding:28px 32px 20px;border-bottom:1px solid #E5EAF0;"><img src="${escapeHtml(logoSrc)}" alt="FlowERP" style="display:block;max-width:170px;max-height:44px;width:auto;height:auto;"></td></tr><tr><td style="padding:28px 32px;color:#33475B;font-size:14px;line-height:1.6;">${params.html}${detail}</td></tr><tr><td style="padding:20px 32px 28px;border-top:1px solid #E5EAF0;color:#8DA1B5;font-size:12px;line-height:1.5;">Este correo fue enviado a ${escapeHtml(params.to)} desde FlowERP.</td></tr></table></td></tr></table></body></html>`
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:32px 16px;background:#EEF1F5;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;"><tr><td style="padding:28px 32px 20px;border-bottom:1px solid #E5EAF0;">${emailBrand(logoSrc)}</td></tr><tr><td style="padding:28px 32px;color:#33475B;font-size:14px;line-height:1.6;">${params.html}${detail}</td></tr><tr><td style="padding:20px 32px 28px;border-top:1px solid #E5EAF0;color:#8DA1B5;font-size:12px;line-height:1.5;">Este correo fue enviado a ${escapeHtml(params.to)} desde Flow.</td></tr></table></td></tr></table></body></html>`
 }
 
 /**
@@ -256,17 +294,15 @@ export function buildGeneralEmailHtml(params: PlainEmailParams & { logoSrc?: str
 export async function sendPlainEmail(params: PlainEmailParams): Promise<void> {
   const smtp = await resolveSmtpConfig(params.tenantId)
   const transporter = createTransporter(smtp)
-  const logo = params.tenantId ? await getTenantLogo(params.tenantId).catch(() => null) : null
-  const defaultLogoPath = process.env.FLOWERP_DEFAULT_LOGO_PATH || path.join(process.cwd(), 'public', 'brand', 'logo-color.png')
-  const customLogo = !!logo && fs.existsSync(logo.fullPath)
+  const emailLogo = await resolveEmailLogo(params.tenantId)
   await transporter.sendMail({
     from: smtp.from,
     replyTo: smtp.replyTo,
     to: params.to,
     subject: params.subject,
-    html: buildGeneralEmailHtml({ ...params, logoSrc: customLogo ? 'cid:flowerp-tenant-logo' : 'cid:flowerp-default-logo' }),
-    attachments: customLogo
-      ? [{ filename: logo!.fileName, path: logo!.fullPath, cid: 'flowerp-tenant-logo' }]
-      : fs.existsSync(defaultLogoPath) ? [{ filename: 'flowerp-logo.png', path: defaultLogoPath, cid: 'flowerp-default-logo' }] : []
+    html: buildGeneralEmailHtml({ ...params, logoSrc: emailLogo.src }),
+    attachments: emailLogo.attachments
   })
 }
+
+

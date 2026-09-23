@@ -269,12 +269,37 @@ describe('buildFieldType', () => {
       expect(getValidationRulesSchema('incremental')!.safeParse(rules).success).toBe(true)
     })
 
+    it('acepta un prefijo fijo y rechaza caracteres no permitidos', () => {
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefix: 'FAC-' }).success).toBe(true)
+      expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefix: 'FAC#' }).success).toBe(false)
+    })
+
     it('rechaza un prefixSource incompleto o con claves extra', () => {
       expect(getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefixSource: { relationField: 'mercado' } }).success).toBe(false)
       expect(
         getValidationRulesSchema('incremental')!.safeParse({ digits: 6, prefixSource: { relationField: 'mercado', sourceField: 'codigo', extra: 1 } })
           .success
       ).toBe(false)
+    })
+  })
+
+  describe('getValidationRulesSchema - campos calculados', () => {
+    it('acepta una fórmula entre dos campos numéricos', () => {
+      const rules = { calculation: { kind: 'formula', operator: 'subtract', leftField: 'total', rightField: 'total_pagado' } }
+      expect(getValidationRulesSchema('number')!.safeParse(rules).success).toBe(true)
+    })
+
+    it('acepta una suma de registros relacionados para moneda', () => {
+      const rules = {
+        currency: 'tenant', decimals: 2, allowNegative: false,
+        calculation: { kind: 'rollup', aggregate: 'sum', sourceEntity: 'aplicaciones_cobro', relationField: 'cuenta_por_cobrar', valueField: 'monto' }
+      }
+      expect(getValidationRulesSchema('currency')!.safeParse(rules).success).toBe(true)
+    })
+
+    it('rechaza un acumulado sum sin campo de valor', () => {
+      const rules = { calculation: { kind: 'rollup', aggregate: 'sum', sourceEntity: 'pagos', relationField: 'cuenta' } }
+      expect(getValidationRulesSchema('number')!.safeParse(rules).success).toBe(false)
     })
   })
 

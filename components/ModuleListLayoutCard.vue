@@ -23,16 +23,18 @@
 // pedido explicito del usuario tras ver uuids crudos en Screen/Listado
 // Recepción ("necesitamos poder decidir que se muestra de la relacion").
 import { Check, ChevronDown, GripVertical } from '@lucide/vue'
-import type { EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
 import { isListFilterable } from '~/utils/listFilters'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
   modelValue: ListLayout
+  boardConfig?: BoardConfig
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: ListLayout]
+  'update:boardConfig': [value: BoardConfig]
 }>()
 
 function fieldMeta(name: string): EntityFieldMeta | undefined {
@@ -47,6 +49,18 @@ const filterableCandidates = computed(() => props.fields.filter((f) => f.name !=
 // campos reales, sin id) asi que ofrecerlo en "Orden por defecto" seria una
 // opcion que nunca llega a guardarse.
 const sortableFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
+const boardStatusFields = computed(() => props.fields.filter(field => field.dataType === 'select'))
+const boardDisplayFields = computed(() => props.fields.filter(field => field.name !== 'id'))
+
+function updateBoard(patch: Partial<BoardConfig>) {
+  if (!props.boardConfig) return
+  emit('update:boardConfig', { ...props.boardConfig, ...patch })
+}
+function toggleBoardSecondary(name: string) {
+  if (!props.boardConfig) return
+  const included = props.boardConfig.secondaryFields.includes(name)
+  updateBoard({ secondaryFields: included ? props.boardConfig.secondaryFields.filter(field => field !== name) : [...props.boardConfig.secondaryFields, name].slice(0, 3) })
+}
 
 function toggleColumnVisible(name: string) {
   emit('update:modelValue', {
@@ -335,6 +349,26 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ f.label }}</span>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">{{ fieldTypeLabel(f.dataType) }}</span>
         </label>
+      </div>
+
+      <div v-if="boardConfig" class="flex flex-col gap-3 border-t border-brand-border-light pt-4">
+        <div class="flex items-start justify-between gap-4">
+          <div><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Modo de vista del módulo</p><p class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Tabla o Kanban para decidir cómo se consultan los registros.</p></div>
+          <button type="button" role="switch" :aria-checked="boardConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors" :class="boardConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateBoard({ enabled: !boardConfig.enabled })"><span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="boardConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+        </div>
+        <template v-if="boardConfig.enabled">
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Campo de columnas
+            <select :value="boardConfig.statusField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ statusField: ($event.target as HTMLSelectElement).value || null })"><option value="" disabled>Selecciona un campo</option><option v-for="field in boardStatusFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Título de la tarjeta
+            <select :value="boardConfig.titleField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ titleField: ($event.target as HTMLSelectElement).value || null })"><option value="" disabled>Selecciona un campo</option><option v-for="field in boardDisplayFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <div class="flex flex-col gap-1.5"><p class="text-xs font-semibold text-brand-text">Datos secundarios <span class="font-normal text-brand-text-muted">(máximo 3)</span></p><label v-for="field in boardDisplayFields.filter(field => field.name !== boardConfig?.titleField)" :key="field.id" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"><button type="button" class="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border" :class="boardConfig.secondaryFields.includes(field.name) ? 'border-brand-blue bg-brand-blue' : 'border-brand-border'" @click="toggleBoardSecondary(field.name)"><Check v-if="boardConfig.secondaryFields.includes(field.name)" class="h-3 w-3 text-white" /></button><span class="truncate text-sm">{{ field.label }}</span></label></div>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Vista inicial
+            <select :value="boardConfig.defaultView" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ defaultView: ($event.target as HTMLSelectElement).value as 'table' | 'board' })"><option value="board">Tablero</option><option value="table">Tabla</option></select>
+          </label>
+        </template>
+        <p v-else-if="boardStatusFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Selección para usarlo como columnas.</p>
       </div>
 
       <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">

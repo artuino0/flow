@@ -18,7 +18,7 @@ function formatTime(value: string) {
   return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 function preview(item: ChatConversation) {
-  const body = item.lastMessage?.body || (item.lastMessage?.deletedAt ? 'Mensaje eliminado' : 'Sin mensajes todavía')
+  const body = item.lastMessage?.body || (item.lastMessage?.deletedAt ? 'Mensaje eliminado' : item.lastMessage?.sharedRecord ? 'Registro compartido' : 'Sin mensajes todavía')
   if (!item.lastMessage || !body || body === 'Sin mensajes todavía') return { text: body }
   if (item.type === 'group') return { prefix: `${(item.lastMessage.senderName || 'Usuario').split(' ')[0]}: `, text: body }
   return item.lastMessage.senderId === props.currentUserId ? { prefix: 'Tú: ', text: body } : { text: body }
@@ -43,7 +43,7 @@ function preview(item: ChatConversation) {
       </span>
       <div>
         <p class="text-sm font-bold text-brand-text">{{ archived ? 'No hay chats archivados' : 'Inicia una conversación' }}</p>
-        <p class="mt-1 text-xs leading-5 text-brand-text-muted">{{ query ? 'No encontramos coincidencias.' : archived ? 'Los chats que archives aparecerán aquí.' : 'Habla con tu equipo sin salir de FlowERP.' }}</p>
+        <p class="mt-1 text-xs leading-5 text-brand-text-muted">{{ query ? 'No encontramos coincidencias.' : archived ? 'Los chats que archives aparecerán aquí.' : 'Habla con tu equipo sin salir de Flow.' }}</p>
       </div>
     </div>
     <div v-else class="min-h-0 flex-1 overflow-y-auto">

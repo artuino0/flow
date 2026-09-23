@@ -101,6 +101,7 @@ export interface FieldTreeLeaf {
   fieldName: string
   label: string
   dataType: string
+  options?: Array<{ value: string; label: string }>
 }
 
 export interface FieldTreeBranch {
@@ -126,7 +127,13 @@ export function buildFieldTree(ctx: TenantFieldContext, entityId: string, cameFr
   const nodes: FieldTreeNode[] = []
 
   for (const f of fields.filter((f) => f.dataType !== 'relation')) {
-    nodes.push({ type: 'leaf', fieldName: f.name, label: f.label, dataType: f.dataType })
+    const rules = (f.validationRules ?? {}) as { options?: Array<{ value?: string; label?: string }> }
+    const options = f.dataType === 'boolean'
+      ? [{ value: 'true', label: 'Sí' }, { value: 'false', label: 'No' }]
+      : f.dataType === 'select'
+        ? (rules.options ?? []).flatMap(option => typeof option.value === 'string' && typeof option.label === 'string' ? [{ value: option.value, label: option.label }] : [])
+        : undefined
+    nodes.push({ type: 'leaf', fieldName: f.name, label: f.label, dataType: f.dataType, ...(options?.length ? { options } : {}) })
   }
 
   if (depth < MAX_FIELD_PATH_DEPTH) {

@@ -64,7 +64,7 @@ beforeAll(async () => {
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
   await admin`insert into tenants (id, name, country) values (${TENANT}, 'Lab Tenant', 'MX')`
-  await admin`update tenants set fiscal_data = ${admin.json({ razonSocial: 'Laboratorio FlowERP SA de CV', rfc: 'LAB010101AAA', regimenFiscal: '601', codigoPostal: '20110' })} where id = ${TENANT}`
+  await admin`update tenants set fiscal_data = ${admin.json({ razonSocial: 'Laboratorio Flow SA de CV', rfc: 'LAB010101AAA', regimenFiscal: '601', codigoPostal: '20110' })} where id = ${TENANT}`
 
   storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-cfdi-lab-'))
   process.env.FILES_STORAGE_DIR = storageDir
@@ -128,7 +128,7 @@ describe('Laboratorio local: timbrado simulado de punta a punta', () => {
     // XML: estructura CFDI 4.0 + marca de laboratorio + datos del documento
     const xmlPath = path.join(storageDir, detail.documento.xmlStorageKey!)
     const xml = fs.readFileSync(xmlPath, 'utf8')
-    expect(xml).toContain('LABORATORIO FlowERP')
+    expect(xml).toContain('LABORATORIO Flow')
     expect(xml).toContain(`UUID="${res.uuidFiscal}"`)
     expect(xml).toContain('Serie="LAB"')
     expect(xml).toContain('Folio="1"')

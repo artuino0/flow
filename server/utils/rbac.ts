@@ -12,6 +12,7 @@ export interface ResolvedEntity {
   name: string
   // Rediseno "Editar Módulo" - ver comentario largo en server/db/schema.ts.
   isActive?: boolean
+  deletedAt?: Date | null
   // HU-ERD-74: incluida explicitamente en el select() de requirePermission()
   // (ver abajo) para que fields.get.ts pueda resolver el detailLayout real,
   // no siempre el default.
@@ -20,6 +21,7 @@ export interface ResolvedEntity {
   // primer commit de esta HU (la de detailLayout se agrego recien en ERD-74
   // tras un bug real encontrado por tests e2e; se aplica la leccion aca).
   listLayout?: unknown
+  boardConfig?: unknown
   // Reportado por el usuario (2026-09-03): campo propio (texto) que se usa
   // como etiqueta cuando ESTA entidad es el destino de una relacion (ver
   // comentario largo en server/db/schema.ts) - incluida aca por el mismo
@@ -83,8 +85,10 @@ export async function requirePermission(
         slug: entities.slug,
         name: entities.name,
         isActive: entities.isActive,
+        deletedAt: entities.deletedAt,
         detailLayout: entities.detailLayout,
         listLayout: entities.listLayout,
+        boardConfig: entities.boardConfig,
         labelField: entities.labelField,
         singularName: entities.singularName
       })
@@ -93,23 +97,23 @@ export async function requirePermission(
       .limit(1)
     if (!entity) return { entity: null, allowed: false, inactive: false }
 
-    // Rediseno "Editar Módulo" (switch "Módulo activo", ver comentario largo
-    // en server/db/schema.ts): un modulo desactivado queda invisible/inusable
-    // para cualquier rol NO administrador - se corta ACA, antes de mirar
-    // role_entity_permissions, porque este es el chequeo central que ya
-    // atraviesan fields.get.ts y el CRUD entero de records (ver usos de
-    // requirePermission()). Un administrador (roles.isSystem) sigue teniendo
-    // acceso completo aunque el modulo este apagado - lo necesita para poder
-    // reactivarlo o seguir administrandolo.
-    const [role] = await tx.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, auth.roleId!)).limit(1)
-    const isAdmin = Boolean(role?.isSystem)
-    if (!entity.isActive && !isAdmin) {
+    // La lectura histórica sigue disponible con canRead. Toda escritura en
+    // módulos apagados o borrados queda bloqueada, incluso para administradores.
+    if ((!entity.isActive || entity.deletedAt) && action !== 'canRead') {
       return { entity, allowed: false, inactive: true }
     }
 
     const [perm] = await tx
-      .select()
+      .select({
+        canRead: roleEntityPermissions.canRead,
+        canCreate: roleEntityPermissions.canCreate,
+        canUpdate: roleEntityPermissions.canUpdate,
+        canDelete: roleEntityPermissions.canDelete,
+        isActive: entities.isActive,
+        deletedAt: entities.deletedAt
+      })
       .from(roleEntityPermissions)
+      .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
       .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entity.id)))
       .limit(1)
     if (!perm) return { entity, allowed: false, inactive: false }
@@ -153,12 +157,13 @@ export async function requirePermissionForEntityId(
 
   const allowed = await withTenant(auth.tenantId, async (tx) => {
     const [perm] = await tx
-      .select()
+      .select({ allowed: roleEntityPermissions[action], isActive: entities.isActive, deletedAt: entities.deletedAt })
       .from(roleEntityPermissions)
+      .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
       .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
       .limit(1)
     if (!perm) return false
-    return Boolean(perm[action])
+    return Boolean(perm.allowed && (action === 'canRead' || (perm.isActive && !perm.deletedAt)))
   })
 
   if (!allowed) {
@@ -194,12 +199,21 @@ export async function getPermissionFlags(auth: AuthTokenPayload, entityId: strin
         canRead: roleEntityPermissions.canRead,
         canCreate: roleEntityPermissions.canCreate,
         canUpdate: roleEntityPermissions.canUpdate,
-        canDelete: roleEntityPermissions.canDelete
+        canDelete: roleEntityPermissions.canDelete,
+        isActive: entities.isActive,
+        deletedAt: entities.deletedAt
       })
       .from(roleEntityPermissions)
+      .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
       .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
       .limit(1)
-    return perm ?? { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
+    if (!perm) return { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
+    return {
+      canRead: perm.canRead,
+      canCreate: perm.canCreate && perm.isActive && !perm.deletedAt,
+      canUpdate: perm.canUpdate && perm.isActive && !perm.deletedAt,
+      canDelete: perm.canDelete && perm.isActive && !perm.deletedAt
+    }
   })
 }
 

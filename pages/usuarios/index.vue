@@ -20,7 +20,7 @@
 // - Enlace "Reenviar" junto al estado, solo para invitaciones pendientes -
 //   necesario funcionalmente (token vencido a los 7 días) y no contradice el
 //   diseño, solo lo completa.
-import { UserPlus, Pencil, Trash2, Clock, Send, X, ChevronRight, ChevronDown, Check } from '@lucide/vue'
+import { UserPlus, Pencil, Trash2, Clock, Send, X, ChevronDown, Check } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -54,6 +54,17 @@ const {
 const { data: rolesData } = await useFetch<{ roles: RoleOption[] }>('/api/roles', { key: 'users-roles', headers: cookieHeaders })
 
 const users = computed(() => usersData.value?.users ?? [])
+const search = ref('')
+const filteredUsers = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  if (!term) return users.value
+  return users.value.filter(user =>
+    (user.fullName ?? '').toLowerCase().includes(term)
+    || user.email.toLowerCase().includes(term)
+    || (user.roleName ?? '').toLowerCase().includes(term)
+    || user.status.toLowerCase().includes(term)
+  )
+})
 const roles = computed(() => rolesData.value?.roles ?? [])
 
 function initials(user: UserRow): string {
@@ -208,11 +219,27 @@ async function onResend(user: UserRow) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center gap-1 text-[13px]">
-      <span class="text-brand-text-secondary">Inicio</span>
-      <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
-      <span class="font-bold text-brand-text">Usuarios</span>
-    </div>
+    <ListPageHeader
+      v-model:search="search"
+      title="Usuarios"
+      description="Administra quién tiene acceso a esta organización y con qué rol."
+      :count="users.length"
+      count-noun="usuario"
+      search-placeholder="Buscar usuarios..."
+      :refreshing="usersPending"
+      @refresh="refreshUsers"
+    >
+      <template #actions>
+        <button
+          type="button"
+          class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          @click="openInviteModal"
+        >
+          <UserPlus class="h-4 w-4" :stroke-width="1.75" />
+          Invitar usuario
+        </button>
+      </template>
+    </ListPageHeader>
 
     <p v-if="usersPending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="usersError" class="text-sm text-brand-error-text">
@@ -220,24 +247,10 @@ async function onResend(user: UserRow) {
     </p>
 
     <template v-else>
-      <div class="flex items-center justify-between">
-        <div class="flex flex-col gap-1">
-          <h1 class="text-[22px] font-bold text-brand-text">Usuarios</h1>
-          <p class="text-sm text-brand-text-secondary">Administrá quién tiene acceso a esta organización y con qué rol</p>
-        </div>
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-          @click="openInviteModal"
-        >
-          <UserPlus class="h-4 w-4" :stroke-width="1.75" />
-          Invitar usuario
-        </button>
-      </div>
-
       <p v-if="resendMessage" class="text-sm text-brand-text-secondary">{{ resendMessage }}</p>
 
       <p v-if="users.length === 0" class="text-sm text-brand-text-muted">Todavía no invitaste a nadie a esta organización.</p>
+      <p v-else-if="filteredUsers.length === 0" class="text-sm text-brand-text-muted">Ningún usuario coincide con "{{ search }}".</p>
 
       <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
         <table class="min-w-full text-sm">
@@ -250,7 +263,7 @@ async function onResend(user: UserRow) {
             </tr>
           </thead>
           <tbody class="divide-y divide-brand-border-light">
-            <tr v-for="user in users" :key="user.id" class="hover:bg-brand-bg">
+            <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-brand-bg">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand-blue-bg">

@@ -13,7 +13,7 @@ import { toDataURL } from 'qrcode'
 // app, junto con el secreto en texto plano como alternativa de carga manual
 // (estandar en cualquier flujo de 2FA, para cuando escanear no es una opcion).
 
-const ISSUER = 'FlowERP'
+const ISSUER = 'Flow'
 const EPOCH_TOLERANCE_SECONDS = 30
 
 export function generateTotpSecret(): string {

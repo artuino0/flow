@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   await sendPlainEmail({
     tenantId: auth.tenantId,
     to,
-    subject: 'Correo de prueba · FlowERP',
+    subject: 'Correo de prueba · Flow',
     html: '<p style="margin:0">La configuración de correo saliente funciona correctamente.</p>'
   })
   return { ok: true }

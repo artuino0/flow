@@ -62,6 +62,7 @@ const props = defineProps<{
   // vacio: si no se pasa, el modo "Con prefijo de relación" queda sin
   // opciones (el resto del modal sigue funcionando igual para los demas tipos).
   existingFields?: EntityFieldMeta[]
+  entityId?: string
 }>()
 
 const emit = defineEmits<{
@@ -175,9 +176,18 @@ const form = reactive({
   // prefijo sacado de un campo de texto de la entidad relacionada por un
   // campo 'relation' propio de este mismo modulo (ej. Mercado -> "N"/"E").
   incrementalDigits: 6 as number | null,
-  incrementalMode: 'simple' as 'simple' | 'prefixed',
+  incrementalMode: 'simple' as 'simple' | 'fixed' | 'prefixed',
+  incrementalPrefix: '',
   incrementalRelationField: '',
-  incrementalSourceField: ''
+  incrementalSourceField: '',
+  calculationMode: 'manual' as 'manual' | 'formula' | 'rollup',
+  formulaOperator: 'subtract' as 'add' | 'subtract' | 'multiply' | 'divide',
+  formulaLeftField: '',
+  formulaRightField: '',
+  rollupSourceEntity: '',
+  rollupRelationField: '',
+  rollupValueField: '',
+  rollupAggregate: 'sum' as 'sum' | 'count'
 })
 
 // Campos 'relation' propios de esta entidad, con entidad relacionada ya
@@ -235,6 +245,26 @@ async function ensureRelatedFieldsLoaded(slug: string) {
   }
 }
 
+const numericOwnFields = computed(() => (props.existingFields ?? []).filter(field =>
+  field.name !== form.name && (field.dataType === 'number' || field.dataType === 'currency')
+))
+const currentEntitySlug = computed(() => relatedEntities.value.find(entity => entity.id === props.entityId)?.slug ?? '')
+const rollupSourceFields = computed(() => relatedFieldsByEntity[form.rollupSourceEntity] ?? [])
+const rollupRelationFields = computed(() => rollupSourceFields.value.filter(field =>
+  field.dataType === 'relation' && field.validationRules?.relationEntity === currentEntitySlug.value
+))
+const rollupValueFields = computed(() => rollupSourceFields.value.filter(field => field.dataType === 'number' || field.dataType === 'currency'))
+
+function onCalculationModeChange() {
+  form.isRequired = false
+  if (form.calculationMode === 'rollup') void ensureRelatedEntitiesLoaded()
+}
+function onRollupSourceEntityChange() {
+  form.rollupRelationField = ''
+  form.rollupValueField = ''
+  if (form.rollupSourceEntity) void ensureRelatedFieldsLoaded(form.rollupSourceEntity)
+}
+
 function onColumnRelationEntityChange(col: ColumnDraft) {
   if (col.relationEntity) void ensureRelatedFieldsLoaded(col.relationEntity)
 }
@@ -281,14 +311,29 @@ watch(
     form.dateMin = typeof rules.min === 'string' ? rules.min : ''
     form.dateMax = typeof rules.max === 'string' ? rules.max : ''
     form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
+    const calculation = rules.calculation as Record<string, unknown> | undefined
+    form.calculationMode = calculation?.kind === 'formula' || calculation?.kind === 'rollup' ? calculation.kind : 'manual'
+    form.formulaOperator = ['add', 'subtract', 'multiply', 'divide'].includes(String(calculation?.operator)) ? calculation?.operator as typeof form.formulaOperator : 'subtract'
+    form.formulaLeftField = typeof calculation?.leftField === 'string' ? calculation.leftField : ''
+    form.formulaRightField = typeof calculation?.rightField === 'string' ? calculation.rightField : ''
+    form.rollupSourceEntity = typeof calculation?.sourceEntity === 'string' ? calculation.sourceEntity : ''
+    form.rollupRelationField = typeof calculation?.relationField === 'string' ? calculation.relationField : ''
+    form.rollupValueField = typeof calculation?.valueField === 'string' ? calculation.valueField : ''
+    form.rollupAggregate = calculation?.aggregate === 'count' ? 'count' : 'sum'
+    if (form.calculationMode === 'rollup') {
+      void ensureRelatedEntitiesLoaded()
+      if (form.rollupSourceEntity) void ensureRelatedFieldsLoaded(form.rollupSourceEntity)
+    }
     if (form.dataType === 'relation') void ensureRelatedEntitiesLoaded()
 
     // Pedido directo del usuario (2026-09-04): "Incremental".
     const prefixSource = rules.prefixSource as { relationField?: unknown; sourceField?: unknown } | undefined
+    const fixedPrefix = typeof rules.prefix === 'string' ? rules.prefix : ''
     form.incrementalDigits = typeof rules.digits === 'number' ? rules.digits : 6
+    form.incrementalPrefix = fixedPrefix
     form.incrementalRelationField = typeof prefixSource?.relationField === 'string' ? prefixSource.relationField : ''
     form.incrementalSourceField = typeof prefixSource?.sourceField === 'string' ? prefixSource.sourceField : ''
-    form.incrementalMode = form.incrementalRelationField ? 'prefixed' : 'simple'
+    form.incrementalMode = form.incrementalRelationField ? 'prefixed' : fixedPrefix ? 'fixed' : 'simple'
     if (form.dataType === 'incremental' && form.incrementalRelationField) {
       // No se usa onIncrementalRelationFieldChange() aca a proposito: esa
       // funcion resetea incrementalSourceField (pensada para cuando el
@@ -344,6 +389,7 @@ function onFieldNameInput(value: string) {
 }
 
 function selectDataType(value: string) {
+  if (value !== 'number' && value !== 'currency') form.calculationMode = 'manual'
   if (value === 'select') {
     // Conserva select/multiselect si ya estaba en ese tipo (el toggle de
     // selección única/múltiple vive dentro del builder, no en la tarjeta).
@@ -439,6 +485,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
       if (form.min !== null) rules.min = form.min
       if (form.max !== null) rules.max = form.max
       if (form.integer) rules.integer = true
+      if (form.calculationMode === 'formula') rules.calculation = { kind: 'formula', operator: form.formulaOperator, leftField: form.formulaLeftField, rightField: form.formulaRightField }
+      if (form.calculationMode === 'rollup') rules.calculation = { kind: 'rollup', aggregate: form.rollupAggregate, sourceEntity: form.rollupSourceEntity, relationField: form.rollupRelationField, ...(form.rollupAggregate === 'sum' ? { valueField: form.rollupValueField } : {}) }
       return rules
     }
     case 'currency': {
@@ -449,6 +497,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
       }
       if (form.min !== null) rules.min = form.min
       if (form.max !== null) rules.max = form.max
+      if (form.calculationMode === 'formula') rules.calculation = { kind: 'formula', operator: form.formulaOperator, leftField: form.formulaLeftField, rightField: form.formulaRightField }
+      if (form.calculationMode === 'rollup') rules.calculation = { kind: 'rollup', aggregate: form.rollupAggregate, sourceEntity: form.rollupSourceEntity, relationField: form.rollupRelationField, ...(form.rollupAggregate === 'sum' ? { valueField: form.rollupValueField } : {}) }
       return rules
     }
     case 'date': {
@@ -479,7 +529,9 @@ function validationRulesForSubmit(): Record<string, unknown> {
       }
     case 'incremental': {
       const rules: Record<string, unknown> = { digits: form.incrementalDigits ?? 6 }
-      if (form.incrementalMode === 'prefixed' && form.incrementalRelationField && form.incrementalSourceField) {
+      if (form.incrementalMode === 'fixed' && form.incrementalPrefix.trim()) {
+        rules.prefix = form.incrementalPrefix.trim()
+      } else if (form.incrementalMode === 'prefixed' && form.incrementalRelationField && form.incrementalSourceField) {
         rules.prefixSource = { relationField: form.incrementalRelationField, sourceField: form.incrementalSourceField }
       }
       return rules
@@ -529,12 +581,20 @@ const columnsValid = computed(
 
 const incrementalValid = computed(() => {
   if (!form.incrementalDigits || form.incrementalDigits < 1) return false
+  if (form.incrementalMode === 'fixed') return /^[A-Za-z0-9_-]+$/.test(form.incrementalPrefix.trim()) && form.incrementalPrefix.trim().length <= 20
   if (form.incrementalMode === 'prefixed') return Boolean(form.incrementalRelationField && form.incrementalSourceField)
   return true
 })
 
+const calculationValid = computed(() => {
+  if (form.dataType !== 'number' && form.dataType !== 'currency') return true
+  if (form.calculationMode === 'manual') return true
+  if (form.calculationMode === 'formula') return Boolean(form.formulaLeftField && form.formulaRightField)
+  return Boolean(form.rollupSourceEntity && form.rollupRelationField && (form.rollupAggregate === 'count' || form.rollupValueField))
+})
+
 const canSubmit = computed(() => {
-  if (form.name.length === 0 || nameError.value || form.label.length === 0) return false
+  if (form.name.length === 0 || nameError.value || form.label.length === 0 || !calculationValid.value) return false
   if (form.dataType === 'select' || form.dataType === 'multiselect') return optionsValid.value
   if (form.dataType === 'tabla') return columnsValid.value
   if (form.dataType === 'incremental') return incrementalValid.value
@@ -548,7 +608,7 @@ function onSubmit() {
     label: form.label,
     dataType: form.dataType,
     validationRules: validationRulesForSubmit(),
-    isRequired: form.isRequired
+    isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired
   })
 }
 </script>
@@ -642,7 +702,36 @@ function onSubmit() {
         <!-- Pedido directo del usuario (2026-09-04): un campo Incremental es
              siempre automatico - "obligatorio" no aplica (el usuario nunca lo
              completa a mano), se oculta el toggle en vez de dejarlo confuso. -->
-        <div v-if="form.dataType !== 'incremental'" class="flex items-center justify-between rounded border border-brand-border-light p-3">
+        <div v-if="form.dataType === 'number' || form.dataType === 'currency'" class="flex flex-col gap-3 rounded border border-brand-border-light bg-brand-bg p-3">
+          <div>
+            <p class="text-[13px] font-semibold text-brand-text">Valor del campo</p>
+            <p class="mt-0.5 text-xs text-brand-text-muted">Puede capturarse, calcularse con otros campos o acumular registros relacionados.</p>
+          </div>
+          <select v-model="form.calculationMode" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="onCalculationModeChange">
+            <option value="manual">Captura manual</option>
+            <option value="formula">Fórmula entre campos</option>
+            <option value="rollup">Acumulado de registros relacionados</option>
+          </select>
+
+          <div v-if="form.calculationMode === 'formula'" class="grid grid-cols-[1fr_120px_1fr] gap-2">
+            <select v-model="form.formulaLeftField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Primer campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <select v-model="form.formulaOperator" class="rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="add">Sumar</option><option value="subtract">Restar</option><option value="multiply">Multiplicar</option><option value="divide">Dividir</option></select>
+            <select v-model="form.formulaRightField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Segundo campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </div>
+
+          <div v-else-if="form.calculationMode === 'rollup'" class="flex flex-col gap-2">
+            <select v-model="form.rollupSourceEntity" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text" @focus="ensureRelatedEntitiesLoaded" @change="onRollupSourceEntityChange"><option value="">Módulo que contiene los registros</option><option v-for="entity in relatedEntities.filter(item => item.id !== entityId)" :key="entity.id" :value="entity.slug">{{ entity.name }}</option></select>
+            <div class="grid grid-cols-2 gap-2">
+              <select v-model="form.rollupRelationField" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Relación hacia este módulo</option><option v-for="field in rollupRelationFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+              <select v-model="form.rollupAggregate" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="sum">Sumar valores</option><option value="count">Contar registros</option></select>
+            </div>
+            <select v-if="form.rollupAggregate === 'sum'" v-model="form.rollupValueField" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Campo que se sumará</option><option v-for="field in rollupValueFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <p v-if="form.rollupSourceEntity && !rollupRelationFields.length" class="text-xs text-brand-warning-text">El módulo elegido necesita un campo Relación que apunte a este módulo.</p>
+          </div>
+          <p v-if="form.calculationMode !== 'manual'" class="text-xs text-brand-blue">El sistema mantendrá este valor actualizado y no podrá editarse manualmente.</p>
+        </div>
+
+        <div v-if="form.dataType !== 'incremental' && (!(form.dataType === 'number' || form.dataType === 'currency') || form.calculationMode === 'manual')" class="flex items-center justify-between rounded border border-brand-border-light p-3">
           <div class="flex flex-col gap-0.5">
             <p class="text-sm font-semibold text-brand-text">Campo obligatorio</p>
             <p class="text-xs text-brand-text-muted">El usuario no podrá guardar el registro sin completarlo</p>
@@ -960,12 +1049,41 @@ function onSubmit() {
             <button
               type="button"
               class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
+              :class="form.incrementalMode === 'fixed' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
+              @click="form.incrementalMode = 'fixed'"
+            >
+              Prefijo fijo
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
               :class="form.incrementalMode === 'prefixed' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
               @click="form.incrementalMode = 'prefixed'"
             >
               Con prefijo de relación
             </button>
           </div>
+
+          <template v-if="form.incrementalMode === 'fixed'">
+            <div class="flex flex-col gap-1.5">
+              <label for="incremental-prefix" class="text-[13px] font-semibold text-brand-text">Prefijo</label>
+              <input
+                id="incremental-prefix"
+                v-model="form.incrementalPrefix"
+                type="text"
+                maxlength="20"
+                placeholder="Ej. FAC-"
+                class="w-full max-w-[220px] rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              />
+              <p class="text-xs text-brand-text-muted">
+                Se antepone al consecutivo (ej. {{ form.incrementalPrefix.trim() || 'FAC-' }}{{ String(1).padStart(form.incrementalDigits ?? 6, '0') }}).
+                Usa letras, números, guion o guion bajo.
+              </p>
+              <p v-if="form.incrementalPrefix.trim() && !/^[A-Za-z0-9_-]+$/.test(form.incrementalPrefix.trim())" class="text-xs text-brand-error-text">
+                El prefijo solo puede contener letras, números, guion y guion bajo.
+              </p>
+            </div>
+          </template>
 
           <template v-if="form.incrementalMode === 'prefixed'">
             <p v-if="ownRelationFields.length === 0" class="text-xs text-brand-error-text">

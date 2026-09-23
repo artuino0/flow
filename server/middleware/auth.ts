@@ -21,6 +21,11 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/refresh',
   '/api/auth/register',
   '/api/config',
+  '/api/license/status',
+  '/api/license/activate',
+  '/api/sites/forms/submit',
+  // Stripe authenticates this endpoint with stripe-signature, not a Flow session.
+  '/api/billing/webhook',
   // HU-ERD-84: aceptar una invitacion pasa el token en el body (no una
   // sesion) - el invitado todavia no tiene cuenta activa para autenticarse.
   '/api/users/accept-invitation',

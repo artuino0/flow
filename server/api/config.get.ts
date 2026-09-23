@@ -11,8 +11,14 @@ import { getAppMode, isFeatureEnabled } from '~/server/utils/appConfig'
 // evita esa trampa por completo y mantiene un unico nombre de variable por
 // concepto (APP_MODE, FEATURE_DASHBOARD) en vez de necesitar dos.
 export default defineEventHandler(() => {
+  const configuredTransport = process.env.REALTIME_TRANSPORT?.trim().toLowerCase()
+  const realtimeTransport = configuredTransport === 'websocket' || configuredTransport === 'polling'
+    ? configuredTransport
+    : (process.env.VERCEL || process.env.VERCEL_ENV ? 'polling' : 'websocket')
+
   return {
     appMode: getAppMode(),
+    realtimeTransport,
     featureFlags: {
       dashboard: isFeatureEnabled('dashboard')
     }

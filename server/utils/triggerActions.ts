@@ -1,13 +1,17 @@
 import { templateRelationData } from '~/server/utils/templateRelations'
 import { createHmac } from 'node:crypto'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant, db } from '~/server/db'
-import { entities, records, tenants, triggers, triggerActions, triggerLogs } from '~/server/db/schema'
+import { entities, entityFields, recordActivities, recordRelations, records, relationDefinitions, tenants, triggerActionOutputs, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
+import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { logger } from '~/server/utils/logger'
 import { escapeHtml, getAppBaseUrl, sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
 import { createNotifications, publishNotifications } from '~/server/utils/notifications'
+import { generateIncrementalValue } from '~/server/utils/incrementalField'
+import { recordNotDeleted } from '~/server/utils/records'
+import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
 
 // HU-ERD-49: ejecucion real de las acciones de un trigger que matcheo
 // (ERD-48 solo resolvia QUE triggers disparan, nunca ejecutaba nada). Se
@@ -37,6 +41,15 @@ type WorkflowBranch = 'yes' | 'no' | undefined
 // una config invalida solo se descubra en el primer disparo real.
 export const webhookConfigSchema = z.object({ url: z.string().url(), secret: z.string().min(1).optional() }).passthrough()
 export const updateFieldConfigSchema = z.object({ field: z.string().min(1), value: z.any() }).passthrough()
+const recordFieldMappingSchema = z.object({ sourceField: z.string().min(1), targetField: z.string().min(1) }).strict()
+export const upsertRecordConfigSchema = z.object({
+  targetEntityId: z.string().uuid(),
+  mappings: z.array(recordFieldMappingSchema).min(1),
+  values: z.record(z.any()).default({}),
+  matchBy: z.array(recordFieldMappingSchema).default([]),
+  existingBehavior: z.enum(['update_and_link', 'link_only', 'fail']).default('update_and_link'),
+  relationDefinitionId: z.string().uuid().nullable().optional()
+}).passthrough()
 // HU-ERD-50: to/subject/body admiten plantilla ({{campo}}, ver interpolateTemplate())
 export const emailConfigSchema = z.object({ to: z.string().min(1), subject: z.string().min(1), body: z.string().min(1) }).passthrough()
 // Las notificaciones del workflow se entregan a usuarios concretos o a todos
@@ -176,39 +189,184 @@ async function runUpdateFieldAction(tenantId: string, entityId: string, recordId
   }
 
   return withTenant(tenantId, async (tx) => {
+    const [sourceEntity] = await tx.select({ isActive: entities.isActive, deletedAt: entities.deletedAt })
+      .from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1)
+    if (!sourceEntity?.isActive || sourceEntity.deletedAt) {
+      return { ok: false, retryable: false, error: 'El módulo está deshabilitado' }
+    }
     const [record] = await tx.select().from(records).where(and(eq(records.id, recordId), eq(records.tenantId, tenantId))).limit(1)
     if (!record) {
       return { ok: false, retryable: false, error: 'El registro ya no existe' }
     }
 
     const currentData = (record.customData ?? {}) as Record<string, unknown>
-    const merged = { ...currentData, [parsed.data.field]: parsed.data.value }
-
+    const relationFields = await tx.select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
+      .from(entityFields).where(eq(entityFields.entityId, entityId))
+    if (relationFields.some(field => field.name === parsed.data.field && isCalculatedField(field))) {
+      return { ok: false, retryable: false, error: `El campo "${parsed.data.field}" es calculado y no se puede sobrescribir` }
+    }
+    const merged = await applyCalculatedFields(tx, tenantId, entityId, { ...currentData, [parsed.data.field]: parsed.data.value }, recordId, relationFields)
     const schema = await getEntityZodSchema(tenantId, entityId)
     const validated = schema.safeParse(merged)
-    if (!validated.success) {
-      return { ok: false, retryable: false, error: `El valor calculado no pasa la validación del campo "${parsed.data.field}": ${JSON.stringify(validated.error.flatten().fieldErrors)}` }
+    if (!validated.success) return { ok: false, retryable: false, error: `El valor calculado no pasa la validación del campo "${parsed.data.field}": ${JSON.stringify(validated.error.flatten().fieldErrors)}` }
+    try {
+      await assertWritableRelations(tx, tenantId, relationFields, validated.data as Record<string, unknown>, currentData)
+    } catch (error) {
+      return { ok: false, retryable: false, error: error instanceof Error ? error.message : String(error) }
     }
-
     await tx.update(records).set({ customData: validated.data, updatedAt: new Date() }).where(eq(records.id, recordId))
+    await recalculateCalculatedDependents(tx, tenantId, entityId, currentData, validated.data as Record<string, unknown>)
     return { ok: true, retryable: false }
   })
 }
 
-/**
- * Accion email: envia `config.subject`/`config.body` (HTML) a `config.to`,
- * los tres interpolados contra el customData del record que disparo el
- * trigger (interpolateTemplate(), con escapado - HU-ERD-50). Reusa
- * server/utils/mailer.ts (SMTP configurado por variables de entorno, ERD-84)
- * en vez de un proveedor de terceros - mismo criterio de "sin dependencia
- * externa obligatoria" que pide la HU.
- *
- * Un SMTP sin configurar, o un "to" interpolado que no da un correo valido,
- * son fallos PERMANENTES (config o datos del record que no van a cambiar
- * solos entre un intento y el siguiente). Un error real de SMTP (conexion,
- * autenticacion, timeout del propio servidor) es transitorio - mismo
- * criterio de reintento que un webhook caido.
- */
+/** Crea o reutiliza un registro destino, lo vincula con el origen y conserva idempotencia por accion. */
+async function runUpsertRecordAction(
+  tenantId: string,
+  sourceEntityId: string,
+  actionId: string,
+  sourceRecordId: string,
+  config: unknown,
+  sourceData: Record<string, unknown>
+): Promise<ActionOutcome> {
+  const parsed = upsertRecordConfigSchema.safeParse(config)
+  if (!parsed.success) return { ok: false, retryable: false, error: 'Configuración de crear/actualizar registro inválida' }
+  const settings = parsed.data
+
+  const [targetEntity] = await withTenant(tenantId, tx => tx.select({
+    id: entities.id,
+    slug: entities.slug,
+    isActive: entities.isActive,
+    deletedAt: entities.deletedAt
+  }).from(entities).where(and(eq(entities.id, settings.targetEntityId), eq(entities.tenantId, tenantId))).limit(1))
+  if (!targetEntity?.isActive || targetEntity.deletedAt) return { ok: false, retryable: false, error: 'El módulo destino no existe o está deshabilitado' }
+
+  const targetSchema = await getEntityZodSchema(tenantId, targetEntity.id)
+  try {
+    const result = await withTenant(tenantId, async tx => {
+      const [priorOutput] = await tx.select({ targetRecordId: triggerActionOutputs.targetRecordId })
+        .from(triggerActionOutputs)
+        .where(and(eq(triggerActionOutputs.tenantId, tenantId), eq(triggerActionOutputs.triggerActionId, actionId), eq(triggerActionOutputs.sourceRecordId, sourceRecordId)))
+        .limit(1)
+      if (priorOutput?.targetRecordId) {
+        const [existingTarget] = await tx.select({ id: records.id }).from(records)
+          .where(and(eq(records.id, priorOutput.targetRecordId), eq(records.tenantId, tenantId), recordNotDeleted)).limit(1)
+        if (existingTarget) return { targetId: existingTarget.id, created: false, reused: true }
+      }
+
+      const targetFields = await tx.select({
+        id: entityFields.id,
+        name: entityFields.name,
+        label: entityFields.label,
+        dataType: entityFields.dataType,
+        validationRules: entityFields.validationRules
+      }).from(entityFields).where(eq(entityFields.entityId, targetEntity.id))
+      const fieldNames = new Set(targetFields.map(field => field.name))
+      const configuredTargets = [...settings.mappings.map(item => item.targetField), ...Object.keys(settings.values), ...settings.matchBy.map(item => item.targetField)]
+      const unknown = configuredTargets.filter(name => !fieldNames.has(name))
+      if (unknown.length) throw new Error(`El módulo destino ya no contiene: ${[...new Set(unknown)].join(', ')}`)
+
+      const mappedData: Record<string, unknown> = { ...settings.values }
+      for (const mapping of settings.mappings) mappedData[mapping.targetField] = sourceData[mapping.sourceField]
+      const writableMappedData = stripCalculatedValues(targetFields, mappedData)
+
+      let target: typeof records.$inferSelect | undefined
+      if (settings.matchBy.length) {
+        const matchConditions = settings.matchBy.map(mapping => {
+          const value = sourceData[mapping.sourceField]
+          if (value === undefined || value === null || value === '') throw new Error(`Falta el dato de origen "${mapping.sourceField}" necesario para detectar duplicados`)
+          return dsql`${records.customData}->>${mapping.targetField} = ${String(value)}`
+        })
+        const matches = await tx.select().from(records).where(and(
+          eq(records.tenantId, tenantId),
+          eq(records.entityId, targetEntity.id),
+          recordNotDeleted,
+          ...matchConditions
+        )).limit(2)
+        if (matches.length > 1) throw new Error('Hay más de un registro destino que coincide; no se puede elegir uno de forma segura')
+        target = matches[0]
+      }
+
+      let created = false
+      if (target) {
+        if (settings.existingBehavior === 'fail') throw new Error('Ya existe un registro destino con los campos de coincidencia configurados')
+        if (settings.existingBehavior === 'update_and_link') {
+          const currentData = (target.customData ?? {}) as Record<string, unknown>
+          const merged = await applyCalculatedFields(tx, tenantId, targetEntity.id, { ...currentData, ...writableMappedData }, target.id, targetFields)
+          const validated = targetSchema.safeParse(merged)
+          if (!validated.success) throw new Error(`El registro destino no cumple sus campos obligatorios: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
+          await assertWritableRelations(tx, tenantId, targetFields, validated.data as Record<string, unknown>, currentData)
+          const changes = Object.keys(validated.data as Record<string, unknown>).filter(field => JSON.stringify(currentData[field]) !== JSON.stringify((validated.data as Record<string, unknown>)[field])).map(field => ({ field, old: currentData[field], new: (validated.data as Record<string, unknown>)[field] }))
+          if (changes.length) {
+            ;[target] = await tx.update(records).set({ customData: validated.data, isDirty: false, updatedAt: new Date() }).where(eq(records.id, target.id)).returning()
+            await tx.insert(recordActivities).values({ tenantId, recordId: target.id, userId: null, actionType: 'UPDATED', details: { changes, workflowActionId: actionId, sourceRecordId } })
+            await recalculateCalculatedDependents(tx, tenantId, targetEntity.id, currentData, validated.data as Record<string, unknown>)
+          }
+        }
+      } else {
+        let preparedData = await applyCalculatedFields(tx, tenantId, targetEntity.id, writableMappedData, undefined, targetFields)
+        const validated = targetSchema.safeParse(preparedData)
+        if (!validated.success) throw new Error(`Faltan datos para crear el registro destino: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
+        let customData = { ...(validated.data as Record<string, unknown>) }
+        for (const field of targetFields) {
+          if (field.dataType === 'incremental') customData[field.name] = await generateIncrementalValue(tx, tenantId, field, customData)
+        }
+        customData = await applyCalculatedFields(tx, tenantId, targetEntity.id, customData, undefined, targetFields)
+        await assertWritableRelations(tx, tenantId, targetFields, customData)
+        ;[target] = await tx.insert(records).values({ entityId: targetEntity.id, tenantId, customData }).returning()
+        created = true
+        await tx.insert(recordActivities).values({ tenantId, recordId: target.id, userId: null, actionType: 'CREATED', details: { customData, workflowActionId: actionId, sourceRecordId } })
+        await recalculateCalculatedDependents(tx, tenantId, targetEntity.id, null, customData)
+      }
+
+      if (!target) throw new Error('No se pudo resolver el registro destino')
+
+      if (settings.relationDefinitionId) {
+        const [definition] = await tx.select().from(relationDefinitions).where(and(eq(relationDefinitions.id, settings.relationDefinitionId), eq(relationDefinitions.tenantId, tenantId))).limit(1)
+        if (!definition) throw new Error('La relación configurada ya no existe')
+        let sourceId = sourceRecordId
+        let targetId = target.id
+        if (definition.sourceEntityId === targetEntity.id && definition.targetEntityId === sourceEntityId) {
+          sourceId = target.id
+          targetId = sourceRecordId
+        } else if (definition.sourceEntityId !== sourceEntityId || definition.targetEntityId !== targetEntity.id) {
+          throw new Error('La relación configurada no conecta los módulos origen y destino')
+        }
+        const [existingLink] = await tx.select({ id: recordRelations.id }).from(recordRelations).where(and(
+          eq(recordRelations.tenantId, tenantId),
+          eq(recordRelations.relationDefinitionId, definition.id),
+          eq(recordRelations.sourceRecordId, sourceId),
+          eq(recordRelations.targetRecordId, targetId)
+        )).limit(1)
+        if (!existingLink) {
+          await tx.insert(recordRelations).values({ tenantId, relationDefinitionId: definition.id, sourceRecordId: sourceId, targetRecordId: targetId })
+          await tx.insert(recordActivities).values({ tenantId, recordId: sourceRecordId, userId: null, actionType: 'LINKED', details: { relationDefinitionId: definition.id, relatedRecordId: target.id, workflowActionId: actionId } })
+        }
+      }
+
+      await tx.insert(triggerActionOutputs).values({
+        tenantId,
+        triggerActionId: actionId,
+        sourceRecordId,
+        targetRecordId: target.id,
+        result: { created, targetEntityId: targetEntity.id }
+      }).onConflictDoUpdate({
+        target: [triggerActionOutputs.triggerActionId, triggerActionOutputs.sourceRecordId],
+        set: { targetRecordId: target.id, result: { created, targetEntityId: targetEntity.id }, updatedAt: new Date() }
+      })
+      return { targetId: target.id, created, reused: false, data: target.customData as Record<string, unknown> }
+    })
+
+    if (result.created && result.data) {
+      const { fireTriggersForRecord } = await import('~/server/utils/triggers')
+      fireTriggersForRecord(tenantId, targetEntity.id, 'on_create', result.targetId, result.data)
+    }
+    return { ok: true, retryable: false }
+  } catch (error) {
+    return { ok: false, retryable: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 async function runEmailAction(tenantId: string, config: unknown, data: Record<string, unknown>, recordUrl?: string): Promise<ActionOutcome> {
   const parsed = emailConfigSchema.safeParse(config)
   if (!parsed.success) {
@@ -313,7 +471,8 @@ async function runActionsPipeline(
   let lastResponseStatus: number | undefined
 
   const [entity] = await withTenant(tenantId, tx => tx.select({ slug: entities.slug }).from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1))
-  const recordUrl = entity && recordId ? `${getAppBaseUrl()}/registros/${entity.slug}/${recordId}` : undefined
+  const recordPath = entity && recordId ? `/registros/${entity.slug}/${recordId}` : undefined
+  const recordUrl = recordPath ? `${getAppBaseUrl()}${recordPath}` : undefined
   const branchActions = branch === undefined ? actions : actions.filter(action => {
     const actionBranch = (action.config as { branch?: WorkflowBranch } | null)?.branch
     return !actionBranch || actionBranch === branch
@@ -326,6 +485,10 @@ async function runActionsPipeline(
       outcome = recordId
         ? await runUpdateFieldAction(tenantId, entityId, recordId, action.config)
         : { ok: false, retryable: false, error: 'El registro ya no existe' }
+    } else if (action.actionType === 'upsert_record') {
+      outcome = recordId
+        ? await runUpsertRecordAction(tenantId, entityId, action.id, recordId, action.config, templateData)
+        : { ok: false, retryable: false, error: 'El registro origen ya no existe' }
     } else if (action.actionType === 'email') {
       try {
         const config = action.config as Record<string, unknown>
@@ -336,7 +499,7 @@ async function runActionsPipeline(
       try {
         const config = action.config as Record<string, unknown>
         const resolved = await templateRelationData(tenantId, entityId, templateData, [String(config.title ?? ''), String(config.message ?? '')])
-        outcome = await runNotificationAction(tenantId, action.config, resolved, entity?.slug, recordId ?? undefined, recordUrl)
+        outcome = await runNotificationAction(tenantId, action.config, resolved, entity?.slug, recordId ?? undefined, recordPath)
       } catch (error) { outcome = { ok: false, retryable: false, error: error instanceof Error ? error.message : 'No se pudieron resolver las variables.' } }
     } else {
       // Tipos futuros: hasta que existan, marcados como fallo permanente

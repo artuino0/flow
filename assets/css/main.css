@@ -6,5 +6,9 @@
 body {
   @apply bg-gray-50 text-gray-900 antialiased;
 }
+
+/* El producto usa tema claro; mantenemos visible el caret en inputs y editores. */
+:root { color-scheme: light; }
+input, textarea, select, [contenteditable='true'], .cm-content { caret-color: #0091ae; }
 /* Los modales bloquean el scroll del contenido que queda detrás. */
 body:has([role="dialog"]), body:has(.fixed.inset-0) { overflow: hidden; }

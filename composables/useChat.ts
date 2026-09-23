@@ -159,6 +159,17 @@ export function useChat() {
           state.value.typing[event.payload.conversationId] = [...current]
         }),
         realtime.subscribe<{ userId: string; active: boolean }>('chat.presence', event => { state.value.presence[event.payload.userId] = event.payload.active }),
+        realtime.subscribe<{ userId: string; active: boolean; conversationIds: string[] }>('chat.user.status', event => {
+          for (const conversation of [...state.value.conversations, ...state.value.archived]) {
+            if (!event.payload.conversationIds.includes(conversation.id)) continue
+            const person = conversation.participants.find(item => item.id === event.payload.userId)
+            if (person) person.active = event.payload.active
+            if (conversation.type === 'direct' && event.payload.userId !== user.value?.id) {
+              conversation.canSend = event.payload.active
+              conversation.sendBlockedReason = event.payload.active ? null : 'No puedes enviar mensajes porque este usuario está desactivado.'
+            }
+          }
+        }),
         realtime.subscribe<{ conversationId: string; userId: string; readAt: string }>('chat.read', event => {
           const list = state.value.messages[event.payload.conversationId]
           if (list) {
@@ -173,7 +184,17 @@ export function useChat() {
             if (event.payload.userId === user.value?.id && isVisible(event.payload.conversationId)) clearUnread(event.payload.conversationId)
           }).catch(() => undefined)
         }),
-        realtime.subscribe('chat.conversation.updated', () => void refreshConversations().catch(() => undefined))
+        realtime.subscribe('chat.conversation.updated', () => void refreshConversations().catch(() => undefined)),
+        realtime.subscribe('realtime.poll', () => {
+          if (document.visibilityState !== 'visible') return
+          void refreshConversations().catch(() => undefined)
+          const visibleIds = new Set<string>()
+          if (state.value.chatViewActive && state.value.selectedId) visibleIds.add(state.value.selectedId)
+          for (const id of state.value.floatingIds) {
+            if (!state.value.minimizedIds.includes(id)) visibleIds.add(id)
+          }
+          for (const id of visibleIds) void loadMessages(id).then(() => markRead(id)).catch(() => undefined)
+        })
       ]
     }
     realtime.start()
@@ -225,6 +246,15 @@ export function useChat() {
     if (conversation) conversation.unreadCount = 0
   }
 
+  function markSendBlocked(id: string, reason: string) {
+    for (const conversation of [...state.value.conversations, ...state.value.archived]) {
+      if (conversation.id === id) {
+        conversation.canSend = false
+        conversation.sendBlockedReason = reason
+      }
+    }
+  }
+
   async function createDirect(userId: string) {
     const result = await $fetch<{ id: string }>('/api/chat/conversations', { method: 'POST', body: { type: 'direct', userId } })
     await refreshConversations()
@@ -241,11 +271,20 @@ export function useChat() {
     await refreshConversations()
   }
 
-  async function sendMessage(conversationId: string, body: string, options: { replyToMessageId?: string | null; attachmentIds?: string[] } = {}) {
+  async function sendMessage(conversationId: string, body: string, options: { replyToMessageId?: string | null; attachmentIds?: string[]; sharedRecord?: { entitySlug: string; recordId: string; label: string; url: string } | null; gifUrl?: string | null } = {}) {
     const clientMessageId = crypto.randomUUID()
-    const message = await $fetch<ChatMessage>(`/api/chat/conversations/${conversationId}/messages`, {
-      method: 'POST', body: { clientMessageId, body, replyToMessageId: options.replyToMessageId ?? null, attachmentIds: options.attachmentIds ?? [] }
-    })
+    let message: ChatMessage
+    try {
+      message = await $fetch<ChatMessage>(`/api/chat/conversations/${conversationId}/messages`, {
+        method: 'POST', body: { clientMessageId, body, replyToMessageId: options.replyToMessageId ?? null, attachmentIds: options.attachmentIds ?? [], sharedRecord: options.sharedRecord ?? null, gifUrl: options.gifUrl ?? null }
+      })
+    } catch (error: any) {
+      const statusCode = error?.statusCode ?? error?.data?.statusCode
+      if (statusCode === 409) {
+        markSendBlocked(conversationId, error?.statusMessage ?? error?.data?.statusMessage ?? 'No puedes enviar mensajes en esta conversación.')
+      }
+      throw error
+    }
     const list = state.value.messages[conversationId] ?? (state.value.messages[conversationId] = [])
     replaceMessage(list, message)
     void refreshConversations().catch(() => undefined)

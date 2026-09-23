@@ -1,9 +1,10 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { people, roles, tenants, users } from '~/server/db/schema'
+import { chatParticipants, people, roles, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
 import { escapeHtml, sendInvitationEmail, sendPlainEmail } from '~/server/utils/mailer'
+import { publishRealtime, realtimeUserTopic } from '~/server/utils/realtime'
 
 // HU-ERD-84: logica de gestion de usuarios (listar, invitar, editar rol/estado,
 // reenviar/cancelar invitacion, aceptar invitacion) - separada de los
@@ -206,7 +207,7 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
       await sendPlainEmail({
         tenantId,
         to: outcome.person.email,
-        subject: `Te agregaron a ${outcome.tenantName} en FlowERP`,
+        subject: `Te agregaron a ${outcome.tenantName} en Flow`,
         html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(outcome.tenantName)} con el rol de ${escapeHtml(outcome.roleName)}. Iniciá sesión con tu contraseña habitual y vas a poder elegir esta organización.</p>`
       })
     } catch {
@@ -300,8 +301,9 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
     throw new CannotEditSelfError('No puedes editar tu propio acceso desde esta pantalla')
   }
 
-  return withTenant(tenantId, async (tx) => {
-    const [existing] = await tx.select({ id: users.id, personId: users.personId }).from(users).where(and(eq(users.id, userId), eq(users.tenantId, tenantId))).limit(1)
+  let affectedConversationIds: string[] = []
+  const result = await withTenant(tenantId, async (tx) => {
+    const [existing] = await tx.select({ id: users.id, personId: users.personId, isActive: users.isActive }).from(users).where(and(eq(users.id, userId), eq(users.tenantId, tenantId))).limit(1)
     if (!existing) throw new TargetUserNotFoundError(`El usuario ${userId} no existe en este tenant`)
 
     if (input.roleId) {
@@ -321,6 +323,12 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
     const roleName = row.roleId ? (await assertRoleInTenant(tx, tenantId, row.roleId)).name : null
     const [person] = await tx.select().from(people).where(eq(people.id, existing.personId)).limit(1)
 
+    if (input.isActive !== undefined && existing.isActive !== input.isActive) {
+      const memberships = await tx.select({ conversationId: chatParticipants.conversationId }).from(chatParticipants)
+        .where(and(eq(chatParticipants.tenantId, tenantId), eq(chatParticipants.userId, userId)))
+      affectedConversationIds = memberships.map(row => row.conversationId)
+    }
+
     return {
       id: row.id,
       email: person!.email,
@@ -332,6 +340,16 @@ export async function updateUser(tenantId: string, userId: string, actingUserId:
       createdAt: row.createdAt
     }
   })
+
+  if (affectedConversationIds.length) {
+    const recipients = await withTenant(tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants)
+      .where(and(eq(chatParticipants.tenantId, tenantId), inArray(chatParticipants.conversationId, affectedConversationIds), ne(chatParticipants.userId, userId))))
+    const recipientIds = [...new Set(recipients.map(row => row.id))]
+    for (const recipientId of recipientIds) {
+      publishRealtime(realtimeUserTopic(recipientId), 'chat.user.status', { userId, active: input.isActive, conversationIds: affectedConversationIds })
+    }
+  }
+  return result
 }
 
 /**

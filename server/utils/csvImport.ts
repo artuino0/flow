@@ -3,6 +3,7 @@ import { withTenant } from '~/server/db'
 import { entities, entityFields, records } from '~/server/db/schema'
 import { getEntityZodSchema } from './dynamicSchema'
 import { recordNotDeleted } from './records'
+import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from './calculatedFields'
 
 // HU-ERD-80: importacion masiva de datos (CSV) por entidad - pedido explicito
 // del usuario tras la revision de gaps de plataforma (2026-09-01, ver
@@ -102,13 +103,16 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
       }
 
       const [targetEntity] = await tx
-        .select({ id: entities.id })
+        .select({ id: entities.id, isActive: entities.isActive, deletedAt: entities.deletedAt })
         .from(entities)
         .where(and(eq(entities.tenantId, tenantId), eq(entities.slug, relationEntitySlug)))
         .limit(1)
       if (!targetEntity) {
         relationCache.set(key, null)
         return { error: `la entidad relacionada "${relationEntitySlug}" no existe` }
+      }
+      if (!targetEntity.isActive || targetEntity.deletedAt) {
+        return { error: `la entidad relacionada "${relationEntitySlug}" está deshabilitada` }
       }
 
       const targetFields = (await tx
@@ -205,7 +209,8 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
         }
       }
 
-      const parsed = schema.safeParse(resolvedRow)
+      const calculatedRow = await applyCalculatedFields(tx, tenantId, entityId, stripCalculatedValues(fieldRows, resolvedRow), undefined, fieldRows)
+      const parsed = schema.safeParse(calculatedRow)
       if (!parsed.success) {
         errors.push({ row: rowNumber, error: parsed.error.issues.map((issue) => issue.message).join('; ') })
         continue
@@ -214,7 +219,8 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
     }
 
     if (toInsert.length > 0) {
-      await tx.insert(records).values(toInsert.map((customData) => ({ entityId, tenantId, customData })))
+      const inserted = await tx.insert(records).values(toInsert.map((customData) => ({ entityId, tenantId, customData }))).returning({ customData: records.customData })
+      for (const row of inserted) await recalculateCalculatedDependents(tx, tenantId, entityId, null, row.customData as Record<string, unknown>)
     }
 
     return { insertedCount: toInsert.length, errors }

@@ -23,8 +23,8 @@
 // toggle guardado (HU-ERD-74 solo pide poder configurarlo) pero no existe
 // ningún historial de auditoría en el esquema hoy - se muestra un aviso
 // honesto en vez de datos inventados; el historial real queda para una HU futura.
-import { computed, reactive, ref, watch } from 'vue'
-import { Calendar, Clock, FileText, Pencil, Plus, Trash2, WalletCards } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { Calendar, Clock, EllipsisVertical, FileText, Link2, List, Pencil, Plus, Share2, Trash2, WalletCards } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation } from '~/composables/useEntityFields'
 
 interface RecordData {
@@ -61,6 +61,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   deleted: []
 }>()
+
+const actionMenuOpen = ref(false)
+function closeActionMenu(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('[data-record-actions]')) actionMenuOpen.value = false
+}
+onMounted(() => document.addEventListener('click', closeActionMenu))
+onBeforeUnmount(() => document.removeEventListener('click', closeActionMenu))
 
 // --- Puente al dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md, fase C) ----
 // Los registros dinámicos que originan documentos fiscales ganan un acceso
@@ -103,10 +111,25 @@ const displayLabel = computed(() =>
     ? labelForRecord(props.fields, props.record.customData, props.record.id, props.labelField)
     : `Ejemplo de ${props.entityName || 'este módulo'}`
 )
+function shareRecord() {
+  if (!props.record) return
+  void navigateTo({ path: '/chat', query: { shareEntity: props.entitySlug, shareRecord: props.record.id, shareLabel: displayLabel.value } })
+}
 const initials = computed(() => {
   const words = displayLabel.value.trim().split(/\s+/).filter(Boolean)
   const chars = words.length >= 2 ? [words[0][0], words[1][0]] : [displayLabel.value[0] ?? '?', displayLabel.value[1] ?? '']
   return chars.join('').toUpperCase()
+})
+
+const statusField = computed(() =>
+  props.fields.find((field) => ['estado', 'status', 'estatus'].includes(field.name.toLocaleLowerCase()))
+)
+const statusLabel = computed(() => {
+  const field = statusField.value
+  if (!field) return ''
+  if (!props.record) return 'Estado'
+  const value = formatValue(field, props.record.customData[field.name])
+  return value === '-' ? '' : value
 })
 
 function formatValue(field: EntityFieldMeta, value: unknown): string {
@@ -220,7 +243,6 @@ async function onDelete() {
 const isEditing = ref(false)
 const submittingEdit = ref(false)
 const editFormValues = ref<Record<string, unknown>>({})
-const expandedProperties = ref(false)
 
 function startEditing() {
   if (!props.record) return
@@ -256,190 +278,169 @@ async function saveEdit() {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-5" :class="record ? 'lg:grid-cols-[360px_1fr]' : ''">
-    <div class="flex flex-col h-fit self-start rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-      <div class="flex flex-col gap-3 border-b border-brand-border-light p-5">
-        <div class="flex min-w-0 items-start gap-3">
-          <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-blue-bg text-sm font-bold text-brand-blue">{{ initials }}</span>
-          <div class="flex min-w-0 flex-col gap-0.5">
-            <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Detalle de {{ entityName }}</p>
-            <h2 class="break-words text-[17px] font-bold leading-snug text-brand-text">{{ displayLabel }}</h2>
-            <p v-if="record?.createdAt" class="flex items-center gap-1 text-xs text-brand-text-muted">
-              <Calendar class="h-3 w-3 shrink-0" :stroke-width="1.75" />
-              Creado el {{ new Date(record.createdAt).toLocaleDateString() }}
-            </p>
-            <p v-else-if="!record" class="text-xs text-brand-text-muted">Así se verá la ficha de un registro de {{ entityName || 'este módulo' }}</p>
-          </div>
-        </div>
-        
-        <div v-if="record && (canUpdate || canDelete || fiscalAction)" class="flex items-center gap-2">
-          <template v-if="!isEditing">
-            <NuxtLink
-              v-if="fiscalAction"
-              :to="fiscalAction.to"
-              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-blue hover:bg-brand-blue-bg"
-            >
-              <component :is="fiscalAction.icon" class="h-3.5 w-3.5" :stroke-width="1.75" />
-              {{ fiscalAction.label }}
-            </NuxtLink>
-            <button
-              v-if="canUpdate"
-              type="button"
-              @click="startEditing"
-              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
-            >
-              <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" />
-              Editar
-            </button>
-            <button
-              v-if="canDelete"
-              type="button"
-              :disabled="deleting"
-              title="Eliminar"
-              class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
-              @click="onDelete"
-            >
-              <Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" />
-            </button>
-          </template>
-          <template v-else>
-            <button
-              type="button"
-              :disabled="submittingEdit"
-              @click="cancelEditing"
-              class="flex items-center gap-1.5 rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text hover:bg-brand-bg"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              :disabled="submittingEdit"
-              @click="saveEdit"
-              class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover"
-            >
-              Guardar
-            </button>
-          </template>
-        </div>
-      </div>
-
-      <p v-if="deleteError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
-
-      <div class="flex flex-col gap-5 p-5">
-        <div v-if="visibleProperties.length === 0" class="text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
-        <template v-else>
-          <div v-if="isEditing">
-            <DynamicForm v-model="editFormValues" :fields="visibleProperties" :entity-id="record!.id" :disabled="submittingEdit" />
-          </div>
-          <div v-else class="flex flex-col gap-3">
-            <dl class="grid grid-cols-1 gap-3">
-              <div v-for="field in (expandedProperties ? visibleProperties : visibleProperties.slice(0, 8))" :key="field.id" class="flex flex-col gap-0.5">
-                <dt class="text-xs font-semibold text-brand-text-secondary">{{ field.label }}</dt>
-                <dd class="text-sm text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+  <div
+    class="grid grid-cols-1 items-start gap-5"
+    :class="record ? 'lg:min-h-[calc(100vh-167px)] lg:grid-cols-[400px_minmax(0,1fr)]' : ''"
+  >
+    <aside class="flex min-w-0 flex-col gap-4 self-start">
+      <section class="rounded-lg border border-brand-border-light bg-brand-surface">
+        <div class="flex flex-col gap-3.5 p-5">
+          <div class="flex min-w-0 items-center gap-3">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-blue-bg text-base font-bold text-brand-blue">{{ initials }}</span>
+            <div class="min-w-0 flex-1">
+              <p class="text-[10px] font-bold uppercase tracking-[0.04em] text-brand-text-muted">Detalle de {{ entityName }}</p>
+              <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
+                <h1 class="min-w-0 break-words text-[18px] font-bold leading-6 text-brand-text">{{ displayLabel }}</h1>
+                <span v-if="statusLabel" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#EAF0F6] px-2.5 py-[3px] text-[11px] font-semibold text-brand-text-secondary">
+                  <span class="h-1.5 w-1.5 rounded-full bg-brand-text-muted" />
+                  {{ statusLabel }}
+                </span>
               </div>
-            </dl>
-            <button 
-              v-if="visibleProperties.length > 8" 
-              type="button" 
-              class="-mx-5 -mb-5 mt-2 rounded-b-lg border-t border-brand-border-light py-3 text-center text-xs font-semibold text-brand-blue hover:bg-brand-bg hover:underline"
-              @click="expandedProperties = !expandedProperties"
-            >
-              {{ expandedProperties ? 'Ver menos' : `Ver ${visibleProperties.length - 8} ${visibleProperties.length - 8 === 1 ? 'propiedad' : 'propiedades'} más` }}
-            </button>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div class="flex flex-col rounded-lg min-w-0">
-      <div class="flex items-center gap-1 border-b border-brand-border-light" role="tablist" aria-label="Asociaciones y actividad">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="activePane === 'associations'"
-          class="border-b-2 px-4 py-3 text-sm font-semibold"
-          :class="activePane === 'associations' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'"
-          @click="activePane = 'associations'"
-        >
-          Asociaciones
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="activePane === 'activity'"
-          class="border-b-2 px-4 py-3 text-sm font-semibold"
-          :class="activePane === 'activity' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'"
-          @click="activePane = 'activity'"
-        >
-          Actividad
-        </button>
-      </div>
-
-      <div v-if="activePane === 'associations'" class="flex flex-col gap-5 pt-5">
-        <p v-if="visibleRelations.length === 0" class="text-sm text-brand-text-muted">Ningún otro módulo tiene un campo de relación apuntando a este.</p>
-        <div
-          v-for="rel in visibleRelations"
-          :key="`${rel.entitySlug}.${rel.fieldName}`"
-          class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface"
-        >
-          <div class="flex items-center justify-between gap-3 border-b border-brand-border-light px-4 py-3">
-            <div class="flex flex-col gap-0.5">
-              <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
-              <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
+              <p v-if="record?.createdAt" class="mt-1 flex items-center gap-1 text-[11px] text-brand-text-muted">
+                <Calendar class="h-[11px] w-[11px] shrink-0" :stroke-width="1.75" />
+                Creado el {{ new Date(record.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) }}
+              </p>
+              <p v-else-if="!record" class="mt-1 text-[11px] text-brand-text-muted">Así se verá la ficha de un registro de {{ entityName || 'este módulo' }}</p>
             </div>
-            <NuxtLink
-              v-if="record && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate"
-              :to="relatedCreateLink(rel.entitySlug, rel.fieldName)"
-              class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover"
-            >
-              <Plus class="h-3.5 w-3.5" :stroke-width="1.75" />
-              Agregar
-            </NuxtLink>
           </div>
-          <div>
-            <p v-if="!record" class="text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
-            <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
-              <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="text-xs text-brand-text-muted p-6 text-center">Cargando...</p>
-              <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0">
-                <p class="text-xs text-brand-text-muted p-6 text-center">Sin registros relacionados.</p>
-              </template>
-              <template v-else>
-                <DynamicTable
-                  :entity-slug="rel.entitySlug"
-                  :fields="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].fields"
-                  :rows="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows"
-                  :page="1"
-                  :page-size="5"
-                  :total="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total"
-                  sort-by="createdAt"
-                  sort-dir="desc"
-                  :rounded="false"
-                  :permissions="readOnlyPermissions"
-                  :inset="true"
-                  :borderless="true"
-                  :actions-sticky="true"
-                  :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
-                />
-                <NuxtLink
-                  v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total > 5"
-                  :to="relatedListLink(rel.entitySlug, rel.fieldName)"
-                  class="mt-3 inline-block text-xs font-semibold text-brand-blue hover:underline"
+
+          <div v-if="record" class="flex w-full items-center gap-2">
+            <template v-if="!isEditing">
+              <button type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-blue hover:bg-brand-blue-bg" @click="shareRecord">
+                <Share2 class="h-3.5 w-3.5" :stroke-width="1.75" /> Compartir
+              </button>
+
+              <button v-if="canUpdate" type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
+                <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" /> Editar
+              </button>
+              <div v-if="fiscalAction || canDelete" class="relative shrink-0" data-record-actions>
+                <button
+                  type="button"
+                  title="Más acciones"
+                  aria-label="Más acciones"
+                  :aria-expanded="actionMenuOpen"
+                  class="flex h-9 w-9 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary hover:bg-brand-bg hover:text-brand-text"
+                  @click.stop="actionMenuOpen = !actionMenuOpen"
                 >
-                  Ver los {{ relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total }} registros →
-                </NuxtLink>
-              </template>
+                  <EllipsisVertical class="h-4 w-4" :stroke-width="1.9" />
+                </button>
+                <div v-if="actionMenuOpen" class="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[210px] overflow-hidden rounded-md border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+                  <NuxtLink
+                    v-if="fiscalAction"
+                    :to="fiscalAction.to"
+                    class="flex items-center gap-2.5 px-3 py-2.5 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg hover:text-brand-blue"
+                    @click="actionMenuOpen = false"
+                  >
+                    <component :is="fiscalAction.icon" class="h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" />
+                    {{ fiscalAction.label }}
+                  </NuxtLink>
+                  <button
+                    v-if="canDelete"
+                    type="button"
+                    :disabled="deleting"
+                    class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60" :class="fiscalAction ? 'border-t border-brand-border-light' : ''"
+                    @click="actionMenuOpen = false; onDelete()"
+                  >
+                    <Trash2 class="h-4 w-4 shrink-0" :stroke-width="1.75" />
+                    {{ deleting ? 'Eliminando…' : 'Eliminar registro' }}
+                  </button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <button type="button" :disabled="submittingEdit" class="flex h-9 flex-1 items-center justify-center rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="cancelEditing">Cancelar</button>
+              <button type="button" :disabled="submittingEdit" class="flex h-9 flex-1 items-center justify-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="saveEdit">{{ submittingEdit ? 'Guardando…' : 'Guardar' }}</button>
             </template>
           </div>
+          <p v-if="deleteError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
+        </div>
+      </section>
+
+      <section class="relative rounded-lg border border-brand-border-light" :class="isEditing ? 'z-20 bg-[#F8FBFC]' : 'z-0 bg-brand-surface'">
+        <header class="flex items-center gap-2 border-b border-brand-border-light px-[18px] py-3">
+          <List class="h-3.5 w-3.5 text-brand-text-muted" :stroke-width="1.75" />
+          <h2 class="text-xs font-bold tracking-[0.03em] text-brand-text-muted">Propiedades</h2>
+        </header>
+        <div v-if="visibleProperties.length === 0" class="px-[18px] py-6 text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
+        <div v-else-if="isEditing">
+          <DynamicForm v-model="editFormValues" detail :fields="visibleProperties" :entity-id="record!.id" :relation-labels="record?.relationLabels" :disabled="submittingEdit" />
+        </div>
+        <dl v-else>
+          <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-[3px] border-b border-brand-border-light px-[18px] py-2.5 last:border-b-0">
+            <dt class="text-[11px] font-semibold leading-4 text-brand-text-secondary">{{ field.label }}</dt>
+            <dd class="break-words text-[13px] font-medium leading-[18px] text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+          </div>
+        </dl>
+      </section>
+    </aside>
+
+    <section class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface" :class="record ? 'h-full min-h-[620px]' : 'min-h-[480px]'">
+      <div class="flex h-[47px] shrink-0 items-stretch gap-5 border-b border-brand-border-light px-6" role="tablist" aria-label="Asociaciones y actividad">
+        <button type="button" role="tab" :aria-selected="activePane === 'associations'" class="border-b-2 px-1 text-sm" :class="activePane === 'associations' ? 'border-brand-orange font-bold text-brand-text' : 'border-transparent font-medium text-brand-text-muted hover:text-brand-text'" @click="activePane = 'associations'">Asociaciones</button>
+        <button type="button" role="tab" :aria-selected="activePane === 'activity'" class="border-b-2 px-1 text-sm" :class="activePane === 'activity' ? 'border-brand-orange font-bold text-brand-text' : 'border-transparent font-medium text-brand-text-muted hover:text-brand-text'" @click="activePane = 'activity'">Actividad</button>
+      </div>
+
+      <div v-if="activePane === 'associations'" class="flex min-h-0 flex-1 flex-col">
+        <div v-if="visibleRelations.length === 0" class="flex flex-1 items-center justify-center p-10 text-center">
+          <div class="flex max-w-[380px] flex-col items-center">
+            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF0F6] text-brand-text-muted"><Link2 class="h-[26px] w-[26px]" :stroke-width="1.75" /></span>
+            <h3 class="mt-4 text-[15px] font-bold text-brand-text">Sin asociaciones</h3>
+            <p class="mt-1 max-w-[340px] text-[13px] leading-5 text-brand-text-secondary">Ningún otro módulo tiene un campo de relación apuntando a este registro todavía.</p>
+            <button v-if="record && canUpdate" type="button" class="mt-4 flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
+              <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Vincular registro
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
+          <div v-for="rel in visibleRelations" :key="`${rel.entitySlug}.${rel.fieldName}`" class="flex flex-col overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
+            <div class="flex items-center justify-between gap-3 border-b border-brand-border-light px-4 py-3">
+              <div class="flex flex-col gap-0.5">
+                <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
+                <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
+              </div>
+              <NuxtLink v-if="record && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+                <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar
+              </NuxtLink>
+            </div>
+            <div>
+              <p v-if="!record" class="p-6 text-center text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
+              <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
+                <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="p-6 text-center text-xs text-brand-text-muted">Cargando...</p>
+                <p v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0" class="p-6 text-center text-xs text-brand-text-muted">Sin registros relacionados.</p>
+                <template v-else>
+                  <DynamicTable
+                    :entity-slug="rel.entitySlug"
+                    :fields="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].fields"
+                    :rows="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows"
+                    :page="1"
+                    :page-size="5"
+                    :total="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total"
+                    sort-by="createdAt"
+                    sort-dir="desc"
+                    :rounded="false"
+                    :permissions="readOnlyPermissions"
+                    :inset="true"
+                    :borderless="true"
+                    :actions-sticky="true"
+                    :relation-labels="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].relationLabels"
+                  />
+                  <NuxtLink v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total > 5" :to="relatedListLink(rel.entitySlug, rel.fieldName)" class="m-4 inline-block text-xs font-semibold text-brand-blue hover:underline">
+                    Ver los {{ relatedTables[`${rel.entitySlug}.${rel.fieldName}`].total }} registros →
+                  </NuxtLink>
+                </template>
+              </template>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div v-else class="pt-4">
-        <ActivityTimeline v-if="record" :key="`${entitySlug}:${record.id}`" :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
-        <div v-else class="flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
-          <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
-          <span>Guarda el registro primero para empezar a registrar actividad.</span>
+      <div v-else class="min-h-0 flex-1 overflow-auto">
+        <ActivityTimeline v-if="record" :key="`${entitySlug}:${record.id}`" compact :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
+        <div v-else class="m-6 flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
+          <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" /><span>Guarda el registro primero para empezar a registrar actividad.</span>
         </div>
       </div>
-    </div>
+    </section>
   </div>
 </template>

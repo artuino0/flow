@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Building2, ImageUp, Landmark, ReceiptText, Trash2, UserRound, Palette, Globe, ShieldCheck, Plug, UsersRound } from '@lucide/vue'
+import { ImageUp, Landmark, ReceiptText, RefreshCw, Trash2 } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -24,28 +24,31 @@ const route = useRoute()
 const router = useRouter()
 const { fetchMe } = useAuth()
 const section = ref(String(route.query.section || (isAdmin.value ? 'organizacion' : 'perfil')))
-const sections = computed(() => [
-  { id: 'perfil', label: 'Mi perfil', icon: UserRound },
-  ...(isAdmin.value ? [
-    { id: 'organizacion', label: 'Organización', icon: Building2 },
-    { id: 'identidad', label: 'Identidad visual', icon: Palette },
-    { id: 'regional', label: 'Preferencias regionales', icon: Globe },
-    // Decisión cerrada de la HU (DOCS/HU_Timbrado_CFDI_PAC.md): Facturación
-    // solo existe para organizaciones en México (el servidor también corta los
-    // endpoints /api/tenant/pac/* con 404 fuera de MX).
-    ...(country.value === 'MX' ? [{ id: 'facturacion', label: 'Facturación', icon: ReceiptText }] : []),
-  ] : []),
-  { id: 'seguridad', label: 'Seguridad y sesiones', icon: ShieldCheck },
-  ...(isAdmin.value ? [{ id: 'integraciones', label: 'API e integraciones', icon: Plug }, { id: 'grupos', label: 'Grupos de notificación', icon: UsersRound }] : [])
-])
-const allowed = computed(() => sections.value.some(s => s.id === section.value))
+const settingsHeader = computed(() => ({
+  perfil: { title: 'Mi perfil', description: 'Administra tus datos personales y preferencias de acceso.' },
+  seguridad: { title: 'Seguridad y sesiones', description: 'Protege tu cuenta y revisa las sesiones activas.' },
+  plan: { title: 'Plan y consumo', description: 'Administra tu suscripción, límites y uso de recursos.' },
+  organizacion: { title: 'Organización', description: 'Configura los datos generales y fiscales de tu empresa.' },
+  identidad: { title: 'Identidad visual', description: 'Personaliza la imagen de tu organización en Flow.' },
+  regional: { title: 'Preferencias regionales', description: 'Define la zona horaria, moneda y formatos de tu organización.' },
+  facturacion: { title: 'Facturación', description: 'Configura el timbrado fiscal y la relación con tus módulos.' },
+  integraciones: { title: 'API e integraciones', description: 'Conecta los servicios que usa tu organización.' },
+  grupos: { title: 'Grupos de notificación', description: 'Organiza a las personas que reciben avisos del sistema.' }
+}[section.value] || { title: 'Ajustes', description: 'Configura tu organización y las preferencias de trabajo.' }))
+
+async function refreshBilling() {
+  await Promise.all([refreshNuxtData('billing-overview'), refreshNuxtData('billing-plans')])
+}
+const allowed = computed(() => isAdmin.value || section.value === 'perfil' || section.value === 'seguridad')
+watch(() => route.query.section, value => {
+  section.value = typeof value === 'string' ? value : (isAdmin.value ? 'organizacion' : 'perfil')
+})
 function selectSection(id: string) {
   if (id === section.value) return
   if (hasChanges.value) { pendingSection.value = id; return }
   section.value = id
   router.replace({ query: { ...route.query, section: id } })
-}
-function discardAndNavigate() { onDiscard(); childDirty.value = false; const id = pendingSection.value; pendingSection.value = ''; selectSection(id) }
+}function discardAndNavigate() { onDiscard(); childDirty.value = false; const id = pendingSection.value; pendingSection.value = ''; selectSection(id) }
 
 
 const {
@@ -177,7 +180,10 @@ async function onSave() {
       // '' - el regex de RFC/código postal se aplica solo cuando el valor es
       // un string no vacío, así que '' rompería la validación de un campo
       // que el usuario dejó sin completar a propósito.
-      body.fiscalData = Object.fromEntries(Object.entries(fiscal.value).map(([k, v]) => [k, v.trim() === '' ? null : v.trim()]))
+      body.fiscalData = Object.fromEntries(Object.entries(fiscal.value).map(([k, v]) => {
+        const normalized = k === 'rfc' ? v.trim().toUpperCase() : v.trim()
+        return [k, normalized === '' ? null : normalized]
+      }))
     }
     await $fetch('/api/tenant', { method: 'PUT', body })
     await refresh()
@@ -243,7 +249,7 @@ async function removeLogo() {
     await $fetch('/api/tenant/logo', { method: 'DELETE' })
     logoVersion.value++
     await refresh()
-    toast.success('Logo eliminado', 'Los correos utilizarán el logo de FlowERP.')
+    toast.success('Logo eliminado', 'Los correos utilizarán el logo de Flow.')
   } catch (err: any) {
     logoError.value = err?.data?.statusMessage || 'No se pudo quitar el logo'
     toast.error('No se pudo quitar el logo', logoError.value)
@@ -383,13 +389,21 @@ async function testPac() {
 
 <template>
   <div class="settings-page">
-    <p class="text-xs text-brand-text-secondary">Configuración <span class="mx-1 text-brand-text-muted">/</span> <strong class="text-brand-text">Ajustes</strong></p>
-    <header><h1 class="text-[22px] font-bold text-brand-text">Ajustes</h1><p class="mt-1 text-sm text-brand-text-secondary">Configura tu organización y las preferencias de trabajo</p></header>
-    <div class="settings-layout">
-      <nav aria-label="Secciones de ajustes" class="settings-nav">
-        <button v-for="item in sections" :key="item.id" :aria-current="section === item.id ? 'page' : undefined" :class="{ selected: section === item.id }" @click="selectSection(item.id)"><component :is="item.icon" class="h-4 w-4 shrink-0" :stroke-width="1.7" />{{ item.label }}</button>
-      </nav>
-      <div class="min-w-0 space-y-5">
+    <ListPageHeader
+      :title="settingsHeader.title"
+      :description="settingsHeader.description"
+      breadcrumb="Configuración"
+      :show-toolbar="false"
+    >
+      <template v-if="section === 'plan'" #actions>
+        <button type="button" class="settings-button inline-flex items-center gap-1.5" @click="refreshBilling">
+          <RefreshCw class="h-3.5 w-3.5" :stroke-width="1.75" />
+          Actualizar
+        </button>
+      </template>
+    </ListPageHeader>
+    <div class="min-w-0 space-y-5">
+
         <section v-if="!allowed" class="settings-card"><h2>Acceso restringido</h2><p>Los ajustes de empresa solo están disponibles para administradores.</p><button class="settings-button mt-4" @click="selectSection('perfil')">Ir a mi perfil</button></section>
         <template v-else-if="section === 'perfil'"><SettingsProfile mode="profile" @dirty="childDirty = $event" @security="selectSection('seguridad')" /><SettingsSessions /><SettingsApiKeys personal /></template>
         <template v-else-if="section === 'seguridad'">
@@ -430,7 +444,7 @@ async function testPac() {
             <div class="flex gap-4">
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalRfc" class="text-[13px] font-semibold text-brand-text">RFC</label>
-                <input id="fiscalRfc" v-model="fiscal.rfc" type="text" placeholder="AAA010101AAA" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm uppercase text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalRfc" v-model="fiscal.rfc" type="text" placeholder="AAA010101AAA" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm uppercase text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="fiscal.rfc = fiscal.rfc.toUpperCase()" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalRegimen" class="text-[13px] font-semibold text-brand-text">Régimen fiscal</label>
@@ -515,14 +529,15 @@ async function testPac() {
 <p class="mt-4 text-xs">El logo se guarda al subirlo o quitarlo.</p></section>
               <div class="settings-grid">
                 <section class="settings-card"><h2>Vista previa en reportes</h2><div class="mt-4 rounded border border-brand-border-light p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en reportes" class="mb-3 h-10 max-w-40 object-contain" /><strong class="text-sm">{{ tenant.name }}</strong><hr class="my-3 border-brand-border-light" /><p class="text-xs">Reporte operativo</p><div class="mt-3 h-12 rounded bg-brand-bg" /></div></section>
-                <section class="settings-card"><h2>Vista previa en correos</h2><div class="mt-4 rounded border border-brand-border-light p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en correos" class="mb-3 h-10 max-w-40 object-contain" /><strong v-else class="text-brand-blue">FlowERP</strong><h3 class="mt-4 text-sm font-semibold">Notificación de {{ tenant.name }}</h3><p class="mt-2 text-xs">Aquí aparecerá el contenido de tu correo.</p><span class="mt-4 inline-block rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white">Ver detalle</span></div></section>
+                <section class="settings-card"><h2>Vista previa en correos</h2><div class="mt-4 rounded border border-brand-border-light p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en correos" class="mb-3 h-10 max-w-40 object-contain" /><strong v-else class="text-brand-blue">Flow</strong><h3 class="mt-4 text-sm font-semibold">Notificación de {{ tenant.name }}</h3><p class="mt-2 text-xs">Aquí aparecerá el contenido de tu correo.</p><span class="mt-4 inline-block rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white">Ver detalle</span></div></section>
               </div>
             </template>
             <section v-else-if="section === 'regional'" class="settings-card"><h2>Zona horaria y moneda</h2><p>Define cómo se muestran las fechas y los importes de tu organización</p><div class="settings-grid mt-6"><ReportOptionSelect class="settings-select" label="Zona horaria" v-model="timezone" :options="TIMEZONE_OPTIONS" /><ReportOptionSelect class="settings-select" label="Moneda por defecto" v-model="defaultCurrency" :options="CURRENCY_OPTIONS" /></div><div class="mt-6 rounded bg-brand-bg p-4"><h3 class="mb-3 text-sm font-semibold">Vista previa</h3><dl class="grid gap-4 text-sm sm:grid-cols-3"><div><dt class="text-xs text-brand-text-muted">Fecha</dt><dd class="mt-1">{{ regionalPreview.date }}</dd></div><div><dt class="text-xs text-brand-text-muted">Hora</dt><dd class="mt-1">{{ regionalPreview.time }}</dd></div><div><dt class="text-xs text-brand-text-muted">Importe</dt><dd class="mt-1">{{ regionalPreview.amount }}</dd></div></dl></div></section>
+            <SettingsBillingSummary v-else-if="section === 'plan'" />
             <template v-else-if="section === 'facturacion'">
               <section class="settings-card">
                 <h2>Facturación electrónica (PAC)</h2>
-                <p>Conecta tu Proveedor Autorizado de Certificación para timbrar CFDI 4.0 desde FlowERP</p>
+                <p>Conecta tu Proveedor Autorizado de Certificación para timbrar CFDI 4.0 desde Flow</p>
                 <p v-if="pacLoading" role="status" class="mt-6 text-sm text-brand-text-muted">Cargando configuración…</p>
                 <div v-else-if="!pac && pacError" role="alert" class="mt-4 rounded bg-brand-error-bg p-3 text-sm text-brand-error-text">{{ pacError }}</div>
                 <template v-else-if="pac">
@@ -530,7 +545,7 @@ async function testPac() {
                     <label class="settings-field">Proveedor
                       <select v-model="pacProvider" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
                         <option value="facturapi">Facturapi (PAC real)</option>
-                        <option value="lab">Laboratorio local FlowERP (sin PAC, gratis)</option>
+                        <option value="lab">Laboratorio local Flow (sin PAC, gratis)</option>
                       </select>
                     </label>
                     <ReportOptionSelect v-if="pacProvider === 'facturapi'" class="settings-select" label="Modo" v-model="pacSandbox" :options="[{ value: 'true', label: 'Pruebas (sandbox)' }, { value: 'false', label: 'Producción' }]" />
@@ -582,6 +597,7 @@ async function testPac() {
                   </div>
                 </template>
               </section>
+              <SettingsFiscalModuleMapping @dirty="childDirty = $event" />
             </template>
             <template v-else-if="section === 'integraciones'"><section class="settings-card"><h2>Integraciones globales</h2><p>Configura los servicios compartidos por tu organización</p></section><SettingsEmailAccordion @dirty="childDirty = $event" /><SettingsApiKeys /></template>
             <SettingsNotificationGroups v-else-if="section === 'grupos'" />
@@ -589,12 +605,11 @@ async function testPac() {
         </template>
         <p v-if="saveError" role="alert" class="rounded bg-brand-error-bg p-3 text-sm text-brand-error-text">{{ saveError }}</p>
       </div>
-    </div>
     <SettingsConfirmDialog v-if="pendingSection" title="Cambios sin guardar" confirm-label="Descartar cambios" cancel-label="Seguir editando" @cancel="pendingSection = ''" @confirm="discardAndNavigate">Si cambias de sección, se perderán los cambios pendientes.</SettingsConfirmDialog>
   </div>
 </template>
 <style scoped>
-.settings-page { @apply flex min-h-[calc(100vh-120px)] flex-col gap-5 pb-20 text-brand-text; }
+.settings-page { --list-page-gutter-x: 32px; --list-page-gutter-y: 32px; @apply flex min-h-[calc(100vh-120px)] flex-col gap-6 pb-20 text-brand-text; }
 .settings-layout { @apply grid items-start gap-6 lg:grid-cols-[224px_minmax(0,1fr)]; }
 .settings-nav { @apply flex gap-1 overflow-x-auto lg:sticky lg:top-5 lg:flex-col; }
 .settings-nav button { @apply flex shrink-0 items-center gap-2.5 rounded px-3 py-3 text-left text-[13px] text-brand-text-secondary hover:bg-brand-blue-bg; }
@@ -612,3 +627,5 @@ async function testPac() {
 .settings-select :deep(.report-option-trigger) { @apply min-h-10 w-full font-normal; }
 .settings-select :deep(.report-option-menu) { @apply max-h-64 overflow-y-auto; }
 </style>
+
+

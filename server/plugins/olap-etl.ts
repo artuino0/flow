@@ -1,6 +1,7 @@
 import cron from 'node-cron'
 import { runOlapEtl } from '~/server/utils/olapEtl'
 import { logger } from '~/server/utils/logger'
+import { getLicenseStatus } from '~/server/utils/license'
 
 // HU-ERD-28: job node-cron que corre DENTRO del proceso Nitro (sin infraestructura
 // aparte) cada 15 min, sincronizando el dominio transaccional al esquema OLAP
@@ -21,6 +22,7 @@ export default defineNitroPlugin(() => {
   let isRunning = false
 
   cron.schedule('*/15 * * * *', async () => {
+    if (!getLicenseStatus().activated) return
     if (isRunning) {
       logger.warn('olap_etl_skip_overlap')
       return

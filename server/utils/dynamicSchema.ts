@@ -130,6 +130,26 @@ const tableColumnsSchema = z
     path: ['columns']
   })
 
+const calculationSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('formula'),
+    operator: z.enum(['add', 'subtract', 'multiply', 'divide']),
+    leftField: z.string().min(1),
+    rightField: z.string().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal('rollup'),
+    aggregate: z.enum(['sum', 'count']),
+    sourceEntity: z.string().min(1),
+    relationField: z.string().min(1),
+    valueField: z.string().min(1).optional()
+  }).strict()
+]).superRefine((value, ctx) => {
+  if (value.kind === 'rollup' && value.aggregate === 'sum' && !value.valueField) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'valueField es obligatorio cuando el acumulado es una suma', path: ['valueField'] })
+  }
+})
+
 const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   text: z
     .object({
@@ -143,7 +163,8 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
     .object({
       min: z.number().optional(),
       max: z.number().optional(),
-      integer: z.boolean().optional()
+      integer: z.boolean().optional(),
+      calculation: calculationSchema.optional()
     })
     .strict(),
   currency: z
@@ -152,7 +173,8 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
       decimals: z.number().int().min(0).max(4).default(2),
       allowNegative: z.boolean().default(false),
       min: z.number().optional(),
-      max: z.number().optional()
+      max: z.number().optional(),
+      calculation: calculationSchema.optional()
     })
     .strict(),
   boolean: z.object({}).strict(),
@@ -193,6 +215,15 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   incremental: z
     .object({
       digits: z.number().int().min(1).max(15),
+      // Prefijo fijo configurable por el usuario (ej. "FAC-"), mutuamente
+      // excluyente en la practica con prefixSource. La validacion cruzada de
+      // que no se envien ambos vive en assertIncrementalConfig().
+      prefix: z
+        .string()
+        .min(1)
+        .max(20)
+        .regex(/^[A-Za-z0-9_-]+$/)
+        .optional(),
       prefixSource: z
         .object({
           relationField: z.string().min(1),

@@ -32,6 +32,10 @@ const props = defineProps<{
   // resto de usos (ModulePreviewCard.vue, "Informacion general") porque
   // queda sin usar (undefined) ahi.
   hideLabels?: boolean
+  /** Edición dentro de la ficha: conserva filas y divisores del modo lectura. */
+  detail?: boolean
+  /** Etiquetas ya resueltas por el detalle para relaciones existentes. */
+  relationLabels?: Record<string, Record<string, string>>
 }>()
 
 const emit = defineEmits<{
@@ -68,11 +72,28 @@ function displayValue(name: string): string {
   return v === null || v === undefined ? '' : String(v)
 }
 
+function dateInputValue(name: string): string {
+  const value = displayValue(name)
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10)
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return String(year) + '-' + month + '-' + day
+}
+
+function isCalculated(field: EntityFieldMeta): boolean {
+  return Boolean(field.validationRules?.calculation)
+}
+
 function setValue(name: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [name]: value })
 }
 
 function onInput(field: EntityFieldMeta, raw: unknown) {
+  if (isCalculated(field)) return
   let value: unknown = raw
   if (field.dataType === 'number' && raw !== '') value = Number(raw)
   if (field.dataType === 'number' && raw === '') value = null
@@ -83,6 +104,7 @@ function onInput(field: EntityFieldMeta, raw: unknown) {
 function validateAll(): boolean {
   const nextErrors: Record<string, string> = {}
   for (const field of renderableFields.value) {
+    if (isCalculated(field)) continue
     const result = validateFieldValue(field, valueFor(field.name))
     if (!result.valid) nextErrors[field.name] = result.error!
   }
@@ -94,9 +116,9 @@ defineExpose({ validateAll })
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div v-for="field in renderableFields" :key="field.id" class="flex flex-col gap-1.5">
-      <label v-if="!hideLabels" :for="`field-${field.name}`" class="text-[13px] font-semibold text-brand-text">
+  <div class="flex flex-col" :class="detail ? 'detail-form gap-0' : 'gap-4'">
+    <div v-for="field in renderableFields" :key="field.id" class="flex flex-col" :class="detail ? 'detail-field gap-[3px] border-b border-brand-border-light px-[18px] py-2.5 last:border-b-0' : 'gap-1.5'">
+      <label v-if="!hideLabels" :for="`field-${field.name}`" :class="detail ? 'text-[11px] font-semibold leading-4 text-brand-text-secondary' : 'text-[13px] font-semibold text-brand-text'">
         {{ field.label }}
         <span v-if="field.isRequired" class="text-brand-error-text">*</span>
       </label>
@@ -133,16 +155,15 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'number'"
         :id="`field-${field.name}`"
         type="number"
-        :disabled="disabled"
+        :disabled="disabled || isCalculated(field)"
         :min="field.validationRules?.min as number"
         :max="field.validationRules?.max as number"
         :step="field.validationRules?.integer ? 1 : 'any'"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+        :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
-
       <!-- currency: conserva el decimal como texto canónico para no perder
            centavos por aritmética de punto flotante. -->
       <div v-else-if="field.dataType === 'currency'" class="relative">
@@ -151,16 +172,17 @@ defineExpose({ validateAll })
           :id="`field-${field.name}`"
           type="number"
           inputmode="decimal"
-          :disabled="disabled"
+          :disabled="disabled || isCalculated(field)"
           :min="field.validationRules?.allowNegative ? (field.validationRules?.min as number) : Math.max(0, Number(field.validationRules?.min ?? 0))"
           :max="field.validationRules?.max as number"
           :step="1 / Math.pow(10, currencyDecimals(field.validationRules))"
           class="w-full rounded border py-[9px] pl-14 pr-3 text-right tabular-nums text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+          :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
           :value="displayValue(field.name)"
           placeholder="0.00"
           @input="onInput(field, ($event.target as HTMLInputElement).value)"
         />
+        <p v-if="isCalculated(field)" class="mt-1 text-[11px] text-brand-blue">Calculado automáticamente</p>
       </div>
 
       <!-- boolean -->
@@ -186,7 +208,7 @@ defineExpose({ validateAll })
         :max="field.validationRules?.max as string"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
-        :value="displayValue(field.name)"
+        :value="dateInputValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
 
@@ -209,6 +231,7 @@ defineExpose({ validateAll })
         :field="field"
         :model-value="valueFor(field.name)"
         :disabled="disabled"
+        :detail="detail"
         @update:model-value="(value) => setValue(field.name, value)"
       />
 
@@ -226,7 +249,9 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'relation'"
         :field="field"
         :model-value="valueFor(field.name)"
+        :initial-label="relationLabels?.[field.name]?.[String(valueFor(field.name))]"
         :disabled="disabled"
+        :detail="detail"
         @update:model-value="(value) => setValue(field.name, value)"
       />
 
@@ -252,7 +277,32 @@ defineExpose({ validateAll })
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
 
+      <p v-if="field.dataType === 'number' && isCalculated(field)" class="text-[11px] text-brand-blue">Calculado automáticamente</p>
       <p v-if="errors[field.name]" class="flex items-center gap-1 text-xs text-brand-error-text">{{ errors[field.name] }}</p>
     </div>
   </div>
 </template>
+
+<style scoped>
+.detail-form :is(input:not([type='checkbox']), select, textarea) {
+  border-color:transparent;
+  background:#F5F8FA;
+  border-radius:4px;
+  padding-top:6px;
+  padding-bottom:6px;
+  font-size:13px;
+  box-shadow:none;
+}
+.detail-form :is(input:not([type='checkbox']), select, textarea):hover {
+  background:#EEF5F7;
+}
+.detail-form :is(input:not([type='checkbox']), select, textarea):focus {
+  border-color:#0091AE;
+  background:#FFFFFF;
+  outline:none;
+  box-shadow:0 0 0 1px #0091AE;
+}
+.detail-form .detail-field:focus-within {
+  background:#F5F8FA;
+}
+</style>

@@ -13,7 +13,13 @@ export default defineEventHandler(async (event) => {
   const [current] = await db.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
   if (!current) throw createError({ statusCode: 404, statusMessage: 'Organización no encontrada' })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw createError({ statusCode: 400, statusMessage: 'Datos de configuración inválidos' })
-  const parsed = tenantUpdateSchema.safeParse({ ...raw, country: raw.country ?? current.country, idleTimeoutMinutes: raw.idleTimeoutMinutes ?? current.idleTimeoutMinutes, idleWarningMinutes: raw.idleWarningMinutes ?? current.idleWarningMinutes })
+  const fiscalData = raw.fiscalData && typeof raw.fiscalData === 'object' && !Array.isArray(raw.fiscalData)
+    ? {
+        ...raw.fiscalData,
+        ...(typeof raw.fiscalData.rfc === 'string' ? { rfc: raw.fiscalData.rfc.trim().toUpperCase() } : {})
+      }
+    : raw.fiscalData
+  const parsed = tenantUpdateSchema.safeParse({ ...raw, fiscalData, country: raw.country ?? current.country, idleTimeoutMinutes: raw.idleTimeoutMinutes ?? current.idleTimeoutMinutes, idleWarningMinutes: raw.idleWarningMinutes ?? current.idleWarningMinutes })
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Revisa los datos', data: { errors: parsed.error.issues.map(issue => ({ field: issue.path.join('.'), message: issue.message })) } })
   const body = parsed.data
   if (body.timezone) {
@@ -32,3 +38,4 @@ export default defineEventHandler(async (event) => {
 
   return updated
 })
+

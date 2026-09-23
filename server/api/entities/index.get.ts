@@ -13,12 +13,13 @@ import { listEntities, MODULE_KINDS } from '~/server/utils/moduleEntities'
 // 'dimension' (pages/catalogos/index.vue) - mismo endpoint para ambas
 // pantallas, sin duplicar logica de listado.
 const querySchema = z.object({
-  moduleKind: z.enum(MODULE_KINDS).optional()
+  moduleKind: z.enum(MODULE_KINDS).optional(),
+  deleted: z.enum(['exclude', 'only', 'all']).default('exclude')
 })
 
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const query = await getValidatedQuery(event, querySchema.parse)
-  const entities = await listEntities(auth.tenantId, query.moduleKind)
+  const entities = await listEntities(auth.tenantId, query.moduleKind, query.deleted)
   return { entities }
 })

@@ -18,7 +18,7 @@
 // internos (rutas /triggers, tablas triggers/trigger_actions/trigger_logs,
 // nombres de variables/tipos) se mantienen sin cambio, es un rename de cara
 // al usuario unicamente.
-import { ChevronRight, Search, Settings2, Trash2, Zap } from '@lucide/vue'
+import { Settings2, Trash2, Zap } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -72,6 +72,12 @@ const { data, pending, error: fetchError, refresh } = await useFetch<TriggerRow[
 })
 
 const search = ref('')
+const hasModules = computed(() => Boolean(entitiesData.value?.entities.length))
+const isFirstRun = computed(() => (data.value?.length ?? 0) === 0 && !entityFilter.value)
+function clearFilters() {
+  entityFilter.value = ''
+  search.value = ''
+}
 const filteredTriggers = computed(() => {
   const rows = data.value ?? []
   const term = search.value.trim().toLowerCase()
@@ -160,12 +166,29 @@ async function onCreate() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="flex items-center gap-1 text-[13px]">
-      <span class="text-brand-text-secondary">Inicio</span>
-      <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
-      <span class="font-bold text-brand-text">Automatización</span>
-    </div>
+  <div class="flex min-h-[calc(100dvh-120px)] flex-col gap-4">
+    <ListPageHeader
+      v-model:search="search"
+      title="Automatización"
+      description="Reglas que se disparan solas cuando algo pasa en tus módulos."
+      :count="data?.length"
+      count-noun="flujo"
+      search-placeholder="Buscar automatización..."
+      @refresh="refresh"
+    >
+      <template #actions>
+        <button v-if="data?.length" type="button" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
+          <Zap class="h-4 w-4" :stroke-width="1.75" />
+          Nueva automatización
+        </button>
+      </template>
+      <template #toolbar-left>
+        <select v-model="entityFilter" class="h-[30px] rounded border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text focus:outline-none">
+          <option value="">Todos los módulos</option>
+          <option v-for="e in entitiesData?.entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option>
+        </select>
+      </template>
+    </ListPageHeader>
 
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
@@ -173,45 +196,31 @@ async function onCreate() {
     </p>
 
     <template v-else-if="data">
-      <div class="flex items-center justify-between">
-        <div class="flex flex-col gap-1">
-          <h1 class="text-[22px] font-bold text-brand-text">Automatización</h1>
-          <p class="text-sm text-brand-text-secondary">Reglas que se disparan solas cuando algo pasa en tus módulos</p>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <div class="flex w-56 items-center gap-2 rounded border border-brand-border bg-brand-surface px-3 py-2">
-            <Search class="h-[15px] w-[15px] shrink-0 text-brand-text-muted" :stroke-width="1.75" />
-            <input
-              v-model="search"
-              type="text"
-              placeholder="Buscar automatización..."
-              class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
-            />
-          </div>
-          <select
-            v-model="entityFilter"
-            class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none"
-          >
-            <option value="">Todos los módulos</option>
-            <option v-for="e in entitiesData?.entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option>
-          </select>
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-            @click="openCreate"
-          >
-            <Zap class="h-4 w-4" :stroke-width="1.75" />
-            Nueva automatización
-          </button>
-        </div>
-      </div>
-
       <p v-if="deleteError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
       <p v-if="toggleError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ toggleError }}</p>
 
-      <p v-if="data.length === 0" class="text-sm text-brand-text-muted">Este tenant todavía no tiene automatizaciones configuradas.</p>
-      <p v-else-if="filteredTriggers.length === 0" class="text-sm text-brand-text-muted">Ninguna automatización coincide con "{{ search }}".</p>
+      <section v-if="isFirstRun" class="flex min-h-[340px] flex-1 items-center justify-center px-4 py-12 text-center" aria-labelledby="automation-empty-title">
+        <div class="flex max-w-[430px] flex-col items-center">
+          <span class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-blue-bg text-brand-blue" aria-hidden="true">
+            <Zap class="h-8 w-8" :stroke-width="1.5" />
+          </span>
+          <h2 id="automation-empty-title" class="mt-5 text-xl font-bold text-brand-text">Aún no hay automatizaciones</h2>
+          <p class="mt-2 text-sm leading-6 text-brand-text-secondary">Elige un módulo y un evento para ejecutar acciones automáticamente, como avisar a tu equipo o actualizar un registro.</p>
+          <button v-if="hasModules" type="button" class="mt-5 inline-flex h-10 items-center gap-2 rounded bg-brand-orange px-5 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
+            <Zap class="h-4 w-4" :stroke-width="1.75" />
+            Crear la primera automatización
+          </button>
+          <NuxtLink v-else to="/modulos/nuevo" class="mt-5 inline-flex h-10 items-center rounded bg-brand-orange px-5 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Crear un módulo</NuxtLink>
+        </div>
+      </section>
+      <section v-else-if="filteredTriggers.length === 0" class="flex min-h-[340px] flex-1 items-center justify-center px-4 py-12 text-center" aria-labelledby="automation-filter-empty-title">
+        <div class="flex max-w-[400px] flex-col items-center">
+          <span class="flex h-14 w-14 items-center justify-center rounded-full bg-brand-blue-bg text-brand-text-secondary" aria-hidden="true"><Zap class="h-7 w-7" :stroke-width="1.5" /></span>
+          <h2 id="automation-filter-empty-title" class="mt-4 text-lg font-bold text-brand-text">No hay resultados</h2>
+          <p class="mt-2 text-sm leading-6 text-brand-text-secondary">{{ search.trim() ? `No encontramos automatizaciones para “${search.trim()}”${entityFilter ? ' en este módulo' : ''}.` : 'No hay automatizaciones en el módulo seleccionado.' }}</p>
+          <button type="button" class="mt-4 rounded border border-brand-border bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="clearFilters">Limpiar filtros</button>
+        </div>
+      </section>
 
       <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
         <table class="min-w-full text-sm">

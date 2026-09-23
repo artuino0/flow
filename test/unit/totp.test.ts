@@ -19,7 +19,7 @@ describe('totp', () => {
     expect(uri).toMatch(/^otpauth:\/\/totp\//)
     expect(uri).toContain('secret=JBSWY3DPEHPK3PXP')
     expect(decodeURIComponent(uri)).toContain('user@test.com')
-    expect(decodeURIComponent(uri)).toContain('FlowERP')
+    expect(decodeURIComponent(uri)).toContain('Flow')
   })
 
   it('acepta un codigo real generado con el mismo secreto', async () => {

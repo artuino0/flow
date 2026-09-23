@@ -17,12 +17,12 @@
 // pencil-antes-de-frontend: no existe ningun Screen/Importar en el .pen) -
 // se construyo siguiendo el mismo lenguaje visual ya establecido en el resto
 // del Constructor de Modulos.
-import { FileBarChart2, FilePlus, FileText, Filter, Plus, Settings2, Upload, X } from '@lucide/vue'
+import { ChevronRight, FilePlus, FileText, Pencil, Filter, LayoutGrid, List, MoreHorizontal, Plus, Printer, RefreshCw, Search, Settings2, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import { formatRelativeTime } from '~/utils/relativeTime'
 import { isListFilterable, listFilterOperators, type ListFilterOperator } from '~/utils/listFilters'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', fullBleed: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
@@ -136,15 +136,6 @@ function clearFilter() {
   page.value = 1
 }
 
-const appliedFilterFieldMeta = computed(() => filterableFields.value.find((f) => f.name === appliedFilterField.value) ?? null)
-const appliedFilterLabels = computed(() => {
-  const options = Array.isArray(appliedFilterFieldMeta.value?.validationRules?.options)
-    ? (appliedFilterFieldMeta.value!.validationRules.options as Array<{ value: string; label: string }>)
-    : []
-  return appliedFilterValues.value.map((v) => options.find((o) => o.value === v)?.label ?? v)
-})
-const appliedFilterOperatorLabel = computed(() => listFilterOperators(appliedFilterFieldMeta.value?.dataType ?? 'text').find((op) => op.value === appliedFilterOperator.value)?.label ?? 'Es igual a')
-
 // ERD-88 (Diseñador de reportes imprimibles): boton "Generar reporte" +
 // "Entry Menu" del listado - fiel a Screen/Generar reporte (punto de
 // entrada) del .pen, revisado con las herramientas de Pencil antes de
@@ -157,12 +148,9 @@ const appliedFilterOperatorLabel = computed(() => listFilterOperators(appliedFil
 // Diseñador vacio; debajo, si hay plantillas guardadas para esta entidad, una
 // seccion "REPORTES GUARDADOS" (icono file-text) - cada item es un documento
 // ya configurado (ej. "Remito de carga", "Lista de embarque" en el mock), y
-// tocarlo lleva directo a la Vista previa impresión (reimprimir con los datos
-// vigentes, ver comentario largo sobre esto en server/db/schema.ts) en vez de
-// reabrir el Diseñador - "editar" esa plantilla queda como una accion
-// secundaria disponible DESDE la propia Vista previa (ERD-88 #293), no desde
-// este menu de entrada (el mock no muestra ningun icono de edición en la fila,
-// solo el titulo + "Editado hace X").
+// tocar el titulo lleva a la Vista previa de impresión con datos vigentes.
+// El lapiz visible solo para administradores abre directamente el diseñador;
+// la API tambien exige ese rol para guardar o eliminar plantillas.
 interface SavedPrintReport {
   id: string
   title: string
@@ -195,6 +183,21 @@ async function toggleReportMenu() {
   }
 }
 
+const searchDraft = ref('')
+const appliedSearch = ref('')
+const refreshing = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(searchDraft, value => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    appliedSearch.value = value.trim()
+    page.value = 1
+  }, 280)
+})
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
 interface RecordsResponse {
   data: { id: string; customData: Record<string, unknown> }[]
   page: number
@@ -215,17 +218,103 @@ const {
   error: recordsError,
   refresh: refreshRecords
 } = await useFetch<RecordsResponse>(`/api/records/${slug}`, {
-  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}`,
+  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedSearch.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}`,
   query: computed(() => ({
     page: page.value,
     pageSize: 20,
     sortBy: sortBy.value,
     sortDir: sortDir.value,
+    search: appliedSearch.value || undefined,
     filterField: appliedFilterField.value ?? undefined,
     filterValues: appliedFilterValues.value.length > 0 ? appliedFilterValues.value.join(',') : undefined,
     filterOperator: appliedFilterField.value ? appliedFilterOperator.value : undefined
   })),
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
+
+interface BoardResponse {
+  config: NonNullable<typeof meta.value>['boardConfig']
+  columns: Array<{ key: string; label: string; color?: string; records: Array<{ id: string; customData: Record<string, unknown>; updatedAt: string }>; total: number }>
+  relationLabels: Record<string, Record<string, string>>
+}
+const boardEnabled = computed(() => Boolean(meta.value?.boardConfig?.enabled))
+const viewMode = ref<'table' | 'board'>(boardEnabled.value ? (meta.value?.boardConfig.defaultView ?? 'table') : 'table')
+const moduleDescription = computed(() => slug.toLowerCase() === 'prospectos'
+  ? 'Gestiona oportunidades y avances comerciales.'
+  : `Gestiona los registros y la operación de ${meta.value?.entity?.name || slug}.`)
+const activeFilterCount = computed(() => (appliedFilterField.value ? 1 : 0))
+
+const { data: boardData, pending: boardPending, error: boardError, refresh: refreshBoard } = await useFetch<BoardResponse>(`/api/records/${slug}/board`, {
+  key: () => `record-board-${slug}-${appliedSearch.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}`,
+  query: computed(() => ({
+    pageSize: 40,
+    search: appliedSearch.value || undefined,
+    filterField: appliedFilterField.value ?? undefined,
+    filterValues: appliedFilterValues.value.length > 0 ? appliedFilterValues.value.join(',') : undefined,
+    filterOperator: appliedFilterField.value ? appliedFilterOperator.value : undefined
+  })),
+  immediate: boardEnabled.value,
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
+onMounted(() => {
+  const saved = localStorage.getItem(`flow-record-view:${slug}`)
+  if (boardEnabled.value && (saved === 'table' || saved === 'board')) viewMode.value = saved
+})
+watch(viewMode, value => {
+  if (import.meta.client) localStorage.setItem(`flow-record-view:${slug}`, value)
+  if (value === 'board' && !boardData.value) void refreshBoard()
+})
+async function refreshCurrentView() {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    if (viewMode.value === 'board') await refreshBoard()
+    else await refreshRecords()
+  } finally {
+    refreshing.value = false
+  }
+}
+
+function reconcileBoardRecord(updated: { id: string; customData: Record<string, unknown>; updatedAt: string }) {
+  const listRecord = recordsData.value?.data.find(record => record.id === updated.id)
+  if (listRecord) listRecord.customData = { ...updated.customData }
+
+  const board = boardData.value
+  const statusField = board?.config?.statusField
+  if (!board || !statusField) return
+
+  let source: (typeof board.columns)[number] | undefined
+  let sourceIndex = -1
+  for (const column of board.columns) {
+    const index = column.records.findIndex(record => record.id === updated.id)
+    if (index >= 0) {
+      source = column
+      sourceIndex = index
+      break
+    }
+  }
+
+  const rawStatus = updated.customData[statusField]
+  const targetKey = rawStatus === null || rawStatus === undefined || rawStatus === '' ? '__unset__' : String(rawStatus)
+  const target = board.columns.find(column => column.key === targetKey)
+  if (!target) return
+
+  if (source?.key === target.key && sourceIndex >= 0) {
+    source.records.splice(sourceIndex, 1, updated)
+    return
+  }
+
+  if (source && sourceIndex >= 0) {
+    source.records.splice(sourceIndex, 1)
+    source.total = Math.max(0, source.total - 1)
+  }
+  target.records.unshift(updated)
+  target.total += 1
+}
+
+const labelPrintUrl = computed(() => {
+  const ids = recordsData.value?.data.map(record => record.id) ?? []
+  return `/registros/${slug}/etiquetas/imprimir${ids.length ? `?ids=${encodeURIComponent(ids.join(','))}` : ''}`
 })
 
 function onSort(value: { sortBy: string; sortDir: 'asc' | 'desc' }) {
@@ -257,190 +346,270 @@ async function onDelete(id: string) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <h1 class="text-[22px] font-bold text-brand-text">{{ meta?.entity?.name || slug }}</h1>
-        <span
-          v-if="recordsData"
-          class="rounded-full bg-brand-neutral-bg px-2.5 py-0.5 text-xs font-semibold text-brand-neutral-text"
-        >
-          {{ recordsData.total }} registro{{ recordsData.total === 1 ? '' : 's' }}
-        </span>
-        <NuxtLink
-          v-if="isAdmin && meta?.entity?.id"
-          :to="`/modulos/${meta.entity.id}/editar`"
-          title="Editar módulo"
-          class="flex h-7 w-7 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg hover:text-brand-blue"
-        >
-          <Settings2 class="h-4 w-4" :stroke-width="1.75" />
-        </NuxtLink>
-      </div>
-      <div class="flex items-center gap-2.5">
-        <div v-if="filterableFields.length > 0" class="relative">
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
-            @click="filterPopoverOpen ? (filterPopoverOpen = false) : openFilterPopover()"
-          >
-            <Filter class="h-4 w-4" :stroke-width="1.75" />
-            Filtros
-          </button>
+  <div class="records-screen" :class="{ 'board-active': viewMode === 'board' }">
+    <header class="module-page-header">
+      <nav class="module-breadcrumb" aria-label="Migas de pan">
+        <NuxtLink to="/">Inicio</NuxtLink>
+        <ChevronRight class="h-[13px] w-[13px]" :stroke-width="1.75" />
+        <span>{{ meta?.entity?.name || slug }}</span>
+      </nav>
 
-          <!-- HU-ERD-73: panel "Filtrar por <Campo>" - campo + lista de
-               opciones configuradas (color + etiqueta, sin conteo por valor:
-               eso pediria una query agregada extra por opcion, no forma parte
-               del criterio de aceptacion de esta HU). -->
-          <div v-if="filterPopoverOpen" class="absolute right-0 z-20 mt-1.5 w-80 rounded-lg border border-brand-border-light bg-brand-surface p-4 shadow-lg">
-            <div class="mb-3 flex items-center justify-between">
-              <h3 class="text-sm font-bold text-brand-text">Filtrar{{ draftField ? ` por ${draftField.label}` : '' }}</h3>
-              <button type="button" class="text-brand-text-muted hover:text-brand-text" @click="filterPopoverOpen = false">
-                <X class="h-4 w-4" :stroke-width="1.75" />
-              </button>
-            </div>
-
-            <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Campo</label>
-            <select
-              v-model="draftFieldName"
-              class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              @change="resetDraftField"
+      <div class="module-title-row">
+        <div class="module-title-copy">
+          <div class="flex min-w-0 items-center gap-2.5">
+            <h1>{{ meta?.entity?.name || slug }}</h1>
+            <span v-if="recordsData" class="record-count">
+              {{ recordsData.total }} registro{{ recordsData.total === 1 ? '' : 's' }}
+            </span>
+            <NuxtLink
+              v-if="isAdmin && meta?.entity?.id"
+              :to="'/modulos/' + meta.entity.id + '/editar'"
+              title="Editar módulo"
+              class="module-settings"
             >
-              <option v-for="f in filterableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
-            </select>
+              <Settings2 class="h-4 w-4" :stroke-width="1.75" />
+            </NuxtLink>
+          </div>
+          <p>{{ moduleDescription }}</p>
+        </div>
 
-            <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Comparación</label>
-            <select v-model="draftOperator" class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
-              <option v-for="operator in draftOperators" :key="operator.value" :value="operator.value">{{ operator.label }}</option>
-            </select>
+        <div class="module-actions">
+          <div class="relative">
+            <button
+              type="button"
+              class="header-button"
+              :disabled="filterableFields.length === 0"
+              @click="filterPopoverOpen ? (filterPopoverOpen = false) : openFilterPopover()"
+            >
+              <Filter class="h-[15px] w-[15px]" :stroke-width="1.75" />
+              Filtros
+            </button>
 
-            <label v-if="draftOperatorMeta?.values" class="mb-1 block text-xs font-semibold text-brand-text-secondary">Valor</label>
-            <div v-if="draftField?.dataType === 'select' || draftField?.dataType === 'multiselect'" class="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
-              <p v-if="draftOptions.length === 0" class="text-xs text-brand-text-muted">Este campo no tiene opciones configuradas.</p>
-              <label
-                v-for="opt in draftOptions"
-                :key="opt.value"
-                class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-brand-text hover:bg-brand-bg"
+            <div v-if="filterPopoverOpen" class="filter-popover">
+              <div class="mb-3 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-brand-text">Filtrar{{ draftField ? ' por ' + draftField.label : '' }}</h3>
+                <button type="button" class="text-brand-text-muted hover:text-brand-text" @click="filterPopoverOpen = false">
+                  <X class="h-4 w-4" :stroke-width="1.75" />
+                </button>
+              </div>
+
+              <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Campo</label>
+              <select
+                v-model="draftFieldName"
+                class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                @change="resetDraftField"
               >
-                <input type="checkbox" :checked="draftValues.includes(opt.value)" class="h-3.5 w-3.5" @change="toggleDraftValue(opt.value)" />
-                <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
-                {{ opt.label }}
-              </label>
-            </div>
-            <select v-else-if="draftField?.dataType === 'boolean'" v-model="draftInput" class="mb-4 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text">
-              <option value="true">Sí</option><option value="false">No</option>
-            </select>
-            <div v-else-if="draftOperatorMeta?.values" class="mb-4 flex gap-2">
-              <input v-model="draftInput" :type="['number','currency','incremental'].includes(draftField?.dataType ?? '') ? 'number' : ['date','datetime'].includes(draftField?.dataType ?? '') ? 'date' : 'text'" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" :placeholder="draftField?.dataType === 'relation' ? 'ID del registro relacionado' : 'Valor'" />
-              <input v-if="draftOperatorMeta.values === 2" v-model="draftSecondInput" type="date" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" placeholder="Hasta" />
-            </div>
+                <option v-for="f in filterableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
+              </select>
 
-            <div class="flex items-center justify-between">
-              <button type="button" class="text-sm font-semibold text-brand-text-secondary hover:text-brand-text" @click="clearFilter">Limpiar</button>
-              <button type="button" class="rounded bg-brand-orange px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="applyFilter">
-                Aplicar filtro
-              </button>
+              <label class="mb-1 block text-xs font-semibold text-brand-text-secondary">Comparación</label>
+              <select v-model="draftOperator" class="mb-3 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+                <option v-for="operator in draftOperators" :key="operator.value" :value="operator.value">{{ operator.label }}</option>
+              </select>
+
+              <label v-if="draftOperatorMeta?.values" class="mb-1 block text-xs font-semibold text-brand-text-secondary">Valor</label>
+              <div v-if="draftField?.dataType === 'select' || draftField?.dataType === 'multiselect'" class="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
+                <p v-if="draftOptions.length === 0" class="text-xs text-brand-text-muted">Este campo no tiene opciones configuradas.</p>
+                <label v-for="opt in draftOptions" :key="opt.value" class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-brand-text hover:bg-brand-bg">
+                  <input type="checkbox" :checked="draftValues.includes(opt.value)" class="h-3.5 w-3.5" @change="toggleDraftValue(opt.value)" />
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
+                  {{ opt.label }}
+                </label>
+              </div>
+              <select v-else-if="draftField?.dataType === 'boolean'" v-model="draftInput" class="mb-4 w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text">
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+              <div v-else-if="draftOperatorMeta?.values" class="mb-4 flex gap-2">
+                <input v-model="draftInput" :type="['number','currency','incremental'].includes(draftField?.dataType ?? '') ? 'number' : ['date','datetime'].includes(draftField?.dataType ?? '') ? 'date' : 'text'" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" :placeholder="draftField?.dataType === 'relation' ? 'ID del registro relacionado' : 'Valor'" />
+                <input v-if="draftOperatorMeta.values === 2" v-model="draftSecondInput" type="date" class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text" placeholder="Hasta" />
+              </div>
+
+              <div class="flex items-center justify-between">
+                <button type="button" class="text-sm font-semibold text-brand-text-secondary hover:text-brand-text" @click="clearFilter">Limpiar</button>
+                <button type="button" class="rounded bg-brand-orange px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="applyFilter">
+                  Aplicar filtro
+                </button>
+              </div>
             </div>
           </div>
+
+          <NuxtLink v-if="meta?.permissions?.canCreate" :to="'/registros/' + slug + '/importar'" class="header-button">
+            <Upload class="h-[15px] w-[15px]" :stroke-width="1.75" />
+            Importar
+          </NuxtLink>
+          <NuxtLink v-if="meta?.permissions?.canCreate" :to="'/registros/' + slug + '/nuevo'" class="header-button primary">
+            <Plus class="h-4 w-4" :stroke-width="2" />
+            Crear nuevo
+          </NuxtLink>
         </div>
+      </div>
+    </header>
+
+    <div class="board-toolbar">
+      <div class="toolbar-left">
+        <label class="record-search">
+          <Search class="h-3.5 w-3.5" :stroke-width="1.75" />
+          <input v-model="searchDraft" type="search" placeholder="Buscar registros..." />
+        </label>
+
+        <button v-if="activeFilterCount" type="button" class="active-filter-chip" @click="clearFilter">
+          <Filter class="h-3 w-3" :stroke-width="1.75" />
+          {{ activeFilterCount }} filtro{{ activeFilterCount === 1 ? '' : 's' }} activo{{ activeFilterCount === 1 ? '' : 's' }}
+          <X class="h-3 w-3" :stroke-width="2" />
+        </button>
+
+        <span class="updated-label">
+          <RefreshCw class="h-[13px] w-[13px]" :stroke-width="1.75" />
+          Actualizado recientemente
+        </span>
+      </div>
+
+      <div class="toolbar-right">
+        <div v-if="boardEnabled" class="view-toggle" aria-label="Vista de registros">
+          <button type="button" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'">
+            <List class="h-3.5 w-3.5" :stroke-width="1.75" />
+            Tabla
+          </button>
+          <button type="button" :class="{ active: viewMode === 'board' }" @click="viewMode = 'board'">
+            <LayoutGrid class="h-3.5 w-3.5" :stroke-width="1.75" />
+            Kanban
+          </button>
+        </div>
+
+        <button type="button" class="toolbar-icon-button" title="Actualizar" :disabled="refreshing" @click="refreshCurrentView">
+          <RefreshCw class="h-[15px] w-[15px]" :class="{ 'animate-spin': refreshing }" :stroke-width="1.75" />
+        </button>
+
         <div class="relative">
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-            @click="toggleReportMenu"
-          >
-            <FileBarChart2 class="h-4 w-4" :stroke-width="1.75" />
-            Generar reporte
+          <button type="button" class="toolbar-icon-button" title="Más acciones" @click="toggleReportMenu">
+            <MoreHorizontal class="h-[15px] w-[15px]" :stroke-width="2" />
           </button>
 
-          <div v-if="reportMenuOpen" class="absolute right-0 z-20 mt-1.5 w-80 rounded-lg border border-brand-border-light bg-brand-surface py-1.5 shadow-lg">
+          <div v-if="reportMenuOpen" class="action-menu">
+            <NuxtLink v-if="isAdmin" :to="'/registros/' + slug + '/reportes/nuevo'" class="action-menu-item" @click="reportMenuOpen = false">
+              <FilePlus class="mt-0.5 h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" />
+              <span class="flex min-w-0 flex-col">
+                <span class="text-sm font-semibold text-brand-text">Nuevo reporte</span>
+                <span class="text-xs text-brand-text-muted">Crear un documento imprimible</span>
+              </span>
+            </NuxtLink>
+
             <NuxtLink
-              :to="`/registros/${slug}/reportes/nuevo`"
-              class="flex items-start gap-2.5 px-3.5 py-2.5 hover:bg-brand-bg"
+              v-if="meta?.entity?.labelConfig?.enabled && recordsData?.data.length"
+              :to="labelPrintUrl"
+              target="_blank"
+              class="action-menu-item"
               @click="reportMenuOpen = false"
             >
-              <FilePlus class="mt-0.5 h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" />
+              <Printer class="mt-0.5 h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" />
               <span class="flex flex-col">
-                <span class="text-sm font-semibold text-brand-text">Nuevo reporte</span>
-                <span class="text-xs text-brand-text-muted">Empezar un documento en blanco</span>
+                <span class="text-sm font-semibold text-brand-text">Imprimir etiquetas</span>
+                <span class="text-xs text-brand-text-muted">Usar los registros visibles</span>
               </span>
             </NuxtLink>
 
             <p v-if="savedReportsLoading" class="px-3.5 py-2 text-xs text-brand-text-muted">Cargando reportes guardados...</p>
             <p v-else-if="savedReportsError" class="px-3.5 py-2 text-xs text-brand-error-text">No se pudieron cargar los reportes guardados.</p>
-
             <template v-else-if="savedReports.length > 0">
-              <p class="mt-1 px-3.5 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Reportes guardados</p>
-              <NuxtLink
-                v-for="report in savedReports"
-                :key="report.id"
-                :to="`/registros/${slug}/reportes/${report.id}/imprimir`"
-                class="flex items-start gap-2.5 px-3.5 py-2.5 hover:bg-brand-bg"
-                @click="reportMenuOpen = false"
-              >
-                <FileText class="mt-0.5 h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
-                <span class="flex flex-col">
-                  <span class="text-sm font-semibold text-brand-text">{{ report.title }}</span>
-                  <span class="text-xs text-brand-text-muted">Editado {{ formatRelativeTime(report.updatedAt) }}</span>
-                </span>
-              </NuxtLink>
+              <p class="border-t border-brand-border-light px-3.5 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Reportes guardados</p>
+              <div v-for="report in savedReports" :key="report.id" class="flex items-stretch">
+                <NuxtLink
+                  :to="'/registros/' + slug + '/reportes/' + report.id + '/imprimir'"
+                  class="action-menu-item min-w-0 flex-1"
+                  @click="reportMenuOpen = false"
+                >
+                  <FileText class="mt-0.5 h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+                  <span class="flex min-w-0 flex-col">
+                    <span class="truncate text-sm font-semibold text-brand-text">{{ report.title }}</span>
+                    <span class="text-xs text-brand-text-muted">Editado {{ formatRelativeTime(report.updatedAt) }}</span>
+                  </span>
+                </NuxtLink>
+                <NuxtLink
+                  v-if="isAdmin"
+                  :to="'/registros/' + slug + '/reportes/' + report.id + '/editar'"
+                  class="flex w-10 shrink-0 items-center justify-center text-brand-text-secondary hover:bg-brand-bg hover:text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue"
+                  :aria-label="`Editar reporte ${report.title}`"
+                  :title="`Editar ${report.title}`"
+                  @click="reportMenuOpen = false"
+                ><Pencil class="h-4 w-4" :stroke-width="1.75" /></NuxtLink>
+              </div>
             </template>
           </div>
         </div>
-        <NuxtLink
-          v-if="meta?.permissions?.canCreate"
-          :to="`/registros/${slug}/importar`"
-          class="flex items-center gap-1.5 rounded border border-brand-border-light px-3.5 py-2 text-sm font-semibold text-brand-text-secondary hover:bg-brand-bg"
-        >
-          <Upload class="h-4 w-4" :stroke-width="1.75" />
-          Importar
-        </NuxtLink>
-        <NuxtLink
-          v-if="meta?.permissions?.canCreate"
-          :to="`/registros/${slug}/nuevo`"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-        >
-          <Plus class="h-4 w-4" :stroke-width="2" />
-          Crear nuevo
-        </NuxtLink>
       </div>
     </div>
 
-    <div v-if="appliedFilterField && appliedFilterFieldMeta" class="flex items-center gap-2">
-      <span class="flex items-center gap-1.5 rounded-full bg-brand-neutral-bg px-3 py-1 text-xs font-semibold text-brand-neutral-text">
-        {{ appliedFilterFieldMeta.label }}: {{ appliedFilterLabels.join(', ') }}
-        <X class="h-3 w-3 cursor-pointer" @click="clearFilter" />
-      </span>
-    </div>
-
-    <p v-if="metaPending || recordsPending" class="text-sm text-brand-text-muted">Cargando...</p>
-    <p v-else-if="metaError" class="text-sm text-brand-error-text">
-      {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
-    </p>
-    <p v-else-if="recordsError" class="text-sm text-brand-error-text">No se pudieron cargar los registros.</p>
-
-    <template v-else-if="meta && recordsData">
-      <p v-if="deleteError" class="text-sm text-brand-error-text">{{ deleteError }}</p>
-      <p v-if="meta.fields.filter((f) => f.name !== 'id').length === 0" class="text-sm text-brand-text-muted">Esta entidad todavia no tiene campos configurados.</p>
-      <p v-else-if="visibleFields.length === 0" class="text-sm text-brand-text-muted">
-        Todas las columnas están ocultas en el diseño del listado de este módulo.
+    <main class="records-content" :class="{ 'board-content': viewMode === 'board' }">
+      <p v-if="metaPending || recordsPending || (viewMode === 'board' && boardPending)" class="content-message">Cargando...</p>
+      <p v-else-if="metaError" class="content-message text-brand-error-text">
+        {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
       </p>
-      <DynamicTable
-        v-else
-        :entity-slug="slug"
-        :fields="visibleFields"
-        :rows="recordsData.data"
-        :page="recordsData.page"
-        :page-size="recordsData.pageSize"
-        :total="recordsData.total"
-        :sort-by="sortBy"
-        :sort-dir="sortDir"
-        :permissions="meta.permissions"
-        :relation-labels="recordsData.relationLabels"
-        :actions-sticky="true"
-        @update:page="page = $event"
-        @update:sort="onSort"
-        @delete="onDelete"
-      />
-    </template>
+      <p v-else-if="recordsError || (viewMode === 'board' && boardError)" class="content-message text-brand-error-text">No se pudieron cargar los registros.</p>
+
+      <template v-else-if="meta && recordsData">
+        <p v-if="deleteError" class="content-message text-brand-error-text">{{ deleteError }}</p>
+        <p v-if="meta.fields.filter((f) => f.name !== 'id').length === 0" class="content-message">Esta entidad todavía no tiene campos configurados.</p>
+        <p v-else-if="visibleFields.length === 0" class="content-message">
+          Todas las columnas están ocultas en el diseño del listado de este módulo.
+        </p>
+        <RecordKanbanBoard
+          v-else-if="viewMode === 'board' && boardData"
+          :entity-slug="slug"
+          :config="boardData.config"
+          :fields="meta.fields"
+          :columns="boardData.columns"
+          :relation-labels="boardData.relationLabels"
+          :can-update="meta.permissions.canUpdate"
+          :search="appliedSearch"
+          :filter-field="appliedFilterField"
+          :filter-values="appliedFilterValues"
+          :filter-operator="appliedFilterOperator"
+          @updated="reconcileBoardRecord"
+        />
+        <div v-else class="table-wrap">
+          <DynamicTable
+            :entity-slug="slug"
+            :fields="visibleFields"
+            :rows="recordsData.data"
+            :page="recordsData.page"
+            :page-size="recordsData.pageSize"
+            :total="recordsData.total"
+            :sort-by="sortBy"
+            :sort-dir="sortDir"
+            :permissions="meta.permissions"
+            :relation-labels="recordsData.relationLabels"
+            :actions-sticky="true"
+            @update:page="page = $event"
+            @update:sort="onSort"
+            @delete="onDelete"
+          />
+        </div>
+      </template>
+    </main>
   </div>
 </template>
+
+<style scoped>
+.records-screen{display:flex;height:100%;min-height:0;min-width:0;flex-direction:column;overflow:hidden;background:#f5f8fa}
+.module-page-header{height:119px;flex:0 0 119px;border-bottom:1px solid #e5eaf0;background:#fff;padding:20px 28px}
+.module-breadcrumb{display:flex;height:16px;align-items:center;gap:4px;font-size:13px;font-weight:500;color:#8da1b5}
+.module-breadcrumb a{color:#516f90}.module-breadcrumb a:hover{color:#0091ae}.module-breadcrumb span{font-weight:700;color:#33475b}
+.module-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-top:14px}
+.module-title-copy{display:flex;min-width:0;flex-direction:column;gap:4px}.module-title-copy h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:24px;font-weight:700;line-height:29px;color:#33475b}.module-title-copy>p{font-size:13px;line-height:16px;color:#516f90}
+.record-count{flex:none;border-radius:999px;background:#eaf0f6;padding:3px 10px;font-size:12px;font-weight:700;line-height:15px;color:#516f90}
+.module-settings{display:flex;height:28px;width:28px;flex:none;align-items:center;justify-content:center;border-radius:4px;color:#516f90}.module-settings:hover{background:#eaf3f6;color:#0091ae}
+.module-actions{display:flex;align-items:center;gap:10px}.header-button{display:flex;height:35px;align-items:center;gap:6px;border:1px solid #cbd6e2;border-radius:4px;background:#fff;padding:0 14px;font-size:14px;font-weight:600;color:#33475b;white-space:nowrap}.header-button:hover{background:#f5f8fa}.header-button:disabled{cursor:not-allowed;opacity:.45}.header-button.primary{border-color:#ff7a59;background:#ff7a59;padding:0 16px;color:#fff}.header-button.primary:hover{background:#e66e50}
+.filter-popover{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:320px;border:1px solid #e5eaf0;border-radius:8px;background:#fff;padding:16px;box-shadow:0 8px 24px rgba(51,71,91,.14)}
+.board-toolbar{display:flex;height:54px;flex:0 0 54px;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid #e5eaf0;background:#fff;padding:10px 28px}
+.toolbar-left,.toolbar-right{display:flex;min-width:0;align-items:center;gap:10px}.toolbar-left{flex:1}.toolbar-right{flex:none}
+.record-search{display:flex;height:30px;width:220px;flex:none;align-items:center;gap:6px;border:1px solid #e5eaf0;border-radius:4px;background:#f5f8fa;padding:0 10px;color:#8da1b5}.record-search:focus-within{border-color:#0091ae;box-shadow:0 0 0 1px #0091ae}.record-search input{min-width:0;flex:1;border:0;background:transparent;font-size:13px;color:#33475b;outline:none}.record-search input::placeholder{color:#8da1b5}.record-search input::-webkit-search-cancel-button{display:none}
+.active-filter-chip{display:flex;height:25px;align-items:center;gap:6px;border-radius:999px;background:#eaf3f6;padding:0 10px;font-size:12px;font-weight:600;color:#0091ae;white-space:nowrap}.active-filter-chip:hover{background:#dcecf1}
+.updated-label{display:flex;min-width:0;align-items:center;gap:5px;font-size:12px;font-weight:500;color:#8da1b5;white-space:nowrap}
+.view-toggle{display:flex;height:34px;align-items:center;gap:2px;border-radius:4px;background:#eaf0f6;padding:3px}.view-toggle button{display:flex;height:28px;align-items:center;gap:6px;border-radius:4px;padding:0 12px;font-size:13px;font-weight:600;color:#516f90}.view-toggle button.active{background:#fff;color:#0091ae;box-shadow:0 1px 2px rgba(51,71,91,.06)}
+.toolbar-icon-button{display:flex;height:32px;width:32px;align-items:center;justify-content:center;border:1px solid #e5eaf0;border-radius:4px;background:#fff;color:#516f90}.toolbar-icon-button:hover{background:#f5f8fa;color:#33475b}.toolbar-icon-button:disabled{cursor:wait;opacity:.55}
+.action-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:320px;overflow:hidden;border:1px solid #e5eaf0;border-radius:8px;background:#fff;padding:6px 0;box-shadow:0 8px 24px rgba(51,71,91,.14)}.action-menu-item{display:flex;gap:10px;padding:10px 14px}.action-menu-item:hover{background:#f5f8fa}
+.records-content{min-height:0;min-width:0;flex:1;overflow:auto;padding:20px 28px 28px}.records-content.board-content{overflow:hidden;padding:20px}.content-message{font-size:13px;color:#8da1b5}.table-wrap{min-width:0}
+@media(max-width:900px){.module-page-header{height:auto;min-height:119px;flex-basis:auto}.module-title-row{align-items:flex-end}.module-actions{gap:6px}.header-button{padding:0 10px}.updated-label{display:none}}
+@media(max-width:720px){.records-screen{overflow:auto}.module-page-header{padding:16px}.module-title-row{flex-direction:column;align-items:stretch;gap:14px}.module-actions{display:grid;grid-template-columns:1fr 1fr}.module-actions .primary{grid-column:1/-1}.header-button{justify-content:center}.board-toolbar{height:auto;min-height:108px;flex:none;align-items:stretch;flex-direction:column;padding:10px 16px}.toolbar-left,.toolbar-right{width:100%}.record-search{width:100%}.toolbar-right{justify-content:flex-end}.records-content,.records-content.board-content{min-height:560px;padding:12px}.module-title-copy h1{font-size:22px}}
+</style>

@@ -158,8 +158,11 @@ export function useAuth() {
   async function logout(): Promise<void> {
     await $fetch('/api/auth/logout', { method: 'POST' })
     user.value = null
+    useState('flow-app-access-cache').value = null
+    useState('license-status-cache').value = null
     clearNuxtData()
   }
 
   return { user, fetchMe, login, loginWithTotp, selectOrganization, refresh, logout }
 }
+

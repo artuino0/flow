@@ -8,10 +8,10 @@ import type {
 } from '~/server/utils/pac/provider'
 import { PacProviderError } from '~/server/utils/pac/provider'
 
-// Adaptador Facturapi (docs.facturapi.mx, API v2) - primer proveedor del
-// dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md, fase B). Auth: HTTP
-// Basic con la API key como usuario y contraseña vacia. Las API keys de
-// prueba de Facturapi timbran en sandbox con la MISMA base URL - el flag
+// Adaptador Facturapi (API v2) - primer proveedor del
+// dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md, fase B). Auth: Bearer
+// token. Las API keys de prueba de Facturapi timbran en Test con la MISMA base
+// URL - el prefijo sk_test_ determina el ambiente y el flag
 // sandbox de tenant_pac_settings es informativo/para la UI, el modo real lo
 // determina la key.
 //
@@ -26,7 +26,7 @@ import { PacProviderError } from '~/server/utils/pac/provider'
 // logger estructurado de Nitro loggea statusMessage - mantenerlo libre de
 // credenciales y de bodies de respuesta crudos).
 
-const BASE_URL = 'https://www.facturapi.mx'
+const BASE_URL = 'https://www.facturapi.io'
 const TIMEOUT_MS = 30_000
 
 async function requestJson(method: string, url: string, apiKey: string, body?: unknown): Promise<{ status: number; data: any }> {
@@ -35,7 +35,7 @@ async function requestJson(method: string, url: string, apiKey: string, body?: u
     response = await fetch(url, {
       method,
       headers: {
-        Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
+        Authorization: `Bearer ${apiKey}`,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -64,34 +64,37 @@ function describeError(status: number, data: any): string {
 /** Mapeo CFDI 4.0 neutro -> body Facturapi v2 (ver nota de verificacion arriba). */
 function toFacturapiBody(input: PacStampInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
+    type: input.tipo,
     customer: {
-      legalName: input.receptor.nombre,
-      taxId: input.receptor.rfc,
-      taxSystem: input.receptor.regimenFiscal,
-      zip: input.receptor.codigoPostal,
+      legal_name: input.receptor.nombre,
+      tax_id: input.receptor.rfc,
+      tax_system: input.receptor.regimenFiscal,
+      address: { zip: input.receptor.codigoPostal, country: 'MEX' },
       ...(input.receptor.correo ? { email: input.receptor.correo } : {})
     },
     items: input.conceptos.map((c) => ({
       quantity: c.cantidad,
-      unit_price: c.valorUnitario,
-      description: c.descripcion,
-      unit_key: c.claveUnidad,
-      product_code: c.claveProdServ,
-      ...(c.descuento > 0 ? { discount: c.descuento } : {}),
-      taxes: [
+      product: {
+        description: c.descripcion,
+        product_key: c.claveProdServ,
+        price: c.valorUnitario,
+        unit_key: c.claveUnidad,
+        tax_included: false,
+        ...(c.descuento > 0 ? { discount: c.descuento } : {}),
+        taxes: [
         ...c.traslados.map((t) => ({ type: t.clave === '003' ? 'IEPS' : 'IVA', rate: t.tasaOCuota, withholding: false })),
         ...c.retenciones.map((t) => ({ type: t.clave === '003' ? 'IEPS' : 'IVA', rate: t.tasaOCuota, withholding: true }))
-      ]
+        ]
+      }
     })),
-    payment: {
-      form: input.formaPago ?? '99',
-      method: input.metodoPago,
-      currency: input.moneda,
-      ...(input.tipoCambio != null ? { exchange: input.tipoCambio } : {}),
-      usage: input.usoCfdi
-    },
-    folio: { series: input.serie, number: input.folio },
-    ...(input.exportacion !== '01' ? { export: input.exportacion } : {})
+    use: input.usoCfdi,
+    payment_form: input.formaPago ?? '99',
+    payment_method: input.metodoPago,
+    currency: input.moneda,
+    ...(input.tipoCambio != null ? { exchange_rate: input.tipoCambio } : {}),
+    series: input.serie,
+    folio_number: input.folio,
+    ...(input.exportacion !== '01' ? { exportation: input.exportacion } : {})
   }
   if (input.relacionado) {
     body.related = { uuid: input.relacionado.uuidFiscal, relationship: input.relacionado.tipoRelacion }
@@ -103,7 +106,7 @@ async function downloadBuffer(url: string, apiKey: string, what: string): Promis
   let response: Response
   try {
     response = await fetch(url, {
-      headers: { Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(TIMEOUT_MS)
     })
   } catch (err) {
@@ -115,6 +118,10 @@ async function downloadBuffer(url: string, apiKey: string, what: string): Promis
   return Buffer.from(await response.arrayBuffer())
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export class FacturapiProvider implements PacProvider {
   readonly name = 'facturapi'
 
@@ -122,9 +129,15 @@ export class FacturapiProvider implements PacProvider {
 
   async verifyCredentials(): Promise<{ ok: boolean; message: string }> {
     try {
-      const { status, data } = await requestJson('GET', `${BASE_URL}/v1/organizations`, this.config.apiKey)
+      // Las llaves de organización (sk_test_/sk_live_) solo pueden consultar
+      // su propia organización en /me. El listado /organizations requiere una
+      // User Key (sk_user_); aceptar ambas facilita la configuración inicial.
+      const endpoint = this.config.apiKey.startsWith('sk_user_')
+        ? `${BASE_URL}/v2/organizations`
+        : `${BASE_URL}/v2/organizations/me`
+      const { status, data } = await requestJson('GET', endpoint, this.config.apiKey)
       if (status === 200) {
-        const org = Array.isArray(data) ? data[0] : data?.data?.[0]
+        const org = Array.isArray(data) ? data[0] : data?.data?.[0] ?? data
         const nombre = org?.legal_name ?? org?.name
         return { ok: true, message: nombre ? `Conectado con Facturapi (${nombre})` : 'Conectado con Facturapi' }
       }
@@ -188,11 +201,8 @@ export class FacturapiProvider implements PacProvider {
   async fetchBinaries(providerDocumentId: string): Promise<{ xml: Buffer; pdf: Buffer }> {
     const { status, data } = await requestJson('GET', `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}`, this.config.apiKey)
     if (status !== 200) throw new PacProviderError(describeError(status, data), status >= 500)
-    const xmlUrl = data?.documents?.xml ?? data?.files?.xml
-    const pdfUrl = data?.documents?.pdf ?? data?.files?.pdf
-    if (typeof xmlUrl !== 'string' || typeof pdfUrl !== 'string') {
-      throw new PacProviderError('La respuesta de Facturapi no incluye las URLs del XML/PDF', true)
-    }
+    const xmlUrl = data?.documents?.xml ?? data?.files?.xml ?? `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}/xml`
+    const pdfUrl = data?.documents?.pdf ?? data?.files?.pdf ?? `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}/pdf`
     const [xml, pdf] = await Promise.all([
       downloadBuffer(xmlUrl, this.config.apiKey, 'XML'),
       downloadBuffer(pdfUrl, this.config.apiKey, 'PDF')
@@ -212,18 +222,28 @@ export class FacturapiProvider implements PacProvider {
   }
 
   private async parseStampResponse(data: any): Promise<PacStampResult> {
-    const uuidFiscal = typeof data?.uuid === 'string' ? data.uuid : null
-    const providerDocumentId = typeof data?._id === 'string' ? data._id : null
+    let responseData = data
+    let uuidFiscal = typeof responseData?.uuid === 'string' && responseData.uuid ? responseData.uuid : null
+    let providerDocumentId = typeof responseData?.id === 'string' ? responseData.id : typeof responseData?._id === 'string' ? responseData._id : null
+    // Facturapi puede responder 202/pending: el CFDI se está recuperando y
+    // todavía no trae UUID. Consultamos el recurso creado antes de declarar
+    // fallo; la API documenta que el intento asíncrono puede tardar.
+    if (!uuidFiscal && providerDocumentId) {
+      for (let attempt = 0; attempt < 10 && !uuidFiscal; attempt++) {
+        await sleep(1500)
+        const current = await requestJson('GET', `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}`, this.config.apiKey)
+        if (current.status >= 200 && current.status < 300 && current.data) {
+          responseData = current.data
+          uuidFiscal = typeof responseData.uuid === 'string' && responseData.uuid ? responseData.uuid : null
+          if (responseData.status === 'failed') break
+        }
+      }
+    }
     if (!uuidFiscal || !providerDocumentId) {
-      // Facturapi timbra sincronico: sin uuid no hay comprobante. Si llegara
-      // en estado pendiente (cambio de la API), la fase D resuelve por getStatus.
-      throw new PacProviderError('Facturapi no devolvio el UUID fiscal del timbrado', true)
+      throw new PacProviderError(responseData?.status === 'failed' ? 'Facturapi marcó el comprobante como fallido' : 'Facturapi aún no devolvió el UUID fiscal del timbrado', true)
     }
-    const xmlUrl = data?.documents?.xml ?? data?.files?.xml
-    const pdfUrl = data?.documents?.pdf ?? data?.files?.pdf
-    if (typeof xmlUrl !== 'string' || typeof pdfUrl !== 'string') {
-      throw new PacProviderError('La respuesta de Facturapi no incluye las URLs del XML/PDF timbrados', true)
-    }
+    const xmlUrl = responseData?.documents?.xml ?? responseData?.files?.xml ?? `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}/xml`
+    const pdfUrl = responseData?.documents?.pdf ?? responseData?.files?.pdf ?? `${BASE_URL}/v2/invoices/${encodeURIComponent(providerDocumentId)}/pdf`
     // Descarga en paralelo; si una falla el error es retryable y la fase D
     // resuelve por getStatus + re-descarga (el timbrado YA ocurrio, el folio
     // y el uuid estan del lado del PAC - nunca re-timbrar a ciegas).
@@ -231,7 +251,7 @@ export class FacturapiProvider implements PacProvider {
       downloadBuffer(xmlUrl, this.config.apiKey, 'XML'),
       downloadBuffer(pdfUrl, this.config.apiKey, 'PDF')
     ])
-    const fechaRaw = data?.stamp?.fecha ?? data?.created_at
+    const fechaRaw = responseData?.stamp?.date ?? responseData?.stamp?.fecha ?? responseData?.date ?? responseData?.created_at
     return {
       uuidFiscal,
       providerDocumentId,

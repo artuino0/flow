@@ -18,5 +18,5 @@ export default defineEventHandler(async (event) => {
   const { entity } = await requirePermission(event, entitySlug, 'canRead')
 
   const ctx = await readableReportContext(event)
-  return { fields: buildFieldTree(ctx, entity.id) }
+  return { entityName: entity.name, fields: buildFieldTree(ctx, entity.id) }
 })

@@ -29,6 +29,8 @@ const props = defineProps<{
   field: EntityFieldMeta
   modelValue: unknown
   disabled?: boolean
+  detail?: boolean
+  initialLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -61,17 +63,21 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined
 interface RelationEntityMeta {
   fields: EntityFieldMeta[]
   labelField: string | null
+  isActive: boolean
 }
 let metaCache: RelationEntityMeta | null = null
+const targetDisabled = ref(false)
 
 async function ensureRelationFields(): Promise<RelationEntityMeta> {
   if (metaCache) return metaCache
-  if (!relationEntity.value) return { fields: [], labelField: null }
+  if (!relationEntity.value) return { fields: [], labelField: null, isActive: true }
   try {
-    const res = await $fetch<{ entity: { labelField: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${relationEntity.value}/fields`)
-    metaCache = { fields: res.fields, labelField: res.entity.labelField ?? null }
+    const res = await $fetch<{ entity: { labelField: string | null; isActive: boolean; deletedAt?: string | null }; fields: EntityFieldMeta[] }>(`/api/entities/${relationEntity.value}/fields`)
+    metaCache = { fields: res.fields, labelField: res.entity.labelField ?? null, isActive: res.entity.isActive && !res.entity.deletedAt }
+    targetDisabled.value = !metaCache.isActive
   } catch {
-    metaCache = { fields: [], labelField: null }
+    metaCache = { fields: [], labelField: null, isActive: false }
+    targetDisabled.value = true
   }
   return metaCache
 }
@@ -90,12 +96,11 @@ async function runSearch() {
   }
   loading.value = true
   try {
-    const [meta, res] = await Promise.all([
-      ensureRelationFields(),
-      $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${relationEntity.value}`, {
+    const meta = await ensureRelationFields()
+    if (!meta.isActive) { results.value = []; return }
+    const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${relationEntity.value}`, {
         query: { search: query.value, pageSize: 6 }
       })
-    ])
     results.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField) }))
     for (const r of results.value) labelCache[cacheKey(r.id)] = r.label
   } catch {
@@ -141,12 +146,13 @@ async function resolveExistingLabel(id: string) {
   }
 }
 onMounted(() => {
-  if (currentValue.value) void resolveExistingLabel(currentValue.value)
+  if (currentValue.value && !props.initialLabel) void resolveExistingLabel(currentValue.value)
+  else if (relationEntity.value) void ensureRelationFields()
 })
 </script>
 
 <template>
-  <div>
+  <div :class="{ 'detail-relation': detail }">
     <!-- sin relationEntity configurado (campo relation "crudo", ERD-17 previo a ERD-74): fallback al input de uuid original -->
     <input
       v-if="!relationEntity"
@@ -161,12 +167,13 @@ onMounted(() => {
 
     <div v-else-if="currentValue" class="flex items-center gap-2 rounded border border-brand-border bg-brand-blue-bg px-3 py-[7px]">
       <Link2 class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="1.75" />
-      <span class="flex-1 truncate text-sm font-semibold text-brand-blue">{{ labelCache[cacheKey(currentValue)] ?? '...' }}</span>
+      <span class="flex-1 truncate text-sm font-semibold text-brand-blue">{{ labelCache[cacheKey(currentValue)] ?? initialLabel ?? '...' }}</span>
       <button v-if="!disabled" type="button" class="text-brand-blue hover:text-brand-error-text" @click="clearValue">
         <X class="h-3.5 w-3.5" :stroke-width="2" />
       </button>
     </div>
 
+    <p v-else-if="targetDisabled" class="text-sm text-brand-text-muted">El módulo relacionado está deshabilitado.</p>
     <div v-else-if="!disabled" class="relative">
       <div class="flex items-center gap-2 rounded border border-brand-border px-3 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
         <Search class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
@@ -183,7 +190,7 @@ onMounted(() => {
       </div>
       <div
         v-if="open && (loading || results.length > 0 || query)"
-        class="absolute z-10 mt-1 w-full rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+        class="absolute z-50 mt-1 w-full rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
       >
         <p v-if="loading" class="px-3 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
         <p v-else-if="results.length === 0" class="px-3 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
@@ -203,3 +210,19 @@ onMounted(() => {
     <span v-else class="text-sm text-brand-text-muted">-</span>
   </div>
 </template>
+
+<style scoped>
+.detail-relation > input,
+.detail-relation > div {
+  font-size:13px;
+}
+.detail-relation > input,
+.detail-relation > div.flex,
+.detail-relation > div.relative > div:first-child {
+  border-color:transparent;
+  background:#F5F8FA;
+}
+.detail-relation > div.relative > div:first-child:hover {
+  background:#EEF5F7;
+}
+</style>

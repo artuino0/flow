@@ -1,6 +1,7 @@
 import cron from 'node-cron'
 import { runTriggerRetries } from '~/server/utils/triggerActions'
 import { logger } from '~/server/utils/logger'
+import { getLicenseStatus } from '~/server/utils/license'
 
 // HU-ERD-49: job node-cron (mismo patron que server/plugins/olap-etl.ts,
 // ERD-28) que reintenta los trigger_logs en status 'retrying' cuyo backoff
@@ -21,6 +22,7 @@ export default defineNitroPlugin(() => {
   let isRunning = false
 
   cron.schedule('* * * * *', async () => {
+    if (!getLicenseStatus().activated) return
     if (isRunning) {
       logger.warn('trigger_retry_skip_overlap')
       return

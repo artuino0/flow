@@ -1,11 +1,11 @@
-import { requireAuth, requirePermission } from '~/server/utils/rbac'
+import { requireAdminRole, requirePermission } from '~/server/utils/rbac'
 import { getPrintReport, deletePrintReport, PrintReportNotFoundError } from '~/server/utils/printReports'
 
 // DELETE /api/print-reports/:id (HU-ERD-88) - borrado físico (no hay "papelera"
 // de plantillas de reporte, a diferencia de records - son metadatos de
 // configuración, no datos del negocio).
 export default defineEventHandler(async (event) => {
-  const auth = requireAuth(event)
+  const auth = await requireAdminRole(event)
   const id = getRouterParam(event, 'id')!
 
   try {

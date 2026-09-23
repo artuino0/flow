@@ -5,6 +5,7 @@ import { entityFields, tenants } from '~/server/db/schema'
 import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/detailLayout'
 import { resolveListLayout } from '~/server/utils/listLayout'
 import { isListFilterable } from '~/utils/listFilters'
+import { resolveBoardConfig } from '~/server/utils/boardConfig'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
 //
@@ -65,6 +66,7 @@ export default defineEventHandler(async (event) => {
   // no se ofrecen porque no tienen una comparación útil en el listado.
   const filterableFieldNames = fields.filter((f) => isListFilterable(f.dataType)).map((f) => f.name)
   const listLayout = resolveListLayout(entity.listLayout, fields.map((f) => f.name), filterableFieldNames)
+  const boardConfig = resolveBoardConfig(entity.boardConfig, fields)
 
   // Reportado por el usuario (2026-09-03, "en el array de campos siempre debe
   // existir el id... no lo podiamos eliminar... debia ser un UUID"): el
@@ -107,5 +109,5 @@ export default defineEventHandler(async (event) => {
       }
     : field)
 
-  return { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout }
+  return { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig }
 })

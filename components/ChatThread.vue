@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Archive, ArrowLeft, Check, CheckCheck, Download, FileText, LoaderCircle, MoreHorizontal, Paperclip, Pencil, Reply, Send, Smile, Trash2, Users, X } from '@lucide/vue'
+import { Archive, ArrowLeft, Check, CheckCheck, Download, FileText, LoaderCircle, MoreHorizontal, Paperclip, Pencil, Reply, Send, Smile, Trash2, Users, X, Image as ImageIcon } from '@lucide/vue'
 import type { ChatAttachment, ChatConversation, ChatMessage, ChatPerson } from '~/utils/chat'
 
 const props = withDefaults(defineProps<{
@@ -7,14 +7,17 @@ const props = withDefaults(defineProps<{
   messages: ChatMessage[]
   currentUserId: string
   canAttach: boolean
+  canSend?: boolean
+  sendBlockedReason?: string | null
   compact?: boolean
   loading?: boolean
   typingUserIds?: string[]
   users?: ChatPerson[]
   presence?: Record<string, boolean>
-}>(), { typingUserIds: () => [], users: () => [], presence: () => ({}) })
+  sharedRecord?: { entitySlug: string; recordId: string; label: string; url: string } | null
+}>(), { typingUserIds: () => [], users: () => [], presence: () => ({}), canSend: true, sendBlockedReason: null })
 const emit = defineEmits<{
-  back: []; archive: []; float: []; manage: []; send: [body: string, replyToMessageId: string | null, attachmentIds: string[]]
+  back: []; archive: []; float: []; manage: []; send: [body: string, replyToMessageId: string | null, attachmentIds: string[], sharedRecord: { entitySlug: string; recordId: string; label: string; url: string } | null, gifUrl: string | null]
   edit: [id: string, body: string]; delete: [id: string]; typing: [active: boolean]; loadOlder: []
   upload: [file: File, done: (attachment?: ChatAttachment) => void]
 }>()
@@ -32,6 +35,7 @@ const list = ref<HTMLElement | null>(null)
 const mentionOpen = ref(false)
 const mentionQuery = ref('')
 const emojiOpen = ref(false)
+const gifOpen = ref(false)
 const emojiContainer = ref<HTMLElement | null>(null)
 const professionalEmojis = ['👍', '✅', '👏', '🙌', '🤝', '👀', '🚀', '💡', '📌', '📅', '🙂', '😊', '😉']
 let typingTimer: ReturnType<typeof setTimeout> | null = null
@@ -50,9 +54,57 @@ function closeEmojiPopup(event: Event) {
   if (target instanceof Node && !emojiContainer.value?.contains(target)) emojiOpen.value = false
 }
 
-watch(() => props.messages.length, async () => { await nextTick(); if (list.value) list.value.scrollTop = list.value.scrollHeight })
-onMounted(() => { 
-  if (list.value) list.value.scrollTop = list.value.scrollHeight 
+let scrolledConversationId: string | null = null
+function nearBottom() {
+  if (!list.value) return true
+  return list.value.scrollHeight - list.value.scrollTop - list.value.clientHeight < 120
+}
+async function scrollToLatest(conversationId = props.conversation.id) {
+  await nextTick()
+  const apply = () => {
+    if (!list.value || props.conversation.id !== conversationId) return
+    list.value.scrollTop = list.value.scrollHeight
+  }
+  apply()
+  if (import.meta.client) {
+    requestAnimationFrame(() => requestAnimationFrame(apply))
+    for (const image of list.value?.querySelectorAll('img') ?? []) {
+      if (!image.complete) image.addEventListener('load', apply, { once: true })
+    }
+  }
+  scrolledConversationId = conversationId
+}
+
+watch(
+  () => [props.conversation.id, props.loading] as const,
+  ([conversationId, loading]) => {
+    if (!loading && scrolledConversationId !== conversationId) void scrollToLatest(conversationId)
+  },
+  { immediate: true, flush: 'post' }
+)
+watch(
+  () => props.messages.at(-1)?.id,
+  async (messageId, previousId) => {
+    if (!messageId || props.loading) return
+    const shouldFollow = scrolledConversationId !== props.conversation.id || !previousId || nearBottom()
+    if (shouldFollow) await scrollToLatest()
+  },
+  { flush: 'pre' }
+)
+watch(
+  () => props.messages[0]?.id,
+  async (firstId, previousFirstId) => {
+    if (!firstId || !previousFirstId || scrolledConversationId !== props.conversation.id || props.loading) return
+    const element = list.value
+    if (!element) return
+    const previousHeight = element.scrollHeight
+    const previousTop = element.scrollTop
+    await nextTick()
+    element.scrollTop = previousTop + (element.scrollHeight - previousHeight)
+  },
+  { flush: 'pre' }
+)
+onMounted(() => {
   document.addEventListener('pointerdown', closeEmojiPopup)
 })
 onBeforeUnmount(() => { 
@@ -93,15 +145,18 @@ function insertEmoji(emoji: string) {
   nextTick(() => textarea.value?.focus())
 }
 function submit() {
+  if (!props.canSend) return
   const text = body.value.trim()
   if (editing.value) {
     if (text) emit('edit', editing.value.id, text)
     editing.value = null; body.value = ''; return
   }
-  if (!text && !attachments.value.length) return
-  emit('send', text, replyTo.value?.id ?? null, attachments.value.map(file => file.id))
-  body.value = ''; replyTo.value = null; attachments.value = []; mentionOpen.value = false; emojiOpen.value = false; emit('typing', false)
+  if (!text && !attachments.value.length && !props.sharedRecord && !selectedGif.value) return
+  emit('send', text, replyTo.value?.id ?? null, attachments.value.map(file => file.id), props.sharedRecord ?? null, selectedGif.value?.url ?? null)
+  body.value = ''; replyTo.value = null; attachments.value = []; mentionOpen.value = false; emojiOpen.value = false; gifOpen.value = false; selectedGif.value = null; emit('typing', false)
 }
+const selectedGif = ref<{ id: string; title: string; url: string; width: number; height: number } | null>(null)
+function selectGif(gif: { id: string; title: string; url: string; width: number; height: number }) { selectedGif.value = gif; gifOpen.value = false }
 function startEdit(message: ChatMessage) { editing.value = message; replyTo.value = null; body.value = message.body; messageMenuId.value = null; nextTick(() => textarea.value?.focus()) }
 function startReply(message: ChatMessage) { replyTo.value = message; editing.value = null; messageMenuId.value = null; nextTick(() => textarea.value?.focus()) }
 function cancelContext() { replyTo.value = null; editing.value = null; body.value = '' }
@@ -115,7 +170,7 @@ function attach(event: Event) {
 
 <template>
   <section class="relative flex min-h-0 flex-1 flex-col bg-brand-bg">
-    <header class="flex h-[66px] shrink-0 items-center justify-between border-b border-brand-border-light bg-white px-4 sm:px-5">
+    <header class="flex h-[68px] shrink-0 items-center justify-between border-b border-brand-border-light bg-white px-4 sm:px-5">
       <div class="flex min-w-0 items-center gap-3">
         <button type="button" class="flex h-8 w-8 items-center justify-center rounded hover:bg-brand-bg md:hidden" aria-label="Volver" @click="emit('back')"><ArrowLeft class="h-4 w-4 text-brand-text-secondary" /></button>
         <ChatAvatar :name="conversation.title" :group="conversation.type === 'group'" :online="online" size="sm" />
@@ -151,6 +206,9 @@ function attach(event: Event) {
               <div v-if="message.replyTo" class="mb-2 rounded border-l-2 border-brand-blue bg-white/60 px-2 py-1 text-[11px] text-brand-text-muted"><b class="text-brand-text-secondary">{{ message.replyTo.senderName }}</b><p class="truncate">{{ message.replyTo.body }}</p></div>
               <p v-if="message.deletedAt" class="text-xs italic text-brand-text-muted">Mensaje eliminado</p>
               <p v-else class="whitespace-pre-wrap break-words text-[13px] leading-5 text-brand-text">{{ message.body }}</p>
+              <img v-if="message.gifUrl" :src="message.gifUrl" alt="GIF compartido" class="mt-2 max-h-56 max-w-full rounded object-contain" loading="lazy" />
+              <NuxtLink v-if="message.sharedRecord && 'entitySlug' in message.sharedRecord" :to="message.sharedRecord.url" class="mt-2 block rounded border border-brand-border-light bg-white px-3 py-2 text-xs hover:border-brand-blue"><span class="block font-semibold text-brand-blue">Registro compartido</span><span class="mt-0.5 block truncate text-brand-text">{{ message.sharedRecord.label }}</span><span class="mt-0.5 block text-[10px] text-brand-text-muted">Abrir en Flow</span></NuxtLink>
+              <div v-else-if="message.sharedRecord && 'unavailable' in message.sharedRecord" class="mt-2 rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-xs text-brand-text-muted">Registro compartido · sin acceso</div>
               <a v-for="file in message.attachments" :key="file.id" :href="file.url" target="_blank" class="mt-2 flex items-center gap-2 rounded border border-brand-border-light bg-white px-2.5 py-2 text-xs font-medium text-brand-blue hover:bg-brand-bg"><FileText class="h-4 w-4" /><span class="min-w-0 flex-1 truncate">{{ file.fileName }}</span><Download class="h-3.5 w-3.5" /></a>
               <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-brand-text-muted"><span v-if="message.editedAt">editado ·</span><span>{{ time(message.createdAt) }}</span><CheckCheck v-if="message.sender?.id === currentUserId && message.readCount" class="h-3 w-3 text-brand-blue" /><Check v-else-if="message.sender?.id === currentUserId" class="h-3 w-3" /></div>
             </div>
@@ -166,11 +224,18 @@ function attach(event: Event) {
     </div>
 
     <footer class="shrink-0 border-t border-brand-border-light bg-white">
+      <div v-if="!canSend" class="flex items-center gap-2 bg-[#FFF4E5] px-4 py-3 text-xs font-semibold text-[#8A5D00]">
+        <span class="flex h-5 w-5 items-center justify-center rounded-full border border-[#C58B2A] text-[11px]">!</span>
+        <span>{{ sendBlockedReason || 'No puedes enviar mensajes en esta conversación.' }}</span>
+      </div>
+      <template v-else>
       <div v-if="replyTo || editing" class="flex items-center justify-between border-b border-brand-border-light bg-brand-bg px-4 py-2 text-xs">
         <span class="min-w-0"><b class="text-brand-text">{{ editing ? 'Editando mensaje' : `Respondiendo a ${replyTo?.sender?.name || 'Usuario'}` }}</b><span class="ml-2 truncate text-brand-text-muted">{{ editing?.body || replyTo?.body }}</span></span>
         <button @click="cancelContext"><X class="h-3.5 w-3.5 text-brand-text-muted" /></button>
       </div>
       <div v-if="attachments.length" class="flex gap-2 overflow-x-auto px-4 pt-3"><span v-for="file in attachments" :key="file.id" class="flex max-w-52 items-center gap-2 rounded bg-brand-bg px-2 py-1 text-[11px] text-brand-text"><FileText class="h-3 w-3" /><span class="truncate">{{ file.fileName }}</span><button @click="attachments = attachments.filter(item => item.id !== file.id)"><X class="h-3 w-3" /></button></span></div>
+      <div v-if="sharedRecord" class="flex items-center gap-2 px-4 pt-3 text-xs"><span class="min-w-0 flex-1 truncate rounded border border-brand-border-light bg-brand-bg px-2.5 py-1.5 text-brand-text">Compartir: <b>{{ sharedRecord.label }}</b></span></div>
+      <div v-if="selectedGif" class="flex items-center gap-2 px-4 pt-3 text-xs"><img :src="selectedGif.url" alt="GIF seleccionado" class="h-12 w-16 rounded object-cover" /><span class="flex-1 truncate text-brand-text">GIF seleccionado</span><button type="button" aria-label="Quitar GIF" @click="selectedGif = null"><X class="h-3.5 w-3.5 text-brand-text-muted" /></button></div>
       <div class="relative flex items-end gap-2 p-3 sm:px-4">
         <div class="relative min-w-0 flex-1">
           <textarea ref="textarea" v-model="body" rows="1" class="block max-h-28 min-h-10 w-full resize-none rounded-lg border border-brand-border bg-white px-3 py-2.5 text-[13px] text-brand-text outline-none placeholder:text-brand-text-muted focus:border-brand-blue" placeholder="Escribe un mensaje..." @input="onInput" @keydown.enter.exact.prevent="submit" />
@@ -191,9 +256,11 @@ function attach(event: Event) {
               </div>
             </div>
           </div>
-          <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-brand-orange text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-40" :disabled="!body.trim() && !attachments.length" aria-label="Enviar" @click="submit"><Send class="h-4 w-4" /></button>
+          <div class="relative flex"><button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg hover:text-brand-text" title="GIF" @click="gifOpen = !gifOpen"><ImageIcon class="h-4 w-4" /></button><ChatGifPicker v-if="gifOpen" @select="selectGif" @close="gifOpen = false" /></div>
+          <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-brand-orange text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-40" :disabled="!body.trim() && !attachments.length && !sharedRecord && !selectedGif" aria-label="Enviar" @click="submit"><Send class="h-4 w-4" /></button>
         </div>
       </div>
+      </template>
     </footer>
 
     <Teleport to="body">
@@ -207,3 +274,4 @@ function attach(event: Event) {
 <style scoped>
 .chat-message-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 </style>
+

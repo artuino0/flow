@@ -1,5 +1,5 @@
 /**
- * Paquete operativo oficial para FlowERP.
+ * Paquete operativo oficial para Flow.
  *
  * Crea, sin duplicar ni borrar configuraciones existentes:
  * - Inventarios
@@ -49,7 +49,7 @@ const catalogs = [
   { slug: 'unidades_medida', name: 'Unidades de medida', singularName: 'Unidad de medida', icon: 'Ruler', labelField: 'nombre', fields: [text('clave', 'Clave', true, 12), text('nombre', 'Nombre', true), text('simbolo', 'Símbolo', true, 12), select('estado', 'Estado', active, true)] },
   { slug: 'almacenes', name: 'Almacenes', singularName: 'Almacén', icon: 'Warehouse', labelField: 'nombre', fields: [text('clave', 'Clave', true, 20), text('nombre', 'Nombre', true), text('direccion', 'Dirección', false, 300), text('responsable', 'Responsable'), select('estado', 'Estado', active, true)] },
   { slug: 'ubicaciones_almacen', name: 'Ubicaciones de almacén', singularName: 'Ubicación de almacén', icon: 'MapPin', labelField: 'nombre', fields: [text('clave', 'Clave', true, 30), text('nombre', 'Nombre', true), relation('almacen', 'Almacén', 'almacenes', true), text('zona', 'Zona'), text('pasillo', 'Pasillo', false, 30), text('rack', 'Rack', false, 30), select('estado', 'Estado', active, true)] },
-  { slug: 'productos', name: 'Productos', singularName: 'Producto', icon: 'Package', labelField: 'nombre', fields: [text('sku', 'SKU', true, 40), text('nombre', 'Nombre', true), text('descripcion', 'Descripción', false, 500), relation('unidad', 'Unidad de medida', 'unidades_medida', true), text('categoria', 'Categoría'), bool('controla_lotes', 'Controla lotes'), bool('controla_caducidad', 'Controla caducidad'), money('costo_estandar', 'Costo estándar'), text('clave_prod_serv', 'ClaveProdServ (SAT)', false, 8), select('estado', 'Estado', active, true)] },
+  { slug: 'productos', name: 'Productos', singularName: 'Producto', icon: 'Package', labelField: 'nombre', fields: [bool('activo', 'Activo'), text('sku', 'Código', true, 40), text('nombre', 'Nombre de producto', true), relation('cultivo', 'Cultivo', 'cultivos'), text('nombre_extranjero', 'Nombre en el extranjero (inglés)', false, 180), bool('mercado_extranjero', 'Mercado extranjero'), text('envase', 'Envase', false, 80), text('tamano_envase', 'Tamaño de envase', false, 80), number('peso_unitario', 'Peso unitario', false, { min: 0 }), number('peso_bruto', 'Peso bruto', false, { min: 0 }), number('bultos_pallet', 'Bultos por pallet', false, { min: 0, integer: true }), select('calidad', 'Calidad', [option('primera', 'Primera', 'success'), option('segunda', 'Segunda', 'warning'), option('industrial', 'Industrial', 'blue'), option('sin_clasificar', 'Sin clasificar', 'neutral')]), text('descripcion', 'Descripción', false, 500), relation('unidad', 'Unidad de medida', 'unidades_medida', true), text('categoria', 'Categoría'), bool('controla_lotes', 'Controla lotes'), bool('controla_caducidad', 'Controla caducidad'), bool('pti_directo', 'PTI directo'), money('costo_estandar', 'Costo estándar'), text('clave_prod_serv', 'ClaveProdServ (SAT)', false, 8), select('estado', 'Estado', active, true)] },
   { slug: 'proveedores', name: 'Proveedores', singularName: 'Proveedor', icon: 'Building2', labelField: 'razon_social', fields: [text('razon_social', 'Razón social', true), text('nombre_comercial', 'Nombre comercial'), text('rfc', 'RFC', false, 20), text('correo', 'Correo electrónico'), text('telefono', 'Teléfono', false, 30), text('direccion_fiscal', 'Dirección fiscal', false, 400), relation('condicion_pago', 'Condición de pago', 'condiciones_pago'), select('moneda', 'Moneda habitual', currencies), select('estado', 'Estado', active, true)] },
   { slug: 'condiciones_pago', name: 'Condiciones de pago', singularName: 'Condición de pago', icon: 'CalendarClock', labelField: 'nombre', fields: [text('clave', 'Clave', true, 20), text('nombre', 'Nombre', true), number('dias_credito', 'Días de crédito', true, { min: 0, integer: true }), select('estado', 'Estado', active, true)] },
   { slug: 'impuestos', name: 'Impuestos', singularName: 'Impuesto', icon: 'BadgePercent', labelField: 'nombre', fields: [text('clave', 'Clave', true, 20), text('nombre', 'Nombre', true), select('tipo', 'Tipo', [option('traslado', 'Traslado'), option('retencion', 'Retención')], true), number('tasa', 'Tasa (%)', true, { min: 0, max: 100 }), bool('exento', 'Exento'), select('estado', 'Estado', active, true)] },
@@ -92,7 +92,14 @@ const reportDefs = [
   { title: 'Estado de cuentas por cobrar', baseEntity: 'cuentas_por_cobrar', layout: { paper: 'letter', orientation: 'landscape', density: 'compact' }, columns: [['folio', 'Folio'], ['cliente', 'Cliente'], ['fecha_emision', 'Emisión'], ['fecha_vencimiento', 'Vencimiento'], ['total', 'Total'], ['saldo', 'Saldo'], ['estado', 'Estado']] }
 ]
 
-function baseLayout(fields) {
+function baseLayout(fields, slug) {
+  if (slug === 'productos') {
+    return {
+      columns: ['activo', 'sku', 'nombre', 'cultivo', 'nombre_extranjero', 'mercado_extranjero', 'envase', 'tamano_envase', 'peso_unitario', 'peso_bruto', 'bultos_pallet', 'calidad', 'pti_directo'].map(name => ({ name, visible: true })).concat(['descripcion', 'unidad', 'categoria', 'controla_lotes', 'controla_caducidad', 'costo_estandar', 'clave_prod_serv', 'estado'].map(name => ({ name, visible: false }))),
+      filterFields: ['activo', 'cultivo', 'mercado_extranjero', 'calidad'],
+      defaultSort: { field: 'sku', dir: 'asc' }
+    }
+  }
   return {
     columns: fields.slice(0, 8).map(field => ({ name: field.name, visible: true })),
     filterFields: fields.filter(field => ['select', 'relation', 'boolean', 'date'].includes(field.dataType)).slice(0, 6).map(field => field.name),
@@ -100,7 +107,11 @@ function baseLayout(fields) {
   }
 }
 
-function detailLayout(fields) {
+function detailLayout(fields, slug) {
+  if (slug === 'productos') {
+    const visible = ['activo', 'sku', 'nombre', 'cultivo', 'nombre_extranjero', 'mercado_extranjero', 'envase', 'tamano_envase', 'peso_unitario', 'peso_bruto', 'bultos_pallet', 'calidad', 'pti_directo']
+    return { properties: fields.map(field => ({ name: field.name, visible: visible.includes(field.name) })), relations: [], showActivity: true }
+  }
   return { properties: fields.map(field => ({ name: field.name, visible: true })), relations: [], showActivity: true }
 }
 
@@ -123,8 +134,8 @@ async function upsertEntity(tx, tenantId, def, adminRoleId) {
   }
   await tx`
     update entities set
-      list_layout = coalesce(list_layout, ${tx.json(baseLayout(def.fields))}),
-      detail_layout = coalesce(detail_layout, ${tx.json(detailLayout(def.fields))}),
+      list_layout = coalesce(list_layout, ${tx.json(baseLayout(def.fields, def.slug))}),
+      detail_layout = coalesce(detail_layout, ${tx.json(detailLayout(def.fields, def.slug))}),
       updated_at = now()
     where id = ${entity.id}
   `

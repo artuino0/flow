@@ -1,27 +1,50 @@
-// HU-ERD-22: guard global de rutas. Si no hay sesion, redirige a /login;
-// si ya hay sesion y el usuario intenta entrar a /login, lo manda al home.
+import { resolveFlowApp } from '~/utils/flowApps'
+
+interface LicenseCache {
+  required: boolean
+  activated: boolean
+  fetchedAt: number
+}
+
+const LICENSE_TTL_MS = 60_000
+
+// Guard global de sesión y acceso. Los datos estables se comparten entre
+// navegaciones para que cambiar de pantalla no espere dos consultas remotas
+// antes de comenzar a renderizar.
 export default defineNuxtRouteMiddleware(async (to) => {
-  // La persona que abre una invitación todavía no tiene una cuenta activa ni
-  // una sesión que validar. El token de la propia URL autoriza únicamente el
-  // alta de contraseña mediante el endpoint público de aceptación.
-  if (to.path.startsWith('/invitacion/')) return
+  const licenseCache = useState<LicenseCache | null>('license-status-cache', () => null)
+  const licenseIsFresh = licenseCache.value && Date.now() - licenseCache.value.fetchedAt < LICENSE_TTL_MS
+  if (!licenseIsFresh || to.path === '/activar') {
+    const status = await $fetch<{ required: boolean; activated: boolean }>('/api/license/status')
+    licenseCache.value = { ...status, fetchedAt: Date.now() }
+  }
+  const license = licenseCache.value!
 
-  const { user, fetchMe } = useAuth()
-
-  if (!user.value) {
-    await fetchMe()
+  if (license.required && !license.activated) {
+    if (to.path !== '/activar') return navigateTo({ path: '/activar', query: { redirect: to.fullPath } })
+    return
+  }
+  if (to.path === '/activar') {
+    if (license.required) return
+    return navigateTo('/login')
   }
 
-  const isLoggedIn = Boolean(user.value?.authenticated)
+  if (to.path.startsWith('/invitacion/')) return
+  if (to.path === '/registro') return
 
+  const { user, fetchMe } = useAuth()
+  if (!user.value) await fetchMe()
+
+  const isLoggedIn = Boolean(user.value?.authenticated)
   if (to.path === '/login') {
     if (isLoggedIn) return navigateTo('/')
     return
   }
+  if (!isLoggedIn) return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
 
-  if (!isLoggedIn) {
-    // Conserva la ruta solicitada para que un enlace profundo (por ejemplo,
-    // "Ver detalle" desde un correo) se abra después de iniciar sesión.
-    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
-  }
+  const { load } = useFlowAppAccess()
+  const availability = await load()
+  const targetApp = resolveFlowApp(to.path)
+  const app = availability?.apps.find(candidate => candidate.key === targetApp)
+  if (!app?.enabled || !app.accessible) return navigateTo('/')
 })

@@ -23,6 +23,7 @@ const props = defineProps<{
   field: EntityFieldMeta
   modelValue: unknown
   disabled?: boolean
+  detail?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -85,7 +86,7 @@ function clearSingle() {
 </script>
 
 <template>
-  <div class="relative">
+  <div class="relative" :class="{ 'detail-select': detail }">
     <!-- Select: caja cerrada con punto de color + valor + chevron -->
     <button
       v-if="!isMultiple"
@@ -103,7 +104,7 @@ function clearSingle() {
       <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="2" />
     </button>
 
-    <div v-if="!isMultiple && open" class="absolute z-10 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
+    <div v-if="!isMultiple && open" class="absolute z-50 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
       <p v-if="options.length === 0" class="px-3 py-2 text-xs text-brand-text-muted">Sin opciones configuradas.</p>
       <button
         v-for="opt in options"
@@ -140,7 +141,7 @@ function clearSingle() {
         Agregar...
       </button>
 
-      <div v-if="open" class="absolute left-0 top-full z-10 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
+      <div v-if="open" class="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
         <p v-if="options.length === 0" class="px-3 py-2 text-xs text-brand-text-muted">Sin opciones configuradas.</p>
         <button
           v-for="opt in options"
@@ -157,3 +158,18 @@ function clearSingle() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.detail-select > button,
+.detail-select > div:first-of-type {
+  border-color:transparent;
+  background:#F5F8FA;
+  padding-top:6px;
+  padding-bottom:6px;
+  font-size:13px;
+}
+.detail-select > button:hover,
+.detail-select > div:first-of-type:hover {
+  background:#EEF5F7;
+}
+</style>

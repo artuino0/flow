@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { requireAuth, getPermissionFlags } from '~/server/utils/rbac'
-import { storeFile, FileTooLargeError, FileEntityNotFoundError } from '~/server/utils/fileStorage'
+import { ManagedFileTooLargeError, storeManagedFile } from '~/server/utils/managedStorage'
 
 // POST /api/files?entityId=... (HU-ERD-78, multipart/form-data, un archivo)
 // Sube el archivo para el dataType 'file' - entityId es la entidad DESTINO
@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const stored = await storeFile(auth.tenantId, query.entityId, {
+    const stored = await storeManagedFile(auth.tenantId, query.entityId, {
       fileName: filePart.filename,
       mimeType: filePart.type ?? 'application/octet-stream',
       buffer: filePart.data,
@@ -35,11 +35,8 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 201)
     return stored
   } catch (err) {
-    if (err instanceof FileTooLargeError) {
+    if (err instanceof ManagedFileTooLargeError) {
       throw createError({ statusCode: 413, statusMessage: err.message })
-    }
-    if (err instanceof FileEntityNotFoundError) {
-      throw createError({ statusCode: 422, statusMessage: err.message })
     }
     throw err
   }

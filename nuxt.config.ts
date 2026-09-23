@@ -2,7 +2,12 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-08-27',
   devtools: { enabled: true },
   nitro: {
-    experimental: { websocket: true }
+    experimental: { websocket: true },
+    // La verificacion se incorpora al paquete on-premise durante el build.
+    // Cambiar el .env del cliente no desactiva la licencia de ese paquete.
+    replace: {
+      __FLOWERP_ONPREM_BUILD__: process.env.FLOWERP_DISTRIBUTION === 'onprem' ? 'true' : 'false'
+    }
   },
   // HU-ERD-21: Tailwind CSS + tema por defecto.
   modules: ['@nuxtjs/tailwindcss'],
@@ -29,7 +34,7 @@ export default defineNuxtConfig({
   // son los unicos consumidores).
   app: {
     head: {
-      title: 'FlowERP',
+      title: 'Flow',
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },

@@ -20,6 +20,8 @@
 // no hay ruta dedicada por rol, tal cual el diseno.
 import { ArrowRight, Blocks, Check, ChevronDown, Copy, Plus, Search, ShieldCheck, X } from '@lucide/vue'
 import type { ChatPermissionKey, ChatPermissionValues } from '~/utils/chat'
+import { FLOW_APP_LIST, type FlowAppKey } from '~/utils/flowApps'
+import { FLOW_APP_ACCESS_CAPABILITY, type FlowCapabilityKey, type FlowCapabilityValues } from '~/utils/flowCapabilities'
 
 definePageMeta({ layout: 'default' })
 
@@ -103,6 +105,38 @@ const { data: chatPermsData } = await useFetch<{ role: RoleRow; permissions: Cha
 })
 const chatPermissions = ref<ChatPermissionValues>({ canAccess: true, canStartDirect: true, canSendAttachments: true, canCreateGroups: false })
 watchEffect(() => { if (chatPermsData.value) chatPermissions.value = { ...chatPermsData.value.permissions } })
+
+const { data: appPermsData } = await useFetch<{ role: RoleRow; permissions: FlowCapabilityValues }>(() => `/api/roles/${selectedRoleId.value}/app-permissions`, {
+  key: 'role-app-permissions', headers: cookieHeaders, watch: [selectedRoleId], immediate: !!selectedRoleId.value
+})
+const appPermissions = ref<FlowCapabilityValues>({
+  'core.access': true,
+  'automation.access': false,
+  'communications.access': true,
+  'sites.access': false,
+  'billing.access': false,
+  'settings.access': true
+})
+watchEffect(() => { if (appPermsData.value) appPermissions.value = { ...appPermsData.value.permissions } })
+const appDescriptions: Record<FlowAppKey, string> = {
+  core: 'Módulos, catálogos y datos operativos de la organización.',
+  automation: 'Flujos que reaccionan a cambios y ejecutan acciones.',
+  communications: 'Chat interno y los futuros canales con clientes.',
+  sites: 'Páginas, formularios y contenido conectado con Core.',
+  billing: 'Facturas, complementos de pago y documentos fiscales.',
+  settings: 'Usuarios, roles y configuración de la organización.'
+}
+const appRows = FLOW_APP_LIST.map(app => ({ ...app, capability: FLOW_APP_ACCESS_CAPABILITY[app.key] }))
+function toggleAppPermission(key: FlowCapabilityKey) {
+  if (key === 'core.access' || key === 'settings.access' || permsData.value?.role.isSystem) return
+  appPermissions.value[key] = !appPermissions.value[key]
+  if (key === 'communications.access') chatPermissions.value.canAccess = appPermissions.value[key]
+}
+function toggleChatPermission(key: ChatPermissionKey) {
+  if (permsData.value?.role.isSystem) return
+  chatPermissions.value[key] = !chatPermissions.value[key]
+  if (key === 'canAccess') appPermissions.value['communications.access'] = chatPermissions.value.canAccess
+}
 const chatRows: { key: ChatPermissionKey; title: string; description: string }[] = [
   { key: 'canAccess', title: 'Acceder al chat', description: 'Ver conversaciones existentes y responder mensajes.' },
   { key: 'canStartDirect', title: 'Iniciar chats directos', description: 'Comenzar conversaciones con otros trabajadores.' },
@@ -113,7 +147,7 @@ const chatRows: { key: ChatPermissionKey; title: string; description: string }[]
 // Copia local editable - se resetea cada vez que llega/cambia `permsData`
 // (carga inicial, cambio de rol seleccionado, o despues de guardar con exito).
 const rows = ref<EntityPermissionRow[]>([])
-const activeTab = ref<'hecho' | 'dimension' | 'chat'>('hecho')
+const activeTab = ref<'hecho' | 'dimension' | 'applications' | 'chat'>('hecho')
 const visibleRows = computed(() => rows.value.filter(row => activeTab.value === 'hecho' ? row.moduleKind === 'hecho' : activeTab.value === 'dimension' ? row.moduleKind === 'dimension' : false))
 const visibleColumns = computed(() => activeTab.value === 'dimension' ? COLUMNS.filter(col => col.key !== 'showInMenu') : COLUMNS)
 const tabCounts = computed(() => ({ hecho: rows.value.filter(row => row.moduleKind === 'hecho').length, dimension: rows.value.filter(row => row.moduleKind === 'dimension').length }))
@@ -143,9 +177,10 @@ async function onSave() {
       method: 'PUT',
       body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu }) => ({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu })) }
     })
+    await $fetch(`/api/roles/${selectedRoleId.value}/app-permissions`, { method: 'PUT', body: appPermissions.value })
     await $fetch(`/api/roles/${selectedRoleId.value}/chat-permissions`, { method: 'PUT', body: chatPermissions.value })
     rows.value = result.permissions.map((p) => ({ ...p }))
-    await refreshNuxtData('appnav-modules')
+    await Promise.all([refreshNuxtData('appnav-modules'), refreshNuxtData('flow-app-access')])
     toast.updated('Permisos actualizados', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     saveError.value = err?.data?.statusMessage || 'No se pudieron guardar los permisos'
@@ -371,7 +406,7 @@ async function onCreateRole() {
           estado vacío real (icono + heading + subtítulo + CTA "Ir a
           Módulos"), para cuando el tenant todavía no tiene ningún módulo
           sobre el que configurar permisos. -->
-          <div v-if="rows.length === 0 && activeTab !== 'chat'" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
+          <div v-if="rows.length === 0 && activeTab !== 'chat' && activeTab !== 'applications'" class="flex flex-col items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface py-24">
             <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg">
               <Blocks class="h-7 w-7 text-brand-text-muted" :stroke-width="1.75" />
             </div>
@@ -401,9 +436,10 @@ async function onCreateRole() {
             <div class="mb-3 flex items-center gap-1 border-b border-brand-border-light" role="tablist" aria-label="Tipo de entidad">
               <button type="button" role="tab" :aria-selected="activeTab === 'hecho'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'hecho' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'hecho'">Módulos <span class="ml-1 text-xs font-normal">({{ tabCounts.hecho }})</span></button>
               <button type="button" role="tab" :aria-selected="activeTab === 'dimension'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'dimension' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'dimension'">Catálogos <span class="ml-1 text-xs font-normal">({{ tabCounts.dimension }})</span></button>
+              <button type="button" role="tab" :aria-selected="activeTab === 'applications'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'applications' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'applications'">Aplicaciones</button>
               <button type="button" role="tab" :aria-selected="activeTab === 'chat'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'chat' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'chat'">Chat</button>
             </div>
-            <div v-if="activeTab !== 'chat'" class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+            <div v-if="activeTab === 'hecho' || activeTab === 'dimension'" class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
             <table class="min-w-full text-sm">
               <thead class="border-b border-brand-border-light bg-brand-bg">
                 <tr>
@@ -435,13 +471,32 @@ async function onCreateRole() {
               </tbody>
             </table>
             </div>
-            <p v-if="activeTab !== 'chat' && visibleRows.length === 0" class="px-2 py-4 text-sm text-brand-text-muted">No hay {{ activeTab === 'hecho' ? 'módulos' : 'catálogos' }} para este rol.</p>
+            <p v-if="(activeTab === 'hecho' || activeTab === 'dimension') && visibleRows.length === 0" class="px-2 py-4 text-sm text-brand-text-muted">No hay {{ activeTab === 'hecho' ? 'módulos' : 'catálogos' }} para este rol.</p>
+            <div v-if="activeTab === 'applications'" class="overflow-hidden rounded-lg border border-brand-border-light bg-white">
+              <div class="border-b border-brand-border-light px-5 py-4">
+                <h3 class="text-sm font-bold text-brand-text">Acceso base a aplicaciones</h3>
+                <p class="mt-1 text-xs text-brand-text-muted">Define qué áreas de Flow puede abrir este rol. Core y Ajustes forman la base del sistema.</p>
+              </div>
+              <div class="divide-y divide-brand-border-light">
+                <div v-for="app in appRows" :key="app.key" class="flex items-center justify-between gap-6 px-5 py-4">
+                  <div class="flex min-w-0 items-start gap-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-sidebar-active-bg text-brand-blue"><component :is="app.icon" class="h-4 w-4" /></div>
+                    <div><p class="text-sm font-semibold text-brand-text">{{ app.label }}</p><p class="mt-1 text-xs text-brand-text-muted">{{ appDescriptions[app.key] }}</p></div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span v-if="app.key === 'core' || app.key === 'settings'" class="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">Base</span>
+                    <button type="button" role="switch" :aria-checked="appPermissions[app.capability]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="appPermissions[app.capability] ? 'justify-end bg-brand-orange' : 'justify-start bg-[#CBD6E2]'" :disabled="permsData.role.isSystem || app.key === 'core' || app.key === 'settings'" @click="toggleAppPermission(app.capability)"><span class="h-5 w-5 rounded-full bg-white shadow" /></button>
+                  </div>
+                </div>
+              </div>
+              <p v-if="permsData.role.isSystem" class="border-t border-brand-border-light bg-brand-bg px-5 py-3 text-xs text-brand-text-muted">El rol Administrador conserva acceso a todas las aplicaciones.</p>
+            </div>
             <div v-if="activeTab === 'chat'" class="overflow-hidden rounded-lg border border-brand-border-light bg-white">
               <div class="border-b border-brand-border-light px-5 py-4"><h3 class="text-sm font-bold text-brand-text">Permisos base de chat</h3><p class="mt-1 text-xs text-brand-text-muted">Cada usuario hereda estos permisos salvo que tenga una excepción individual.</p></div>
               <div class="divide-y divide-brand-border-light">
                 <div v-for="permission in chatRows" :key="permission.key" class="flex items-center justify-between gap-6 px-5 py-4">
                   <div><p class="text-sm font-semibold text-brand-text">{{ permission.title }}</p><p class="mt-1 text-xs text-brand-text-muted">{{ permission.description }}</p></div>
-                  <button type="button" role="switch" :aria-checked="chatPermissions[permission.key]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="chatPermissions[permission.key] ? 'justify-end bg-brand-orange' : 'justify-start bg-[#CBD6E2]'" :disabled="permsData.role.isSystem" @click="chatPermissions[permission.key] = !chatPermissions[permission.key]"><span class="h-5 w-5 rounded-full bg-white shadow" /></button>
+                  <button type="button" role="switch" :aria-checked="chatPermissions[permission.key]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="chatPermissions[permission.key] ? 'justify-end bg-brand-orange' : 'justify-start bg-[#CBD6E2]'" :disabled="permsData.role.isSystem" @click="toggleChatPermission(permission.key)"><span class="h-5 w-5 rounded-full bg-white shadow" /></button>
                 </div>
               </div>
               <p v-if="permsData.role.isSystem" class="border-t border-brand-border-light bg-brand-bg px-5 py-3 text-xs text-brand-text-muted">El rol Administrador conserva todos los permisos de chat.</p>
@@ -451,7 +506,7 @@ async function onCreateRole() {
           <div class="flex items-center gap-3">
             <button
               type="button"
-              :disabled="saving || rows.length === 0"
+              :disabled="saving"
               class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="onSave"
             >
