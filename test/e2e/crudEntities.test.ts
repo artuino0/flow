@@ -75,6 +75,11 @@ function extractCookie(res: Response): string {
   return raw.split(';')[0]
 }
 
+async function seedMembership(db: postgres.Sql, tenantId: string, roleId: string, email: string, passwordHash: string, fullName: string) {
+  const [person] = await db`insert into people (email, password_hash, full_name) values (${email}, ${passwordHash}, ${fullName}) returning id`
+  await db`insert into users (tenant_id, role_id, person_id, is_active) values (${tenantId}, ${roleId}, ${person.id}, true)`
+}
+
 async function api(pathAndQuery: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${baseUrl}${pathAndQuery}`, {
     ...init,
@@ -163,10 +168,7 @@ beforeAll(async () => {
       insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Administrador', true) returning id
     `
     adminRoleId = role.id
-    await admin`
-      insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
-      values (${TENANT_ID}, ${role.id}, ${ADMIN_EMAIL}, ${passwordHash}, 'Admin E2E', true)
-    `
+    await seedMembership(admin, TENANT_ID, role.id, ADMIN_EMAIL, passwordHash, 'Admin E2E')
   } finally {
     await admin.end()
   }
@@ -183,7 +185,7 @@ beforeAll(async () => {
   // Build real (igual que produccion) - un "e2e" que solo llamara handlers a
   // mano no probaria el server compilado, el middleware de auth global, ni
   // el boot de Nitro.
-  execFileSync('npx', ['nuxt', 'build'], { cwd: PROJECT_ROOT, stdio: 'pipe' })
+  execFileSync(process.execPath, [path.resolve(PROJECT_ROOT, 'node_modules/nuxt/bin/nuxt.mjs'), 'build'], { cwd: PROJECT_ROOT, stdio: 'pipe' })
 
   const port = await getFreePort()
   baseUrl = `http://localhost:${port}`
@@ -211,7 +213,9 @@ beforeAll(async () => {
   })
   expect(loginRes.status).toBe(200)
   authCookie = extractCookie(loginRes)
-}, 180_000)
+  // ERD-90: el `nuxt build` de este hook tardó 246 s en una máquina de desarrollo
+  // con el servidor dev y otros procesos activos; 180 s cortaba la prueba antes de empezar.
+}, Number(process.env.E2E_BUILD_TIMEOUT_MS) || 600_000)
 
 afterAll(async () => {
   if (server) {
@@ -512,10 +516,7 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     try {
       const passwordHash = await bcrypt.hash(password, 12)
       const [role] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Sin admin Tablero', false) returning id`
-      await admin`
-        insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
-        values (${TENANT_ID}, ${role.id}, ${email}, ${passwordHash}, 'No Admin Tablero', true)
-      `
+      await seedMembership(admin, TENANT_ID, role.id, email, passwordHash, 'No Admin Tablero')
     } finally {
       await admin.end()
     }
@@ -554,10 +555,7 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
       const [role] = await admin`
         insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Vendedor', false) returning id
       `
-      await admin`
-        insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
-        values (${TENANT_ID}, ${role.id}, ${NON_ADMIN_EMAIL}, ${passwordHash}, 'Vendedor E2E', true)
-      `
+      await seedMembership(admin, TENANT_ID, role.id, NON_ADMIN_EMAIL, passwordHash, 'Vendedor E2E')
     } finally {
       await admin.end()
     }
@@ -1255,10 +1253,7 @@ describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
     const [role] = await dedicatedAdmin`
       insert into roles (tenant_id, name, is_system) values (${dedicatedTenantId}, 'Administrador', true) returning id
     `
-    await dedicatedAdmin`
-      insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
-      values (${dedicatedTenantId}, ${role.id}, ${DEDICATED_EMAIL}, ${passwordHash}, 'Admin Dedicated', true)
-    `
+    await seedMembership(dedicatedAdmin, dedicatedTenantId, role.id, DEDICATED_EMAIL, passwordHash, 'Admin Dedicated')
 
     const port = await getFreePort()
     dedicatedBaseUrl = `http://localhost:${port}`

@@ -34,11 +34,13 @@ async function seedTenant(tenantId: string) {
   await admin`insert into dim_sucursal (tenant_id, nombre, ciudad) values (${tenantId}, 'Sucursal 1', 'CDMX')`
 
   const [role] = await admin`insert into roles (tenant_id, name, is_system) values (${tenantId}, 'Administrador', true) returning id`
+  const [activePerson] = await admin`insert into people (email, password_hash, full_name) values (${'activo+' + tenantId + '@test.com'}, 'hash', 'Activo') returning id`
+  const [inactivePerson] = await admin`insert into people (email, password_hash, full_name) values (${'inactivo+' + tenantId + '@test.com'}, 'hash', 'Inactivo') returning id`
   await admin`
-    insert into users (tenant_id, role_id, email, password_hash, full_name, is_active)
+    insert into users (tenant_id, role_id, person_id, is_active)
     values
-      (${tenantId}, ${role.id}, 'activo@test.com', 'hash', 'Activo', true),
-      (${tenantId}, ${role.id}, 'inactivo@test.com', 'hash', 'Inactivo', false)
+      (${tenantId}, ${role.id}, ${activePerson.id}, true),
+      (${tenantId}, ${role.id}, ${inactivePerson.id}, false)
   `
 
   // dim_date + fact_eventos: dos fechas distintas, dentro y fuera de un rango

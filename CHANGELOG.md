@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.91.3] - 2026-09-25
+#### [bug]
+- [ERD-90](https://dydasoftware.atlassian.net/browse/ERD-90) - Pruebas de métricas y e2e actualizadas al modelo de identidad (`people` + membresía en `users`); el e2e compila Nuxt sin `npx` y con límite de tiempo configurable.
+
 ### [0.91.2] - 2026-09-25
 #### [bug]
 - [ERD-89](https://dydasoftware.atlassian.net/browse/ERD-89) - El enlace de invitación usa el puerto correcto por defecto, exige una URL pública en Vercel y se muestra en el modal con botón Copiar.
