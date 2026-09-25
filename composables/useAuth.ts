@@ -83,6 +83,7 @@ export function useAuth() {
         user.value = null
       }
     }
+    if (user.value?.authenticated && import.meta.client) useRealtime().resumeSession()
     return user.value
   }
 

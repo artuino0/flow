@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.91.1] - 2026-09-24
+#### [bug]
+- [ERD-88](https://dydasoftware.atlassian.net/browse/ERD-88) - El cliente de tiempo real deja de reconectar sin sesión y los errores 4xx se registran como advertencia sin enviarse a Sentry.
+
 ### [0.91.0] - 2026-09-24
 #### [feature]
 - [ERD-87](https://dydasoftware.atlassian.net/browse/ERD-87) - Procesos de fondo escalables (fase 2): ETL de OLAP incremental por cursor, en lotes y sin reprocesar, con ruta de Vercel Cron cada 15 min.

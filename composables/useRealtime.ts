@@ -1,4 +1,5 @@
 import type { Ref } from 'vue'
+import { realtimeReconnectDelay, realtimeRefreshRequiresSession, shouldConnectRealtime } from '~/utils/realtimeRetry'
 
 export interface ClientRealtimeEnvelope<T = unknown> {
   type: string
@@ -21,6 +22,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let reconnectAttempt = 0
 let consumerCount = 0
 let stopped = true
+let sessionRequired = false
 let currentState: Ref<RealtimeConnectionState> | null = null
 let transportPromise: Promise<'websocket' | 'polling'> | null = null
 const listeners = new Map<string, Set<RealtimeListener>>()
@@ -57,8 +59,21 @@ function stopPolling() {
 }
 
 async function refreshAccessCookie() {
-  try { await $fetch('/api/auth/refresh', { method: 'POST' }) }
-  catch { /* El upgrade del socket vuelve a validar la sesión. */ }
+  try {
+    await $fetch('/api/auth/refresh', { method: 'POST' })
+    return true
+  } catch (error) {
+    if (realtimeRefreshRequiresSession(error)) {
+      sessionRequired = true
+      if (currentState) {
+        currentState.value.connected = false
+        currentState.value.reconnecting = false
+      }
+      clearReconnect()
+      return false
+    }
+    return true
+  }
 }
 
 async function resolveTransport(): Promise<'websocket' | 'polling'> {
@@ -71,10 +86,9 @@ async function resolveTransport(): Promise<'websocket' | 'polling'> {
 }
 
 function scheduleReconnect(state: Ref<RealtimeConnectionState>) {
-  if (stopped || reconnectTimer || !navigator.onLine) return
+  if (!shouldConnectRealtime(stopped, sessionRequired) || reconnectTimer || !navigator.onLine) return
   if (state.value.everConnected) state.value.reconnecting = true
-  const base = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectAttempt, 5))
-  const delay = Math.round(base * (0.8 + Math.random() * 0.4))
+  const delay = realtimeReconnectDelay(reconnectAttempt)
   reconnectAttempt += 1
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
@@ -83,7 +97,7 @@ function scheduleReconnect(state: Ref<RealtimeConnectionState>) {
 }
 
 async function connect(state: Ref<RealtimeConnectionState>) {
-  if (!import.meta.client || stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+  if (!import.meta.client || !shouldConnectRealtime(stopped, sessionRequired) || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
   clearReconnect()
   const transport = await resolveTransport()
   state.value.transport = transport
@@ -93,8 +107,8 @@ async function connect(state: Ref<RealtimeConnectionState>) {
     startPolling()
     return
   }
-  await refreshAccessCookie()
-  if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+  const refreshed = await refreshAccessCookie()
+  if (!refreshed || stopped || sessionRequired || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
 
   const next = new WebSocket(websocketUrl())
   socket = next
@@ -139,6 +153,14 @@ function wakeConnection() {
   void connect(currentState)
 }
 
+function resumeSession() {
+  if (stopped) return
+  sessionRequired = false
+  reconnectAttempt = 0
+  clearReconnect()
+  wakeConnection()
+}
+
 export function useRealtime() {
   const state = useState<RealtimeConnectionState>('realtime-connection', () => ({ connected: false, reconnecting: false, everConnected: false, transport: 'unknown' }))
   let active = false
@@ -150,6 +172,7 @@ export function useRealtime() {
     currentState = state
     if (consumerCount === 1) {
       stopped = false
+      sessionRequired = false
       window.addEventListener('online', wakeConnection)
       document.addEventListener('visibilitychange', wakeConnection)
       void connect(state)
@@ -190,5 +213,5 @@ export function useRealtime() {
     return true
   }
 
-  return { state, start, stop, subscribe, send }
+  return { state, start, stop, subscribe, send, resumeSession }
 }

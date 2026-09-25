@@ -36,6 +36,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!user.value) await fetchMe()
 
   const isLoggedIn = Boolean(user.value?.authenticated)
+  if (isLoggedIn && to.path !== '/login') useRealtime().resumeSession()
   if (to.path === '/login') {
     if (isLoggedIn) return navigateTo('/')
     return

@@ -1,5 +1,6 @@
 import { initSentry, Sentry } from '~/server/utils/sentry'
 import { logger } from '~/server/utils/logger'
+import { classifyObservabilityError } from '~/server/utils/observabilityError'
 
 // HU-ERD-20: plugin de Nitro que arranca Sentry + logging estructurado.
 // - request/afterResponse: log de acceso en JSON (metodo, path, status, duracion, tenant si hay auth).
@@ -25,12 +26,18 @@ export default defineNitroPlugin((nitroApp) => {
   })
 
   nitroApp.hooks.hook('error', (error, { event }) => {
-    logger.error('unhandled_error', {
+    const level = classifyObservabilityError(error)
+    const context = {
       errorMessage: error.message,
       stack: error.stack,
       path: event?.path,
       method: event?.method
-    })
+    }
+    if (level === 'warning') {
+      logger.warn('handled_http_error', context)
+      return
+    }
+    logger.error('unhandled_error', context)
     Sentry.captureException(error)
   })
 })
