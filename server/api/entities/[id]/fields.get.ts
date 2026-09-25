@@ -20,7 +20,7 @@ import { metadataCache } from '~/server/utils/shortCache'
 // Mismo gate que records (canRead sobre la entidad): si puedes leer registros,
 // puedes leer la forma de sus campos.
 export default defineEventHandler(async (event) => {
-  const entitySlug = getRouterParam(event, 'entity')!
+  const entitySlug = getRouterParam(event, 'id')!
   const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')
 
   // La definición completa del módulo (campos, diseños, relaciones inversas y permisos del rol)

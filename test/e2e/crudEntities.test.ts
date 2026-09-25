@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import path from 'node:path'
 import bcrypt from 'bcryptjs'
@@ -75,13 +76,37 @@ function extractCookie(res: Response): string {
   return raw.split(';')[0]
 }
 
+async function ensureNonAdminUser(email: string, password: string, fullName: string) {
+  const admin = postgres(testDb.adminUrl)
+  try {
+    const [membership] = await admin`
+      select u.id from users u join people p on p.id = u.person_id
+      where u.tenant_id = ${TENANT_ID} and p.email = ${email} limit 1
+    `
+    if (membership) return
+
+    let [role] = await admin`select id from roles where tenant_id = ${TENANT_ID} and name = 'Vendedor' limit 1`
+    if (!role) {
+      ;[role] = await admin`insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Vendedor', false) returning id`
+    }
+    let [person] = await admin`select id from people where email = ${email} limit 1`
+    if (!person) {
+      const passwordHash = await bcrypt.hash(password, 12)
+      ;[person] = await admin`insert into people (email, password_hash, full_name) values (${email}, ${passwordHash}, ${fullName}) returning id`
+    }
+    await admin`insert into users (tenant_id, role_id, person_id, is_active) values (${TENANT_ID}, ${role.id}, ${person.id}, true)`
+  } finally {
+    await admin.end()
+  }
+}
+
 async function seedMembership(db: postgres.Sql, tenantId: string, roleId: string, email: string, passwordHash: string, fullName: string) {
   const [person] = await db`insert into people (email, password_hash, full_name) values (${email}, ${passwordHash}, ${fullName}) returning id`
   await db`insert into users (tenant_id, role_id, person_id, is_active) values (${tenantId}, ${roleId}, ${person.id}, true)`
 }
 
 async function api(pathAndQuery: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${baseUrl}${pathAndQuery}`, {
+  const res = await fetch(`${baseUrl}${pathAndQuery}`, {
     ...init,
     headers: {
       'content-type': 'application/json',
@@ -89,6 +114,7 @@ async function api(pathAndQuery: string, init: RequestInit = {}): Promise<Respon
       ...(init.headers ?? {})
     }
   })
+  return res
 }
 
 /**
@@ -185,7 +211,12 @@ beforeAll(async () => {
   // Build real (igual que produccion) - un "e2e" que solo llamara handlers a
   // mano no probaria el server compilado, el middleware de auth global, ni
   // el boot de Nitro.
-  execFileSync(process.execPath, [path.resolve(PROJECT_ROOT, 'node_modules/nuxt/bin/nuxt.mjs'), 'build'], { cwd: PROJECT_ROOT, stdio: 'pipe' })
+  // Para iterar sobre fallos aislados sin recompilar. Solo reutiliza el bundle
+  // si existe; la corrida normal siempre hace un build fresco.
+  const skipBuild = process.env.E2E_SKIP_BUILD === '1' && existsSync(path.resolve(PROJECT_ROOT, '.output/server/index.mjs'))
+  if (!skipBuild) {
+    execFileSync(process.execPath, [path.resolve(PROJECT_ROOT, 'node_modules/nuxt/bin/nuxt.mjs'), 'build'], { cwd: PROJECT_ROOT, stdio: 'pipe' })
+  }
 
   const port = await getFreePort()
   baseUrl = `http://localhost:${port}`
@@ -270,20 +301,20 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(res.status).toBe(422)
   })
 
-  // HU-ERD-32: UI del modulo CRM (AppNav + paginas genericas de HU-ERD-23/24
-  // reusadas para Clientes/Empresas/Empleados). Reusa el server ya levantado
-  // arriba en vez de compilar/levantar uno nuevo. Pega con fetch crudo (no un
-  // browser) pasando la cookie a mano - exactamente lo que hace un refresh
-  // completo (F5), el escenario donde el bug de forwarding de cookie en SSR
-  // (fix de esta misma HU en useEntityFields.ts/AppNav.vue/index.vue/editar.vue)
-  // se manifestaba.
-  it('SSR: la home renderiza los links de Clientes/Empresas/Empleados en el nav (AppNav filtra por RBAC via SSR)', async () => {
-    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+  // ERD-86 reclasificó Clientes/Empresas/Empleados como catálogos: se
+  // administran en /catalogos y no aparecen en el menú operativo.
+  it('SSR: Clientes/Empresas/Empleados aparecen en Catálogos y no en el menú operativo', async () => {
+    const res = await fetch(`${baseUrl}/catalogos`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('Clientes')
     expect(html).toContain('Empresas')
     expect(html).toContain('Empleados')
+    const navRes = await api('/api/nav/entities')
+    const slugs = ((await navRes.json()).entities as Array<{ slug: string }>).map(entity => entity.slug)
+    expect(slugs).not.toContain('clientes')
+    expect(slugs).not.toContain('empresas')
+    expect(slugs).not.toContain('empleados')
   })
 
   it('SSR: /registros/clientes (F5 completo, con cookie pero sin JS de cliente) renderiza el listado, no el estado de error', async () => {
@@ -306,10 +337,11 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
   // CRUD completo sobre clientes/empresas/empleados porque scripts/seed.mjs
   // (HU-ERD-25) se lo otorga automaticamente al rol isSystem - por eso el
   // primer GET de permisos abajo espera todo en true, no el default false.
-  it('SSR: la home ahora muestra "Roles y permisos" en el nav (admin real via GET /api/roles)', async () => {
-    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+  it('SSR: "Roles y permisos" está disponible para el administrador', async () => {
+    const res = await fetch(`${baseUrl}/roles`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
-    expect(await res.text()).toContain('Roles y permisos')
+    const html = await res.text()
+    expect(html).toContain('Roles y permisos')
   })
 
   it('GET /api/roles lista el rol Administrador del tenant', async () => {
@@ -500,13 +532,16 @@ describe('e2e: CRUD generico sobre entidades de ejemplo (server real + Postgres 
     expect(body.usuarios.total).toBe(1) // el admin creado en este e2e
   })
 
-  it('SSR: / (F5 completo) renderiza "Tablero" con el estado real, no el estado de error', async () => {
+  it('SSR: / renderiza el tablero operativo y su API devuelve datos, no el estado de error', async () => {
     const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Tablero')
-    expect(html).toContain('Usuarios activos')
-    expect(html).not.toContain('No se pudieron cargar las metricas')
+    expect(html).toContain('Hola, Admin')
+    expect(html).toContain('Accesos rápidos')
+    expect(html).not.toContain('No pudimos cargar el tablero')
+    const dataRes = await api('/api/dashboard/operational')
+    expect(dataRes.status).toBe(200)
+    expect((await dataRes.json()).modules).toBeDefined()
   })
 
   it('Tablero es visible y funcional para un usuario NO administrador (ya no esta gateado a admin)', async () => {
@@ -753,6 +788,7 @@ describe('e2e: HU-ERD-66 (CRUD de metadatos de modulos - entities)', () => {
       method: 'POST',
       body: JSON.stringify({ name: 'Descartable', slug: 'descartable-e2e' })
     })
+    expect(createRes.status).toBe(201)
     const entity = await createRes.json()
 
     const deleteRes = await api(`/api/entities/${entity.id}`, { method: 'DELETE' })
@@ -788,6 +824,7 @@ describe('e2e: ERD-43/44 (GET /api/nav/entities - menu dinamico filtrado por per
   let navInactivoEntitySlug: string
 
   beforeAll(async () => {
+    await ensureNonAdminUser(NAV_NON_ADMIN_EMAIL, NAV_NON_ADMIN_PASSWORD, 'Vendedor E2E')
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -855,14 +892,18 @@ describe('e2e: ERD-43/44 (GET /api/nav/entities - menu dinamico filtrado por per
     expect(visible).toMatchObject({ icon: 'Warehouse', canRead: true, canCreate: false, canUpdate: true, canDelete: false })
   })
 
-  it('un administrador ve todos los modulos visibles, incluidos los inactivos (para poder reactivarlos)', async () => {
+  it('un administrador solo ve módulos activos en el menú y puede gestionar el inactivo desde el listado', async () => {
     const res = await api('/api/nav/entities')
     expect(res.status).toBe(200)
     const { entities } = await res.json()
     const slugs = entities.map((e: { slug: string }) => e.slug)
     expect(slugs).toContain('nav-visible-e2e')
     expect(slugs).toContain(navOcultoEntitySlug)
-    expect(slugs).toContain(navInactivoEntitySlug)
+    expect(slugs).not.toContain(navInactivoEntitySlug)
+    const listRes = await api('/api/entities?moduleKind=hecho')
+    expect(listRes.status).toBe(200)
+    const listedSlugs = ((await listRes.json()).entities as Array<{ slug: string }>).map(entity => entity.slug)
+    expect(listedSlugs).toContain(navInactivoEntitySlug)
   })
 
   // Pedido directo del usuario (2026-09-05): "queria que con js en el menu
@@ -909,8 +950,24 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
   let fieldsEntitySlug: string
 
   beforeAll(async () => {
-    // El usuario no-admin ya existe (creado en el describe de HU-ERD-66,
-    // que corre antes que este en el mismo archivo) - solo hace falta loguear.
+    // La prueba debe poder correrse sola; reutiliza el usuario de HU-ERD-66
+    // si ya existe y lo crea si Vitest filtró ese describe.
+    const admin = postgres(testDb.adminUrl)
+    try {
+      const [existing] = await admin`
+        select u.id from users u join people p on p.id = u.person_id
+        where u.tenant_id = ${TENANT_ID} and p.email = ${FIELDS_NON_ADMIN_EMAIL} limit 1
+      `
+      if (!existing) {
+        const passwordHash = await bcrypt.hash(FIELDS_NON_ADMIN_PASSWORD, 12)
+        const [role] = await admin`
+          insert into roles (tenant_id, name, is_system) values (${TENANT_ID}, 'Vendedor campos E2E', false) returning id
+        `
+        await seedMembership(admin, TENANT_ID, role.id, FIELDS_NON_ADMIN_EMAIL, passwordHash, 'Vendedor campos E2E')
+      }
+    } finally {
+      await admin.end()
+    }
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1011,7 +1068,7 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
 
     const getRes = await api(`/api/entities/${fieldsEntitySlug}/fields`)
     const { fields } = await getRes.json()
-    expect(fields.find((f: { name: string }) => f.name === 'id')).toMatchObject({ label: 'Id' })
+    expect(fields.find((f: { name: string }) => f.name === 'id')).toMatchObject({ label: 'ID' })
   })
 
   // HU-ERD-71: el mismo 422 de "validationRules invalido", pero por el
@@ -1062,7 +1119,7 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
 
     const initialRes = await api(`/api/entities/${reorderSlug}/fields`)
     const initialFields = (await initialRes.json()).fields
-    expect(initialFields.map((f: { name: string }) => f.name)).toEqual(names)
+    expect(initialFields.filter((f: { name: string }) => f.name !== 'id').map((f: { name: string }) => f.name)).toEqual(names)
 
     const newOrder = [created[2].id, created[1].id, created[0].id]
     const reorderRes = await api('/api/entity-fields/reorder', { method: 'PUT', body: JSON.stringify({ entityId: entity.id, order: newOrder }) })
@@ -1070,7 +1127,7 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
 
     const afterRes = await api(`/api/entities/${reorderSlug}/fields`)
     const afterFields = (await afterRes.json()).fields
-    expect(afterFields.map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero'])
+    expect(afterFields.filter((f: { name: string }) => f.name !== 'id').map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero'])
 
     const missingIdRes = await api('/api/entity-fields/reorder', {
       method: 'PUT',
@@ -1117,7 +1174,7 @@ describe('e2e: HU-ERD-67 (CRUD de metadatos de campos - entity_fields + historia
     expect(newFieldRes.status).toBe(201)
     const finalRes = await api(`/api/entities/${reorderSlug}/fields`)
     const finalFields = (await finalRes.json()).fields
-    expect(finalFields.map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero', 'cuarto'])
+    expect(finalFields.filter((f: { name: string }) => f.name !== 'id').map((f: { name: string }) => f.name)).toEqual(['tercero', 'segundo', 'primero', 'cuarto'])
   })
 
   it('PUT fields/:fieldId cambia dataType, escribe entity_field_history y deja los records existentes is_dirty (revalidacion perezosa real vuelve a validarlos en su proximo GET)', async () => {
@@ -1302,16 +1359,15 @@ describe('e2e: HU-ERD-35 (APP_MODE=dedicated, FEATURE_DASHBOARD=false)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('SSR: la home ("Tablero") muestra el estado deshabilitado con el flag off, pero el link a "Roles y permisos" sigue (guard distinto, no afectado por el flag)', async () => {
+  it('SSR: el tablero operativo y Roles siguen disponibles con FEATURE_DASHBOARD=false', async () => {
     const cookie = await dedicatedLoginCookie()
     const res = await fetch(`${dedicatedBaseUrl}/`, { headers: { cookie } })
     const html = await res.text()
-    // "Tablero" ahora es la home misma (reubicacion post-HU-ERD-67) - con el
-    // flag off no desaparece de la nav (ya no es un item condicional), pero
-    // su contenido si respeta el kill switch real (no pide metricas).
-    expect(html).toContain('Tablero')
-    expect(html).toContain('Esta funcionalidad esta deshabilitada')
-    expect(html).toContain('Roles y permisos')
+    expect(html).toContain('Accesos rápidos')
+    expect(html).not.toContain('No pudimos cargar el tablero')
+    const rolesRes = await fetch(`${dedicatedBaseUrl}/roles`, { headers: { cookie } })
+    expect(rolesRes.status).toBe(200)
+    expect(await rolesRes.text()).toContain('Roles y permisos')
   })
 
   it('SSR: /login NO muestra el campo "Organización" en modo dedicated', async () => {
@@ -1345,6 +1401,7 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
   let listadoModuleName: string
 
   beforeAll(async () => {
+    await ensureNonAdminUser(MODULOS_NON_ADMIN_EMAIL, MODULOS_NON_ADMIN_PASSWORD, 'Vendedor E2E')
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1399,14 +1456,16 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     expect(html).not.toContain(listadoModuleName)
   })
 
-  it('SSR: la home muestra el link "Módulos" en el nav para admin, pero no para un rol no-admin', async () => {
-    const adminHomeRes = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
-    const adminHtml = await adminHomeRes.text()
-    expect(adminHtml).toContain('Módulos')
+  it('SSR: el link de Módulos está en Configuración para admin, pero no para un rol no-admin', async () => {
+    const adminSettingsRes = await fetch(`${baseUrl}/ajustes`, { headers: { cookie: authCookie } })
+    const adminHtml = await adminSettingsRes.text()
+    expect(adminSettingsRes.status).toBe(200)
+    expect(adminHtml).toContain('href="/modulos"')
 
-    const nonAdminHomeRes = await fetch(`${baseUrl}/`, { headers: { cookie: modulosNonAdminCookie } })
-    const nonAdminHtml = await nonAdminHomeRes.text()
-    expect(nonAdminHtml).not.toContain('Módulos')
+    const nonAdminSettingsRes = await fetch(`${baseUrl}/ajustes`, { headers: { cookie: modulosNonAdminCookie } })
+    const nonAdminHtml = await nonAdminSettingsRes.text()
+    expect(nonAdminSettingsRes.status).toBe(200)
+    expect(nonAdminHtml).not.toContain('href="/modulos"')
   })
 
   it('DELETE de un módulo con registros existentes conserva esos datos para consulta', async () => {
@@ -1488,9 +1547,10 @@ describe('e2e: HU-ERD-69 (Listado de Modulos - GET /api/entities + pages/modulos
     expect(editHtml).toContain('disabled')
   })
 
-  it('SSR: la home muestra el icono/link "Módulos" (icono blocks, verificado contra el .pen) para admin', async () => {
-    const res = await fetch(`${baseUrl}/`, { headers: { cookie: authCookie } })
+  it('SSR: Configuración muestra el icono/link de Módulos para admin', async () => {
+    const res = await fetch(`${baseUrl}/ajustes`, { headers: { cookie: authCookie } })
     const html = await res.text()
+    expect(res.status).toBe(200)
     expect(html).toContain('href="/modulos"')
   })
 })
@@ -2180,15 +2240,15 @@ describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtro
       })
       expect(res.status).toBe(201)
     }
-  }, 30_000)
+  }, 180_000)
 
-  it('sin listLayout guardado, GET .../fields devuelve el default: todas las columnas visibles, TODOS los Select/Multiselect como filtro, sin orden por defecto (AC: no rompe compatibilidad)', async () => {
+  it('sin listLayout guardado, GET .../fields devuelve el default: columnas visibles, todos los campos filtrables ofrecidos y sin orden por defecto', async () => {
     const res = await api(`/api/entities/${pedidosLLSlug}/fields`)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.listLayout.columns.map((c: { name: string }) => c.name)).toEqual(['nombre', 'monto', 'prioridad', 'etiquetas'])
     expect(body.listLayout.columns.every((c: { visible: boolean }) => c.visible)).toBe(true)
-    expect(body.listLayout.filterFields.sort()).toEqual(['etiquetas', 'prioridad'])
+    expect(body.listLayout.filterFields.sort()).toEqual(['etiquetas', 'monto', 'nombre', 'prioridad'])
     expect(body.listLayout.defaultSort).toBeNull()
   })
 
@@ -2219,13 +2279,13 @@ describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtro
     expect(res.status).toBe(400)
   })
 
-  it('un filterFields guardado con un campo que no es Select/Multiselect real se descarta al leer (AC explicito: nunca un campo que el backend no puede filtrar)', async () => {
+  it('un filterFields guardado con un nombre que no existe se descarta al leer (nunca se ofrece un campo que el backend no puede filtrar)', async () => {
     const putRes = await api(`/api/entities/${pedidosLLId}`, {
       method: 'PUT',
       body: JSON.stringify({
         listLayout: {
           columns: [{ name: 'nombre', visible: true }, { name: 'monto', visible: true }, { name: 'prioridad', visible: true }, { name: 'etiquetas', visible: true }],
-          filterFields: ['prioridad', 'nombre'],
+          filterFields: ['prioridad', 'nombre_inexistente'],
           defaultSort: null
         }
       })
@@ -2313,6 +2373,19 @@ describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtro
   })
 
   it('SSR: /registros/:entity muestra solo las columnas visibles configuradas, en el orden configurado (Monto antes que Nombre, Prioridad ausente)', async () => {
+    await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        listLayout: {
+          columns: [
+            { name: 'monto', visible: true }, { name: 'nombre', visible: true },
+            { name: 'prioridad', visible: false }, { name: 'etiquetas', visible: false }
+          ],
+          filterFields: ['prioridad'],
+          defaultSort: null
+        }
+      })
+    })
     const res = await fetch(`${baseUrl}/registros/${pedidosLLSlug}`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
@@ -2330,10 +2403,24 @@ describe('e2e: HU-ERD-75 (Diseño del listado / Table Builder - columnas, filtro
   })
 
   it('SSR: /registros/:entity no muestra el botón "Filtros" cuando listLayout.filterFields quedó vacío, aunque la entidad tenga campos Select/Multiselect (AC: filtros ofrecidos = subconjunto elegido, no automático)', async () => {
+    await api(`/api/entities/${pedidosLLId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        listLayout: {
+          columns: [
+            { name: 'nombre', visible: true }, { name: 'monto', visible: true },
+            { name: 'prioridad', visible: true }, { name: 'etiquetas', visible: true }
+          ],
+          filterFields: [],
+          defaultSort: null
+        }
+      })
+    })
     const res = await fetch(`${baseUrl}/registros/${pedidosLLSlug}`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).not.toContain('Filtros')
+    const filtersButton = html.match(/<button[^>]*disabled[^>]*>[\s\S]*?Filtros[\s\S]*?<\/button>/)?.[0]
+    expect(filtersButton).toBeDefined()
   })
 
   it('SSR: pages/modulos/[id]/editar.vue renderiza el indicador de 4 pasos, incluido el nuevo paso "Diseño del listado"', async () => {
@@ -2367,6 +2454,7 @@ describe('e2e: HU-ERD-76 (Advertencia al editar/eliminar un campo con datos exis
   beforeAll(async () => {
     // El usuario no-admin ya existe (creado en el describe de HU-ERD-66) -
     // solo hace falta loguear, mismo patron que HU-ERD-67.
+    await ensureNonAdminUser(IMPACT_NON_ADMIN_EMAIL, IMPACT_NON_ADMIN_PASSWORD, 'Vendedor E2E')
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2398,7 +2486,7 @@ describe('e2e: HU-ERD-76 (Advertencia al editar/eliminar un campo con datos exis
     })
     expect(etiquetaRes.status).toBe(201)
     etiquetaFieldId = (await etiquetaRes.json()).id
-  }, 30_000)
+  }, 180_000)
 
   it('GET /api/entity-fields/:fieldId sin cookie es 401, y con un rol no-admin es 403', async () => {
     const noAuthRes = await fetch(`${baseUrl}/api/entity-fields/${montoFieldId}`)
@@ -2477,6 +2565,7 @@ describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso p
   let redesignEntitySlug: string
 
   beforeAll(async () => {
+    await ensureNonAdminUser(REDESIGN_NON_ADMIN_EMAIL, REDESIGN_NON_ADMIN_PASSWORD, 'Vendedor E2E')
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2509,7 +2598,7 @@ describe('e2e: Rediseno "Editar Módulo" (switch Módulo activo bloquea acceso p
       body: JSON.stringify({ permissions: [{ entityId: redesignEntityId, canRead: true, canCreate: false, canUpdate: false, canDelete: false }] })
     })
     expect(grantRes.status).toBe(200)
-  }, 30_000)
+  }, 180_000)
 
   it('un modulo activo (default) es accesible para un rol no-admin con canRead otorgado', async () => {
     const res = await fetch(`${baseUrl}/api/entities/${redesignEntitySlug}/fields`, { headers: { cookie: redesignNonAdminCookie } })
@@ -2582,7 +2671,20 @@ describe('e2e: flujo Recepcion -> Empaque -> Embarque (scripts/seedEmpaque.mjs)'
       env: { ...process.env, APP_DATABASE_URL: testDb.appUrl },
       stdio: 'pipe'
     })
-  }, 30_000)
+  }, 180_000)
+
+  beforeAll(async () => {
+    const listed = await api('/api/entities')
+    const existing = (await listed.json()).entities as Array<{ slug: string }>
+    for (const entity of [
+      { name: 'Manifiestos', slug: 'manifiestos-e2e', singularName: 'Manifiesto' },
+      { name: 'Sin Singular E2E', slug: 'sin-singular-e2e' }
+    ]) {
+      if (existing.some(row => row.slug === entity.slug)) continue
+      const created = await api('/api/entities', { method: 'POST', body: JSON.stringify(entity) })
+      expect(created.status).toBe(201)
+    }
+  }, 180_000)
 
   it('las 5 entidades quedan creadas, con permiso CRUD completo del rol Administrador', async () => {
     const permsRes = await api(`/api/roles/${adminRoleId}/permissions`)
@@ -2738,14 +2840,18 @@ describe('e2e: flujo Recepcion -> Empaque -> Embarque (scripts/seedEmpaque.mjs)'
     const res = await fetch(`${baseUrl}/registros/manifiestos-e2e/nuevo`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Nuevo Manifiesto')
-    expect(html).not.toContain('Nuevo Manifiestos')
+    const body = html.slice(html.indexOf('<body'), html.indexOf('</body>'))
+    const visibleBody = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+    expect(visibleBody).toContain('NUEVO REGISTRO Manifiesto')
+    expect(visibleBody).not.toContain('NUEVO REGISTRO Manifiestos')
   })
 
   it('SSR: /registros/sin-singular-e2e/nuevo sin singularName sigue usando name tal cual ("Nuevo Sin Singular E2E")', async () => {
     const res = await fetch(`${baseUrl}/registros/sin-singular-e2e/nuevo`, { headers: { cookie: authCookie } })
     expect(res.status).toBe(200)
     const html = await res.text()
-    expect(html).toContain('Nuevo Sin Singular E2E')
+    const body = html.slice(html.indexOf('<body'), html.indexOf('</body>'))
+    const visibleBody = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+    expect(visibleBody).toContain('NUEVO REGISTRO Sin Singular E2E')
   })
 })

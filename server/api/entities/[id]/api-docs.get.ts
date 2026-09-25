@@ -6,7 +6,7 @@ import { entityFields } from '~/server/db/schema'
 // GET /api/entities/:entity/api-docs
 // Referencia de integración generada a partir de los metadatos reales del módulo.
 export default defineEventHandler(async (event) => {
-  const entitySlug = getRouterParam(event, 'entity')!
+  const entitySlug = getRouterParam(event, 'id')!
   const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')
   const fields = await withTenant(auth.tenantId, (tx) => tx
     .select({ name: entityFields.name, label: entityFields.label, dataType: entityFields.dataType, isRequired: entityFields.isRequired, validationRules: entityFields.validationRules })

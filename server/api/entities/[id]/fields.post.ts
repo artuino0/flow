@@ -31,7 +31,7 @@ const bodySchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
-  const entityId = getRouterParam(event, 'entity')!
+  const entityId = getRouterParam(event, 'id')!
   const body = await readValidatedBody(event, bodySchema.parse)
 
   try {

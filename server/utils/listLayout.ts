@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 // HU-ERD-75: "Diseño del listado" (Table Builder) - que columnas se muestran
-// en DynamicTable.vue y en que orden, que campos Select/Multiselect se
-// ofrecen como filtro (subconjunto real de HU-ERD-73, nunca un campo que el
-// backend no puede filtrar), y el orden por defecto de la tabla. Mismo
+// en DynamicTable.vue y en que orden, que campos filtrables se ofrecen como
+// filtro (nunca un campo que el backend no puede filtrar), y el orden por
+// defecto de la tabla. Mismo
 // patron de reconciliacion que server/utils/detailLayout.ts (ERD-74): sin
 // tabla nueva, jsonb en entities.list_layout, resuelto contra los campos
 // reales en cada lectura para nunca romper ni quedar desincronizado.
@@ -36,10 +36,9 @@ export const listLayoutSchema = z
   .strict()
 
 /**
- * Default = comportamiento actual de DynamicTable.vue antes de esta HU
- * (criterio de aceptacion explicito): todas las columnas visibles en el
- * orden de entity_fields, TODOS los campos Select/Multiselect ofrecidos como
- * filtro (igual que HU-ERD-73 sin esta HU encima), sin orden por defecto
+ * Default = comportamiento del listado sin configuración propia: todas las
+ * columnas visibles en el orden de entity_fields, todos los campos aceptados
+ * por el sistema de filtros ofrecidos, sin orden por defecto
  * propio (la pagina de listado sigue usando createdAt/desc como hasta ahora).
  */
 export function defaultListLayout(fieldNames: string[], filterableFieldNames: string[]): ListLayout {
@@ -58,9 +57,9 @@ export function defaultListLayout(fieldNames: string[], filterableFieldNames: st
  * visibles - una columna nueva no debe desaparecer silenciosamente del
  * listado). filterFields es distinto a proposito: es una lista curada
  * explicitamente por el administrador (que campos SE OFRECEN como filtro),
- * no un default expansivo - un campo Select/Multiselect nuevo creado despues
+ * no un default expansivo - un campo filtrable nuevo creado despues
  * de guardar el layout NO se agrega solo, pero un campo que dejo de ser
- * Select/Multiselect (o se borro) SI se descarta, para cumplir el criterio de
+ * dejo de ser filtrable (o se borro) SI se descarta, para cumplir el criterio de
  * aceptacion "nunca un campo que el backend no puede filtrar todavia".
  */
 export function resolveListLayout(saved: unknown, fieldNames: string[], filterableFieldNames: string[]): ListLayout {

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.92.1] - 2026-09-25
+#### [bug]
+- [ERD-93](https://dydasoftware.atlassian.net/browse/ERD-93) - Corrige restaurar un módulo (la ruta `restore` bajo `/api/entities` no resolvía por choque de parámetros en Nitro) y el filtro "es alguno de" con varios valores en campos Select; e2e `crudEntities` actualizado y opción `E2E_SKIP_BUILD=1` para reutilizar el build.
+
 ### [0.92.0] - 2026-09-25
 #### [feature]
 - [ERD-92](https://dydasoftware.atlassian.net/browse/ERD-92) - Ambiente de QA local separado: worktree `../frontback-qa`, build de producción en el puerto 3100 con base `erp_dinamico_qa` y script `scripts/qa-deploy.ps1` para desplegar una rama sin tocar el servidor de desarrollo.

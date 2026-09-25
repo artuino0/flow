@@ -105,6 +105,8 @@ export default defineEventHandler(async (event) => {
         where = and(where, dsql`${comparable} ${dsql.raw(op)} ${comparableValues[0]}`)
       } else if (field.dataType === 'multiselect') {
         where = and(where, dsql`${records.customData}->${query.filterField} ?| ${pgArray(values)}`)
+      } else if (operator === 'eq' && field.dataType === 'select' && values.length > 1) {
+        where = and(where, dsql`${scalar} = ANY(${pgArray(values)})`)
       } else {
         where = and(where, dsql`${comparable} = ${comparableValues[0]}`)
       }
