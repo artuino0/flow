@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.91.4] - 2026-09-25
+#### [bug]
+- [ERD-91](https://dydasoftware.atlassian.net/browse/ERD-91) - Fechas con formato `es-MX` y zona fija en servidor y navegador (sin hydration mismatch ni corrimiento de día); eliminar líneas usa el diálogo de confirmación de Flow.
+
 ### [0.91.3] - 2026-09-25
 #### [bug]
 - [ERD-90](https://dydasoftware.atlassian.net/browse/ERD-90) - Pruebas de métricas y e2e actualizadas al modelo de identidad (`people` + membresía en `users`); el e2e compila Nuxt sin `npx` y con límite de tiempo configurable.

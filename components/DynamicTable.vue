@@ -69,8 +69,7 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
     case 'boolean':
       return v ? 'Si' : 'No'
     case 'date': {
-      const d = new Date(v as string)
-      return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString()
+      return formatDate(v as string)
     }
     case 'currency':
       return formatCurrencyValue(v, field.validationRules)

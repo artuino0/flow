@@ -38,6 +38,7 @@ const saving = ref(false)
 const drawerRef = ref<{ focusFirst: () => Promise<void> } | null>(null)
 const formRef = ref<{ validateAll: () => boolean } | null>(null)
 const busyId = ref<string | null>(null)
+const pendingDelete = ref<Row | null>(null)
 
 const HIDDEN_TYPES = new Set(['file', 'tabla', 'json'])
 const columns = computed(() => {
@@ -131,9 +132,15 @@ async function save(addAnother = false) {
   }
 }
 
-async function remove(row: Row) {
+function remove(row: Row) {
   if (busyId.value) return
-  if (!confirm('¿Eliminar esta línea? Esta acción no se puede deshacer.')) return
+  pendingDelete.value = row
+}
+
+async function confirmRemove() {
+  const row = pendingDelete.value
+  if (!row || busyId.value) return
+  pendingDelete.value = null
   busyId.value = row.id
   try {
     await $fetch(`/api/records/${props.childSlug}/${row.id}`, { method: 'DELETE' })
@@ -204,5 +211,6 @@ function totalText(field: EntityFieldMeta): string {
         <button type="button" class="rounded bg-brand-orange px-3 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="save(false)">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
       </template>
     </RecordDrawer>
+    <SettingsConfirmDialog v-if="pendingDelete" title="Eliminar línea" confirm-label="Eliminar" cancel-label="Cancelar" @cancel="pendingDelete = null" @confirm="confirmRemove">¿Eliminar esta línea? Esta acción no se puede deshacer.</SettingsConfirmDialog>
   </div>
 </template>

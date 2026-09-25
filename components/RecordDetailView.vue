@@ -140,8 +140,7 @@ function formatValue(field: EntityFieldMeta, value: unknown): string {
     case 'boolean':
       return value ? 'Sí' : 'No'
     case 'date': {
-      const d = new Date(value as string)
-      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString()
+      return formatDate(value as string)
     }
     case 'currency':
       return formatCurrencyValue(value, field.validationRules)
