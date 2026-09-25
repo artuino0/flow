@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Check, Code2, Eye, FileCode2, Laptop, Maximize2, Minus, Monitor, MoreVertical, PanelRight, Plus, Rocket, Save, Smartphone, Tablet, WandSparkles } from '@lucide/vue'
+import { buildPreviewDocument, joinSiteScript, splitSiteScript } from '~/utils/sitesEditorScript'
 
 definePageMeta({ layout: 'default', editorFullscreen: true, fullBleed: true })
 interface Draft { id: string; version: number; html: string; css: string; updatedAt: string }
@@ -31,13 +32,12 @@ const toast = useToast()
 let stopResize: (() => void) | null = null
 
 function hydrate(value: PageDetail) {
-  const scriptPattern = new RegExp('<scr' + 'ipt\\s+data-flow-site-js(?:=["\'][^"\']*["\'])?[^>]*>([\\s\\S]*?)<\\/scr' + 'ipt\\s*>', 'i')
-  const scriptMatch = value.draft?.html.match(scriptPattern)
+  const { html, js } = splitSiteScript(value.draft?.html ?? '')
   form.title = value.title
   form.path = value.path
-  form.html = (value.draft?.html ?? '').replace(scriptPattern, '').trimEnd()
+  form.html = html
   form.css = value.draft?.css ?? ''
-  form.js = scriptMatch?.[1]?.trim() ?? ''
+  form.js = js
   snapshot.value = JSON.stringify(form)
 }
 watch(page, value => { if (value) hydrate(value) }, { immediate: true })
@@ -51,36 +51,9 @@ const lineCount = computed(() => Math.max(1, activeCode.value.split('\n').length
 const returnPath = computed(() => `/sites/${siteId}/${page.value?.kind === 'landing' ? 'landing-pages' : 'pages'}`)
 const previewWidth = computed(() => viewport.value === 'mobile' ? 390 : viewport.value === 'tablet' ? 768 : 1440)
 function serializedHtml() {
-  if (!form.js.trim()) return form.html
-  const open = '<scr' + 'ipt data-flow-site-js>'
-  const close = '</scr' + 'ipt>'
-  return `${form.html.trimEnd()}\n${open}\n${form.js.trim()}\n${close}`
+  return joinSiteScript(form.html, form.js)
 }
-function previewBridge() {
-  return `(function(){
-    var formClass='flow-editor-form-focus';
-    var fieldClass='flow-editor-field-focus';
-    function clear(){document.querySelectorAll('.'+formClass).forEach(function(el){el.classList.remove(formClass)});document.querySelectorAll('.'+fieldClass).forEach(function(el){el.classList.remove(fieldClass)})}
-    window.addEventListener('message',function(event){
-      var data=event.data;
-      if(!data||data.source!=='flow-sites-editor')return;
-      clear();
-      if(!data.formKey)return;
-      var form=Array.from(document.querySelectorAll('[data-flow-form]')).find(function(el){return el.getAttribute('data-flow-form')===data.formKey});
-      if(!form)return;
-      form.classList.add(formClass);
-      var target=form;
-      if(data.fieldName){var field=Array.from(form.querySelectorAll('[name]')).find(function(el){return el.getAttribute('name')===data.fieldName});if(field){field.classList.add(fieldClass);target=field}}
-      target.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'});
-    });
-  })();`
-}
-const previewDocument = computed(() => {
-  const open = '<scr' + 'ipt>'
-  const close = '</scr' + 'ipt>'
-  const editorStyles = `.flow-editor-form-focus{outline:2px solid #0091ae!important;outline-offset:3px!important;background:rgba(0,145,174,.08)!important}.flow-editor-field-focus{outline:2px solid #ff7a59!important;outline-offset:2px!important;background:rgba(255,122,89,.14)!important}`
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{min-height:100%;margin:0}${form.css}${editorStyles}</style></head><body>${serializedHtml()}${open}${previewBridge()}${close}</body></html>`
-})
+const previewDocument = computed(() => buildPreviewDocument(serializedHtml(), form.css))
 const previewTransform = computed(() => ({ width: `${previewWidth.value}px`, height: `${10000 / previewZoom.value}%`, transform: `scale(${previewZoom.value / 100})`, transformOrigin: 'top center' }))
 
 async function save() {

@@ -17,7 +17,7 @@ const connectionString =
 // proveedor (p. ej. Neon) y un valor bajo aquí; en un servidor propio súbelo
 // según max_connections de Postgres / número de procesos.
 const poolMax = Number(process.env.DB_POOL_MAX)
-const client = postgres(connectionString, Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {})
+export const client = postgres(connectionString, Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {})
 
 export const db = drizzle(client, { schema })
 

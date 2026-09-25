@@ -526,6 +526,13 @@
       "when": 1789428000000,
       "tag": "0074_records_tenant_entity_created_idx",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "idx": 75,
+      "when": 1790306291552,
+      "breakpoints": true,
+      "tag": "0075_trigger_retry_due_function"
     }
   ]
 }

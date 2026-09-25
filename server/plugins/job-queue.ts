@@ -4,7 +4,7 @@ import { registerDefaultJobHandlers } from '~/server/utils/jobHandlers'
 import { logger } from '~/server/utils/logger'
 import { getLicenseStatus } from '~/server/utils/license'
 
-// Proceso de la cola de trabajos (correos y demás): cada minuto toma los trabajos
+// Proceso de la cola de trabajos (correos y demás): cada 15 minutos toma los trabajos
 // listos por rondas justas entre organizaciones y los ejecuta con un ritmo
 // máximo (JOB_QUEUE_RATE_PER_SECOND, por defecto 10/s, por debajo del límite de SES).
 // En un servidor de larga vida corre solo; en un entorno serverless (Vercel) el
@@ -18,7 +18,7 @@ export default defineNitroPlugin(() => {
   }
 
   let isRunning = false
-  cron.schedule('* * * * *', async () => {
+  cron.schedule('*/15 * * * *', async () => {
     if (!getLicenseStatus().activated) return
     if (isRunning) return
     isRunning = true
@@ -32,5 +32,5 @@ export default defineNitroPlugin(() => {
       isRunning = false
     }
   })
-  logger.info('job_queue_scheduled', { cron: '* * * * *' })
+  logger.info('job_queue_scheduled', { cron: '*/15 * * * *' })
 })

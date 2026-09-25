@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.90.0] - 2026-09-24
+#### [feature]
+- [ERD-87](https://dydasoftware.atlassian.net/browse/ERD-87) - Procesos de fondo escalables (fase 1): reintentos de disparadores en una sola consulta, candado de un solo ejecutor, rutas de Vercel Cron cada 15 min y arreglo del build del editor de Sites.
+
 ### [0.89.0] - 2026-09-21
 #### [feature]
 - Vista Kanban configurable por módulo: columnas generadas desde un campo de selección, tarjetas con datos elegibles, cambio de estado por arrastrar y soltar, alternativa móvil y carga progresiva.

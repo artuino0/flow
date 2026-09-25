@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { z } from 'zod'
 import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant, db } from '~/server/db'
-import { entities, entityFields, recordActivities, recordRelations, records, relationDefinitions, tenants, triggerActionOutputs, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
+import { entities, entityFields, recordActivities, recordRelations, records, relationDefinitions, triggerActionOutputs, triggerActions, triggerLogs, triggers } from '~/server/db/schema'
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { logger } from '~/server/utils/logger'
@@ -630,38 +630,34 @@ export async function retryTriggerLog(tenantId: string, logId: string, options: 
   logger.info('trigger_action_retried', { tenantId, triggerId: trigger.id, logId, status, attemptCount })
 }
 
-/** Reintentos vencidos de UN tenant (backoff calculado en JS desde updated_at - sin columna next_attempt_at propia, ver DOCS/comentario del plugin). */
-export async function runTriggerRetriesForTenant(tenantId: string, now: Date): Promise<{ checked: number; retried: number }> {
-  const dueRows = await withTenant(tenantId, (tx) =>
-    tx
-      .select({ id: triggerLogs.id, attemptCount: triggerLogs.attemptCount, updatedAt: triggerLogs.updatedAt })
-      .from(triggerLogs)
-      .where(and(eq(triggerLogs.tenantId, tenantId), eq(triggerLogs.status, 'retrying')))
-  )
 
+
+/** Recorre reintentos pendientes con una sola consulta masiva (ERD-87). */
+export async function runTriggerRetries(now: Date = new Date(), options: { limit?: number; budgetMs?: number } = {}): Promise<{ due: number; retried: number; failed: number; durationMs: number }> {
+  const limit = options.limit ?? 200
+  const budgetMs = options.budgetMs ?? 40_000
+  const startTime = performance.now()
   let retried = 0
-  for (const row of dueRows) {
-    const dueAt = row.updatedAt.getTime() + computeBackoffMs(row.attemptCount)
-    if (now.getTime() >= dueAt) {
-      await retryTriggerLog(tenantId, row.id)
-      retried++
+  let failed = 0
+  
+  const rawRows = await db.execute(dsql`
+    SELECT id, tenant_id FROM due_trigger_retries(${now.toISOString()}::timestamptz, ${limit}::int)
+  `)
+  const dueLogs = [...rawRows] as { id: string; tenant_id: string }[]
+
+  for (const log of dueLogs) {
+    if (performance.now() - startTime >= budgetMs) {
+      break
     }
-  }
-  return { checked: dueRows.length, retried }
-}
-
-/** Recorre todos los tenants (mismo patron que runOlapEtl(), ERD-28) - un tenant que falla no interrumpe a los demas. */
-export async function runTriggerRetries(now: Date = new Date()): Promise<Array<{ tenantId: string; checked: number; retried: number }>> {
-  const allTenants = await db.select({ id: tenants.id }).from(tenants)
-  const results: Array<{ tenantId: string; checked: number; retried: number }> = []
-
-  for (const tenant of allTenants) {
     try {
-      const result = await runTriggerRetriesForTenant(tenant.id, now)
-      results.push({ tenantId: tenant.id, ...result })
+      await retryTriggerLog(log.tenant_id, log.id)
+      retried++
     } catch (err) {
-      logger.error('trigger_retry_tenant_failed', { tenantId: tenant.id, errorMessage: err instanceof Error ? err.message : String(err) })
+      failed++
+      logger.error('trigger_retry_tenant_failed', { tenantId: log.tenant_id, logId: log.id, errorMessage: err instanceof Error ? err.message : String(err) })
     }
   }
-  return results
+
+  const durationMs = performance.now() - startTime
+  return { due: dueLogs.length, retried, failed, durationMs }
 }

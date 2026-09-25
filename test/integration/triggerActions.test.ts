@@ -5,7 +5,6 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 import type {
   executeTriggerActions as ExecuteTriggerActions,
   retryTriggerLog as RetryTriggerLog,
-  runTriggerRetriesForTenant as RunTriggerRetriesForTenant,
   computeBackoffMs as ComputeBackoffMs
 } from '../../server/utils/triggerActions'
 
@@ -27,7 +26,6 @@ let testDb: TestDb
 let admin: postgres.Sql
 let executeTriggerActions: typeof ExecuteTriggerActions
 let retryTriggerLog: typeof RetryTriggerLog
-let runTriggerRetriesForTenant: typeof RunTriggerRetriesForTenant
 let computeBackoffMs: typeof ComputeBackoffMs
 
 let entityId: string
@@ -84,7 +82,7 @@ beforeAll(async () => {
 
   process.env.APP_DATABASE_URL = testDb.appUrl
   process.env.TRIGGER_WEBHOOK_DEFAULT_SECRET = TRIGGER_WEBHOOK_SECRET
-  ;({ executeTriggerActions, retryTriggerLog, runTriggerRetriesForTenant, computeBackoffMs } = await import('../../server/utils/triggerActions'))
+  ;({ executeTriggerActions, retryTriggerLog, computeBackoffMs } = await import('../../server/utils/triggerActions'))
 }, 60_000)
 
 afterAll(async () => {
@@ -261,33 +259,57 @@ describe('retryTriggerLog', () => {
   })
 })
 
-describe('runTriggerRetriesForTenant', () => {
-  it('solo reintenta las filas cuyo backoff ya vencio, deja intactas las que todavia no', async () => {
+describe('runTriggerRetries (ERD-87)', () => {
+  it('solo reintenta filas cuyo backoff ya vencio y atiende varias organizaciones a la vez, respetando limit', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
 
-    const dueTrigger = await insertTrigger('Vencido')
-    await insertAction(dueTrigger, 'webhook', { url: 'https://example.com/hook' })
-    const dueRecord = await insertRecord({ estado: 'nuevo' })
-    await executeTriggerActions(TENANT_A, entityId, dueTrigger, 'Vencido', dueRecord, 'on_create', { estado: 'nuevo' })
-    const dueLog = await getLog(dueTrigger)
+    const TENANT_B = 'bbb00000-0000-0000-0000-000000000000'
+    await admin`insert into tenants (id, name) values (${TENANT_B}, 'Corp B') on conflict do nothing`
+    const [entityB] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_B}, 'Pedidos B', 'pedidos-b') returning id`
+    
+    // Log 1: Vencido Tenant A
+    const dueTriggerA = await insertTrigger('Vencido A')
+    await insertAction(dueTriggerA, 'webhook', { url: 'https://example.com/hook' })
+    const recordA = await insertRecord({ estado: 'nuevo' })
+    await executeTriggerActions(TENANT_A, entityId, dueTriggerA, 'Vencido A', recordA, 'on_create', {})
+    const dueLogA = await getLog(dueTriggerA)
 
-    const freshTrigger = await insertTrigger('Recien fallado')
-    await insertAction(freshTrigger, 'webhook', { url: 'https://example.com/hook' })
-    const freshRecord = await insertRecord({ estado: 'nuevo' })
-    await executeTriggerActions(TENANT_A, entityId, freshTrigger, 'Recien fallado', freshRecord, 'on_create', { estado: 'nuevo' })
-    const freshLog = await getLog(freshTrigger)
+    // Log 2: Fresco Tenant A
+    const freshTriggerA = await insertTrigger('Fresco A')
+    await insertAction(freshTriggerA, 'webhook', { url: 'https://example.com/hook' })
+    await executeTriggerActions(TENANT_A, entityId, freshTriggerA, 'Fresco A', recordA, 'on_create', {})
+    const freshLogA = await getLog(freshTriggerA)
 
-    // Retrocede artificialmente updated_at del log "vencido" mas alla de su backoff (2 min tras intento 1).
+    // Log 3: Vencido Tenant B
+    const dueTriggerB = await admin`insert into triggers (tenant_id, entity_id, name, trigger_event, condition, is_active) values (${TENANT_B}, ${entityB.id as string}, 'Vencido B', 'on_create', ${admin.json({})}, true) returning id`
+    await admin`insert into trigger_actions (tenant_id, trigger_id, action_type, config, execution_order) values (${TENANT_B}, ${dueTriggerB[0].id as string}, 'webhook', ${admin.json({ url: 'https://example.com/hook' })}, 0)`
+    const recordB = await admin`insert into records (entity_id, tenant_id, custom_data) values (${entityB.id as string}, ${TENANT_B}, ${admin.json({})}) returning id`
+    await executeTriggerActions(TENANT_B, entityB.id as string, dueTriggerB[0].id as string, 'Vencido B', recordB[0].id as string, 'on_create', {})
+    const dueLogB = await admin`select * from trigger_logs where trigger_id = ${dueTriggerB[0].id as string} order by created_at desc limit 1`
+
+    // Vencer logs
     const backoffMs = computeBackoffMs(1)
-    await admin`update trigger_logs set updated_at = now() - interval '1 millisecond' * ${backoffMs + 1000} where id = ${dueLog!.id as string}`
+    await admin`update trigger_logs set updated_at = now() - interval '1 millisecond' * ${backoffMs + 1000} where id in (${dueLogA!.id as string}, ${dueLogB[0].id as string})`
 
-    const result = await runTriggerRetriesForTenant(TENANT_A, new Date())
-    expect(result.retried).toBe(1)
+    // Ejecutar respetando limit 1
+    const { runTriggerRetries } = await import('../../server/utils/triggerActions')
+    const result1 = await runTriggerRetries(new Date(), { limit: 1 })
+    expect(result1.due).toBe(1) // Limit 1 solo saco uno
+    expect(result1.retried).toBe(1)
+    expect(result1.failed).toBe(0)
 
-    const dueAfter = await getLog(dueTrigger)
-    expect(dueAfter?.attempt_count).toBe(2)
+    // Ejecutar el resto
+    const result2 = await runTriggerRetries(new Date(), { limit: 10 })
+    expect(result2.due).toBe(1) // Quedaba uno
+    expect(result2.retried).toBe(1)
 
-    const freshAfter = await getLog(freshTrigger)
-    expect(freshAfter?.attempt_count).toBe(freshLog?.attempt_count)
+    // Verificar
+    const aAfter = await getLog(dueTriggerA)
+    const fAfter = await getLog(freshTriggerA)
+    const bAfter = await admin`select attempt_count from trigger_logs where id = ${dueLogB[0].id as string}`
+    
+    expect(aAfter?.attempt_count).toBe(2)
+    expect(fAfter?.attempt_count).toBe(1) // Fresco no se toco
+    expect(bAfter[0].attempt_count).toBe(2)
   })
 })
