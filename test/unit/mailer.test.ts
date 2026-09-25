@@ -57,6 +57,7 @@ describe('getAppBaseUrl', () => {
     VERCEL: process.env.VERCEL,
     VERCEL_ENV: process.env.VERCEL_ENV,
     NUXT_ENV_VERCEL_ENV: process.env.NUXT_ENV_VERCEL_ENV,
+    APP_PORT: process.env.APP_PORT,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
     NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL: process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL
   }
@@ -76,7 +77,17 @@ describe('getAppBaseUrl', () => {
   it('ignora localhost en Vercel y usa el dominio de producción de Nuxt', () => {
     process.env.APP_BASE_URL = 'http://localhost:3001'
     process.env.VERCEL = '1'
-    process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL = 'flow-roan-pi.vercel.app'
-    expect(getAppBaseUrl()).toBe('https://flow-roan-pi.vercel.app')
+    expect(() => getAppBaseUrl()).toThrow('APP_BASE_URL debe ser una URL pública en Vercel')
+  })
+
+  it('usa localhost:3000 sin variable y elimina barras finales redundantes', () => {
+    delete process.env.APP_BASE_URL
+    delete process.env.VERCEL
+    delete process.env.VERCEL_ENV
+    delete process.env.NUXT_ENV_VERCEL_ENV
+    delete process.env.APP_PORT
+    expect(getAppBaseUrl()).toBe('http://localhost:3000')
+    process.env.APP_BASE_URL = 'https://flow.example.com///'
+    expect(getAppBaseUrl()).toBe('https://flow.example.com')
   })
 })

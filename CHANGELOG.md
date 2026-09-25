@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.91.2] - 2026-09-25
+#### [bug]
+- [ERD-89](https://dydasoftware.atlassian.net/browse/ERD-89) - El enlace de invitación usa el puerto correcto por defecto, exige una URL pública en Vercel y se muestra en el modal con botón Copiar.
+
 ### [0.91.1] - 2026-09-24
 #### [bug]
 - [ERD-88](https://dydasoftware.atlassian.net/browse/ERD-88) - El cliente de tiempo real deja de reconectar sin sesión y los errores 4xx se registran como advertencia sin enviarse a Sentry.

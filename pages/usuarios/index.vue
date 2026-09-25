@@ -20,7 +20,7 @@
 // - Enlace "Reenviar" junto al estado, solo para invitaciones pendientes -
 //   necesario funcionalmente (token vencido a los 7 días) y no contradice el
 //   diseño, solo lo completa.
-import { UserPlus, Pencil, Trash2, Clock, Send, X, ChevronDown, Check } from '@lucide/vue'
+import { UserPlus, Pencil, Trash2, Clock, Send, X, ChevronDown, Check, Copy } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -95,13 +95,23 @@ const inviteRoleId = ref<string | null>(null)
 const inviteRoleSelectorOpen = ref(false)
 const inviteError = ref<string | null>(null)
 const inviting = ref(false)
+const inviteUrl = ref<string | null>(null)
+const inviteCopied = ref(false)
 
 function openInviteModal() {
   inviteEmail.value = ''
   inviteRoleId.value = roles.value[0]?.id ?? null
   inviteRoleSelectorOpen.value = false
   inviteError.value = null
+  inviteUrl.value = null
+  inviteCopied.value = false
   inviteOpen.value = true
+}
+
+async function copyInviteUrl() {
+  if (!inviteUrl.value) return
+  await navigator.clipboard.writeText(inviteUrl.value)
+  inviteCopied.value = true
 }
 
 async function onInvite() {
@@ -117,9 +127,10 @@ async function onInvite() {
   inviteError.value = null
   inviting.value = true
   try {
-    await $fetch('/api/users', { method: 'POST', body: { email, roleId: inviteRoleId.value } })
+    const result = await $fetch<{ inviteUrl?: string }>('/api/users', { method: 'POST', body: { email, roleId: inviteRoleId.value } })
+    inviteUrl.value = result.inviteUrl ?? null
     await refreshUsers()
-    inviteOpen.value = false
+    if (!result.inviteUrl) inviteOpen.value = false
     toast.success('Invitación enviada', `Se envió una invitación a ${email}.`)
   } catch (err: any) {
     inviteError.value = err?.data?.statusMessage || 'No se pudo enviar la invitación'
@@ -376,6 +387,17 @@ async function onResend(user: UserRow) {
               >
                 {{ role.name }}
                 <Check v-if="role.id === inviteRoleId" class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="2" />
+              </button>
+            </div>
+          </div>
+
+          <div v-if="inviteUrl" class="flex flex-col gap-2 rounded border border-brand-border-light bg-brand-bg p-3">
+            <label for="invite-url" class="text-xs font-semibold text-brand-text-secondary">Enlace de invitación</label>
+            <div class="flex items-center gap-2">
+              <input id="invite-url" :value="inviteUrl" readonly class="min-w-0 flex-1 rounded border border-brand-border bg-brand-surface px-2 py-1.5 text-xs text-brand-text" />
+              <button type="button" class="flex shrink-0 items-center gap-1.5 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white hover:bg-brand-orange-hover" @click="copyInviteUrl">
+                <Copy class="h-3.5 w-3.5" :stroke-width="1.75" />
+                {{ inviteCopied ? 'Copiado' : 'Copiar' }}
               </button>
             </div>
           </div>

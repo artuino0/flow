@@ -146,22 +146,19 @@ export function sesConfigFromRow(row: EmailSettingsRow, platform = readSesPlatfo
  * https://app.midominio.com). Sin variable seteada, cae a localhost:3000
  * (APP_PORT, HU-ERD-13) - suficiente para desarrollo local, pero un
  * deployment real DEBE setear APP_BASE_URL o el enlace del correo apuntara
- * a una URL que el invitado no puede abrir. En local el valor por defecto
- * coincide con el puerto de desarrollo de Flow (3001).
+ * a una URL que el invitado no puede abrir. En local usa el puerto de Nuxt
+ * (3000).
  */
 export function getAppBaseUrl(): string {
   const raw = process.env.APP_BASE_URL?.trim()
   const deployedOnVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NUXT_ENV_VERCEL_ENV)
   const configuredIsLocal = raw ? /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(raw) : false
-  if (raw && !(deployedOnVercel && configuredIsLocal)) return raw.replace(/\/+$/, '')
+  if (deployedOnVercel && (!raw || configuredIsLocal)) {
+    throw new Error('APP_BASE_URL debe ser una URL pública en Vercel')
+  }
+  if (raw) return raw.replace(/\/+$/, '')
 
-  const vercelHost = process.env.NUXT_ENV_VERCEL_PROJECT_PRODUCTION_URL
-    || process.env.VERCEL_PROJECT_PRODUCTION_URL
-    || process.env.NUXT_ENV_VERCEL_URL
-    || process.env.VERCEL_URL
-  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}`
-
-  const port = process.env.APP_PORT || '3001'
+  const port = process.env.APP_PORT || '3000'
   return `http://localhost:${port}`
 }
 

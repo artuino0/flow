@@ -136,6 +136,7 @@ describe('inviteUser (Postgres real)', () => {
     expect(result.user.isActive).toBe(false)
     expect(result.user.status).toBe('invitacion_pendiente')
     expect(result.user.roleName).toBe('Ventas')
+    expect(result.inviteUrl).toMatch(/^https:\/\/app\.erpdinamico\.test\/invitacion\/.+/)
 
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const call = sendMailMock.mock.calls[0][0]

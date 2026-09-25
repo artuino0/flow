@@ -3,7 +3,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { chatParticipants, people, roles, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
-import { escapeHtml, sendInvitationEmail, sendPlainEmail } from '~/server/utils/mailer'
+import { escapeHtml, getAppBaseUrl, sendInvitationEmail, sendPlainEmail } from '~/server/utils/mailer'
 import { publishRealtime, realtimeUserTopic } from '~/server/utils/realtime'
 
 // HU-ERD-84: logica de gestion de usuarios (listar, invitar, editar rol/estado,
@@ -130,6 +130,7 @@ async function assertRoleInTenant(tx: Tx, tenantId: string, roleId: string): Pro
 
 export interface InviteUserResult {
   user: UserSummary
+  inviteUrl?: string
 }
 
 /**
@@ -227,7 +228,8 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
       isActive: outcome.membershipRow.isActive,
       status: outcome.kind === 'new' ? 'invitacion_pendiente' : 'activo',
       createdAt: outcome.membershipRow.createdAt
-    }
+    },
+    ...(outcome.kind === 'new' ? { inviteUrl: `${getAppBaseUrl()}/invitacion/${outcome.token}` } : {})
   }
 }
 
@@ -281,7 +283,8 @@ export async function resendInvitation(tenantId: string, userId: string, inviter
       isActive: membershipRow.isActive,
       status: 'invitacion_pendiente',
       createdAt: membershipRow.createdAt
-    }
+    },
+    inviteUrl: `${getAppBaseUrl()}/invitacion/${token}`
   }
 }
 
