@@ -6,6 +6,7 @@ import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/det
 import { resolveListLayout } from '~/server/utils/listLayout'
 import { isListFilterable } from '~/utils/listFilters'
 import { resolveBoardConfig } from '~/server/utils/boardConfig'
+import { metadataCache } from '~/server/utils/shortCache'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
 //
@@ -21,6 +22,14 @@ import { resolveBoardConfig } from '~/server/utils/boardConfig'
 export default defineEventHandler(async (event) => {
   const entitySlug = getRouterParam(event, 'entity')!
   const { auth, entity } = await requirePermission(event, entitySlug, 'canRead')
+
+  // La definición completa del módulo (campos, diseños, relaciones inversas y permisos del rol)
+  // casi nunca cambia y cada pantalla la pide: se guarda en memoria unos segundos
+  // (METADATA_CACHE_TTL_MS, 30 s por defecto). Cualquier cambio de módulos, campos o permisos
+  // la invalida (invalidateTenantAccess). Depende del rol por los permisos que incluye.
+  const cacheKey = `${auth.tenantId}:${auth.roleId}:fields:${entitySlug}`
+  const cachedResponse = metadataCache.get(cacheKey)
+  if (cachedResponse) return cachedResponse
 
   const fields = await withTenant(auth.tenantId, async (tx) =>
     tx
@@ -109,5 +118,7 @@ export default defineEventHandler(async (event) => {
       }
     : field)
 
-  return { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig }
+  const response = { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig }
+  metadataCache.set(cacheKey, response)
+  return response
 })

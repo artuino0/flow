@@ -1,4 +1,5 @@
 import { and, count, eq, inArray, isNull, isNotNull } from 'drizzle-orm'
+import { invalidatesTenantAccess } from '~/server/utils/shortCache'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 import { pluralize } from '~/server/utils/pluralize'
@@ -159,7 +160,7 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind, de
  * asistente de /catalogos manda 'dimension' explicito, el de /modulos no
  * manda nada (usa el default). El usuario nunca lo elige a mano.
  */
-export async function createEntity(
+async function createEntityImpl(
   tenantId: string,
   input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind; singularName?: string | null }
 ): Promise<EntitySummary> {
@@ -226,7 +227,7 @@ export async function createEntity(
   })
 }
 
-export async function updateEntity(
+async function updateEntityImpl(
   tenantId: string,
   entityId: string,
   input: {
@@ -354,7 +355,7 @@ export type DeleteEntityResult = { status: 'deleted' } | { status: 'not-found' }
 /**
  * Envía un módulo a la papelera sin borrar metadatos ni registros.
  */
-export async function deleteEntity(tenantId: string, entityId: string): Promise<DeleteEntityResult> {
+async function deleteEntityImpl(tenantId: string, entityId: string): Promise<DeleteEntityResult> {
   return withTenant(tenantId, async (tx: Tx) => {
     const [entity] = await tx
       .select({ id: entities.id })
@@ -369,7 +370,7 @@ export async function deleteEntity(tenantId: string, entityId: string): Promise<
   })
 }
 
-export async function restoreEntity(tenantId: string, entityId: string): Promise<EntitySummary | null> {
+async function restoreEntityImpl(tenantId: string, entityId: string): Promise<EntitySummary | null> {
   return withTenant(tenantId, async (tx) => {
     const [entity] = await tx.update(entities)
       .set({ isActive: true, deletedAt: null, updatedAt: new Date() })
@@ -378,3 +379,9 @@ export async function restoreEntity(tenantId: string, entityId: string): Promise
     return entity ? { ...entity, moduleKind: entity.moduleKind as ModuleKind } : null
   })
 }
+
+// Toda escritura que cambia módulos, campos o permisos invalida los cachés de acceso y metadatos (shortCache.ts).
+export const createEntity = invalidatesTenantAccess(createEntityImpl)
+export const updateEntity = invalidatesTenantAccess(updateEntityImpl)
+export const deleteEntity = invalidatesTenantAccess(deleteEntityImpl)
+export const restoreEntity = invalidatesTenantAccess(restoreEntityImpl)

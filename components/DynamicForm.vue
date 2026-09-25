@@ -166,7 +166,8 @@ defineExpose({ validateAll })
       />
       <!-- currency: conserva el decimal como texto canónico para no perder
            centavos por aritmética de punto flotante. -->
-      <div v-else-if="field.dataType === 'currency'" class="relative">
+      <div v-else-if="field.dataType === 'currency'">
+        <div class="relative">
         <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-brand-text-secondary">{{ currencyCode(field.validationRules) }}</span>
         <input
           :id="`field-${field.name}`"
@@ -182,7 +183,8 @@ defineExpose({ validateAll })
           placeholder="0.00"
           @input="onInput(field, ($event.target as HTMLInputElement).value)"
         />
-        <p v-if="isCalculated(field)" class="mt-1 text-[11px] text-brand-blue">Calculado automáticamente</p>
+        </div>
+        <p v-if="isCalculated(field)" class="mt-1 text-[11px] text-brand-text-muted">Calculado automáticamente</p>
       </div>
 
       <!-- boolean -->
@@ -277,32 +279,29 @@ defineExpose({ validateAll })
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
 
-      <p v-if="field.dataType === 'number' && isCalculated(field)" class="text-[11px] text-brand-blue">Calculado automáticamente</p>
+      <p v-if="field.dataType === 'number' && isCalculated(field)" class="text-[11px] text-brand-text-muted">Calculado automáticamente</p>
       <p v-if="errors[field.name]" class="flex items-center gap-1 text-xs text-brand-error-text">{{ errors[field.name] }}</p>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* Edición dentro de la ficha: controles blancos con borde gris y foco azul (sin fondos teñidos). */
 .detail-form :is(input:not([type='checkbox']), select, textarea) {
-  border-color:transparent;
-  background:#F5F8FA;
+  border-color:#CBD6E2;
+  background:#FFFFFF;
   border-radius:4px;
   padding-top:6px;
   padding-bottom:6px;
   font-size:13px;
   box-shadow:none;
 }
-.detail-form :is(input:not([type='checkbox']), select, textarea):hover {
-  background:#EEF5F7;
+.detail-form :is(input:not([type='checkbox']), select, textarea):disabled {
+  background:#F5F8FA;
 }
 .detail-form :is(input:not([type='checkbox']), select, textarea):focus {
   border-color:#0091AE;
-  background:#FFFFFF;
   outline:none;
   box-shadow:0 0 0 1px #0091AE;
-}
-.detail-form .detail-field:focus-within {
-  background:#F5F8FA;
 }
 </style>

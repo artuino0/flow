@@ -2,7 +2,8 @@ import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { requirePermissionForEntityId } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
-import { relationDefinitions, recordRelations } from '~/server/db/schema'
+import { relationDefinitions } from '~/server/db/schema'
+import { createRecordRelation, DuplicateRecordRelationError, RecordRelationValidationError } from '~/server/utils/recordAssociations'
 
 // POST /api/relations { relationDefinitionId, sourceRecordId, targetRecordId } (HU-ERD-19)
 // La integridad (que ambos records existan y sean del tipo de entidad esperado
@@ -38,21 +39,17 @@ export default defineEventHandler(async (event) => {
   await requirePermissionForEntityId(event, definition.targetEntityId, 'canUpdate')
 
   try {
-    const row = await withTenant(auth.tenantId, async (tx) => {
-      const [r] = await tx
-        .insert(recordRelations)
-        .values({
-          tenantId: auth.tenantId,
-          relationDefinitionId: body.relationDefinitionId,
-          sourceRecordId: body.sourceRecordId,
-          targetRecordId: body.targetRecordId
-        })
-        .returning()
-      return r
-    })
+    const { row } = await withTenant(auth.tenantId, tx => createRecordRelation(tx, {
+      tenantId: auth.tenantId,
+      relationDefinitionId: body.relationDefinitionId,
+      sourceRecordId: body.sourceRecordId,
+      targetRecordId: body.targetRecordId
+    }))
     setResponseStatus(event, 201)
     return row
   } catch (err) {
+    if (err instanceof DuplicateRecordRelationError) throw createError({ statusCode: 409, statusMessage: err.message })
+    if (err instanceof RecordRelationValidationError) throw createError({ statusCode: err.statusCode, statusMessage: err.message })
     // El trigger de integridad (ERD-10) rechaza con RAISE EXCEPTION si el
     // record no existe o no es del tipo esperado; se traduce a 422 en vez
     // de dejar pasar un 500 crudo de Postgres.

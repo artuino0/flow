@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { authSessions, users } from '~/server/db/schema'
+import { invalidateTenantSessions } from '~/server/utils/shortCache'
 
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
@@ -12,5 +13,6 @@ export default defineEventHandler(async event => {
     const rows = await tx.update(authSessions).set({ revokedAt: new Date() }).where(and(eq(authSessions.tenantId, auth.tenantId), eq(authSessions.userId, userId), isNull(authSessions.revokedAt))).returning({ id: authSessions.id })
     return rows.length
   })
+  invalidateTenantSessions(auth.tenantId)
   return { revokedSessions: count }
 })

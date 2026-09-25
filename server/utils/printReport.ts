@@ -382,11 +382,17 @@ export async function executePrintReport(tenantId: string, dsl: PrintReportDsl):
         continue
       }
       const value = planner.valueSql(filter.source)
-      const numeric = field.dataType === 'number' || field.dataType === 'currency' || field.dataType === 'incremental'
+      // Un folio (incremental) puede traer prefijo ("PED-000001"): el selector con
+      // buscador compara el texto exacto; las comparaciones numéricas solo aplican
+      // a la parte numérica pura y nunca revientan el cast con valores con prefijo.
+      const incrementalText = field.dataType === 'incremental' && filter.operator === 'eq' && !/^\d+$/.test(filter.value.trim())
+      const numeric = (field.dataType === 'number' || field.dataType === 'currency' || field.dataType === 'incremental') && !incrementalText
       if (field.dataType === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value) || !Number.isFinite(Date.parse(filter.value)) || new Date(filter.value).toISOString().slice(0, 10) !== filter.value)) throw new PrintReportError(`El filtro de ${field.label} requiere una fecha válida.`)
       if (field.dataType === 'boolean' && (filter.operator !== 'eq' || !['true', 'false'].includes(filter.value))) throw new PrintReportError(`El filtro de ${field.label} debe ser igual a true o false.`)
       if (numeric && !Number.isFinite(Number(filter.value))) throw new PrintReportError(`El filtro de ${field.label} requiere un número.`)
-      const expression = numeric ? dsql`nullif(${value}, '')::numeric` : value
+      const expression = field.dataType === 'incremental' && numeric
+        ? dsql`case when ${value} ~ '^[0-9]+$' then ${value}::numeric end`
+        : numeric ? dsql`nullif(${value}, '')::numeric` : value
       if (filter.operator === 'contains') {
         if (field.dataType !== 'text') throw new PrintReportError('Contiene solo está disponible para texto.')
         whereParts.push(dsql`strpos(lower(${value}), lower(${filter.value})) > 0`)

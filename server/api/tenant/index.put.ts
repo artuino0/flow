@@ -3,6 +3,7 @@ import { db } from '~/server/db'
 import { tenants } from '~/server/db/schema'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { tenantUpdateSchema } from '~/server/utils/tenantFiscal'
+import { invalidateTenantAccess } from '~/server/utils/shortCache'
 
 // PUT /api/tenant (HU-ERD-61): actualiza nombre/moneda/zona horaria/fiscal_data
 // del propio tenant. fiscalData se revalida siempre del lado servidor contra
@@ -36,6 +37,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Tenant no encontrado' })
   }
 
+  // La moneda por defecto viaja en la definición de los módulos que se guarda en memoria.
+  invalidateTenantAccess(auth.tenantId)
   return updated
 })
 

@@ -232,4 +232,25 @@ describe('printReport (Postgres real)', () => {
       })
     ).rejects.toBeInstanceOf(PrintReportError)
   })
+
+  it('filtra por folio (incremental) con el texto exacto, con ceros a la izquierda y con prefijo, sin reventar el cast', async () => {
+    const pedidosId = await createEntity('Pedidos', 'pedidos-folio')
+    await createField(pedidosId, 'folio', 'Folio', 'incremental', { digits: 6 })
+    await createField(pedidosId, 'nota', 'Nota', 'text')
+    await createRecord(pedidosId, { folio: '000001', nota: 'uno' })
+    await createRecord(pedidosId, { folio: '000002', nota: 'dos' })
+    await createRecord(pedidosId, { folio: 'PED-000003', nota: 'tres' })
+    const run = (value: string) => executePrintReport(TENANT_A, {
+      title: 'Pedidos',
+      baseEntity: 'pedidos-folio',
+      includeDeletedBase: false,
+      groupBy: [],
+      filters: [{ source: { side: 'base', forwardHops: [], field: 'folio' }, value, operator: 'eq', recordId: false }],
+      columns: [{ kind: 'detalle', key: 'nota', label: 'Nota', source: { side: 'base', forwardHops: [], field: 'nota' } }]
+    })
+    const notes = async (value: string) => (await run(value)).ungroupedRows.map((row) => row.values.nota)
+    expect(await notes('000001')).toEqual(['uno'])
+    expect(await notes('1')).toEqual(['uno']) // el filtro numérico de siempre sigue funcionando
+    expect(await notes('PED-000003')).toEqual(['tres'])
+  })
 })

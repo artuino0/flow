@@ -17,6 +17,7 @@ import {
   usePrintReportPreviewDraft,
   type ColumnSource,
   type FieldTreeBranch,
+  type FieldTreeNode,
   type FlatLeaf,
   type PrintReportColumn,
   type PrintReportDsl
@@ -346,6 +347,25 @@ function groupLevelOptionValue(leaf: SidedLeaf): string {
 function groupLevelSelectedValue(level: ColumnSource): string {
   return `${level.side}|${[...level.forwardHops, level.field].join('.')}`
 }
+function groupLevelLabel(source: ColumnSource): string {
+  const path = source.side === 'base' ? [] : [detailEntityName.value || 'Tabla relacionada']
+  let nodes: FieldTreeNode[] = treeData.value?.fields ?? []
+  if (source.side === 'detail') {
+    const branch = detailCandidates.value.find(candidate =>
+      candidate.fieldName === detail.value?.fieldName && candidate.entitySlug === detail.value?.entitySlug)
+    nodes = branch?.children ?? []
+  }
+  for (const hop of source.forwardHops) {
+    const branch = nodes.find((node): node is FieldTreeBranch =>
+      node.type === 'branch' && node.kind === 'forward' && node.fieldName === hop)
+    if (!branch) return [...path, resolveSourceLabel(treeData.value?.fields ?? [], detail.value ?? undefined, source)].join(' › ')
+    path.push(branch.entityName)
+    nodes = branch.children
+  }
+  const leaf = nodes.find(node => node.type === 'leaf' && node.fieldName === source.field)
+  path.push(leaf?.type === 'leaf' ? leaf.label : source.field)
+  return path.join(' › ')
+}
 
 function buildDsl(): PrintReportDsl {
   return {
@@ -568,7 +588,7 @@ function clearDetail() {
             </div>
             <div class="rounded border border-brand-border-light bg-brand-bg px-3.5 py-2.5" aria-label="Zona de agrupación" @dragover.prevent @drop.stop="onGroupDrop">
               <p class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Agrupaciones</p>
-              <p class="mt-1 text-[13px] font-semibold text-brand-text">{{ groupBy.length ? groupBy.map(level => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, level)).join(' · ') : 'Arrastra aquí un campo para agrupar' }}</p>
+              <p class="mt-1 text-[13px] font-semibold text-brand-text">{{ groupBy.length ? groupBy.map(groupLevelLabel).join(' · ') : 'Arrastra aquí un campo para agrupar' }}</p>
             </div>
             <div class="space-y-2">
               <p class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">{{ detail ? 'TABLA RELACIONADA · ' + detailEntityName : 'COLUMNAS DEL REPORTE' }}</p>
@@ -744,9 +764,17 @@ function clearDetail() {
               <div class="flex flex-col gap-2">
                 <div class="flex items-center justify-between"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Agrupar filas por</p><button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4 || !groupLevelLeaves().length" @click="addGroupLevel">+ Agregar</button></div>
                 <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
-                  <select class="min-w-0 flex-1 rounded border border-brand-border bg-white px-2.5 py-2 text-xs text-brand-text" :value="groupLevelSelectedValue(level)" :aria-label="`Agrupar nivel ${index + 1}`" @change="updateGroupLevel(index, ($event.target as HTMLSelectElement).value)">
-                    <option v-for="leaf in groupLevelLeaves()" :key="groupLevelOptionValue(leaf)" :value="groupLevelOptionValue(leaf)">{{ resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, leaf) }}</option>
-                  </select>
+                  <ReportOptionSelect
+                    class="min-w-0 flex-1"
+                    :label="`Agrupar nivel ${index + 1}`"
+                    label-hidden
+                    fill
+                    menu-portal
+                    searchable
+                    :model-value="groupLevelSelectedValue(level)"
+                    :options="groupLevelLeaves().map(leaf => ({ value: groupLevelOptionValue(leaf), label: groupLevelLabel(leaf) }))"
+                    @update:model-value="updateGroupLevel(index, $event)"
+                  />
                   <button type="button" :aria-label="`Quitar agrupación ${index + 1}`" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)"><Trash2 class="h-4 w-4" :stroke-width="1.75" /></button>
                 </div>
                 <p v-if="!groupBy.length" class="text-xs text-brand-text-muted">Sin agrupaciones.</p>

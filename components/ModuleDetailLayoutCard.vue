@@ -31,6 +31,36 @@ function relMeta(entitySlug: string, fieldName: string): InverseRelation | undef
   return props.inverseRelations.find((r) => r.entitySlug === entitySlug && r.fieldName === fieldName)
 }
 
+// Líneas editables: la ficha permite agregar/editar/quitar los registros hijos
+// de una relación inversa y sumar campos numéricos al pie.
+function updateRelation(entitySlug: string, fieldName: string, patch: Partial<DetailLayout['relations'][number]>) {
+  emit('update:modelValue', {
+    ...props.modelValue,
+    relations: props.modelValue.relations.map((r) => (r.entitySlug === entitySlug && r.fieldName === fieldName ? { ...r, ...patch } : r))
+  })
+}
+const childFields = reactive<Record<string, EntityFieldMeta[]>>({})
+async function loadChildFields(entitySlug: string) {
+  if (childFields[entitySlug]) return
+  try {
+    childFields[entitySlug] = (await $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${entitySlug}/fields`)).fields
+  } catch { childFields[entitySlug] = [] }
+}
+watch(() => props.modelValue.relations, (relations) => {
+  for (const r of relations) if (r.editable) void loadChildFields(r.entitySlug)
+}, { immediate: true })
+function numericFields(entitySlug: string) {
+  return (childFields[entitySlug] ?? []).filter((f) => ['number', 'currency'].includes(f.dataType))
+}
+function toggleEditable(rel: DetailLayout['relations'][number]) {
+  updateRelation(rel.entitySlug, rel.fieldName, rel.editable ? { editable: false, totals: [] } : { editable: true })
+  if (!rel.editable) void loadChildFields(rel.entitySlug)
+}
+function toggleTotal(rel: DetailLayout['relations'][number], name: string) {
+  const current = rel.totals ?? []
+  updateRelation(rel.entitySlug, rel.fieldName, { totals: current.includes(name) ? current.filter((n) => n !== name) : [...current, name] })
+}
+
 function togglePropertyVisible(name: string) {
   emit('update:modelValue', {
     ...props.modelValue,
@@ -123,9 +153,8 @@ function toggleActivity() {
         <p v-if="modelValue.relations.length === 0" class="text-xs text-brand-text-muted">
           Ningún otro módulo tiene un campo de tipo Relación apuntando a este.
         </p>
+        <template v-for="(rel, index) in modelValue.relations" :key="`${rel.entitySlug}.${rel.fieldName}`">
         <div
-          v-for="(rel, index) in modelValue.relations"
-          :key="`${rel.entitySlug}.${rel.fieldName}`"
           class="relative flex items-center gap-2.5 rounded px-1.5 py-1.5 transition-opacity hover:bg-brand-bg"
           :class="dragging?.section === 'relations' && dragging.index === index ? 'opacity-40' : ''"
           draggable="true"
@@ -142,8 +171,15 @@ function toggleActivity() {
             {{ relMeta(rel.entitySlug, rel.fieldName)?.entityName ?? rel.entitySlug }}
             <span class="text-brand-text-muted">({{ relMeta(rel.entitySlug, rel.fieldName)?.fieldLabel ?? rel.fieldName }})</span>
           </span>
+          <button type="button" role="switch" :aria-checked="Boolean(rel.editable)" class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold" :class="rel.editable ? 'border-brand-orange bg-brand-orange text-white' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleEditable(rel)">{{ rel.editable ? 'Editable' : 'Solo lectura' }}</button>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">Tabla</span>
         </div>
+        <div v-if="rel.editable" class="-mt-0.5 mb-1 ml-[52px] flex flex-wrap items-center gap-1.5">
+          <span class="text-xs text-brand-text-muted">Totales al pie:</span>
+          <span v-if="!numericFields(rel.entitySlug).length" class="text-xs text-brand-text-muted">este módulo no tiene campos numéricos.</span>
+          <button v-for="f in numericFields(rel.entitySlug)" :key="f.name" type="button" role="checkbox" :aria-checked="(rel.totals ?? []).includes(f.name)" class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="(rel.totals ?? []).includes(f.name) ? 'border-brand-orange bg-brand-orange text-white' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleTotal(rel, f.name)">{{ f.label }}</button>
+        </div>
+        </template>
       </div>
 
       <div class="flex items-center justify-between border-t border-brand-border-light pt-4">

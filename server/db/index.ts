@@ -11,7 +11,13 @@ const connectionString =
   process.env.DATABASE_URL ||
   'postgresql://erp_app:changeme_app@localhost:5433/erp_dinamico'
 
-const client = postgres(connectionString)
+// Tamaño del pool de conexiones por proceso (por defecto 10, como postgres.js).
+// Con mucha concurrencia es el primer tope: cada petición autenticada abre varias
+// transacciones cortas. En serverless (muchas instancias) usa el pooler del
+// proveedor (p. ej. Neon) y un valor bajo aquí; en un servidor propio súbelo
+// según max_connections de Postgres / número de procesos.
+const poolMax = Number(process.env.DB_POOL_MAX)
+const client = postgres(connectionString, Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {})
 
 export const db = drizzle(client, { schema })
 
@@ -45,8 +51,22 @@ export async function withTenant<T>(
     // fallar la consulta entera. Se resetea a NIL_UUID (nunca matchea
     // ninguna persona real) para que self_membership_lookup_users evalue
     // limpio a "false" en vez de reventar.
+    // Un solo viaje a la base: fija ambos GUC en la misma sentencia.
+    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true)`)
+    return fn(tx as unknown as typeof db)
+  })
+}
+
+/**
+ * Corre `fn` como el proceso de la cola de trabajos: ve los trabajos de TODAS las
+ * organizaciones (policy de job_queue con app.job_worker = 'on') y de ninguna otra
+ * tabla (app.tenant_id queda en un uuid nulo). Solo lo usa server/utils/jobQueue.ts.
+ */
+export async function withJobWorker<T>(fn: (tx: typeof db) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true)`)
-    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`)
+    await tx.execute(sql`select set_config('app.tenant_id', ${NIL_UUID}, true)`)
+    await tx.execute(sql`select set_config('app.job_worker', 'on', true)`)
     return fn(tx as unknown as typeof db)
   })
 }

@@ -77,6 +77,7 @@ interface ModuleDetail {
 const TABS = [
   { key: 'basica', label: 'Información general' },
   { key: 'campos', label: 'Campos' },
+  { key: 'relaciones', label: 'Relaciones' },
   { key: 'navegacion', label: 'Ubicación en menú' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
@@ -340,7 +341,7 @@ async function onSaveListLayout() {
            del indicador de pasos con circulos anterior - todas siempre
            clickeables (el modulo ya existe completo, no hay "paso
            bloqueado"). Solo UNA pestaña se muestra por vez. -->
-      <div class="flex gap-8 border-b border-brand-border-light">
+      <div class="flex gap-8 overflow-x-auto whitespace-nowrap border-b border-brand-border-light">
         <button
           v-for="tab in TABS"
           :key="tab.key"
@@ -503,6 +504,10 @@ async function onSaveListLayout() {
           <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
           <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
         </div>
+      </template>
+
+      <template v-else-if="step === 'relaciones'">
+        <ModuleRelationsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :entity-options="entityOptions" />
       </template>
 
       <!-- HU-ERD-74: paso 3 - ver components/ModuleDetailLayoutCard.vue

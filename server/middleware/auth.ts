@@ -24,6 +24,8 @@ const PUBLIC_PATHS = new Set([
   '/api/license/status',
   '/api/license/activate',
   '/api/sites/forms/submit',
+  // Lo invoca Vercel Cron / un cron externo con `Authorization: Bearer CRON_SECRET`.
+  '/api/cron/job-queue',
   // Stripe authenticates this endpoint with stripe-signature, not a Flow session.
   '/api/billing/webhook',
   // HU-ERD-84: aceptar una invitacion pasa el token en el body (no una

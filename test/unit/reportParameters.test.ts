@@ -29,6 +29,9 @@ describe('preguntas al generar reportes', () => {
   })
   it('solo ofrece controles compatibles y no modifica las preguntas al ejecutar', () => {
     expect(inputsForType('boolean').map(input => input.value)).toEqual(['checkbox', 'toggle'])
+    // Un folio se elige de una lista con buscador (conserva los ceros); lo numérico sigue disponible.
+    expect(inputsForType('incremental').map(input => input.value)).toEqual(['select', 'number', 'numberRange'])
+    expect(inputsForType('number').map(input => input.value)).toEqual(['number', 'numberRange'])
     const items = [parameter('text')]
     const original = structuredClone(items)
     resolveParameterFilters(items, { producer: { value: 'Vega' } })

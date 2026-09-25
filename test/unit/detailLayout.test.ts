@@ -116,3 +116,17 @@ describe('resolveDetailLayout', () => {
     expect(resolveDetailLayout(saved, [], []).showActivity).toBe(true)
   })
 })
+
+describe('relaciones editables (líneas)', () => {
+  const inverse: InverseRelation[] = [{ entitySlug: 'partidas', entityName: 'Partidas', fieldName: 'pedido', fieldLabel: 'Pedido' }]
+
+  it('conserva editable y totals guardados al resolver el layout', () => {
+    const saved = { properties: [], relations: [{ entitySlug: 'partidas', fieldName: 'pedido', visible: true, editable: true, totals: ['importe'] }], showActivity: false }
+    expect(resolveDetailLayout(saved, [], inverse).relations[0]).toMatchObject({ editable: true, totals: ['importe'] })
+  })
+
+  it('un layout guardado sin editable sigue siendo válido (solo lectura)', () => {
+    const saved = { properties: [], relations: [{ entitySlug: 'partidas', fieldName: 'pedido', visible: true }], showActivity: false }
+    expect(resolveDetailLayout(saved, [], inverse).relations[0]!.editable).toBeUndefined()
+  })
+})

@@ -29,7 +29,7 @@ interface RecordRow {
 
 // HU-ERD-32: mismo fix de forwarding de cookie en SSR ya establecido en el
 // resto de pages/registros/:entity/*.
-const { data: record, pending: recordPending, error: recordError } = await useFetch<RecordRow>(
+const { data: record, pending: recordPending, error: recordError, refresh: refreshRecord } = await useFetch<RecordRow>(
   `/api/records/${slug}/${id}`,
   { key: `record-detail-${slug}-${id}`, headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined }
 )
@@ -55,7 +55,7 @@ function onDeleted() {
     </nav>
 
     <div class="min-h-0 flex-1 overflow-auto p-7">
-      <p v-if="pending || recordPending" class="text-sm text-brand-text-muted">Cargando...</p>
+      <p v-if="(pending || recordPending) && !record" class="text-sm text-brand-text-muted">Cargando...</p>
       <p v-else-if="fetchError" class="text-sm text-brand-error-text">No se pudo cargar la definición de esta entidad.</p>
       <p v-else-if="recordError" class="text-sm text-brand-error-text">
         {{ recordError.statusCode === 404 ? 'Este registro no existe.' : 'No se pudo cargar el registro.' }}
@@ -76,6 +76,7 @@ function onDeleted() {
         :initial-pane="route.query.tab === 'activity' ? 'activity' : 'associations'"
         :initial-activity-id="typeof route.query.activityId === 'string' ? route.query.activityId : undefined"
         @deleted="onDeleted"
+        @changed="refreshRecord()"
       />
     </div>
   </div>

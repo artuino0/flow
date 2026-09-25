@@ -3,6 +3,7 @@ import type { H3Event } from 'h3'
 import { withTenant } from '~/server/db'
 import { entities, roleEntityPermissions, roles } from '~/server/db/schema'
 import type { AuthTokenPayload } from '~/server/utils/auth'
+import { accessCache } from '~/server/utils/shortCache'
 
 export type PermissionAction = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
 
@@ -73,8 +74,48 @@ export async function requirePermission(
   action: PermissionAction
 ): Promise<PermissionResult> {
   const auth = requireAuth(event)
+  const { entity, perm } = await loadEntityAccessBySlug(auth.tenantId, auth.roleId!, entitySlug)
 
-  const result = await withTenant(auth.tenantId, async (tx) => {
+  if (!entity) {
+    throw createError({ statusCode: 404, statusMessage: `Entidad "${entitySlug}" no existe` })
+  }
+  // La lectura histórica sigue disponible con canRead. Toda escritura en
+  // módulos apagados o borrados queda bloqueada, incluso para administradores.
+  if ((!entity.isActive || entity.deletedAt) && action !== 'canRead') {
+    throw createError({ statusCode: 403, statusMessage: `El modulo "${entitySlug}" esta desactivado` })
+  }
+
+  let allowed = Boolean(perm?.[action])
+  if (perm) {
+    const apiKeyScopes = event.context.apiKeyScopes as Record<string, Record<string, boolean>> | undefined
+    if (apiKeyScopes) {
+      const scope = apiKeyScopes[entity.slug]
+      const actionMap: Record<PermissionAction, string> = { canRead: 'read', canCreate: 'create', canUpdate: 'update', canDelete: 'delete' }
+      if (!scope?.[actionMap[action]]) allowed = false
+    }
+  }
+  if (!allowed) {
+    throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre "${entitySlug}"` })
+  }
+
+  return { auth, entity }
+}
+
+interface PermissionFlagsRow { canRead: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean }
+
+/**
+ * Definición del módulo (por slug) y permisos del rol sobre él. Se guarda en memoria unos
+ * segundos (ACCESS_CACHE_TTL_MS, 5 s por defecto): es lo que TODA petición de registros
+ * consulta primero. Toda escritura que cambia módulos o permisos invalida el caché
+ * (invalidateTenantAccess); en otras instancias del servidor surte efecto al vencer el tiempo.
+ * Se devuelve una copia: quien llama puede modificarla sin contaminar el caché.
+ */
+async function loadEntityAccessBySlug(tenantId: string, roleId: string, entitySlug: string): Promise<{ entity: ResolvedEntity | null; perm: PermissionFlagsRow | null }> {
+  const key = `${tenantId}:${roleId}:slug:${entitySlug}`
+  const cached = accessCache.get(key) as { entity: ResolvedEntity | null; perm: PermissionFlagsRow | null } | undefined
+  if (cached) return structuredClone(cached)
+
+  const result = await withTenant(tenantId, async (tx) => {
     const [entity] = await tx
       // HU-ERD-74: detailLayout va explicito en el select (antes faltaba, y
       // GET /api/entities/:entity/fields terminaba resolviendo SIEMPRE el
@@ -93,17 +134,34 @@ export async function requirePermission(
         singularName: entities.singularName
       })
       .from(entities)
-      .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, entitySlug)))
+      .where(and(eq(entities.tenantId, tenantId), eq(entities.slug, entitySlug)))
       .limit(1)
-    if (!entity) return { entity: null, allowed: false, inactive: false }
-
-    // La lectura histórica sigue disponible con canRead. Toda escritura en
-    // módulos apagados o borrados queda bloqueada, incluso para administradores.
-    if ((!entity.isActive || entity.deletedAt) && action !== 'canRead') {
-      return { entity, allowed: false, inactive: true }
-    }
+    if (!entity) return { entity: null, perm: null }
 
     const [perm] = await tx
+      .select({
+        canRead: roleEntityPermissions.canRead,
+        canCreate: roleEntityPermissions.canCreate,
+        canUpdate: roleEntityPermissions.canUpdate,
+        canDelete: roleEntityPermissions.canDelete
+      })
+      .from(roleEntityPermissions)
+      .where(and(eq(roleEntityPermissions.roleId, roleId), eq(roleEntityPermissions.entityId, entity.id)))
+      .limit(1)
+    return { entity, perm: perm ?? null }
+  })
+  accessCache.set(key, result)
+  return structuredClone(result)
+}
+
+/** Permisos del rol sobre un módulo (por id) y si el módulo está activo. Mismo caché de vida corta que arriba. */
+async function loadEntityAccessById(tenantId: string, roleId: string, entityId: string): Promise<{ perm: PermissionFlagsRow | null; isActive: boolean; deletedAt: Date | null }> {
+  const key = `${tenantId}:${roleId}:id:${entityId}`
+  const cached = accessCache.get(key) as { perm: PermissionFlagsRow | null; isActive: boolean; deletedAt: Date | null } | undefined
+  if (cached) return cached
+
+  const result = await withTenant(tenantId, async (tx) => {
+    const [row] = await tx
       .select({
         canRead: roleEntityPermissions.canRead,
         canCreate: roleEntityPermissions.canCreate,
@@ -114,31 +172,13 @@ export async function requirePermission(
       })
       .from(roleEntityPermissions)
       .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
-      .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entity.id)))
+      .where(and(eq(roleEntityPermissions.roleId, roleId), eq(roleEntityPermissions.entityId, entityId)))
       .limit(1)
-    if (!perm) return { entity, allowed: false, inactive: false }
-
-    const apiKeyScopes = event.context.apiKeyScopes as Record<string, Record<string, boolean>> | undefined
-    if (apiKeyScopes) {
-      const scope = apiKeyScopes[entity.slug]
-      const actionMap: Record<PermissionAction, string> = { canRead: 'read', canCreate: 'create', canUpdate: 'update', canDelete: 'delete' }
-      if (!scope?.[actionMap[action]]) return { entity, allowed: false, inactive: false }
-    }
-
-    return { entity, allowed: Boolean(perm[action]), inactive: false }
+    if (!row) return { perm: null, isActive: false, deletedAt: null }
+    return { perm: { canRead: row.canRead, canCreate: row.canCreate, canUpdate: row.canUpdate, canDelete: row.canDelete }, isActive: row.isActive, deletedAt: row.deletedAt }
   })
-
-  if (!result.entity) {
-    throw createError({ statusCode: 404, statusMessage: `Entidad "${entitySlug}" no existe` })
-  }
-  if (result.inactive) {
-    throw createError({ statusCode: 403, statusMessage: `El modulo "${entitySlug}" esta desactivado` })
-  }
-  if (!result.allowed) {
-    throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre "${entitySlug}"` })
-  }
-
-  return { auth, entity: result.entity }
+  accessCache.set(key, result)
+  return result
 }
 
 /**
@@ -155,16 +195,8 @@ export async function requirePermissionForEntityId(
 ): Promise<AuthTokenPayload> {
   const auth = requireAuth(event)
 
-  const allowed = await withTenant(auth.tenantId, async (tx) => {
-    const [perm] = await tx
-      .select({ allowed: roleEntityPermissions[action], isActive: entities.isActive, deletedAt: entities.deletedAt })
-      .from(roleEntityPermissions)
-      .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
-      .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
-      .limit(1)
-    if (!perm) return false
-    return Boolean(perm.allowed && (action === 'canRead' || (perm.isActive && !perm.deletedAt)))
-  })
+  const { perm, isActive, deletedAt } = await loadEntityAccessById(auth.tenantId, auth.roleId!, entityId)
+  const allowed = Boolean(perm && perm[action] && (action === 'canRead' || (isActive && !deletedAt)))
 
   if (!allowed) {
     throw createError({ statusCode: 403, statusMessage: `No tienes permiso "${action}" sobre esta entidad` })
@@ -193,28 +225,15 @@ export async function getPermissionFlags(auth: AuthTokenPayload, entityId: strin
     return { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
   }
 
-  return withTenant(auth.tenantId, async (tx) => {
-    const [perm] = await tx
-      .select({
-        canRead: roleEntityPermissions.canRead,
-        canCreate: roleEntityPermissions.canCreate,
-        canUpdate: roleEntityPermissions.canUpdate,
-        canDelete: roleEntityPermissions.canDelete,
-        isActive: entities.isActive,
-        deletedAt: entities.deletedAt
-      })
-      .from(roleEntityPermissions)
-      .innerJoin(entities, eq(entities.id, roleEntityPermissions.entityId))
-      .where(and(eq(roleEntityPermissions.roleId, auth.roleId!), eq(roleEntityPermissions.entityId, entityId)))
-      .limit(1)
-    if (!perm) return { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
-    return {
-      canRead: perm.canRead,
-      canCreate: perm.canCreate && perm.isActive && !perm.deletedAt,
-      canUpdate: perm.canUpdate && perm.isActive && !perm.deletedAt,
-      canDelete: perm.canDelete && perm.isActive && !perm.deletedAt
-    }
-  })
+  const { perm, isActive, deletedAt } = await loadEntityAccessById(auth.tenantId, auth.roleId, entityId)
+  if (!perm) return { canRead: false, canCreate: false, canUpdate: false, canDelete: false }
+  const writable = isActive && !deletedAt
+  return {
+    canRead: perm.canRead,
+    canCreate: perm.canCreate && writable,
+    canUpdate: perm.canUpdate && writable,
+    canDelete: perm.canDelete && writable
+  }
 }
 
 /**

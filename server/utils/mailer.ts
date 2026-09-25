@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { tenantEmailSettings } from '~/server/db/schema'
 import { decryptSetting } from '~/server/utils/settingsCrypto'
+import { readSesPlatformConfig } from '~/server/utils/sesTenants'
 
 // HU-ERD-84: utilidad SMTP minima para el correo de invitacion de usuarios.
 // La plataforma no tenia NINGUNA capacidad de enviar correos reales hasta
@@ -47,6 +48,8 @@ export interface SmtpConfig {
   fromName?: string
   replyTo?: string
   security?: 'tls' | 'ssl' | 'none'
+  /** Cabeceras que se agregan a cada mensaje (p. ej. X-SES-TENANT para Amazon SES). */
+  headers?: Record<string, string>
 }
 
 /**
@@ -86,6 +89,7 @@ export async function resolveSmtpConfig(tenantId?: string): Promise<SmtpConfig> 
         const [value] = await tx.select().from(tenantEmailSettings).where(eq(tenantEmailSettings.tenantId, tenantId)).limit(1)
         return value ?? null
       })
+      if (row?.provider === 'ses') return sesConfigFromRow(row)
       if (row) {
         if (row.provider !== 'smtp') throw new SmtpNotConfiguredError(`El proveedor "${row.provider}" todavía no está disponible`)
         if (!row.host || !row.port || !row.username || !row.passwordEncrypted) {
@@ -110,6 +114,31 @@ export async function resolveSmtpConfig(tenantId?: string): Promise<SmtpConfig> 
     }
   }
   return readSmtpConfig()
+}
+
+type EmailSettingsRow = typeof tenantEmailSettings.$inferSelect
+
+/**
+ * Configuración de una organización que envía con su propio dominio por Amazon
+ * SES (tenant management). Falla con un mensaje accionable si el dominio aún no
+ * está verificado o SES pausó el envío de esta organización.
+ */
+export function sesConfigFromRow(row: EmailSettingsRow, platform = readSesPlatformConfig()): SmtpConfig {
+  if (!platform) throw new SmtpNotConfiguredError('Amazon SES no está configurado en este servidor')
+  if (!row.sesTenantName || !row.sesConfigSet || !row.sendingDomain) throw new SmtpNotConfiguredError('La configuración de Amazon SES está incompleta')
+  if (row.domainStatus !== 'verified') throw new SmtpNotConfiguredError(`El dominio ${row.sendingDomain} todavía no está verificado. Publica los registros DNS y verifica el dominio en Ajustes.`)
+  if (row.sendingStatus === 'paused') throw new SmtpNotConfiguredError('El envío de correo de esta organización está pausado por Amazon SES. Revisa la reputación del dominio (rebotes y quejas) y contacta a soporte.')
+  return {
+    host: platform.smtpHost,
+    port: platform.smtpPort,
+    user: platform.smtpUser,
+    password: platform.smtpPassword,
+    from: row.fromName ? `"${row.fromName.replace(/"/g, '')}" <${row.fromEmail}>` : row.fromEmail,
+    fromName: row.fromName ?? undefined,
+    replyTo: row.replyTo ?? undefined,
+    security: 'tls',
+    headers: { 'X-SES-TENANT': row.sesTenantName, 'X-SES-CONFIGURATION-SET': row.sesConfigSet }
+  }
 }
 
 /**
@@ -261,13 +290,21 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
 }
 
 export function createTransporter(smtp: SmtpConfig) {
-  return nodemailer.createTransport({
+  const transporter = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
     secure: smtp.security === 'ssl' || (!smtp.security && smtp.port === 465),
     requireTLS: smtp.security === 'tls',
     auth: { user: smtp.user, pass: smtp.password }
   })
+  if (smtp.headers && Object.keys(smtp.headers).length > 0) {
+    // Todos los envíos (invitaciones, CFDI, automatizaciones) pasan por aquí:
+    // se agregan las cabeceras de SES sin tocar a cada llamador.
+    const original = transporter.sendMail.bind(transporter) as (...args: unknown[]) => unknown
+    ;(transporter as unknown as { sendMail: (...args: unknown[]) => unknown }).sendMail = (mail: unknown, ...rest: unknown[]) =>
+      original({ ...(mail as Record<string, unknown>), headers: { ...smtp.headers, ...((mail as { headers?: Record<string, string> }).headers ?? {}) } }, ...rest)
+  }
+  return transporter
 }
 
 export interface PlainEmailParams {

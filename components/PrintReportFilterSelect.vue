@@ -10,7 +10,7 @@ const input = ref<HTMLInputElement>()
 const trigger = ref<HTMLButtonElement>()
 const listId = useId()
 const above = ref(false)
-const availableHeight = ref(280)
+const popoverStyle = ref<Record<string, string>>({})
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(() => [props.modelValue, props.options] as const, () => {
   if (!props.modelValue) chosen.value = ''
@@ -19,15 +19,28 @@ watch(() => [props.modelValue, props.options] as const, () => {
 }, { immediate: true })
 watch(query, value => { clearTimeout(timer); timer = setTimeout(() => emit('search', value), 250) })
 watch(() => props.disabled, value => { if (value) open.value = false })
+// El popover es `position: fixed` (medido contra el disparador) para que el
+// contenedor con scroll del modal no lo recorte ni lo esconda bajo la cabecera:
+// se abre hacia abajo y completo; solo sube si abajo casi no hay espacio.
+function place() {
+  const rect = trigger.value?.getBoundingClientRect()
+  if (!rect) return
+  const margin = 12
+  const below = window.innerHeight - rect.bottom - margin
+  const top = rect.top - margin
+  above.value = below < 180 && top > below
+  const maxHeight = Math.max(120, Math.min(320, above.value ? top : below))
+  popoverStyle.value = {
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+    maxHeight: `${maxHeight}px`,
+    ...(above.value ? { bottom: `${window.innerHeight - rect.top + 4}px` } : { top: `${rect.bottom + 4}px` })
+  }
+}
 async function toggle() {
   open.value = !open.value
   if (open.value) {
-    const rect = root.value!.getBoundingClientRect()
-    const bounds = root.value!.closest('.filter-modal-body')?.getBoundingClientRect()
-    const below = (bounds?.bottom ?? window.innerHeight) - rect.bottom - 6
-    const top = rect.top - (bounds?.top ?? 0) - 6
-    above.value = below < Math.min(280, props.options.length * 40 + 45) && top > below
-    availableHeight.value = Math.max(90, Math.min(280, above.value ? top : below))
+    place()
     await nextTick(); input.value?.focus()
   }
 }
@@ -40,15 +53,25 @@ function move(event: KeyboardEvent, delta: number) {
   buttons[(index + delta + buttons.length) % buttons.length]?.focus()
 }
 function outside(event: MouseEvent) { if (!root.value?.contains(event.target as Node)) open.value = false }
-onMounted(() => document.addEventListener('click', outside))
-onBeforeUnmount(() => { clearTimeout(timer); document.removeEventListener('click', outside) })
+function reposition() { if (open.value) place() }
+onMounted(() => {
+  document.addEventListener('click', outside)
+  window.addEventListener('resize', reposition)
+  document.addEventListener('scroll', reposition, true)
+})
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  document.removeEventListener('click', outside)
+  window.removeEventListener('resize', reposition)
+  document.removeEventListener('scroll', reposition, true)
+})
 </script>
 <template>
   <div ref="root" class="filter-select" @keydown.esc.stop.prevent="close">
     <button ref="trigger" type="button" class="filter-select-trigger" :class="{ expanded: open }" :disabled="disabled" :aria-label="label" aria-haspopup="listbox" :aria-expanded="open" :aria-controls="listId" @click="toggle" @keydown.down.prevent="!open && toggle()">
       <span v-if="chosen" class="filter-select-chip">{{ chosen }}</span><span v-else class="filter-placeholder">{{ pending ? 'Cargando opciones…' : 'Selecciona una opción' }}</span><ChevronDown :size="14" :class="{ 'rotate-180': open }" />
     </button>
-    <div v-if="open" class="filter-select-popover" :class="{ above }" :style="{ maxHeight: availableHeight + 'px' }" @keydown.down="move($event, 1)" @keydown.up="move($event, -1)">
+    <div v-if="open" class="filter-select-popover" :class="{ above }" :style="popoverStyle" @keydown.down="move($event, 1)" @keydown.up="move($event, -1)">
       <label class="filter-select-search"><Search :size="14" /><input ref="input" v-model="query" :aria-label="`Buscar ${label}`" :placeholder="`Buscar ${label.toLocaleLowerCase()}…`" @keydown.enter.prevent="emit('search', query)" /></label>
       <p v-if="pending" role="status" class="filter-select-message">Cargando opciones…</p>
       <div v-else :id="listId" role="listbox" :aria-label="label" class="filter-select-list">
@@ -66,8 +89,7 @@ onBeforeUnmount(() => { clearTimeout(timer); document.removeEventListener('click
 .filter-select-trigger.expanded { outline:1px solid #FF7A59; border-color:#FF7A59; }
 .filter-select-trigger:disabled { background:#F5F8FA; cursor:not-allowed; }
 .filter-select-chip { color:#0091AE; background:#EAF3F6; padding:2px 7px; border-radius:3px; font-size:13px; overflow-wrap:anywhere; }
-.filter-select-popover { position:absolute; top:100%; left:0; right:0; z-index:2; margin-top:4px; border:1px solid #CBD6E2; border-radius:4px; background:#fff; box-shadow:0 8px 20px #33475B33; overflow:hidden; display:flex; flex-direction:column; }
-.filter-select-popover.above { top:auto; bottom:100%; margin-top:0; margin-bottom:4px; }
+.filter-select-popover { position:fixed; z-index:20; border:1px solid #CBD6E2; border-radius:4px; background:#fff; box-shadow:0 8px 20px #33475B33; overflow:hidden; display:flex; flex-direction:column; }
 .filter-select-search { display:flex; flex:none; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid #E5EAF0; color:#8DA1B5; }
 .filter-select-search input { width:100%; min-width:0; outline:none; font-size:13px; color:#33475B; }
 .filter-select-list { min-height:0; max-height:196px; overflow:auto; }

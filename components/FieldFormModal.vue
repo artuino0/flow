@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // HU-ERD-70: modal "Agregar/Editar campo" - sigue Screen/Editor de Campos -
 // Agregar Campo del .pen (revisado con las herramientas de Pencil): nombre
 // tecnico + etiqueta, tarjetas de tipo, toggle "obligatorio" y reglas de
@@ -180,14 +181,18 @@ const form = reactive({
   incrementalPrefix: '',
   incrementalRelationField: '',
   incrementalSourceField: '',
-  calculationMode: 'manual' as 'manual' | 'formula' | 'rollup',
+  calculationMode: 'manual' as 'manual' | 'formula' | 'rollup' | 'expression',
+  expressionText: '',
   formulaOperator: 'subtract' as 'add' | 'subtract' | 'multiply' | 'divide',
   formulaLeftField: '',
   formulaRightField: '',
   rollupSourceEntity: '',
   rollupRelationField: '',
   rollupValueField: '',
-  rollupAggregate: 'sum' as 'sum' | 'count'
+  rollupAggregate: 'sum' as 'sum' | 'count' | 'avg' | 'min' | 'max',
+  rollupFilterField: '',
+  rollupFilterOperator: 'eq' as 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte',
+  rollupFilterValue: ''
 })
 
 // Campos 'relation' propios de esta entidad, con entidad relacionada ya
@@ -248,6 +253,35 @@ async function ensureRelatedFieldsLoaded(slug: string) {
 const numericOwnFields = computed(() => (props.existingFields ?? []).filter(field =>
   field.name !== form.name && (field.dataType === 'number' || field.dataType === 'currency')
 ))
+// Campos de este módulo que puede usar una expresión (todos menos el propio y los tipos sin valor simple).
+const expressionOwnFields = computed(() => (props.existingFields ?? []).filter(field =>
+  field.name !== form.name && !['tabla', 'file', 'json', 'multiselect'].includes(field.dataType)
+))
+const expressionError = computed(() => {
+  if (form.calculationMode !== 'expression') return ''
+  if (!form.expressionText.trim()) return 'Escribe una expresión'
+  try {
+    const refs = collectFieldRefs(parseExpression(form.expressionText))
+    const known = new Set(expressionOwnFields.value.map(field => field.name))
+    const unknown = [...refs].find(ref => !known.has(ref))
+    return unknown ? `"${unknown}" no es un campo de este módulo` : ''
+  } catch (error) {
+    return (error as Error).message
+  }
+})
+const expressionInput = ref<HTMLTextAreaElement | null>(null)
+function insertIntoExpression(text: string) {
+  const el = expressionInput.value
+  const start = el?.selectionStart ?? form.expressionText.length
+  const end = el?.selectionEnd ?? start
+  form.expressionText = form.expressionText.slice(0, start) + text + form.expressionText.slice(end)
+  void nextTick(() => { el?.focus(); const pos = start + text.length; el?.setSelectionRange(pos, pos) })
+}
+const rollupFilterFields = computed(() => rollupSourceFields.value.filter(field => !['tabla', 'file', 'json', 'multiselect'].includes(field.dataType) && field.name !== 'id'))
+const rollupFilterSelectOptions = computed(() => {
+  const field = rollupSourceFields.value.find(item => item.name === form.rollupFilterField)
+  return field?.dataType === 'select' && Array.isArray(field.validationRules?.options) ? field.validationRules.options as Array<{ value: string; label: string }> : []
+})
 const currentEntitySlug = computed(() => relatedEntities.value.find(entity => entity.id === props.entityId)?.slug ?? '')
 const rollupSourceFields = computed(() => relatedFieldsByEntity[form.rollupSourceEntity] ?? [])
 const rollupRelationFields = computed(() => rollupSourceFields.value.filter(field =>
@@ -262,6 +296,8 @@ function onCalculationModeChange() {
 function onRollupSourceEntityChange() {
   form.rollupRelationField = ''
   form.rollupValueField = ''
+  form.rollupFilterField = ''
+  form.rollupFilterValue = ''
   if (form.rollupSourceEntity) void ensureRelatedFieldsLoaded(form.rollupSourceEntity)
 }
 
@@ -312,14 +348,19 @@ watch(
     form.dateMax = typeof rules.max === 'string' ? rules.max : ''
     form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
     const calculation = rules.calculation as Record<string, unknown> | undefined
-    form.calculationMode = calculation?.kind === 'formula' || calculation?.kind === 'rollup' ? calculation.kind : 'manual'
+    form.calculationMode = calculation?.kind === 'formula' || calculation?.kind === 'rollup' || calculation?.kind === 'expression' ? calculation.kind : 'manual'
+    form.expressionText = typeof calculation?.expression === 'string' ? calculation.expression : ''
     form.formulaOperator = ['add', 'subtract', 'multiply', 'divide'].includes(String(calculation?.operator)) ? calculation?.operator as typeof form.formulaOperator : 'subtract'
     form.formulaLeftField = typeof calculation?.leftField === 'string' ? calculation.leftField : ''
     form.formulaRightField = typeof calculation?.rightField === 'string' ? calculation.rightField : ''
     form.rollupSourceEntity = typeof calculation?.sourceEntity === 'string' ? calculation.sourceEntity : ''
     form.rollupRelationField = typeof calculation?.relationField === 'string' ? calculation.relationField : ''
     form.rollupValueField = typeof calculation?.valueField === 'string' ? calculation.valueField : ''
-    form.rollupAggregate = calculation?.aggregate === 'count' ? 'count' : 'sum'
+    form.rollupAggregate = ['count', 'avg', 'min', 'max'].includes(String(calculation?.aggregate)) ? calculation?.aggregate as typeof form.rollupAggregate : 'sum'
+    const rollupFilter = calculation?.filter as Record<string, unknown> | undefined
+    form.rollupFilterField = typeof rollupFilter?.field === 'string' ? rollupFilter.field : ''
+    form.rollupFilterOperator = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'].includes(String(rollupFilter?.operator)) ? rollupFilter?.operator as typeof form.rollupFilterOperator : 'eq'
+    form.rollupFilterValue = typeof rollupFilter?.value === 'string' ? rollupFilter.value : ''
     if (form.calculationMode === 'rollup') {
       void ensureRelatedEntitiesLoaded()
       if (form.rollupSourceEntity) void ensureRelatedFieldsLoaded(form.rollupSourceEntity)
@@ -485,8 +526,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
       if (form.min !== null) rules.min = form.min
       if (form.max !== null) rules.max = form.max
       if (form.integer) rules.integer = true
-      if (form.calculationMode === 'formula') rules.calculation = { kind: 'formula', operator: form.formulaOperator, leftField: form.formulaLeftField, rightField: form.formulaRightField }
-      if (form.calculationMode === 'rollup') rules.calculation = { kind: 'rollup', aggregate: form.rollupAggregate, sourceEntity: form.rollupSourceEntity, relationField: form.rollupRelationField, ...(form.rollupAggregate === 'sum' ? { valueField: form.rollupValueField } : {}) }
+      const calculation = buildCalculation()
+      if (calculation) rules.calculation = calculation
       return rules
     }
     case 'currency': {
@@ -497,8 +538,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
       }
       if (form.min !== null) rules.min = form.min
       if (form.max !== null) rules.max = form.max
-      if (form.calculationMode === 'formula') rules.calculation = { kind: 'formula', operator: form.formulaOperator, leftField: form.formulaLeftField, rightField: form.formulaRightField }
-      if (form.calculationMode === 'rollup') rules.calculation = { kind: 'rollup', aggregate: form.rollupAggregate, sourceEntity: form.rollupSourceEntity, relationField: form.rollupRelationField, ...(form.rollupAggregate === 'sum' ? { valueField: form.rollupValueField } : {}) }
+      const calculation = buildCalculation()
+      if (calculation) rules.calculation = calculation
       return rules
     }
     case 'date': {
@@ -586,11 +627,25 @@ const incrementalValid = computed(() => {
   return true
 })
 
+function buildCalculation(): Record<string, unknown> | null {
+  if (form.calculationMode === 'formula') return { kind: 'formula', operator: form.formulaOperator, leftField: form.formulaLeftField, rightField: form.formulaRightField }
+  if (form.calculationMode === 'expression') return { kind: 'expression', expression: form.expressionText.trim() }
+  if (form.calculationMode === 'rollup') {
+    return {
+      kind: 'rollup', aggregate: form.rollupAggregate, sourceEntity: form.rollupSourceEntity, relationField: form.rollupRelationField,
+      ...(form.rollupAggregate !== 'count' ? { valueField: form.rollupValueField } : {}),
+      ...(form.rollupFilterField ? { filter: { field: form.rollupFilterField, operator: form.rollupFilterOperator, value: form.rollupFilterValue } } : {})
+    }
+  }
+  return null
+}
+
 const calculationValid = computed(() => {
   if (form.dataType !== 'number' && form.dataType !== 'currency') return true
   if (form.calculationMode === 'manual') return true
   if (form.calculationMode === 'formula') return Boolean(form.formulaLeftField && form.formulaRightField)
-  return Boolean(form.rollupSourceEntity && form.rollupRelationField && (form.rollupAggregate === 'count' || form.rollupValueField))
+  if (form.calculationMode === 'expression') return !expressionError.value
+  return Boolean(form.rollupSourceEntity && form.rollupRelationField && (form.rollupAggregate === 'count' || form.rollupValueField) && (!form.rollupFilterField || form.rollupFilterValue !== ''))
 })
 
 const canSubmit = computed(() => {
@@ -709,7 +764,8 @@ function onSubmit() {
           </div>
           <select v-model="form.calculationMode" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="onCalculationModeChange">
             <option value="manual">Captura manual</option>
-            <option value="formula">Fórmula entre campos</option>
+            <option value="formula">Fórmula entre dos campos</option>
+            <option value="expression">Expresión (varios campos y condicionales)</option>
             <option value="rollup">Acumulado de registros relacionados</option>
           </select>
 
@@ -719,13 +775,34 @@ function onSubmit() {
             <select v-model="form.formulaRightField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Segundo campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
           </div>
 
+          <div v-else-if="form.calculationMode === 'expression'" class="flex flex-col gap-2">
+            <textarea ref="expressionInput" v-model="form.expressionText" rows="3" spellcheck="false" placeholder="sueldo + bonos - isr - imss" class="w-full rounded border border-brand-border px-3 py-2 font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="field in expressionOwnFields" :key="field.id" type="button" :title="field.label" class="rounded-full border border-brand-border px-2 py-0.5 font-mono text-xs text-brand-text-secondary hover:bg-white hover:text-brand-blue" @click="insertIntoExpression(field.name)">{{ field.name }}</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="snippet in ['SI(condición; valor_si; valor_no)', 'Y(a; b)', 'O(a; b)', 'REDONDEAR(valor; 2)', 'MAX(a; b)', 'MIN(a; b)']" :key="snippet" type="button" class="rounded border border-dashed border-brand-border px-2 py-0.5 font-mono text-xs text-brand-text-muted hover:bg-white hover:text-brand-blue" @click="insertIntoExpression(snippet)">{{ snippet }}</button>
+            </div>
+            <p v-if="expressionError && form.expressionText.trim()" class="text-xs text-brand-error-text" role="alert">{{ expressionError }}</p>
+            <p class="text-xs text-brand-text-muted">Usa los nombres técnicos de los campos, + − × ÷, comparaciones (= &lt;&gt; &lt; &gt; &lt;= &gt;=) y textos entre comillas, como <span class="font-mono">SI(tipo = 'salida'; -cantidad; cantidad)</span>. En un campo de lista se compara con el valor técnico de la opción.</p>
+          </div>
+
           <div v-else-if="form.calculationMode === 'rollup'" class="flex flex-col gap-2">
             <select v-model="form.rollupSourceEntity" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text" @focus="ensureRelatedEntitiesLoaded" @change="onRollupSourceEntityChange"><option value="">Módulo que contiene los registros</option><option v-for="entity in relatedEntities.filter(item => item.id !== entityId)" :key="entity.id" :value="entity.slug">{{ entity.name }}</option></select>
             <div class="grid grid-cols-2 gap-2">
               <select v-model="form.rollupRelationField" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Relación hacia este módulo</option><option v-for="field in rollupRelationFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
-              <select v-model="form.rollupAggregate" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="sum">Sumar valores</option><option value="count">Contar registros</option></select>
+              <select v-model="form.rollupAggregate" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="sum">Sumar valores</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option><option value="count">Contar registros</option></select>
             </div>
-            <select v-if="form.rollupAggregate === 'sum'" v-model="form.rollupValueField" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Campo que se sumará</option><option v-for="field in rollupValueFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <select v-if="form.rollupAggregate !== 'count'" v-model="form.rollupValueField" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Campo que se acumulará</option><option v-for="field in rollupValueFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <div v-if="form.rollupSourceEntity" class="flex flex-col gap-1.5 rounded border border-dashed border-brand-border p-2">
+              <p class="text-xs font-semibold text-brand-text-secondary">Solo registros que cumplan (opcional)</p>
+              <div class="grid grid-cols-[1fr_110px_1fr] gap-2">
+                <select v-model="form.rollupFilterField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text" @change="form.rollupFilterValue = ''"><option value="">Sin filtro</option><option v-for="field in rollupFilterFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+                <select v-model="form.rollupFilterOperator" :disabled="!form.rollupFilterField" class="rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="eq">es igual a</option><option value="neq">es distinto de</option><option value="gt">mayor que</option><option value="gte">mayor o igual</option><option value="lt">menor que</option><option value="lte">menor o igual</option></select>
+                <select v-if="rollupFilterSelectOptions.length" v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Valor</option><option v-for="option in rollupFilterSelectOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+                <input v-else v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" placeholder="Valor" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text">
+              </div>
+            </div>
             <p v-if="form.rollupSourceEntity && !rollupRelationFields.length" class="text-xs text-brand-warning-text">El módulo elegido necesita un campo Relación que apunte a este módulo.</p>
           </div>
           <p v-if="form.calculationMode !== 'manual'" class="text-xs text-brand-blue">El sistema mantendrá este valor actualizado y no podrá editarse manualmente.</p>

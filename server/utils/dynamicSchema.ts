@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { invalidateTenantAccess } from '~/server/utils/shortCache'
 import { eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
@@ -139,14 +140,23 @@ const calculationSchema = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({
     kind: z.literal('rollup'),
-    aggregate: z.enum(['sum', 'count']),
+    aggregate: z.enum(['sum', 'count', 'avg', 'min', 'max']),
     sourceEntity: z.string().min(1),
     relationField: z.string().min(1),
-    valueField: z.string().min(1).optional()
+    valueField: z.string().min(1).optional(),
+    filter: z.object({
+      field: z.string().min(1),
+      operator: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte']),
+      value: z.string().max(200)
+    }).strict().optional()
+  }).strict(),
+  z.object({
+    kind: z.literal('expression'),
+    expression: z.string().trim().min(1).max(500)
   }).strict()
 ]).superRefine((value, ctx) => {
-  if (value.kind === 'rollup' && value.aggregate === 'sum' && !value.valueField) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'valueField es obligatorio cuando el acumulado es una suma', path: ['valueField'] })
+  if (value.kind === 'rollup' && value.aggregate !== 'count' && !value.valueField) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'valueField es obligatorio cuando el acumulado no es un conteo', path: ['valueField'] })
   }
 })
 
@@ -416,4 +426,6 @@ export async function getEntityZodSchema(tenantId: string, entityId: string): Pr
 /** Invalidacion explicita, para cuando un futuro endpoint de gestion de entity_fields los modifique. */
 export function invalidateEntitySchemaCache(tenantId: string, entityId: string): void {
   cache.delete(`${tenantId}:${entityId}`)
+  // Un cambio de campos también cambia la definición del módulo que se guarda en memoria unos segundos.
+  invalidateTenantAccess(tenantId)
 }

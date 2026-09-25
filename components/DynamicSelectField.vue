@@ -162,14 +162,8 @@ function clearSingle() {
 <style scoped>
 .detail-select > button,
 .detail-select > div:first-of-type {
-  border-color:transparent;
-  background:#F5F8FA;
   padding-top:6px;
   padding-bottom:6px;
   font-size:13px;
-}
-.detail-select > button:hover,
-.detail-select > div:first-of-type:hover {
-  background:#EEF5F7;
 }
 </style>

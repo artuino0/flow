@@ -3,6 +3,7 @@ import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type { executeTriggerActions as ExecuteTriggerActions } from '../../server/utils/triggerActions'
+import type { runJobQueueTick as RunJobQueueTick } from '../../server/utils/jobQueue'
 
 // HU-ERD-50: accion "email" de un trigger, contra Postgres real (mismo
 // patron que triggerActions.test.ts, ERD-49) con nodemailer mockeado (mismo
@@ -18,6 +19,7 @@ const TENANT_A = randomUUID()
 let testDb: TestDb
 let admin: postgres.Sql
 let executeTriggerActions: typeof ExecuteTriggerActions
+let runJobQueueTick: typeof RunJobQueueTick
 
 let entityId: string
 
@@ -72,6 +74,8 @@ beforeAll(async () => {
   process.env.APP_DATABASE_URL = testDb.appUrl
   setSmtpEnv()
   ;({ executeTriggerActions } = await import('../../server/utils/triggerActions'))
+  ;({ runJobQueueTick } = await import('../../server/utils/jobQueue'))
+  ;(await import('../../server/utils/jobHandlers')).registerDefaultJobHandlers()
 }, 60_000)
 
 afterAll(async () => {
@@ -79,7 +83,14 @@ afterAll(async () => {
   await testDb.stop()
 })
 
-beforeEach(() => {
+/** La accion "email" ahora encola; esto corre la cola una vez (sin limite de ritmo) para que el correo salga. */
+async function drainQueue() {
+  await admin`update job_queue set run_at = now() where status = 'pending'`
+  return runJobQueueTick({ ratePerSecond: 1000, budgetMs: 10_000 })
+}
+
+beforeEach(async () => {
+  await admin`delete from job_queue`
   sendMailMock.mockReset().mockResolvedValue({ messageId: 'test' })
   setSmtpEnv()
 })
@@ -110,6 +121,12 @@ describe('executeTriggerActions - accion email', () => {
     const log = await getLog(triggerId)
     expect(log?.status).toBe('success')
 
+    // Encolado, no enviado dentro del disparador.
+    expect(sendMailMock).not.toHaveBeenCalled()
+    expect((await admin`select count(*)::int as n from job_queue where status = 'pending'`)[0]!.n).toBe(1)
+    const tick = await drainQueue()
+    expect(tick).toMatchObject({ claimed: 1, succeeded: 1, dead: 0 })
+
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     const call = sendMailMock.mock.calls[0][0]
     expect(call.to).toBe('ana@example.com')
@@ -127,6 +144,7 @@ describe('executeTriggerActions - accion email', () => {
       correo: 'ana@example.com'
     })
 
+    await drainQueue()
     const call = sendMailMock.mock.calls[0][0]
     expect(call.html).not.toContain('<img src=x onerror=alert(1)>')
     expect(call.html).toContain('&lt;img')
@@ -187,8 +205,12 @@ describe('executeTriggerActions - accion email', () => {
 
     await executeTriggerActions(TENANT_A, entityId, triggerId, 'SMTP caido', recordId, 'on_create', { correo: 'ana@example.com' })
 
-    const log = await getLog(triggerId)
-    expect(log?.status).toBe('retrying')
-    expect(log?.last_error).toContain('Connection timeout')
+    // El disparador ya no reintenta: la cola lo hace con retroceso.
+    expect((await getLog(triggerId))?.status).toBe('success')
+    const tick = await drainQueue()
+    expect(tick).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, dead: 0 })
+    const [job] = await admin`select status, attempts, last_error, run_at > now() as delayed from job_queue`
+    expect(job).toMatchObject({ status: 'pending', attempts: 1, delayed: true })
+    expect(String(job!.last_error)).toContain('Connection timeout')
   })
 })

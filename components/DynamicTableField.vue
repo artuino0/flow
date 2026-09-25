@@ -243,7 +243,7 @@ function onSearchInput(idx: number, col: ColumnDef, value: string) {
 }
 async function runSearch(idx: number, col: ColumnDef) {
   const state = stateFor(idx)
-  if (!col.relationEntity || !state.query.trim()) {
+  if (!col.relationEntity) {
     state.results = []
     return
   }
@@ -252,7 +252,7 @@ async function runSearch(idx: number, col: ColumnDef) {
     const meta = await ensureEntityFields(col.relationEntity)
     if (!meta.isActive) { state.results = []; return }
     const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
-        query: { search: state.query, pageSize: 6 }
+        query: { search: state.query.trim() || undefined, pageSize: 20, sortBy: 'createdAt', sortDir: 'desc' }
       })
     state.results = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
     for (const r of state.results) labelCache[cacheKey(col.relationEntity, r.id)] = r.label
@@ -347,7 +347,7 @@ function onPickerInput(value: string) {
 }
 async function runPickerSearch() {
   const col = pickerColumn.value
-  if (!col?.relationEntity || !pickerQuery.value.trim()) {
+  if (!col?.relationEntity) {
     pickerResults.value = []
     return
   }
@@ -356,7 +356,7 @@ async function runPickerSearch() {
     const meta = await ensureEntityFields(col.relationEntity)
     if (!meta.isActive) { pickerResults.value = []; return }
     const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${col.relationEntity}`, {
-        query: { search: pickerQuery.value, pageSize: 6 }
+        query: { search: pickerQuery.value.trim() || undefined, pageSize: 20, sortBy: 'createdAt', sortDir: 'desc' }
       })
     pickerResults.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField), customData: r.customData }))
   } catch {
@@ -414,7 +414,7 @@ function addRowFromPicker() {
             class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
             :value="pickerQuery"
             @input="onPickerInput(($event.target as HTMLInputElement).value)"
-            @focus="pickerOpen = true"
+            @focus="pickerOpen = true; if (!pickerResults.length) void runPickerSearch()"
             @blur="closePickerDropdown"
           />
           <button v-if="pickerSelected" type="button" class="text-brand-text-muted hover:text-brand-error-text" @click="clearPickerSelection">
@@ -422,8 +422,8 @@ function addRowFromPicker() {
           </button>
         </div>
         <div
-          v-if="pickerOpen && (pickerLoading || pickerResults.length > 0 || pickerQuery)"
-          class="absolute z-10 mt-1 w-full rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+          v-if="pickerOpen"
+          class="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
         >
           <p v-if="pickerLoading" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
           <p v-else-if="pickerResults.length === 0" class="px-2.5 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
@@ -491,14 +491,14 @@ function addRowFromPicker() {
                       class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
                       :value="stateFor(idx).query"
                       @input="onSearchInput(idx, col, ($event.target as HTMLInputElement).value)"
-                      @focus="stateFor(idx).open = true; updateDropdownPosition(idx, col)"
+                      @focus="stateFor(idx).open = true; updateDropdownPosition(idx, col); if (!stateFor(idx).results.length) void runSearch(idx, col)"
                       @blur="closeSuggestions(idx)"
                     />
                   </div>
                   <Teleport to="body">
                     <div
-                      v-if="stateFor(idx).open && (stateFor(idx).loading || stateFor(idx).results.length > 0 || stateFor(idx).query)"
-                      class="fixed z-50 rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+                      v-if="stateFor(idx).open"
+                      class="fixed z-50 max-h-64 overflow-auto rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
                       :style="{
                         top: `${dropdownStyle[searchKey(idx, col)]?.top ?? 0}px`,
                         left: `${dropdownStyle[searchKey(idx, col)]?.left ?? 0}px`,

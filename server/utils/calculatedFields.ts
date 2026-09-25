@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql as dsql } from 'drizzle-orm'
 import { entities, entityFields, records } from '~/server/db/schema'
+import { collectFieldRefs, compareValues, evaluateExpressionNumber, parseExpression, type CalcNode, type CalcValue } from '~/utils/calcExpression'
 
 type Tx = any
 
@@ -10,15 +11,29 @@ export type FormulaCalculation = {
   rightField: string
 }
 
+export type RollupFilter = {
+  field: string
+  operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte'
+  value: string
+}
+
 export type RollupCalculation = {
   kind: 'rollup'
-  aggregate: 'sum' | 'count'
+  aggregate: 'sum' | 'count' | 'avg' | 'min' | 'max'
   sourceEntity: string
   relationField: string
   valueField?: string
+  /** Solo entran al acumulado los registros que cumplan esta condición. */
+  filter?: RollupFilter
 }
 
-export type CalculationConfig = FormulaCalculation | RollupCalculation
+/** Expresión con varios campos, comparaciones y condicionales (ver utils/calcExpression.ts). */
+export type ExpressionCalculation = {
+  kind: 'expression'
+  expression: string
+}
+
+export type CalculationConfig = FormulaCalculation | RollupCalculation | ExpressionCalculation
 
 export interface CalculatedFieldRow {
   name: string
@@ -38,8 +53,11 @@ export function getCalculation(field: CalculatedFieldRow): CalculationConfig | n
   if (calculation.kind === 'formula' && ['add', 'subtract', 'multiply', 'divide'].includes(String(calculation.operator)) && typeof calculation.leftField === 'string' && typeof calculation.rightField === 'string') {
     return calculation as FormulaCalculation
   }
-  if (calculation.kind === 'rollup' && ['sum', 'count'].includes(String(calculation.aggregate)) && typeof calculation.sourceEntity === 'string' && typeof calculation.relationField === 'string') {
+  if (calculation.kind === 'rollup' && ['sum', 'count', 'avg', 'min', 'max'].includes(String(calculation.aggregate)) && typeof calculation.sourceEntity === 'string' && typeof calculation.relationField === 'string') {
     return calculation as RollupCalculation
+  }
+  if (calculation.kind === 'expression' && typeof calculation.expression === 'string' && calculation.expression.trim()) {
+    return calculation as ExpressionCalculation
   }
   return null
 }
@@ -81,6 +99,33 @@ function sameData(left: Record<string, unknown>, right: Record<string, unknown>)
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+const expressionCache = new Map<string, CalcNode>()
+function parsedExpression(source: string): CalcNode {
+  let node = expressionCache.get(source)
+  if (!node) {
+    node = parseExpression(source)
+    if (expressionCache.size > 500) expressionCache.clear()
+    expressionCache.set(source, node)
+  }
+  return node
+}
+
+/** Valor de un campo tal como lo ve una expresión: número, booleano o texto (valor de la opción en los selects). */
+function expressionValue(field: CalculatedFieldRow | undefined, raw: unknown): CalcValue {
+  if (!field) return 0
+  if (field.dataType === 'number' || field.dataType === 'currency') return numeric(raw)
+  if (field.dataType === 'boolean') return raw === true || raw === 'true'
+  return raw === null || raw === undefined ? '' : String(raw)
+}
+
+const FILTER_OPERATORS = { eq: '=', neq: '<>', gt: '>', gte: '>=', lt: '<', lte: '<=' } as const
+
+function rollupMatches(filter: RollupFilter | undefined, data: Record<string, unknown>): boolean {
+  if (!filter) return true
+  const raw = data[filter.field]
+  return compareValues(raw === null || raw === undefined ? '' : (typeof raw === 'number' || typeof raw === 'boolean' ? raw : String(raw)), filter.value, FILTER_OPERATORS[filter.operator])
+}
+
 export async function applyCalculatedFields(
   tx: Tx,
   tenantId: string,
@@ -117,6 +162,11 @@ export async function applyCalculatedFields(
       else if (calculation.operator === 'subtract') value = left - right
       else if (calculation.operator === 'multiply') value = left * right
       else value = right === 0 ? 0 : left / right
+    } else if (calculation.kind === 'expression') {
+      const node = parsedExpression(calculation.expression)
+      for (const ref of collectFieldRefs(node)) if (calculated.has(ref)) await evaluate(ref)
+      const byName = new Map(fields.map(field => [field.name, field]))
+      value = evaluateExpressionNumber(node, ref => expressionValue(byName.get(ref), result[ref]))
     } else if (recordId) {
       const [sourceEntity] = await tx
         .select({ id: entities.id })
@@ -133,9 +183,14 @@ export async function applyCalculatedFields(
             isNull(records.deletedAt),
             dsql`${records.customData}->>${calculation.relationField} = ${recordId}`
           ))
-        value = calculation.aggregate === 'count'
-          ? sourceRows.length
-          : sourceRows.reduce((sum: number, row: { customData: unknown }) => sum + numeric(asRules(row.customData)[calculation.valueField ?? '']), 0)
+        const matching = sourceRows.filter((row: { customData: unknown }) => rollupMatches(calculation.filter, asRules(row.customData)))
+        const values = matching.map((row: { customData: unknown }) => numeric(asRules(row.customData)[calculation.valueField ?? '']))
+        if (calculation.aggregate === 'count') value = matching.length
+        else if (calculation.aggregate === 'sum') value = values.reduce((sum: number, item: number) => sum + item, 0)
+        else if (values.length === 0) value = 0
+        else if (calculation.aggregate === 'avg') value = values.reduce((sum: number, item: number) => sum + item, 0) / values.length
+        else if (calculation.aggregate === 'min') value = Math.min(...values)
+        else value = Math.max(...values)
       }
     }
 

@@ -1,4 +1,6 @@
 import { and, count, eq, sql } from 'drizzle-orm'
+import { invalidatesTenantAccess } from '~/server/utils/shortCache'
+import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFieldHistory, entityFields, records } from '~/server/db/schema'
 import { getValidationRulesSchema, invalidateEntitySchemaCache } from '~/server/utils/dynamicSchema'
@@ -242,9 +244,46 @@ async function assertCalculatedConfig(
   const calculation = rules.calculation as Record<string, unknown> | undefined
   if (!calculation) return
 
-  const ownFields = await tx.select({ name: entityFields.name, dataType: entityFields.dataType })
+  const ownFields = await tx.select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
     .from(entityFields).where(eq(entityFields.entityId, entityId))
   const numericNames = new Set(ownFields.filter(field => field.dataType === 'number' || field.dataType === 'currency').map(field => field.name))
+
+  if (calculation.kind === 'expression') {
+    let tree
+    try { tree = parseExpression(String(calculation.expression ?? '')) } catch (error) {
+      throw new InvalidValidationRulesError(`Expresión inválida: ${(error as Error).message}`)
+    }
+    const usable = new Set(ownFields.filter(field => !['tabla', 'file', 'json', 'multiselect'].includes(field.dataType)).map(field => field.name))
+    const refs = [...collectFieldRefs(tree)]
+    for (const ref of refs) {
+      if (ref === fieldName) throw new InvalidValidationRulesError('Un campo calculado no puede depender de sí mismo')
+      if (!usable.has(ref)) throw new InvalidValidationRulesError(`"${ref}" no es un campo de este módulo que se pueda usar en una expresión`)
+    }
+    // Sin ciclos entre campos calculados (fórmulas y expresiones) de este módulo.
+    const graph = new Map<string, string[]>()
+    for (const field of ownFields) {
+      if (field.name === fieldName) continue
+      const own = (field.validationRules ?? {}) as Record<string, unknown>
+      const other = own.calculation as Record<string, unknown> | undefined
+      if (other?.kind === 'formula') graph.set(field.name, [String(other.leftField), String(other.rightField)])
+      else if (other?.kind === 'expression') {
+        try { graph.set(field.name, [...collectFieldRefs(parseExpression(String(other.expression)))]) } catch { /* expresión guardada inválida: no aporta dependencias */ }
+      }
+    }
+    graph.set(fieldName, refs)
+    const visiting = new Set<string>()
+    const done = new Set<string>()
+    const visit = (name: string) => {
+      if (done.has(name)) return
+      if (visiting.has(name)) throw new InvalidValidationRulesError('La expresión crea una dependencia circular entre campos calculados')
+      visiting.add(name)
+      for (const next of graph.get(name) ?? []) visit(next)
+      visiting.delete(name)
+      done.add(name)
+    }
+    visit(fieldName)
+    return
+  }
 
   if (calculation.kind === 'formula') {
     for (const operand of [calculation.leftField, calculation.rightField]) {
@@ -270,10 +309,19 @@ async function assertCalculatedConfig(
   if (!relation || relationEntity !== currentEntity?.slug) {
     throw new InvalidValidationRulesError(`"${String(calculation.relationField)}" debe ser una relación del módulo fuente hacia este módulo`)
   }
-  if (calculation.aggregate === 'sum') {
+  if (calculation.aggregate !== 'count') {
     const valueField = sourceFields.find(field => field.name === calculation.valueField)
     if (!valueField || !['number', 'currency'].includes(valueField.dataType)) {
       throw new InvalidValidationRulesError(`"${String(calculation.valueField)}" no es un campo numérico válido del módulo fuente`)
+    }
+  }
+  const filter = calculation.filter as Record<string, unknown> | undefined
+  if (filter) {
+    if (!sourceFields.some(field => field.name === filter.field && !['tabla', 'file', 'json', 'multiselect'].includes(field.dataType))) {
+      throw new InvalidValidationRulesError(`"${String(filter.field)}" no es un campo válido para filtrar en el módulo fuente`)
+    }
+    if (!['eq', 'neq', 'gt', 'gte', 'lt', 'lte'].includes(String(filter.operator)) || typeof filter.value !== 'string') {
+      throw new InvalidValidationRulesError('El filtro del acumulado no es válido')
     }
   }
 }
@@ -464,7 +512,7 @@ export async function deleteEntityField(tenantId: string, fieldId: string): Prom
  * (ver metadataShapeChanged en ModuleFieldsCard.vue), asi que reordenar no
  * afecta la validacion de records existentes.
  */
-export async function reorderEntityFields(tenantId: string, entityId: string, order: string[]): Promise<EntityFieldSummary[]> {
+async function reorderEntityFieldsImpl(tenantId: string, entityId: string, order: string[]): Promise<EntityFieldSummary[]> {
   return withTenant(tenantId, async (tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
 
@@ -483,3 +531,6 @@ export async function reorderEntityFields(tenantId: string, entityId: string, or
     return rows.map(toSummary)
   })
 }
+
+// Toda escritura que cambia módulos, campos o permisos invalida los cachés de acceso y metadatos (shortCache.ts).
+export const reorderEntityFields = invalidatesTenantAccess(reorderEntityFieldsImpl)

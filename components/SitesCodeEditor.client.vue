@@ -22,6 +22,7 @@ const languageCompartment = new Compartment()
 const flowTheme = EditorView.theme({
   '&': {
     height: '100%',
+    maxHeight: '100%',
     backgroundColor: '#ffffff',
     color: '#33475b',
     fontSize: '13px'
@@ -30,10 +31,7 @@ const flowTheme = EditorView.theme({
   '.cm-scroller': {
     fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
     lineHeight: '1.65',
-    overflow: 'auto',
-    scrollbarGutter: 'stable',
-    scrollbarWidth: 'thin',
-    scrollbarColor: '#aebdca #f3f6f8'
+    overflow: 'auto'
   },
   '.cm-content': { padding: '14px 0', caretColor: '#0091ae' },
   '.cm-line': { padding: '0 18px 0 8px' },
@@ -106,9 +104,31 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.sites-code-editor { position: relative; display: block; width: 100%; height: 0; min-width: 0; min-height: 0; flex: 1 1 0; overflow: hidden; background: #fff; }
-.sites-code-editor :deep(.cm-editor) { position: absolute; inset: 0; width: 100%; height: auto; }
-.sites-code-editor :deep(.cm-scroller) { height: 100%; overflow: auto !important; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #aebdca #f3f6f8; }
+.sites-code-editor {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.sites-code-editor :deep(.cm-editor) {
+  height: 100% !important;
+  max-height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.sites-code-editor :deep(.cm-scroller) {
+  min-height: 0;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #aebdca #f3f6f8;
+}
 .sites-code-editor :deep(.cm-scroller::-webkit-scrollbar) { width: 10px; height: 10px; }
 .sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-track) { background: #f3f6f8; }
 .sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-thumb) { border: 2px solid #f3f6f8; border-radius: 999px; background: #aebdca; }

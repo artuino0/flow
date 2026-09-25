@@ -1,4 +1,5 @@
 import { and, count, eq } from 'drizzle-orm'
+import { invalidatesTenantAccess } from '~/server/utils/shortCache'
 import { db, withTenant } from '~/server/db'
 import { entities, roleChatPermissions, roleEntityPermissions, roles, users } from '~/server/db/schema'
 
@@ -114,7 +115,7 @@ export interface CreateRoleResult extends RoleSummary {
  * tenant - mismo criterio de traducir el unique_violation de Postgres a un
  * error propio que DuplicateSlugError en moduleEntities.ts (HU-ERD-66).
  */
-export async function createRole(tenantId: string, name: string, copyFromRoleId?: string | null): Promise<CreateRoleResult> {
+async function createRoleImpl(tenantId: string, name: string, copyFromRoleId?: string | null): Promise<CreateRoleResult> {
   return withTenant(tenantId, async (tx) => {
     let sourcePerms: (typeof roleEntityPermissions.$inferSelect)[] = []
     let sourceChatPerms: typeof roleChatPermissions.$inferSelect | null = null
@@ -233,7 +234,7 @@ export async function getRolePermissions(tenantId: string, roleId: string): Prom
  * Devuelve null si el rol no existe/no es del tenant, o si algun entityId no
  * pertenece al tenant (en vez de guardar parcialmente).
  */
-export async function setRolePermissions(
+async function setRolePermissionsImpl(
   tenantId: string,
   roleId: string,
   updates: PermissionUpdate[]
@@ -280,3 +281,7 @@ export async function setRolePermissions(
     return loadRolePermissions(tx, tenantId, roleId)
   })
 }
+
+// Toda escritura que cambia módulos, campos o permisos invalida los cachés de acceso y metadatos (shortCache.ts).
+export const createRole = invalidatesTenantAccess(createRoleImpl)
+export const setRolePermissions = invalidatesTenantAccess(setRolePermissionsImpl)

@@ -60,6 +60,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   deleted: []
+  // Se editaron líneas hijas: el padre pudo cambiar (rollups), la página lo recarga.
+  changed: []
 }>()
 
 const actionMenuOpen = ref(false)
@@ -176,6 +178,11 @@ interface RelatedTableState {
   // etiquetas ya resueltas que trae GET /api/records/:entity.
   relationLabels: Record<string, Record<string, string>>
 }
+// Cantidad de tipos de asociación directa (record_relations) visibles para el usuario;
+// null mientras RecordAssociationsPanel no terminó de consultarlos.
+const directAssociationCount = ref<number | null>(null)
+watch(() => props.record?.id, () => { directAssociationCount.value = null })
+const hasAnyAssociationType = computed(() => visibleRelations.value.length > 0 || (directAssociationCount.value ?? 0) > 0)
 const relatedTables = reactive<Record<string, RelatedTableState>>({})
 const readOnlyPermissions: EntityPermissions = { canRead: true, canCreate: false, canUpdate: false, canDelete: false }
 const activePane = ref<'associations' | 'activity'>(props.initialPane ?? (props.initialActivityId ? 'activity' : 'associations'))
@@ -202,7 +209,7 @@ watch(
   () => [props.record?.id, visibleRelations.value.map((r) => `${r.entitySlug}.${r.fieldName}`).join(',')] as const,
   () => {
     if (!props.record) return
-    for (const r of visibleRelations.value) void loadRelatedTable(r.entitySlug, r.fieldName)
+    for (const r of visibleRelations.value) if (!r.editable) void loadRelatedTable(r.entitySlug, r.fieldName)
   },
   { immediate: true }
 )
@@ -356,7 +363,7 @@ async function saveEdit() {
         </div>
       </section>
 
-      <section class="relative rounded-lg border border-brand-border-light" :class="isEditing ? 'z-20 bg-[#F8FBFC]' : 'z-0 bg-brand-surface'">
+      <section class="relative rounded-lg border border-brand-border-light" :class="isEditing ? 'z-20 bg-brand-surface' : 'z-0 bg-brand-surface'">
         <header class="flex items-center gap-2 border-b border-brand-border-light px-[18px] py-3">
           <List class="h-3.5 w-3.5 text-brand-text-muted" :stroke-width="1.75" />
           <h2 class="text-xs font-bold tracking-[0.03em] text-brand-text-muted">Propiedades</h2>
@@ -381,11 +388,11 @@ async function saveEdit() {
       </div>
 
       <div v-if="activePane === 'associations'" class="flex min-h-0 flex-1 flex-col">
-        <div v-if="visibleRelations.length === 0" class="flex flex-1 items-center justify-center p-10 text-center">
+        <div v-if="!hasAnyAssociationType && (!record || directAssociationCount !== null)" class="flex flex-1 items-center justify-center p-10 text-center">
           <div class="flex max-w-[380px] flex-col items-center">
             <span class="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF0F6] text-brand-text-muted"><Link2 class="h-[26px] w-[26px]" :stroke-width="1.75" /></span>
             <h3 class="mt-4 text-[15px] font-bold text-brand-text">Sin asociaciones</h3>
-            <p class="mt-1 max-w-[340px] text-[13px] leading-5 text-brand-text-secondary">Ningún otro módulo tiene un campo de relación apuntando a este registro todavía.</p>
+            <p class="mt-1 max-w-[340px] text-[13px] leading-5 text-brand-text-secondary">Este módulo no tiene tipos de asociación definidos ni otros módulos con un campo de relación hacia este registro.</p>
             <button v-if="record && canUpdate" type="button" class="mt-4 flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
               <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Vincular registro
             </button>
@@ -393,18 +400,30 @@ async function saveEdit() {
         </div>
 
         <div v-else class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
+          <RecordAssociationsPanel v-if="record" :key="`${entitySlug}:${record.id}`" :entity-slug="entitySlug" :record-id="record.id" @loaded="directAssociationCount = $event" />
           <div v-for="rel in visibleRelations" :key="`${rel.entitySlug}.${rel.fieldName}`" class="flex flex-col overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
             <div class="flex items-center justify-between gap-3 border-b border-brand-border-light px-4 py-3">
               <div class="flex flex-col gap-0.5">
                 <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
                 <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
               </div>
-              <NuxtLink v-if="record && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+              <NuxtLink v-if="record && !rel.editable && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
                 <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar
               </NuxtLink>
             </div>
             <div>
-              <p v-if="!record" class="p-6 text-center text-xs text-brand-text-muted">Se muestra como tabla de solo lectura</p>
+              <p v-if="!record" class="p-6 text-center text-xs text-brand-text-muted">{{ rel.editable ? 'Se muestra como tabla editable' : 'Se muestra como tabla de solo lectura' }}</p>
+              <RecordLinesTable
+                v-else-if="rel.editable"
+                :key="`${rel.entitySlug}.${rel.fieldName}:${record.id}`"
+                :parent-id="record.id"
+                :child-slug="rel.entitySlug"
+                :child-name="rel.meta!.entityName"
+                :field-name="rel.fieldName"
+                :totals="rel.totals"
+                :parent-label="displayLabel"
+                @changed="emit('changed')"
+              />
               <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
                 <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="p-6 text-center text-xs text-brand-text-muted">Cargando...</p>
                 <p v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0" class="p-6 text-center text-xs text-brand-text-muted">Sin registros relacionados.</p>

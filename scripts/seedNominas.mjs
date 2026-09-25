@@ -81,7 +81,11 @@ const defaultRules = (name, dataType) => {
 }
 
 try {
-  const tenants = await sql`select id from tenants order by created_at`
+  // Opcional: node scripts/seedNominas.mjs "Organización" limita la carga a esa organización.
+  const onlyTenant = process.argv[2]
+  const tenants = onlyTenant
+    ? await sql`select id from tenants where name = ${onlyTenant}`
+    : await sql`select id from tenants order by created_at`
   for (const tenant of tenants) {
     await sql.begin(async tx => {
       const entityIds = []

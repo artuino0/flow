@@ -47,6 +47,8 @@ export interface DetailLayoutRelation {
   entitySlug: string
   fieldName: string
   visible: boolean
+  editable?: boolean
+  totals?: string[]
 }
 export interface DetailLayout {
   properties: DetailLayoutProperty[]

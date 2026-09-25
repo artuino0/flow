@@ -90,7 +90,7 @@ function onSearchInput(value: string) {
 }
 
 async function runSearch() {
-  if (!relationEntity.value || !query.value.trim()) {
+  if (!relationEntity.value) {
     results.value = []
     return
   }
@@ -99,7 +99,7 @@ async function runSearch() {
     const meta = await ensureRelationFields()
     if (!meta.isActive) { results.value = []; return }
     const res = await $fetch<{ data: Array<{ id: string; customData: Record<string, unknown> }> }>(`/api/records/${relationEntity.value}`, {
-        query: { search: query.value, pageSize: 6 }
+        query: { search: query.value.trim() || undefined, pageSize: 20, sortBy: 'createdAt', sortDir: 'desc' }
       })
     results.value = res.data.map((r) => ({ id: r.id, label: labelForRecord(meta.fields, r.customData, r.id, meta.labelField) }))
     for (const r of results.value) labelCache[cacheKey(r.id)] = r.label
@@ -119,6 +119,13 @@ function selectResult(result: SearchResult) {
 
 function clearValue() {
   emit('update:modelValue', null)
+}
+
+// Al enfocar se despliegan las opciones disponibles sin exigir escribir;
+// escribir solo filtra.
+function onFocus() {
+  open.value = true
+  if (!results.value.length) void runSearch()
 }
 
 function closeSuggestions() {
@@ -184,13 +191,13 @@ onMounted(() => {
           class="min-w-0 flex-1 border-0 p-0 text-sm text-brand-text focus:outline-none focus:ring-0"
           :value="query"
           @input="onSearchInput(($event.target as HTMLInputElement).value)"
-          @focus="open = true"
+          @focus="onFocus"
           @blur="closeSuggestions"
         />
       </div>
       <div
-        v-if="open && (loading || results.length > 0 || query)"
-        class="absolute z-50 mt-1 w-full rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
+        v-if="open"
+        class="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
       >
         <p v-if="loading" class="px-3 py-1.5 text-xs text-brand-text-muted">Buscando...</p>
         <p v-else-if="results.length === 0" class="px-3 py-1.5 text-xs text-brand-text-muted">Sin resultados</p>
@@ -215,14 +222,5 @@ onMounted(() => {
 .detail-relation > input,
 .detail-relation > div {
   font-size:13px;
-}
-.detail-relation > input,
-.detail-relation > div.flex,
-.detail-relation > div.relative > div:first-child {
-  border-color:transparent;
-  background:#F5F8FA;
-}
-.detail-relation > div.relative > div:first-child:hover {
-  background:#EEF5F7;
 }
 </style>

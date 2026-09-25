@@ -20,6 +20,10 @@ export interface DetailLayoutRelation {
   entitySlug: string
   fieldName: string
   visible: boolean
+  /** La ficha permite agregar/editar/quitar registros hijos en línea (líneas o partidas). */
+  editable?: boolean
+  /** Campos numéricos del módulo hijo cuya suma se muestra al pie de la tabla editable. */
+  totals?: string[]
 }
 
 export interface DetailLayout {
@@ -29,7 +33,7 @@ export interface DetailLayout {
 }
 
 const detailLayoutPropertySchema = z.object({ name: z.string().min(1), visible: z.boolean() }).strict()
-const detailLayoutRelationSchema = z.object({ entitySlug: z.string().min(1), fieldName: z.string().min(1), visible: z.boolean() }).strict()
+const detailLayoutRelationSchema = z.object({ entitySlug: z.string().min(1), fieldName: z.string().min(1), visible: z.boolean(), editable: z.boolean().optional(), totals: z.array(z.string().min(1)).max(10).optional() }).strict()
 
 export const detailLayoutSchema = z
   .object({

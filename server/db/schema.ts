@@ -227,7 +227,9 @@ export const records = pgTable('records', {
   tenantIdx: index('records_tenant_idx').on(table.tenantId),
   entityIdx: index('records_entity_idx').on(table.entityId),
   customDataGinIdx: index('records_custom_data_gin_idx').using('gin', table.customData),
-  deletedAtIdx: index('records_deleted_at_idx').on(table.deletedAt)
+  deletedAtIdx: index('records_deleted_at_idx').on(table.deletedAt),
+  // Listados por organizacion y modulo (migracion 0074).
+  tenantEntityCreatedIdx: index('records_tenant_entity_created_idx').on(table.tenantId, table.entityId, table.createdAt.desc()).where(sql`deleted_at is null`)
 }))
 
 // relation_definitions: define tipos de vinculo permitidos entre dos entidades (grafo).
@@ -255,7 +257,11 @@ export const recordRelations = pgTable('record_relations', {
 }, (table) => ({
   tenantIdx: index('record_relations_tenant_idx').on(table.tenantId),
   sourceIdx: index('record_relations_source_idx').on(table.sourceRecordId),
-  targetIdx: index('record_relations_target_idx').on(table.targetRecordId)
+  targetIdx: index('record_relations_target_idx').on(table.targetRecordId),
+  // Un mismo vinculo dirigido no puede repetirse (migracion 0069). Las relaciones
+  // de un modulo consigo mismo ademas se serializan en server/utils/recordAssociations.ts
+  // para rechazar tambien el vinculo inverso (A->B y B->A).
+  uniqueLink: uniqueIndex('record_relations_unique_link').on(table.relationDefinitionId, table.sourceRecordId, table.targetRecordId)
 }))
 
 // roles: RBAC por tenant. Sin permisos a nivel de campo en el MVP.
@@ -544,12 +550,45 @@ export const tenantEmailSettings = pgTable('tenant_email_settings', {
   fromEmail: text('from_email').notNull(),
   fromName: text('from_name'),
   replyTo: text('reply_to'),
+  // Amazon SES Tenant Management (migracion 0070): tenant, configuration set y
+  // dominio verificado propios de la organizacion (provider = 'ses').
+  sesTenantName: text('ses_tenant_name'),
+  sesConfigSet: text('ses_config_set'),
+  sendingDomain: text('sending_domain'),
+  domainStatus: text('domain_status'),
+  dkimTokens: jsonb('dkim_tokens'),
+  sendingStatus: text('sending_status'),
+  statusCheckedAt: timestamp('status_checked_at', { withTimezone: true }),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => ({
   tenantUnique: uniqueIndex('tenant_email_settings_tenant_unique').on(table.tenantId),
   tenantIdx: index('tenant_email_settings_tenant_idx').on(table.tenantId)
+}))
+
+// Cola de trabajos (migracion 0071): correos y otras tareas diferidas. Un proceso
+// las toma con FOR UPDATE SKIP LOCKED (server/utils/jobQueue.ts). RLS: cada
+// organizacion ve solo los suyos; el proceso de la cola usa withJobWorker().
+export const jobQueue = pgTable('job_queue', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(6),
+  runAt: timestamp('run_at', { withTimezone: true }).notNull().defaultNow(),
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
+  lockedBy: text('locked_by'),
+  lastError: text('last_error'),
+  idempotencyKey: text('idempotency_key'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({
+  tenantIdx: index('job_queue_tenant_idx').on(table.tenantId, table.kind, table.createdAt),
+  idempotencyUnique: uniqueIndex('job_queue_idempotency_unique').on(table.tenantId, table.kind, table.idempotencyKey)
 }))
 
 // API keys personales, aisladas por tenant. Solo se persiste el hash; el

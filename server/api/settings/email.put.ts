@@ -4,6 +4,7 @@ import { withTenant } from '~/server/db'
 import { tenantEmailSettings } from '~/server/db/schema'
 import { encryptSetting } from '~/server/utils/settingsCrypto'
 import { requireAdminRole } from '~/server/utils/rbac'
+import { deleteSesResources, readSesPlatformConfig } from '~/server/utils/sesTenants'
 
 const bodySchema = z.object({
   provider: z.literal('smtp').default('smtp'),
@@ -36,6 +37,9 @@ export default defineEventHandler(async (event) => {
       createdBy: existing?.createdBy ?? auth.sub,
       updatedAt: new Date()
     }
+    // Pasar de SES a SMTP propio: se limpian los datos de SES y se libera el dominio.
+    if (existing?.provider === 'ses' && readSesPlatformConfig()) await deleteSesResources(auth.tenantId, existing.sendingDomain).catch(() => undefined)
+    if (existing?.provider === 'ses') Object.assign(values, { sesTenantName: null, sesConfigSet: null, sendingDomain: null, domainStatus: null, dkimTokens: null, sendingStatus: null, statusCheckedAt: null })
     if (!existing && !values.passwordEncrypted) throw createError({ statusCode: 400, statusMessage: 'La contraseña SMTP es requerida' })
     if (existing) {
       await tx.update(tenantEmailSettings).set(values).where(and(eq(tenantEmailSettings.id, existing.id), eq(tenantEmailSettings.tenantId, auth.tenantId)))

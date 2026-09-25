@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { tenantEmailSettings } from '~/server/db/schema'
 import { requireAdminRole } from '~/server/utils/rbac'
+import { buildDnsRecords, readSesPlatformConfig } from '~/server/utils/sesTenants'
 
 function envSummary() {
   const host = process.env.SMTP_HOST || ''
@@ -19,11 +20,24 @@ export default defineEventHandler(async (event) => {
     const [value] = await tx.select().from(tenantEmailSettings).where(eq(tenantEmailSettings.tenantId, auth.tenantId)).limit(1)
     return value ?? null
   })
-  if (!row) return { source: 'environment', ...envSummary(), customConfigured: false }
+  // sesAvailable: la plataforma tiene Amazon SES habilitado (las organizaciones pueden registrar su dominio).
+  const sesAvailable = Boolean(readSesPlatformConfig())
+  if (!row) return { source: 'environment', ...envSummary(), customConfigured: false, sesAvailable }
+  const ses = row.provider === 'ses' && row.sendingDomain
+    ? {
+        sendingDomain: row.sendingDomain,
+        domainStatus: row.domainStatus ?? 'pending',
+        sendingStatus: row.sendingStatus,
+        statusCheckedAt: row.statusCheckedAt,
+        dnsRecords: buildDnsRecords(row.sendingDomain, Array.isArray(row.dkimTokens) ? row.dkimTokens as string[] : [])
+      }
+    : null
   return {
+    sesAvailable,
+    ses,
     source: 'database',
     customConfigured: true,
-    configured: Boolean(row.host && row.port && row.username && row.passwordEncrypted && row.fromEmail),
+    configured: row.provider === 'ses' ? row.domainStatus === 'verified' && row.sendingStatus !== 'paused' : Boolean(row.host && row.port && row.username && row.passwordEncrypted && row.fromEmail),
     provider: row.provider,
     host: row.host || '',
     port: row.port || 587,

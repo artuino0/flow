@@ -7,7 +7,8 @@ import { entities, entityFields, recordActivities, recordRelations, records, rel
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { getEntityZodSchema } from '~/server/utils/dynamicSchema'
 import { logger } from '~/server/utils/logger'
-import { escapeHtml, getAppBaseUrl, sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { escapeHtml, getAppBaseUrl, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { enqueueEmail } from '~/server/utils/jobQueue'
 import { createNotifications, publishNotifications } from '~/server/utils/notifications'
 import { generateIncrementalValue } from '~/server/utils/incrementalField'
 import { recordNotDeleted } from '~/server/utils/records'
@@ -381,13 +382,18 @@ async function runEmailAction(tenantId: string, config: unknown, data: Record<st
     return { ok: false, retryable: false, error: `El destinatario interpolado no es un correo válido: "${to}"` }
   }
 
+  // El correo se encola: sale a un ritmo controlado y con reintentos propios
+  // (server/utils/jobQueue.ts). "Éxito" aquí significa "aceptado en la cola"; un
+  // fallo posterior queda visible en Ajustes > Correo saliente.
   try {
-    await sendPlainEmail({ tenantId, to, subject, html, recordUrl })
+    // Revisión previa: si el correo no está configurado (o el dominio no está
+    // verificado / SES pausó el envío) se informa ya en el registro del disparador,
+    // en vez de descubrirlo horas después en la cola.
+    await resolveSmtpConfig(tenantId)
+    await enqueueEmail(tenantId, { to, subject, html, recordUrl })
     return { ok: true, retryable: false }
   } catch (err) {
-    if (err instanceof SmtpNotConfiguredError) {
-      return { ok: false, retryable: false, error: err.message }
-    }
+    if (err instanceof SmtpNotConfiguredError) return { ok: false, retryable: false, error: err.message }
     return { ok: false, retryable: true, error: err instanceof Error ? err.message : String(err) }
   }
 }

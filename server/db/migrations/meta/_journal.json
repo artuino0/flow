@@ -484,6 +484,48 @@
       "when": 1789422000000,
       "tag": "0068_annual_two_free_months",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1789423000000,
+      "tag": "0069_record_relations_unique_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1789424000000,
+      "tag": "0070_email_ses_tenants",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1789425000000,
+      "tag": "0071_job_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1789426000000,
+      "tag": "0072_job_queue_tenant_ready_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1789427000000,
+      "tag": "0073_job_queue_claim_function",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1789428000000,
+      "tag": "0074_records_tenant_entity_created_idx",
+      "breakpoints": true
     }
   ]
 }
