@@ -16,3 +16,7 @@ node_modules
 
 # Salidas de playwright-cli (capturas y logs con datos reales)
 .playwright-cli/
+
+# Ambiente de QA local (ERD-92): archivos del worktree ../frontback-qa
+/qa-server.log*
+/.qa-pid

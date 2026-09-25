@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.92.0] - 2026-09-25
+#### [feature]
+- [ERD-92](https://dydasoftware.atlassian.net/browse/ERD-92) - Ambiente de QA local separado: worktree `../frontback-qa`, build de producción en el puerto 3100 con base `erp_dinamico_qa` y script `scripts/qa-deploy.ps1` para desplegar una rama sin tocar el servidor de desarrollo.
+
 ### [0.91.4] - 2026-09-25
 #### [bug]
 - [ERD-91](https://dydasoftware.atlassian.net/browse/ERD-91) - Fechas con formato `es-MX` y zona fija en servidor y navegador (sin hydration mismatch ni corrimiento de día); eliminar líneas usa el diálogo de confirmación de Flow.
