@@ -1454,3 +1454,11 @@ export const tenantPacSettings = pgTable('tenant_pac_settings', {
   tenantUnique: uniqueIndex('tenant_pac_settings_tenant_unique').on(table.tenantId),
   tenantIdx: index('tenant_pac_settings_tenant_idx').on(table.tenantId)
 }))
+
+// ERD-87: cursor global de infraestructura para el ETL OLAP (sin tenant/RLS).
+export const olapEtlState = pgTable('olap_etl_state', {
+  job: text('job').primaryKey(),
+  lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).notNull(),
+  lastRecordId: uuid('last_record_id').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})

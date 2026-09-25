@@ -27,6 +27,7 @@ const PUBLIC_PATHS = new Set([
   // Lo invoca Vercel Cron / un cron externo con `Authorization: Bearer CRON_SECRET`.
   '/api/cron/job-queue',
   '/api/cron/trigger-retries',
+  '/api/cron/olap-etl',
   '/api/cron/billing-usage',
   // Stripe authenticates this endpoint with stripe-signature, not a Flow session.
   '/api/billing/webhook',

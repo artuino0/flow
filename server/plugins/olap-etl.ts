@@ -2,18 +2,16 @@ import cron from 'node-cron'
 import { runOlapEtl } from '~/server/utils/olapEtl'
 import { logger } from '~/server/utils/logger'
 import { getLicenseStatus } from '~/server/utils/license'
+import { withSingleRunner, CRON_OLAP_ETL } from '~/server/utils/singleRunner'
 
-// HU-ERD-28: job node-cron que corre DENTRO del proceso Nitro (sin infraestructura
-// aparte) cada 15 min, sincronizando el dominio transaccional al esquema OLAP
-// (server/utils/olapEtl.ts). Deshabilitable via OLAP_ETL_ENABLED=false (tests, CI,
-// o mientras se depura localmente sin querer que dispare cada 15 min).
-//
-// isRunning evita solapar corridas si una tarda mas de 15 min (un solo proceso
-// Nitro - no hace falta un lock distribuido para el MVP). Si una corrida falla a
-// mitad de camino, no se reintenta al toque: al no haber alertas externas en el
-// MVP (criterio de aceptacion), se resuelve sola en la siguiente corrida gracias
-// al solapamiento de la ventana de tiempo (ver LOOKBACK_MINUTES en olapEtl.ts).
+// ERD-87: cron local por lotes; en Vercel lo invoca la ruta protegida de cron.
+// Deshabilitable via OLAP_ETL_ENABLED=false (tests, CI o depuración local).
 export default defineNitroPlugin(() => {
+  if (process.env.VERCEL) {
+    logger.info('olap_etl_disabled', { reason: 'vercel_cron' })
+    return
+  }
+
   if (process.env.OLAP_ETL_ENABLED === 'false') {
     logger.info('olap_etl_disabled')
     return
@@ -30,11 +28,18 @@ export default defineNitroPlugin(() => {
     isRunning = true
     const startedAt = Date.now()
     try {
-      const results = await runOlapEtl()
+      const budgetMs = Number(process.env.OLAP_ETL_BUDGET_MS) || 45_000
+      const lockResult = await withSingleRunner(CRON_OLAP_ETL, () => runOlapEtl(new Date(), { budgetMs }))
+      if (!lockResult.ran) {
+        logger.warn('olap_etl_skip_overlap')
+        return
+      }
+      const results = lockResult.result
       logger.info('olap_etl_run_ok', {
-        durationMs: Date.now() - startedAt,
-        tenants: results.length,
-        recordsProcessed: results.reduce((sum, r) => sum + r.recordsProcessed, 0)
+        durationMs: results.durationMs,
+        tenants: results.tenants,
+        recordsProcessed: results.recordsProcessed,
+        batches: results.batches
       })
     } catch (err) {
       // runOlapEtl ya loguea el detalle por tenant - esto es el catch-all por

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.91.0] - 2026-09-24
+#### [feature]
+- [ERD-87](https://dydasoftware.atlassian.net/browse/ERD-87) - Procesos de fondo escalables (fase 2): ETL de OLAP incremental por cursor, en lotes y sin reprocesar, con ruta de Vercel Cron cada 15 min.
+
 ### [0.90.0] - 2026-09-24
 #### [feature]
 - [ERD-87](https://dydasoftware.atlassian.net/browse/ERD-87) - Procesos de fondo escalables (fase 1): reintentos de disparadores en una sola consulta, candado de un solo ejecutor, rutas de Vercel Cron cada 15 min y arreglo del build del editor de Sites.

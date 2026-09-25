@@ -45,15 +45,68 @@ afterAll(async () => {
 })
 
 describe('esquema de triggers (Postgres real, RLS)', () => {
-  it('las tres tablas tienen RLS habilitada y forzada (FORCE)', async () => {
+  it('las tres tablas tienen RLS habilitada y trigger_logs quita FORCE para la función de reintentos', async () => {
     const rows = await app.unsafe(
       `select relname, relrowsecurity, relforcerowsecurity from pg_class where relname in ('triggers','trigger_actions','trigger_logs') and relkind = 'r' order by relname`
     )
     expect(rows).toHaveLength(3)
     for (const row of rows) {
       expect(row.relrowsecurity).toBe(true)
-      expect(row.relforcerowsecurity).toBe(true)
+      expect(row.relforcerowsecurity).toBe(row.relname !== 'trigger_logs')
     }
+    const policies = await app.unsafe(`select policyname from pg_policies where tablename = 'trigger_logs' and policyname = 'tenant_isolation_trigger_logs'`)
+    expect(policies).toHaveLength(1)
+  })
+
+  it('erp_app conserva el aislamiento en SELECT directo y puede ejecutar las funciones SECURITY DEFINER', async () => {
+    // NO FORCE deja que el dueño de la tabla lea globalmente desde las funciones
+    // SECURITY DEFINER de 0073/0075/0076; erp_app conserva RLS en consultas directas.
+    const [triggerA] = await asTenant(TENANT_A, (tx) => tx.unsafe(
+      `insert into triggers (tenant_id, entity_id, name, trigger_event) values ('${TENANT_A}', '${entityAId}', 'ETL A', 'on_create') returning id`
+    ))
+    const [triggerB] = await asTenant(TENANT_B, (tx) => tx.unsafe(
+      `insert into triggers (tenant_id, entity_id, name, trigger_event) values ('${TENANT_B}', '${entityBId}', 'ETL B', 'on_create') returning id`
+    ))
+    await asTenant(TENANT_A, (tx) => tx.unsafe(
+      `insert into trigger_logs (tenant_id, trigger_id, status, attempt_count) values ('${TENANT_A}', '${triggerA.id}', 'retrying', 0)`
+    ))
+    await asTenant(TENANT_B, (tx) => tx.unsafe(
+      `insert into trigger_logs (tenant_id, trigger_id, status, attempt_count) values ('${TENANT_B}', '${triggerB.id}', 'retrying', 0)`
+    ))
+    await asTenant(TENANT_A, (tx) => tx.unsafe(
+      `insert into records (entity_id, tenant_id, custom_data) values ('${entityAId}', '${TENANT_A}', '{}')`
+    ))
+    await asTenant(TENANT_B, (tx) => tx.unsafe(
+      `insert into records (entity_id, tenant_id, custom_data) values ('${entityBId}', '${TENANT_B}', '{}')`
+    ))
+
+    const visibleAsA = await asTenant(TENANT_A, async (tx) => ({
+      entities: await tx.unsafe('select tenant_id from entities'),
+      records: await tx.unsafe('select tenant_id from records'),
+      logs: await tx.unsafe('select tenant_id from trigger_logs')
+    }))
+    expect(visibleAsA.entities).toHaveLength(1)
+    expect(visibleAsA.entities[0].tenant_id).toBe(TENANT_A)
+    expect(visibleAsA.records).toHaveLength(1)
+    expect(visibleAsA.records[0].tenant_id).toBe(TENANT_A)
+    expect(visibleAsA.logs).toHaveLength(1)
+    expect(visibleAsA.logs[0].tenant_id).toBe(TENANT_A)
+
+    const retries = await app.unsafe(`select * from due_trigger_retries(now() + interval '10 days', 10)`)
+    expect(retries).toHaveLength(2)
+    const changed = await app.unsafe(`select * from olap_changed_records('1970-01-01T00:00:00Z'::timestamptz, '00000000-0000-0000-0000-000000000000'::uuid, now() + interval '1 minute', 10)`)
+    expect(changed).toHaveLength(2)
+
+    await asTenant(TENANT_A, async (tx) => {
+      await tx.unsafe(`delete from records where tenant_id = '${TENANT_A}'`)
+      await tx.unsafe(`delete from trigger_logs where trigger_id = '${triggerA.id}'`)
+      await tx.unsafe(`delete from triggers where id = '${triggerA.id}'`)
+    })
+    await asTenant(TENANT_B, async (tx) => {
+      await tx.unsafe(`delete from records where tenant_id = '${TENANT_B}'`)
+      await tx.unsafe(`delete from trigger_logs where trigger_id = '${triggerB.id}'`)
+      await tx.unsafe(`delete from triggers where id = '${triggerB.id}'`)
+    })
   })
 
   it('inserta un trigger + accion + log del tenant A, invisibles para el tenant B', async () => {
