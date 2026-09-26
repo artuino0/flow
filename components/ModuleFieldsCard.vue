@@ -84,6 +84,7 @@ const modalOpen = ref(false)
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 const modalMode = ref<'create' | 'edit'>('create')
 const editingField = ref<EntityFieldMeta | null>(null)
@@ -213,7 +214,7 @@ async function onDelete(field: EntityFieldMeta) {
     // de siempre.
   }
 
-  if (!confirm(`Eliminar el campo "${field.label}"? Esta accion no se puede deshacer.`)) return
+  if (!await confirmAction({ title: 'Eliminar campo', message: `¿Eliminar el campo "${field.label}"? Esta acción no se puede deshacer.`, confirmLabel: 'Eliminar', destructive: true })) return
   await runFieldDelete(field.id)
 }
 

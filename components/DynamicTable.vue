@@ -96,8 +96,9 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
   }
 }
 
-function onDelete(id: string) {
-  if (confirm('Eliminar este registro? Esta accion no se puede deshacer.')) {
+const { confirm: confirmAction } = useConfirm()
+async function onDelete(id: string) {
+  if (await confirmAction({ title: 'Eliminar registro', message: '¿Eliminar este registro? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', destructive: true })) {
     emit('delete', id)
   }
 }

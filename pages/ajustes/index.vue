@@ -19,6 +19,7 @@ interface TenantResponse {
 }
 
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 const { data: isAdmin } = await useIsAdmin()
 const route = useRoute()
 const router = useRouter()
@@ -96,7 +97,7 @@ const timeoutChoice = ref('30')
 const snapshot = ref('')
 function serialized() { return JSON.stringify({ name: name.value, email: email.value, phone: phone.value, address: address.value, country: country.value, defaultCurrency: defaultCurrency.value, timezone: timezone.value, fiscal: fiscal.value, idleTimeoutMinutes: idleTimeoutMinutes.value, idleWarningMinutes: idleWarningMinutes.value }) }
 watch(timeoutChoice, value => { if (value !== 'custom') idleTimeoutMinutes.value = Number(value) })
-onBeforeRouteLeave(() => !hasChanges.value || window.confirm('Tienes cambios sin guardar. ¿Quieres descartarlos?'))
+onBeforeRouteLeave(async () => !hasChanges.value || await confirmAction({ title: 'Cambios sin guardar', message: 'Tienes cambios sin guardar. ¿Quieres descartarlos?', confirmLabel: 'Descartar cambios' }))
 function warnBeforeUnload(event: BeforeUnloadEvent) { if (hasChanges.value) { event.preventDefault(); event.returnValue = '' } }
 onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', warnBeforeUnload))

@@ -36,6 +36,7 @@ interface AssociationState {
 const props = defineProps<{ entitySlug: string; recordId: string }>()
 const emit = defineEmits<{ loaded: [count: number] }>()
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 const definitions = ref<AssociationDefinition[]>([])
 const loadingDefinitions = ref(true)
@@ -143,7 +144,7 @@ async function associate(definition: AssociationDefinition, candidate: { id: str
 async function unlink(definition: AssociationDefinition, row: AssociationRow) {
   const state = states[definition.id]
   if (!state || state.busyId) return
-  if (!confirm(`¿Desvincular "${row.label}"? El registro no se elimina, solo la asociación.`)) return
+  if (!await confirmAction({ title: 'Desvincular registro', message: `¿Desvincular "${row.label}"? El registro no se elimina, solo la asociación.`, confirmLabel: 'Desvincular', destructive: true })) return
   state.busyId = row.id
   state.error = null
   try {

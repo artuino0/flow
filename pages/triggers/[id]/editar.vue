@@ -89,6 +89,7 @@ const entityFields = computed(() => fieldsData.value?.fields ?? [])
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 // ---- Encabezado: nombre, evento, activo ----
 const name = ref('')
@@ -125,7 +126,7 @@ async function onSaveHeader() {
 const deleting = ref(false)
 async function onDeleteTrigger() {
   if (!data.value) return
-  if (!confirm(`Eliminar la automatización "${data.value.name}"? Esta acción no se puede deshacer.`)) return
+  if (!await confirmAction({ title: 'Eliminar automatización', message: `¿Eliminar la automatización "${data.value.name}"? Esta acción no se puede deshacer.`, confirmLabel: 'Eliminar', destructive: true })) return
   deleting.value = true
   try {
     const triggerName = data.value.name
@@ -261,7 +262,7 @@ async function saveEditAction(row: TriggerActionRow) {
 }
 
 async function deleteAction(row: TriggerActionRow) {
-  if (!confirm('Eliminar esta acción?')) return
+  if (!await confirmAction({ title: 'Eliminar acción', message: '¿Eliminar esta acción?', confirmLabel: 'Eliminar', destructive: true })) return
   actionsError.value = null
   try {
     // Cast a string plano: Nitro infiere los metodos permitidos de esta URL

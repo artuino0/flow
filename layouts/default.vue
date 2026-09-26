@@ -14,6 +14,7 @@ import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings, 
 const { user, logout } = useAuth()
 const chat = useChat()
 const { dirty: settingsDirty, saveHandler, discardHandler } = useSettingsDirty()
+const { dialog: confirmDialog, settle: settleConfirm } = useConfirm()
 
 // Bug reportado por el usuario (2026-09-07): "el menu no se colapsa tiene el
 // icono pero no funciona" - el icono `panel-left-close` de la barra "MENÚ"
@@ -151,6 +152,14 @@ async function onLogout(reason?: 'inactividad') {
       @confirm="confirmActive"
       @logout="onLogout()"
     />
+    <SettingsConfirmDialog
+      v-if="confirmDialog"
+      :title="confirmDialog.title"
+      :confirm-label="confirmDialog.confirmLabel"
+      :destructive="confirmDialog.destructive"
+      @cancel="settleConfirm(false)"
+      @confirm="settleConfirm(true)"
+    >{{ confirmDialog.message }}</SettingsConfirmDialog>
 
     <div class="relative flex min-h-0 flex-1">
       <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-black/30 sm:hidden" @click="mobileMenuOpen = false" />

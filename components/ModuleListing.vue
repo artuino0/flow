@@ -70,9 +70,10 @@ const deletingId = ref<string | null>(null)
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") - ver
 // composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 async function onDelete(module: ModuleRow) {
-  if (!confirm(`¿Deshabilitar el ${props.noun} "${module.name}"? Sus registros y referencias seguirán disponibles para consulta.`)) return
+  if (!await confirmAction({ title: `Deshabilitar ${props.noun}`, message: `¿Deshabilitar el ${props.noun} "${module.name}"? Sus registros y referencias seguirán disponibles para consulta.`, confirmLabel: 'Deshabilitar', destructive: true })) return
 
   deleteError.value = null
   deletingId.value = module.id

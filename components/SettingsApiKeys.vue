@@ -4,6 +4,7 @@ import { KeyRound, Plus, Copy, Trash2 } from '@lucide/vue'
 interface ApiKeyRow { id: string; name: string; ownerName: string | null; ownerEmail: string; prefix: string; status: 'active' | 'expired' | 'revoked'; createdAt: string; expiresAt: string | null; lastUsedAt: string | null; scopes: Record<string, unknown> }
 const props = defineProps<{ personal?: boolean }>()
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 const open = ref(true)
 const showCreate = ref(false)
 const showToken = ref(false)
@@ -27,7 +28,7 @@ async function createKey() {
   finally { saving.value = false }
 }
 async function revoke(key: ApiKeyRow) {
-  if (!confirm(`¿Revocar la API key “${key.name}”?`)) return
+  if (!await confirmAction({ title: 'Revocar API key', message: `¿Revocar la API key “${key.name}”?`, confirmLabel: 'Revocar', destructive: true })) return
   try { await $fetch(`/api/settings/api-keys/${key.id}`, { method: 'DELETE' }); await refresh(); toast.updated('API key revocada', 'La integración dejó de tener acceso.') }
   catch (err: any) { toast.error('No se pudo revocar la API key', err?.data?.statusMessage || '') }
 }

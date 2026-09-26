@@ -6,6 +6,7 @@ interface Group { id: string; name: string; members: Member[] }
 interface UserOption { id: string; label: string; email: string }
 
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 const groups = ref<Group[]>([])
 const users = ref<UserOption[]>([])
 const loading = ref(true)
@@ -42,7 +43,7 @@ async function save() {
   finally { saving.value = false }
 }
 async function remove(group: Group) {
-  if (!window.confirm(`¿Eliminar el grupo “${group.name}”?`)) return
+  if (!await confirmAction({ title: 'Eliminar grupo', message: `¿Eliminar el grupo “${group.name}”?`, confirmLabel: 'Eliminar', destructive: true })) return
   try { await $fetch(`/api/notifications/groups/${group.id}`, { method: 'DELETE' }); groups.value = groups.value.filter(item => item.id !== group.id); toast.success('Grupo eliminado') }
   catch (err: any) { toast.error('No se pudo eliminar el grupo', err?.data?.statusMessage || 'Intenta nuevamente.') }
 }

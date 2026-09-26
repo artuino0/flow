@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.92.2] - 2026-09-25
+#### [bug]
+- [ERD-94](https://dydasoftware.atlassian.net/browse/ERD-94) - Los 15 `confirm()` nativos se reemplazan por el diálogo de Flow (variante destructiva en rojo, foco en Cancelar, `Esc` cancela), incluida la salida de Ajustes con cambios sin guardar.
+
 ### [0.92.1] - 2026-09-25
 #### [bug]
 - [ERD-93](https://dydasoftware.atlassian.net/browse/ERD-93) - Corrige restaurar un módulo (la ruta `restore` bajo `/api/entities` no resolvía por choque de parámetros en Nitro) y el filtro "es alguno de" con varios valores en campos Select; e2e `crudEntities` actualizado y opción `E2E_SKIP_BUILD=1` para reutilizar el build.

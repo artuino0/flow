@@ -22,6 +22,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 const documentId = String(route.params.id)
 
 interface Detalle {
@@ -103,7 +104,7 @@ async function cancelar() {
 }
 
 async function eliminar() {
-  if (!window.confirm('¿Eliminar este borrador? No se puede deshacer (no consume folio).')) return
+  if (!await confirmAction({ title: 'Eliminar borrador', message: '¿Eliminar este borrador? No se puede deshacer y no consume folio.', confirmLabel: 'Eliminar', destructive: true })) return
   accionCorriendo.value = 'eliminar'
   try {
     await $fetch(`/api/facturacion/documents/${documentId}`, { method: 'DELETE' })

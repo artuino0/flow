@@ -227,12 +227,13 @@ function relatedCreateLink(entitySlug: string, fieldName: string): string {
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 const deleting = ref(false)
 const deleteError = ref<string | null>(null)
 async function onDelete() {
   if (!props.record) return
-  if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return
+  if (!await confirmAction({ title: 'Eliminar registro', message: '¿Eliminar este registro? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', destructive: true })) return
   deleting.value = true
   deleteError.value = null
   try {

@@ -70,6 +70,7 @@ const otherEntities = computed(() => props.entityOptions)
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 const formOpen = ref(false)
 const formName = ref('')
@@ -146,7 +147,7 @@ async function onDelete(relation: RelationDefinition) {
     deleteError.value = `No se puede eliminar "${relation.name}": ya tiene ${relation.linkCount} vínculo${relation.linkCount === 1 ? '' : 's'} creado${relation.linkCount === 1 ? '' : 's'}.`
     return
   }
-  if (!confirm(`Eliminar la relación "${relation.name}"? Esta acción no se puede deshacer.`)) return
+  if (!await confirmAction({ title: 'Eliminar relación', message: `¿Eliminar la relación "${relation.name}"? Esta acción no se puede deshacer.`, confirmLabel: 'Eliminar', destructive: true })) return
 
   deletingId.value = relation.id
   try {

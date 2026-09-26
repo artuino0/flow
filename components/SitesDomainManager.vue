@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Check, Copy, ExternalLink, Globe2, Plus, RefreshCw, ShieldCheck, Trash2, X } from '@lucide/vue'
 const props = defineProps<{ siteId?: string }>()
+const { confirm: confirmAction } = useConfirm()
 interface Page { id: string; title: string; path: string; status: string }
 interface Site { id: string; name: string; slug: string; status: string; pages?: Page[] }
 interface Domain {
@@ -79,7 +80,7 @@ async function verifyDomain(domain: Domain) {
   finally { checking.value = null }
 }
 async function removeDomain(domain: Domain) {
-  if (!confirm(`¿Desconectar ${domain.hostname}?`)) return
+  if (!await confirmAction({ title: 'Desconectar dominio', message: `¿Desconectar ${domain.hostname}?`, confirmLabel: 'Desconectar', destructive: true })) return
   try { await $fetch(`/api/sites/domains/${domain.id}`, { method: 'DELETE' }); await refresh() }
   catch (cause: any) { feedback.value = cause?.data?.statusMessage || cause?.statusMessage || 'No se pudo desconectar el dominio.' }
 }

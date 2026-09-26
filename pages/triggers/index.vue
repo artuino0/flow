@@ -88,6 +88,7 @@ const filteredTriggers = computed(() => {
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 const toggleError = ref<string | null>(null)
 async function onToggleActive(row: TriggerRow) {
@@ -110,7 +111,7 @@ async function onToggleActive(row: TriggerRow) {
 const deleteError = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
 async function onDelete(row: TriggerRow) {
-  if (!confirm(`Eliminar la automatización "${row.name}"? Esta acción no se puede deshacer.`)) return
+  if (!await confirmAction({ title: 'Eliminar automatización', message: `¿Eliminar la automatización "${row.name}"? Esta acción no se puede deshacer.`, confirmLabel: 'Eliminar', destructive: true })) return
   deleteError.value = null
   deletingId.value = row.id
   try {

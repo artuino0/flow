@@ -155,6 +155,7 @@ const saving = ref(false)
 // habia scrolleado, y la pantalla tiene 6 pestañas distintas que podian
 // mostrar el mismo tipo de aviso suelto cada una.
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 
 async function onSave() {
   saveError.value = null
@@ -201,7 +202,7 @@ const deleteError = ref<string | null>(null)
 const deleting = ref(false)
 async function onDeleteModule() {
   if (!currentModule.value) return
-  if (!confirm(`¿Deshabilitar el módulo "${currentModule.value.name}"? Sus datos y referencias seguirán disponibles para consulta.`)) return
+  if (!await confirmAction({ title: 'Deshabilitar módulo', message: `¿Deshabilitar el módulo "${currentModule.value.name}"? Sus datos y referencias seguirán disponibles para consulta.`, confirmLabel: 'Deshabilitar', destructive: true })) return
 
   deleteError.value = null
   deleting.value = true
