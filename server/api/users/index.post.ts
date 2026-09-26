@@ -5,6 +5,7 @@ import { db, withTenant } from '~/server/db'
 import { people, users } from '~/server/db/schema'
 import { DuplicateEmailError, RoleNotFoundError, inviteUser } from '~/server/utils/users'
 import { SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 // POST /api/users { email, roleId } - modal "Invitar usuario" del diseño
 // real (Screen/Usuarios: campos Correo electrónico + Rol, botón "Enviar
@@ -19,6 +20,7 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const body = await readValidatedBody(event, bodySchema.parse)
+  await assertPlanCapacity(auth.tenantId, 'users')
 
   // Nombre de quien invita, para el cuerpo del correo ("<Nombre> te invitó a
   // colaborar...", copy exacto del .pen) - cae al correo si el admin todavia

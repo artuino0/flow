@@ -14,6 +14,7 @@ import { generateIncrementalValue } from '~/server/utils/incrementalField'
 import { recordNotDeleted } from '~/server/utils/records'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
 import { enforceWorkflowChange, stateWorkflowSchema } from '~/server/utils/stateWorkflow'
+import { getPlanUsage } from '~/server/utils/billing'
 
 // HU-ERD-49: ejecucion real de las acciones de un trigger que matcheo
 // (ERD-48 solo resolvia QUE triggers disparan, nunca ejecutaba nada). Se
@@ -555,13 +556,23 @@ export async function executeTriggerActions(
   previousData?: Record<string, unknown>,
   decision?: boolean
 ): Promise<void> {
-  const actions = await fetchOrderedActions(tenantId, triggerId)
+  const planUsage = await getPlanUsage(tenantId)
+  const executionLimit = planUsage.usage.find(item => item.concept === 'executions')!
   const payload = {
     trigger: { id: triggerId, name: triggerName },
     event,
     record: { id: recordId, data: customData },
     firedAt: new Date().toISOString()
   }
+  if (executionLimit.limit !== null && executionLimit.used >= executionLimit.limit) {
+    await withTenant(tenantId, tx => tx.insert(triggerLogs).values({
+      tenantId, triggerId, recordId, status: 'failed', attemptCount: 0,
+      lastError: `Límite del plan ${planUsage.plan}: se excedió la cuota mensual de ejecuciones (${executionLimit.limit}).`,
+      requestPayload: payload
+    }))
+    return
+  }
+  const actions = await fetchOrderedActions(tenantId, triggerId)
 
   if (actions.length === 0) {
     // Trigger sin ninguna accion configurada todavia - nada que ejecutar,

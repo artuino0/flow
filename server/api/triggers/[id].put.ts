@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { ADMIN_TRIGGER_EVENTS, InvalidTriggerActionConfigError, InvalidTriggerConditionError, updateTrigger } from '~/server/utils/triggerAdmin'
+import { assertPlanCapacity } from '~/server/utils/billing'
+import { eq } from 'drizzle-orm'
+import { withTenant } from '~/server/db'
+import { triggers } from '~/server/db/schema'
 
 // PUT /api/triggers/:id { name?, triggerEvent?, condition?, isActive? } (HU-ERD-51)
 // Todos los campos opcionales - este MISMO endpoint es el toggle
@@ -19,6 +23,10 @@ export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const id = getRouterParam(event, 'id')!
   const body = await readValidatedBody(event, bodySchema.parse)
+  if (body.isActive) {
+    const [existing] = await withTenant(auth.tenantId, tx => tx.select({ isActive: triggers.isActive }).from(triggers).where(eq(triggers.id, id)).limit(1))
+    if (existing && !existing.isActive) await assertPlanCapacity(auth.tenantId, 'activeFlows')
+  }
 
   let trigger
   try {

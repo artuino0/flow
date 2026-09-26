@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { db, withJobWorker, withTenant } from '~/server/db'
 import { jobQueue } from '~/server/db/schema'
 import { logger } from '~/server/utils/logger'
+import { getPlanUsage } from '~/server/utils/billing'
+import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 
 // Cola de trabajos en Postgres. Objetivos:
 //  - Los correos (y otras tareas) ya no se envían dentro de la petición o del
@@ -90,7 +92,17 @@ export const emailJobSchema = z.object({
 export type EmailJobPayload = z.infer<typeof emailJobSchema>
 
 export async function enqueueEmail(tenantId: string, payload: EmailJobPayload, options: EnqueueOptions = {}) {
-  return enqueueJob(tenantId, 'email', emailJobSchema.parse(payload), options)
+  const parsed = emailJobSchema.parse(payload)
+  const usage = await getPlanUsage(tenantId)
+  const quota = usage.usage.find(item => item.concept === 'emails')!
+  if (!(IS_ONPREM_BUILD && getLicenseStatus().activated) && quota.limit !== null && quota.used >= quota.limit) {
+    const rows = await withTenant(tenantId, tx => tx.insert(jobQueue).values({
+      tenantId, kind: 'email', payload: parsed, status: 'dead', lastError: `Límite del plan ${usage.plan}: se excedió la cuota mensual de correos (${quota.limit}).`,
+      completedAt: new Date(), idempotencyKey: options.idempotencyKey ?? null, runAt: options.runAt ?? new Date(), maxAttempts: options.maxAttempts ?? 6
+    }).onConflictDoNothing().returning({ id: jobQueue.id }))
+    return rows[0]?.id ?? null
+  }
+  return enqueueJob(tenantId, 'email', parsed, options)
 }
 
 const MAX_ERROR_LENGTH = 1000

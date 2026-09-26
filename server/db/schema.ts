@@ -442,23 +442,41 @@ export const users = pgTable('users', {
 // guardan en claro: server/utils/settingsCrypto.ts los cifra antes de insertar.
 // Catálogo comercial global de Flow. Los tenants no editan estos precios: Stripe
 // cobra con el Price ID configurado aquí y Flow conserva los límites que aplica.
-export const subscriptionPlans = pgTable('subscription_plans', {
+export const plans = pgTable('plans', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  code: text('code').notNull(),
+  code: text('key').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   monthlyPriceCents: integer('monthly_price_cents').notNull().default(0),
   annualPriceCents: integer('annual_price_cents').notNull().default(0),
   currency: text('currency').notNull().default('MXN'),
-  limits: jsonb('limits').notNull().default({}),
   stripeMonthlyPriceId: text('stripe_monthly_price_id'),
   stripeAnnualPriceId: text('stripe_annual_price_id'),
   isPublic: boolean('is_public').notNull().default(true),
-  isActive: boolean('is_active').notNull().default(true),
+  isActive: boolean('active').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-}, table => ({ codeUnique: uniqueIndex('subscription_plans_code_unique').on(table.code) }))
+}, table => ({ codeUnique: uniqueIndex('plans_key_unique').on(table.code) }))
+
+export const subscriptionPlans = plans
+export const planLimits = pgTable('plan_limits', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  planId: uuid('plan_id').notNull().references(() => plans.id, { onDelete: 'cascade' }),
+  concept: text('concept').notNull(),
+  value: bigint('value', { mode: 'number' })
+}, table => ({ planConceptUnique: uniqueIndex('plan_limits_plan_concept_unique').on(table.planId, table.concept) }))
+
+export const tenantLimitOverrides = pgTable('tenant_limit_overrides', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  concept: text('concept').notNull(),
+  value: bigint('value', { mode: 'number' }),
+  reason: text('reason').notNull(),
+  validFrom: timestamp('valid_from', { withTimezone: true }),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ tenantConceptUnique: uniqueIndex('tenant_limit_overrides_tenant_concept_unique').on(table.tenantId, table.concept) }))
 
 // Fuente de verdad interna de la suscripción. Stripe provee el cobro, pero
 // Flow mantiene el estado aplicable para cuotas, soporte y on-premise.

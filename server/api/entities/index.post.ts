@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { createEntity, DuplicateSlugError, MODULE_KINDS, SLUG_PATTERN } from '~/server/utils/moduleEntities'
 import { MODULE_ICON_KEY_SET } from '~/server/utils/moduleIcons'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 // POST /api/entities { name, slug, description?, icon?, moduleKind?, singularName? } (HU-ERD-66;
 // icon: pedido directo del usuario 2026-09-01, ver comentario largo en
@@ -45,6 +46,7 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const body = await readValidatedBody(event, bodySchema.parse)
+  if ((body.moduleKind ?? 'hecho') !== 'dimension') await assertPlanCapacity(auth.tenantId, 'modules')
 
   try {
     const entity = await createEntity(auth.tenantId, {

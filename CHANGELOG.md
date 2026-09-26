@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.96.0] - 2026-09-26
+#### [feature]
+- [ERD-100](https://dydasoftware.atlassian.net/browse/ERD-100) - Límites por plan en base de datos (Agenda a Empresarial), editables sin desplegar desde /platform/plans; controles en servidor con avisos al 80/100 % y excepciones por organización.
+
 ### [0.95.0] - 2026-09-26
 #### [feature]
 - [ERD-99](https://dydasoftware.atlassian.net/browse/ERD-99) - Reglas al cambiar de estado (campo requerido, comparación partida-dato y agregados) en modo bloquea o advierte, en ficha, Kanban y automatizaciones; ajustes de fase 1 y corrección de DataCloneError.

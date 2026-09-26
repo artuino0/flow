@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { connectSiteForm } from '~/server/utils/sites'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 const schema = z.object({
   pageId: z.string().uuid(),
@@ -22,6 +23,7 @@ const schema = z.object({
 
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
+  await assertPlanCapacity(auth.tenantId, 'forms')
   const connection = await connectSiteForm(
     auth.tenantId,
     auth.sub,

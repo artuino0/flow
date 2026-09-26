@@ -1,19 +1,12 @@
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
 import Stripe from 'stripe'
 import { db, withTenant } from '~/server/db'
+import { effectiveStorageLimit, getEffectivePlanLimits, getPlanByKey, listPlans, type PlanConcept, type PlanLimits } from '~/server/utils/plans'
+import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 import { sites, subscriptionPlans, tenantBillingInvoices, tenantSubscriptions, tenants, tenantUsageSnapshots, triggerLogs, users } from '~/server/db/schema'
 
 export type BillingInterval = 'month' | 'year'
 export type UsageResource = 'storageBytes' | 'users' | 'sites' | 'automationExecutions' | 'emails'
-
-export interface PlanLimits {
-  storageBytes?: number
-  users?: number
-  sites?: number
-  customDomains?: number
-  automationExecutions?: number
-  emails?: number
-}
 
 const usageResources: UsageResource[] = ['storageBytes', 'users', 'sites', 'automationExecutions', 'emails']
 const asNumber = (value: string | number | bigint | null | undefined) => Number(value ?? 0)
@@ -31,42 +24,42 @@ export function getStripeClient() {
 
 export function stripeIsConfigured() { return Boolean(process.env.STRIPE_SECRET_KEY?.trim()) }
 
-function normalizeLimits(value: unknown): PlanLimits {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([, amount]) => typeof amount === 'number' && Number.isFinite(amount))) as PlanLimits
-}
-
 function planPriceId(plan: typeof subscriptionPlans.$inferSelect, interval: BillingInterval) {
   const suffix = interval === 'year' ? 'ANNUAL' : 'MONTHLY'
   const configured = process.env[`STRIPE_PRICE_${plan.code.toUpperCase()}_${suffix}`]?.trim()
   return configured || (interval === 'year' ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId) || null
 }
-function serializedPlan(plan: typeof subscriptionPlans.$inferSelect) {
-  return { ...plan, limits: normalizeLimits(plan.limits) }
-}
-
 export async function listPublicPlans() {
-  const plans = await db.select().from(subscriptionPlans)
-    .where(and(eq(subscriptionPlans.isActive, true), eq(subscriptionPlans.isPublic, true)))
-    .orderBy(asc(subscriptionPlans.sortOrder))
-  return plans.map(serializedPlan)
+  return (await listPlans()).filter(plan => plan.isActive && plan.isPublic)
 }
 
-export async function getTenantSubscription(tenantId: string) {
-  return withTenant(tenantId, async tx => {
+export async function getTenantSubscription(tenantId: string): Promise<({ id: string; tenantId: string; planId: string; provider: string; status: string; billingInterval: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null; stripePriceId: string | null; currentPeriodStart: Date | null; currentPeriodEnd: Date | null; trialEndsAt: Date | null; cancelAtPeriodEnd: boolean; createdAt: Date; updatedAt: Date } & { plan: (typeof subscriptionPlans.$inferSelect & { limits: PlanLimits }) }) | null> {
+  const row = await withTenant(tenantId, async tx => {
     const [row] = await tx.select({ subscription: tenantSubscriptions, plan: subscriptionPlans })
       .from(tenantSubscriptions)
       .innerJoin(subscriptionPlans, eq(subscriptionPlans.id, tenantSubscriptions.planId))
       .where(eq(tenantSubscriptions.tenantId, tenantId))
       .limit(1)
-    return row ? { ...row.subscription, plan: serializedPlan(row.plan) } : null
+    return row ?? null
   })
+  if (!row) {
+    const starter = await getPlanByKey('starter')
+    if (!starter) throw new Error('Falta el plan Starter en la base de datos; aplica la migración ERD-100')
+    const effective = await getEffectivePlanLimits(tenantId, starter.id)
+    await withTenant(tenantId, async tx => {
+      await tx.insert(tenantSubscriptions).values({ tenantId, planId: starter.id, provider: 'manual', status: 'trialing', billingInterval: 'month', currentPeriodStart: new Date() }).onConflictDoNothing()
+      await tx.execute(sql`UPDATE tenants SET storage_limit_bytes = ${effectiveStorageLimit(effective.storageBytes)}::bigint WHERE id = ${tenantId}::uuid`)
+    })
+    return getTenantSubscription(tenantId)
+  }
+  const limits = await getEffectivePlanLimits(tenantId, row.plan.id)
+  return { ...row.subscription, plan: { ...row.plan, limits } }
 }
 
 export async function getTenantUsage(tenantId: string) {
   const subscription = await getTenantSubscription(tenantId)
-  const limit = subscription?.plan.limits ?? {}
+  if (!subscription) throw new Error('No se pudo asignar el plan Starter a la organización')
+  const limit = subscription.plan.limits
   // Serialize the period boundary for postgres-js raw SQL parameters.
   const start = periodStart().toISOString()
   const usage = await withTenant(tenantId, async tx => {
@@ -91,16 +84,98 @@ export async function getTenantUsage(tenantId: string) {
 
   return usageResources.map(resourceKey => {
     const value = usage[resourceKey]
-    const limitValue = limit[resourceKey]
-    const isUnlimited = !limitValue || limitValue <= 0
+    const concept: Record<UsageResource, PlanConcept> = { storageBytes: 'storageBytes', users: 'users', sites: 'sites', automationExecutions: 'executions', emails: 'emails' }
+    const limitValue = limit[concept[resourceKey]]
+    const isUnlimited = limitValue === null || limitValue === undefined
     return {
       resourceKey,
       quantity: value,
       limit: isUnlimited ? null : limitValue,
-      percentUsed: isUnlimited ? null : Math.round((value / limitValue) * 1000) / 10,
+      percentUsed: isUnlimited ? null : limitValue === 0 ? (value > 0 ? 100 : 0) : Math.round((value / limitValue) * 1000) / 10,
       isOverLimit: !isUnlimited && value > limitValue
     }
   })
+}
+
+export interface PlanUsageItem { concept: PlanConcept; label: string; used: number; limit: number | null; percent: number | null }
+export async function getPlanUsage(tenantId: string): Promise<{ plan: string; code: string; usage: PlanUsageItem[] }> {
+  const subscription = await getTenantSubscription(tenantId)
+  if (!subscription) throw new Error('No se pudo asignar el plan Starter a la organización')
+  const limits = licensedOnPremLimits(subscription.plan.limits)
+  const plan = subscription.plan
+  const rows = await withTenant(tenantId, tx => tx.execute(sql`
+    WITH period AS (
+      SELECT date_trunc('month', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS start_at
+      FROM tenants WHERE id = ${tenantId}::uuid
+    )
+    SELECT
+      (SELECT count(*) FROM users WHERE tenant_id = ${tenantId}::uuid AND (is_active OR invitation_token_hash IS NOT NULL)) AS users,
+      (SELECT count(*) FROM entities WHERE tenant_id = ${tenantId}::uuid AND module_kind <> 'dimension' AND deleted_at IS NULL) AS modules,
+      (SELECT count(*) FROM triggers WHERE tenant_id = ${tenantId}::uuid AND is_active) AS flows,
+      (SELECT count(*) FROM trigger_logs WHERE tenant_id = ${tenantId}::uuid AND created_at >= (SELECT start_at FROM period)) AS executions,
+      (SELECT count(*) FROM job_queue WHERE tenant_id = ${tenantId}::uuid AND kind = 'email' AND created_at >= (SELECT start_at FROM period)) AS emails,
+      (SELECT storage_used_bytes FROM tenants WHERE id = ${tenantId}::uuid) AS storage,
+      (SELECT count(*) FROM cfdi_documents WHERE tenant_id = ${tenantId}::uuid AND estado = 'timbrada' AND fecha_timbrado >= (SELECT start_at FROM period)) AS stamps,
+      (SELECT count(*) FROM sites WHERE tenant_id = ${tenantId}::uuid) AS sites,
+      (SELECT count(*) FROM site_pages p JOIN sites s ON s.id = p.site_id WHERE s.tenant_id = ${tenantId}::uuid) AS pages,
+      (SELECT count(*) FROM site_form_connections WHERE tenant_id = ${tenantId}::uuid) AS forms,
+      (SELECT count(*) FROM site_form_submissions WHERE tenant_id = ${tenantId}::uuid AND created_at >= (SELECT start_at FROM period)) AS submissions
+  `)) as unknown as Array<Record<string, string | number | bigint | null>>
+  const row = rows[0] ?? {}
+  const definitions: Array<[PlanConcept, string, number | null]> = [
+    ['users', 'Usuarios', limits.users], ['modules', 'Módulos personalizados', limits.modules], ['activeFlows', 'Flujos activos', limits.activeFlows],
+    ['executions', 'Ejecuciones mensuales', limits.executions], ['emails', 'Correos mensuales', limits.emails], ['storageBytes', 'Almacenamiento', limits.storageBytes],
+    ['stamps', 'Timbres mensuales', limits.stamps], ['sites', 'Sitios', limits.sites], ['pages', 'Páginas', limits.pages], ['forms', 'Formularios', limits.forms], ['formSubmissions', 'Envíos de formulario', limits.formSubmissions]
+  ]
+  return { plan: plan.name, code: plan.code, usage: definitions.map(([concept, label, limit]) => {
+    const column: Record<PlanConcept, string> = { users: 'users', usersIncluded: 'users', modules: 'modules', activeFlows: 'flows', executions: 'executions', emails: 'emails', storageBytes: 'storage', stamps: 'stamps', sites: 'sites', pages: 'pages', forms: 'forms', formSubmissions: 'submissions' }
+    const used = asNumber(row[column[concept]])
+    return { concept, label, used, limit, percent: limit === null ? null : limit === 0 ? (used > 0 ? 100 : 0) : Math.round(used / limit * 1000) / 10 }
+  }) }
+}
+
+function licensedOnPremLimits(limits?: Record<string, number | null>) {
+  const result = { ...(limits ?? {}) }
+  if (IS_ONPREM_BUILD && getLicenseStatus().activated) for (const concept of ['users','modules','activeFlows','executions','emails','storageBytes','stamps','sites','pages','forms','formSubmissions']) result[concept] = null
+  return result as Record<string, number | null>
+}
+
+export async function assertPlanCapacity(tenantId: string, concept: PlanConcept, increment = 1) {
+  if (IS_ONPREM_BUILD && getLicenseStatus().activated) return
+  const snapshot = await getPlanUsage(tenantId)
+  const item = snapshot.usage.find(value => value.concept === concept)!
+  if (item.limit !== null && item.used + increment > item.limit) {
+    throw createError({ statusCode: 402, statusMessage: `Se alcanzó el límite de ${item.label} del plan ${snapshot.plan}. Mejora tu plan para continuar.`, data: { code: 'plan_limit', concept, used: item.used, limit: item.limit, plan: snapshot.code } })
+  }
+}
+
+export async function assertStampCapacity(tenantId: string) {
+  if (IS_ONPREM_BUILD && getLicenseStatus().activated) return
+  const plan = await getTenantSubscription(tenantId)
+  const limit = licensedOnPremLimits(plan?.plan.limits).stamps
+  if (limit === null || limit === undefined) return
+  const [usage, balance] = await Promise.all([
+    getPlanUsage(tenantId),
+    withTenant(tenantId, tx => tx.execute(sql`SELECT COALESCE(SUM(remaining),0) AS balance FROM stamp_packages WHERE tenant_id = ${tenantId}::uuid`))
+  ])
+  const used = usage.usage.find(item => item.concept === 'stamps')!.used
+  const available = Number((balance as unknown as Array<{ balance: string | number }>)[0]?.balance ?? 0)
+  if (used >= limit && available < 1) throw createError({ statusCode: 402, statusMessage: `Se agotaron los timbres incluidos del plan ${plan!.plan.name} y no hay paquetes disponibles. Mejora tu plan o compra un paquete.`, data: { code: 'plan_limit', concept: 'stamps', used, limit, plan: plan!.plan.code } })
+}
+
+export async function consumeStampPackage(tenantId: string) {
+  if (IS_ONPREM_BUILD && getLicenseStatus().activated) return false
+  const plan = await getTenantSubscription(tenantId)
+  const limit = licensedOnPremLimits(plan?.plan.limits).stamps
+  if (limit === null || limit === undefined) return false
+  const usage = await getPlanUsage(tenantId)
+  if (usage.usage.find(item => item.concept === 'stamps')!.used <= limit) return false
+  const rows = await withTenant(tenantId, tx => tx.execute(sql`
+    UPDATE stamp_packages SET remaining = remaining - 1
+    WHERE id = (SELECT id FROM stamp_packages WHERE tenant_id = ${tenantId}::uuid AND remaining > 0 ORDER BY purchased_at, id FOR UPDATE SKIP LOCKED LIMIT 1)
+    RETURNING id
+  `))
+  return (rows as unknown[]).length > 0
 }
 
 export async function captureTenantUsage(tenantId: string, capturedOn = isoDate()) {
@@ -156,7 +231,7 @@ function stripeDate(seconds: number | null | undefined) { return seconds ? new D
 
 async function findPlanFromStripePrice(priceId: string | null | undefined) {
   if (!priceId) return null
-  const plans = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.isActive, true))
+  const plans = (await listPlans()).filter(plan => plan.isActive)
   return plans.find(plan => planPriceId(plan, 'month') === priceId || planPriceId(plan, 'year') === priceId) ?? null
 }
 
@@ -167,6 +242,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
   const plan = await findPlanFromStripePrice(priceId)
   if (!plan) throw new Error('El Price ID de Stripe no está vinculado a ningún plan de Flow')
   const interval = subscription.items.data[0]?.price.recurring?.interval === 'year' ? 'year' : 'month'
+  const effectiveLimits = await getEffectivePlanLimits(resolvedTenantId, plan.id)
   await withTenant(resolvedTenantId, async tx => {
     await tx.insert(tenantSubscriptions).values({
       tenantId: resolvedTenantId,
@@ -192,7 +268,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
         trialEndsAt: stripeDate(subscription.trial_end), cancelAtPeriodEnd: subscription.cancel_at_period_end, updatedAt: new Date()
       }
     })
-    await tx.execute(sql`UPDATE tenants SET storage_limit_bytes = ${Number((normalizeLimits(plan.limits).storageBytes) || 0)} WHERE id = ${resolvedTenantId}::uuid`)
+    await tx.execute(sql`UPDATE tenants SET storage_limit_bytes = ${effectiveStorageLimit(effectiveLimits.storageBytes)}::bigint WHERE id = ${resolvedTenantId}::uuid`)
   })
   return getTenantSubscription(resolvedTenantId)
 }
@@ -234,9 +310,7 @@ export async function syncStripeInvoice(invoice: Stripe.Invoice, tenantId?: stri
 
 export async function createStripeCheckout(tenantId: string, planCode: string, interval: BillingInterval) {
   const stripe = getStripeClient()
-  const [plan] = await db.select().from(subscriptionPlans)
-    .where(and(eq(subscriptionPlans.code, planCode), eq(subscriptionPlans.isActive, true), eq(subscriptionPlans.isPublic, true)))
-    .limit(1)
+  const plan = (await listPlans()).find(row => row.code === planCode && row.isActive && row.isPublic)
   if (!plan) throw new PlanNotAvailableError('El plan seleccionado no está disponible')
   const priceId = planPriceId(plan, interval)
   if (!priceId) throw new BillingNotConfiguredError(`Falta vincular el precio ${interval === 'year' ? 'anual' : 'mensual'} de ${plan.name} en Stripe`)

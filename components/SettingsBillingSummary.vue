@@ -20,7 +20,7 @@ import {
 
 type UsageResource = 'storageBytes' | 'users' | 'sites' | 'automationExecutions' | 'emails'
 interface UsageItem { resourceKey: UsageResource; quantity: number; limit: number | null; percentUsed: number | null; isOverLimit: boolean }
-interface Plan { id: string; code: string; name: string; description: string; monthlyPriceCents: number; annualPriceCents: number; currency: string; limits: Record<string, number> }
+interface Plan { id: string; code: string; name: string; description: string; monthlyPriceCents: number; annualPriceCents: number; currency: string; limits: Record<string, number | null> }
 interface Invoice {
   id: string
   status: string
@@ -47,6 +47,7 @@ const billingInterval = ref<'month' | 'year'>('month')
 const openingPortal = ref(false)
 const { data, pending, error, refresh } = await useFetch<Overview>('/api/billing/overview', { key: 'billing-overview', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
 const { data: plansResponse } = await useFetch<{ plans: Plan[] }>('/api/billing/plans', { key: 'billing-plans', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
+const { data: planUsage } = await useFetch<{ plan: string; usage: Array<{ concept: string; label: string; used: number; limit: number | null; percent: number | null }> }>('/api/billing/plan-usage', { key: 'plan-limits', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
 
 const labels: Record<UsageResource, { label: string; short: string; icon: typeof HardDrive; compact: (value: number) => string }> = {
   users: { label: 'Usuarios activos', short: 'Usuarios', icon: Users, compact: value => String(value) },
@@ -85,10 +86,10 @@ function usageClass(item: UsageItem) {
 function planFeatureList(plan: Plan) {
   const limits = plan.limits || {}
   return [
-    `${limits.users ?? '—'} usuarios`,
-    `${limits.storageBytes ? Math.round(limits.storageBytes / 1024 / 1024 / 1024) + ' GB' : 'Sin límite'} de almacenamiento`,
-    `${Number(limits.automationExecutions || 0).toLocaleString('es-MX')} automatizaciones/mes`,
-    `${limits.sites ?? '—'} sitios publicados`,
+    `${limits.usersIncluded ?? 'A medida'} usuarios incluidos${limits.users === null || limits.users === undefined ? '' : ` · máximo ${limits.users}`}`,
+    `${limits.storageBytes === null ? 'Sin límite' : `${Math.round(Number(limits.storageBytes || 0) / 1024 / 1024 / 1024)} GB`} de almacenamiento`,
+    `${limits.executions === null ? 'Sin límite' : Number(limits.executions || 0).toLocaleString('es-MX')} automatizaciones/mes`,
+    `${limits.sites === null ? 'Sin límite' : limits.sites ?? 0} sitios`,
     plan.code === 'escala' ? 'Soporte prioritario 24/7' : plan.code === 'crecimiento' ? 'Soporte prioritario' : 'Soporte por correo'
   ]
 }
@@ -163,6 +164,18 @@ async function openPortal() {
             <div class="metric-title"><component :is="labels[item.resourceKey].icon" :size="14" /><strong>{{ labels[item.resourceKey].label }}</strong></div>
             <div v-if="item.limit !== null" class="usage-track"><span :class="usageClass(item)" :style="{ width: `${Math.min(100, item.percentUsed || 0)}%` }" /></div>
             <div class="metric-bottom"><span>{{ labels[item.resourceKey].compact(item.quantity) }}<template v-if="item.limit !== null"> de {{ labels[item.resourceKey].compact(item.limit) }}</template></span><b v-if="item.limit !== null" :class="{ critical: (item.percentUsed || 0) >= 100, warning: (item.percentUsed || 0) >= 80 && (item.percentUsed || 0) < 100 }">{{ item.percentUsed }}%</b></div>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="planUsage" class="panel usage-card">
+        <header class="section-head compact"><div><h2>Límites del plan {{ planUsage.plan }}</h2><p>Consumo del mes calendario</p></div><button type="button" class="button primary" @click="scrollToPlans">Mejorar plan</button></header>
+        <div class="usage-grid limits-grid">
+          <article v-for="item in planUsage.usage" :key="item.concept" class="usage-metric">
+            <div class="metric-title"><strong>{{ item.label }}</strong></div>
+            <div v-if="item.limit !== null" class="usage-track"><span :class="(item.percent || 0) >= 100 ? 'usage-fill critical' : (item.percent || 0) >= 80 ? 'usage-fill warning' : 'usage-fill'" :style="{ width: `${Math.min(100, item.percent || 0)}%` }" /></div>
+            <div class="metric-bottom"><span>{{ item.used.toLocaleString('es-MX') }}<template v-if="item.limit !== null"> de {{ item.limit.toLocaleString('es-MX') }}</template><template v-else> · Ilimitado</template></span><b v-if="item.percent !== null" :class="{ critical: item.percent >= 100, warning: item.percent >= 80 && item.percent < 100 }">{{ item.percent }}%</b></div>
+            <p v-if="item.percent !== null && item.percent >= 80" class="limit-warning">{{ item.percent >= 100 ? 'Límite alcanzado. Mejora el plan para continuar.' : 'Estás cerca del límite del plan.' }}</p>
           </article>
         </div>
       </section>

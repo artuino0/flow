@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requireAuth, getPermissionFlags } from '~/server/utils/rbac'
 import { ManagedFileTooLargeError, storeManagedFile } from '~/server/utils/managedStorage'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 // POST /api/files?entityId=... (HU-ERD-78, multipart/form-data, un archivo)
 // Sube el archivo para el dataType 'file' - entityId es la entidad DESTINO
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    await assertPlanCapacity(auth.tenantId, 'storageBytes', filePart.data.length)
     const stored = await storeManagedFile(auth.tenantId, query.entityId, {
       fileName: filePart.filename,
       mimeType: filePart.type ?? 'application/octet-stream',

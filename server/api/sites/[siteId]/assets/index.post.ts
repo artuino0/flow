@@ -1,6 +1,7 @@
 import { requireAdminRole } from '~/server/utils/rbac'
 import { SiteAssetInvalidTypeError, SiteAssetTooLargeError, storeSiteAsset } from '~/server/utils/managedStorage'
 import { StorageLimitExceededError } from '~/server/utils/storageUsage'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
@@ -8,6 +9,7 @@ export default defineEventHandler(async event => {
   const file = parts?.find(part => part.filename)
   if (!file?.filename) throw createError({ statusCode: 422, statusMessage: 'Selecciona una imagen o fuente para subir' })
   try {
+    await assertPlanCapacity(auth.tenantId, 'storageBytes', file.data.length)
     const asset = await storeSiteAsset(auth.tenantId, getRouterParam(event, 'siteId')!, auth.sub, {
       fileName: file.filename,
       mimeType: file.type || 'application/octet-stream',

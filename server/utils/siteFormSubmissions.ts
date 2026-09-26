@@ -12,6 +12,7 @@ import { generateIncrementalValue, MissingIncrementalPrefixError } from '~/serve
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { fireTriggersForRecord } from '~/server/utils/triggers'
 import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
+import { assertPlanCapacity } from '~/server/utils/billing'
 
 type PublicValue = string | number | boolean | null | string[]
 export type SiteFormPayload = Record<string, PublicValue>
@@ -145,6 +146,7 @@ export async function submitSiteForm(input: {
 }) {
   const context = await resolveContext(input.siteId, input.pageId, input.formKey)
   if (!context) throw createError({ statusCode: 404, statusMessage: 'El formulario no está publicado o no tiene un destino activo.' })
+  await assertPlanCapacity(context.tenant_id, 'formSubmissions')
   assertRequiredFormFields(context.form_manifest, input.payload)
 
   const [submission] = await withTenant(context.tenant_id, tx => tx.insert(siteFormSubmissions).values({
