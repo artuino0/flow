@@ -25,7 +25,7 @@
 // honesto en vez de datos inventados; el historial real queda para una HU futura.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Calendar, Clock, EllipsisVertical, FileText, Link2, List, Pencil, Plus, Share2, Trash2, WalletCards } from '@lucide/vue'
-import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation } from '~/composables/useEntityFields'
+import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation, StateWorkflowConfig } from '~/composables/useEntityFields'
 
 interface RecordData {
   id: string
@@ -56,6 +56,8 @@ const props = defineProps<{
   startInEdit?: boolean
   initialPane?: 'associations' | 'activity'
   initialActivityId?: string
+  workflowConfig?: StateWorkflowConfig | null
+  userRoleId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -124,8 +126,17 @@ const initials = computed(() => {
 })
 
 const statusField = computed(() =>
-  props.fields.find((field) => ['estado', 'status', 'estatus'].includes(field.name.toLocaleLowerCase()))
+  props.workflowConfig?.enabled ? props.fields.find(field => field.name === props.workflowConfig?.field) : props.fields.find((field) => ['estado', 'status', 'estatus'].includes(field.name.toLocaleLowerCase()))
 )
+const currentWorkflowState = computed(() => props.workflowConfig?.enabled && props.record ? props.workflowConfig.states[String(props.record.customData[props.workflowConfig.field] ?? '')] : undefined)
+const isWorkflowLocked = computed(() => Boolean(currentWorkflowState.value?.locked))
+const lockedEditableFields = computed(() => currentWorkflowState.value?.editableFields ?? [])
+const canEditRecord = computed(() => Boolean(props.canUpdate && (!isWorkflowLocked.value || lockedEditableFields.value.length)))
+const availableTransitions = computed(() => {
+  if (!props.workflowConfig?.enabled || !props.record || !props.userRoleId) return []
+  const current = String(props.record.customData[props.workflowConfig.field] ?? '')
+  return props.workflowConfig.transitions.filter(item => item.from === current && (item.roles === 'all' || item.roles.includes(props.userRoleId!)))
+})
 const statusLabel = computed(() => {
   const field = statusField.value
   if (!field) return ''
@@ -252,12 +263,12 @@ const submittingEdit = ref(false)
 const editFormValues = ref<Record<string, unknown>>({})
 
 function startEditing() {
-  if (!props.record) return
+  if (!props.record || !canEditRecord.value) return
   editFormValues.value = JSON.parse(JSON.stringify(props.record.customData))
   isEditing.value = true
 }
 watch(() => props.startInEdit, (value) => {
-  if (value && props.record && props.canUpdate) startEditing()
+  if (value && props.record && canEditRecord.value) startEditing()
 }, { immediate: true })
 
 function cancelEditing() {
@@ -280,6 +291,20 @@ async function saveEdit() {
     toast.error('Error al guardar', err?.data?.statusMessage || 'No se pudo actualizar el registro')
   } finally {
     submittingEdit.value = false
+  }
+}
+
+async function changeState(to: string, label?: string) {
+  if (!props.record || !props.workflowConfig?.enabled) return
+  const target = props.workflowConfig.states[to]
+  if (target?.locked && !await confirmAction({ title: 'Cambiar estado', message: `¿${label || `Pasar a ${to}`}? El registro quedará bloqueado.`, confirmLabel: 'Cambiar estado' })) return
+  try {
+    await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, { method: 'PATCH', body: { changes: { [props.workflowConfig.field]: to } } })
+    toast.updated('Estado actualizado', `El registro pasó a ${to}.`)
+    window.location.reload()
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } } | null)?.data?.statusMessage
+    toast.error('No se pudo cambiar el estado', statusMessage || 'La transición no está permitida.')
   }
 }
 </script>
@@ -311,16 +336,21 @@ async function saveEdit() {
             </div>
           </div>
 
+          <div v-if="record && availableTransitions.length" class="flex flex-wrap gap-2">
+            <button v-for="transition in availableTransitions" :key="`${transition.from}-${transition.to}`" type="button" class="rounded bg-brand-blue px-3 py-2 text-xs font-semibold text-white hover:opacity-90" @click="changeState(transition.to, transition.label)">{{ transition.label || `Pasar a ${transition.to}` }}</button>
+          </div>
+          <p v-if="record && isWorkflowLocked" class="text-xs text-brand-text-muted">Registro bloqueado por el estado actual.</p>
+
           <div v-if="record" class="flex w-full items-center gap-2">
             <template v-if="!isEditing">
               <button type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-blue hover:bg-brand-blue-bg" @click="shareRecord">
                 <Share2 class="h-3.5 w-3.5" :stroke-width="1.75" /> Compartir
               </button>
 
-              <button v-if="canUpdate" type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
+              <button v-if="canEditRecord" type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
                 <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" /> Editar
               </button>
-              <div v-if="fiscalAction || canDelete" class="relative shrink-0" data-record-actions>
+              <div v-if="fiscalAction || (canDelete && !isWorkflowLocked)" class="relative shrink-0" data-record-actions>
                 <button
                   type="button"
                   title="Más acciones"
@@ -342,7 +372,7 @@ async function saveEdit() {
                     {{ fiscalAction.label }}
                   </NuxtLink>
                   <button
-                    v-if="canDelete"
+                    v-if="canDelete && !isWorkflowLocked"
                     type="button"
                     :disabled="deleting"
                     class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60" :class="fiscalAction ? 'border-t border-brand-border-light' : ''"
@@ -370,7 +400,7 @@ async function saveEdit() {
         </header>
         <div v-if="visibleProperties.length === 0" class="px-[18px] py-6 text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
         <div v-else-if="isEditing">
-          <DynamicForm v-model="editFormValues" detail :fields="visibleProperties" :entity-id="record!.id" :relation-labels="record?.relationLabels" :disabled="submittingEdit" />
+          <DynamicForm v-model="editFormValues" detail :fields="visibleProperties" :entity-id="record!.id" :relation-labels="record?.relationLabels" :disabled="submittingEdit" :disabled-fields="isWorkflowLocked ? visibleProperties.filter(field => !lockedEditableFields.includes(field.name)).map(field => field.name) : []" />
         </div>
         <dl v-else>
           <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-[3px] border-b border-brand-border-light px-[18px] py-2.5 last:border-b-0">
@@ -393,7 +423,7 @@ async function saveEdit() {
             <span class="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF0F6] text-brand-text-muted"><Link2 class="h-[26px] w-[26px]" :stroke-width="1.75" /></span>
             <h3 class="mt-4 text-[15px] font-bold text-brand-text">Sin asociaciones</h3>
             <p class="mt-1 max-w-[340px] text-[13px] leading-5 text-brand-text-secondary">Este módulo no tiene tipos de asociación definidos ni otros módulos con un campo de relación hacia este registro.</p>
-            <button v-if="record && canUpdate" type="button" class="mt-4 flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
+            <button v-if="record && canEditRecord" type="button" class="mt-4 flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
               <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Vincular registro
             </button>
           </div>
@@ -407,7 +437,7 @@ async function saveEdit() {
                 <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
                 <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
               </div>
-              <NuxtLink v-if="record && !rel.editable && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+              <NuxtLink v-if="record && !isWorkflowLocked && !rel.editable && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
                 <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar
               </NuxtLink>
             </div>
@@ -415,6 +445,7 @@ async function saveEdit() {
               <p v-if="!record" class="p-6 text-center text-xs text-brand-text-muted">{{ rel.editable ? 'Se muestra como tabla editable' : 'Se muestra como tabla de solo lectura' }}</p>
               <RecordLinesTable
                 v-else-if="rel.editable"
+                v-show="!isWorkflowLocked"
                 :key="`${rel.entitySlug}.${rel.fieldName}:${record.id}`"
                 :parent-id="record.id"
                 :child-slug="rel.entitySlug"
@@ -424,6 +455,7 @@ async function saveEdit() {
                 :parent-label="displayLabel"
                 @changed="emit('changed')"
               />
+              <p v-if="record && rel.editable && isWorkflowLocked" class="p-6 text-center text-xs text-brand-text-muted">Las partidas están bloqueadas por el estado actual.</p>
               <template v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`]">
                 <p v-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].loading" class="p-6 text-center text-xs text-brand-text-muted">Cargando...</p>
                 <p v-else-if="relatedTables[`${rel.entitySlug}.${rel.fieldName}`].rows.length === 0" class="p-6 text-center text-xs text-brand-text-muted">Sin registros relacionados.</p>

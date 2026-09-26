@@ -35,7 +35,7 @@
 import { Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
-import type { BoardConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, DetailLayout, EntityFieldMeta, EntityMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/utils/labelTemplates'
 
 definePageMeta({ layout: 'default' })
@@ -81,6 +81,7 @@ const TABS = [
   { key: 'navegacion', label: 'Ubicación en menú' },
   { key: 'detalle', label: 'Diseño del detalle' },
   { key: 'listado', label: 'Diseño del listado' },
+  { key: 'flujo', label: 'Flujo de estados' },
   { key: 'etiquetas', label: 'Etiquetas' },
   { key: 'api', label: 'API' }
 ] as const
@@ -225,6 +226,7 @@ async function onDeleteModule() {
 // igual que en el fetch del modulo de arriba - un $fetch sin headers durante
 // SSR no lleva la cookie de sesion y el endpoint responde 401.
 const { data: fieldsData, refresh: refreshFields } = await useFetch<{
+  entity: EntityMeta
   fields: EntityFieldMeta[]
   permissions: { canRead: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean }
   inverseRelations: InverseRelation[]
@@ -563,6 +565,10 @@ async function onSaveListLayout() {
             :list-layout="listLayout"
           />
         </div>
+      </template>
+
+      <template v-else-if="step === 'flujo'">
+        <ModuleStateWorkflowCard :module-id="currentModule.id" :fields="fields" :config="fieldsData?.entity.workflowConfig" :selected-field="boardConfig.statusField" @saved="refreshFields" />
       </template>
 
       <template v-else-if="step === 'etiquetas'">

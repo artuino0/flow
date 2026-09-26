@@ -238,6 +238,7 @@ async function updateEntityImpl(
     detailLayout?: unknown
     listLayout?: unknown
     boardConfig?: unknown
+    workflowConfig?: unknown
     labelField?: string | null
     singularName?: string | null
     fiscalConfig?: unknown
@@ -253,6 +254,7 @@ async function updateEntityImpl(
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
     if (input.boardConfig !== undefined) setValues.boardConfig = input.boardConfig
+    if (input.workflowConfig !== undefined) setValues.workflowConfig = input.workflowConfig
     if (input.labelField !== undefined) setValues.labelField = input.labelField
     if (input.singularName !== undefined) setValues.singularName = input.singularName
     if (input.fiscalConfig !== undefined) setValues.fiscalConfig = input.fiscalConfig

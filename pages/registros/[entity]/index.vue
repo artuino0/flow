@@ -26,6 +26,7 @@ definePageMeta({ layout: 'default', fullBleed: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
+const { user } = useAuth()
 
 const { data: meta, pending: metaPending, error: metaError } = await useEntityFields(slug)
 
@@ -561,6 +562,8 @@ async function onDelete(id: string) {
           :columns="boardData.columns"
           :relation-labels="boardData.relationLabels"
           :can-update="meta.permissions.canUpdate"
+          :workflow-config="meta.entity.workflowConfig"
+          :user-role-id="user?.roleId"
           :search="appliedSearch"
           :filter-field="appliedFilterField"
           :filter-values="appliedFilterValues"

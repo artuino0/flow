@@ -540,6 +540,13 @@
       "when": 1790306292552,
       "breakpoints": true,
       "tag": "0076_olap_etl_cursor"
+    },
+    {
+      "version": "7",
+      "idx": 77,
+      "when": 1790306293552,
+      "breakpoints": true,
+      "tag": "0077_erd96_workflow_config"
     }
   ]
 }

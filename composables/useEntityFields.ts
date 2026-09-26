@@ -26,6 +26,16 @@ export interface EntityMeta {
   // cual (comportamiento de siempre).
   singularName?: string | null
   labelConfig?: LabelConfig | null
+  workflowConfig?: StateWorkflowConfig | null
+}
+
+export interface StateWorkflowConfig {
+  enabled: boolean
+  field: string
+  initial: string
+  states: Record<string, { locked: boolean; editableFields: string[] }>
+  transitions: Array<{ from: string; to: string; roles: string[] | 'all'; label?: string }>
+  rules?: unknown[]
 }
 
 export interface EntityPermissions {

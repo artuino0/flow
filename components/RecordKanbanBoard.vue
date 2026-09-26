@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowUpRight, Building2, Mail, MoreVertical, Phone, UserRound } from '@lucide/vue'
-import type { BoardConfig, EntityFieldMeta } from '~/composables/useEntityFields'
+import type { BoardConfig, EntityFieldMeta, StateWorkflowConfig } from '~/composables/useEntityFields'
 
 interface BoardRecord {
   id: string
@@ -26,6 +26,8 @@ const props = defineProps<{
   filterField?: string | null
   filterValues?: string[]
   filterOperator?: string
+  workflowConfig?: StateWorkflowConfig | null
+  userRoleId?: string | null
 }>()
 const emit = defineEmits<{ updated: [record: BoardRecord] }>()
 const toast = useToast()
@@ -92,6 +94,14 @@ async function moveRecord(recordId: string, targetKey: string) {
   const target = localColumns.value.find(column => column.key === targetKey)
   const record = source?.records.find(item => item.id === recordId)
   if (!source || !target || !record || source.key === target.key || !props.config.statusField) return
+  if (props.workflowConfig?.enabled) {
+    const current = String(record.customData[props.workflowConfig.field] ?? '')
+    const allowed = !props.workflowConfig.states[current] || props.workflowConfig.transitions.some(item => item.from === current && item.to === targetKey && (item.roles === 'all' || Boolean(props.userRoleId && item.roles.includes(props.userRoleId))))
+    if (!allowed) {
+      toast.error('Transición no permitida', `No tienes permiso para pasar de “${source.label}” a “${target.label}”.`)
+      return
+    }
+  }
 
   const snapshot = localColumns.value.map(column => ({ ...column, records: [...column.records], total: column.total }))
   source.records = source.records.filter(item => item.id !== recordId)

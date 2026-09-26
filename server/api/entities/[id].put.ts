@@ -9,6 +9,7 @@ import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
 import { labelConfigSchema } from '~/utils/labelTemplates'
 import { boardConfigSchema } from '~/server/utils/boardConfig'
+import { validateWorkflowConfig, StateWorkflowError } from '~/server/utils/stateWorkflow'
 
 // PUT /api/entities/:id { name?, description?, isActive?, icon?, detailLayout?, listLayout?, labelField?, singularName? }
 // (HU-ERD-66, detailLayout HU-ERD-74, listLayout HU-ERD-75, isActive:
@@ -37,6 +38,7 @@ const bodySchema = z.object({
   detailLayout: detailLayoutSchema.nullable().optional(),
   listLayout: listLayoutSchema.nullable().optional(),
   boardConfig: boardConfigSchema.nullable().optional(),
+  workflowConfig: z.unknown().nullable().optional(),
   // Reportado por el usuario (2026-09-03, ver comentario largo en
   // server/db/schema.ts): "Campo a mostrar" del picker de relaciones
   // (ModuleListLayoutCard.vue) - null explicito vuelve a la heuristica
@@ -69,6 +71,15 @@ export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
   const id = getRouterParam(event, 'id')!
   const body = await readValidatedBody(event, bodySchema.parse)
+
+  if (body.workflowConfig !== undefined) {
+    try {
+      await withTenant(auth.tenantId, tx => validateWorkflowConfig(tx, auth.tenantId, id, body.workflowConfig))
+    } catch (error) {
+      if (error instanceof StateWorkflowError) throw createError({ statusCode: error.statusCode, statusMessage: error.message })
+      throw error
+    }
+  }
 
   if (body.labelField) {
     const isValid = await withTenant(auth.tenantId, async (tx) => {

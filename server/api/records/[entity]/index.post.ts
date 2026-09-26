@@ -8,6 +8,7 @@ import { fireTriggersForRecord } from '~/server/utils/triggers'
 import { generateIncrementalValue, MissingIncrementalPrefixError } from '~/server/utils/incrementalField'
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
+import { stateWorkflowSchema, assertEditableLineParents, StateWorkflowError } from '~/server/utils/stateWorkflow'
 
 const bodySchema = z.object({ customData: z.record(z.any()).default({}) })
 
@@ -26,6 +27,8 @@ export default defineEventHandler(async (event) => {
         .where(eq(entityFields.entityId, entity.id))
 
       let customData = stripCalculatedValues(allFields, body.customData)
+      const workflow = stateWorkflowSchema.safeParse(entity.workflowConfig)
+      if (workflow.success && workflow.data.enabled) customData[workflow.data.field] = workflow.data.initial
       for (const field of allFields) {
         if (field.dataType === 'incremental') customData[field.name] = await generateIncrementalValue(tx, auth.tenantId, field, customData)
       }
@@ -35,6 +38,8 @@ export default defineEventHandler(async (event) => {
       if (!parsed.success) throw createError({ statusCode: 422, statusMessage: 'customData invalido para esta entidad', data: parsed.error.flatten() })
       customData = parsed.data as Record<string, unknown>
       await assertWritableRelations(tx, auth.tenantId, allFields, customData)
+      try { await assertEditableLineParents(tx, auth.tenantId, entity.id, allFields, customData) }
+      catch (error) { if (error instanceof StateWorkflowError) throw createError({ statusCode: error.statusCode, statusMessage: error.message }); throw error }
 
       const [created] = await tx.insert(records).values({ entityId: entity.id, tenantId: auth.tenantId, customData }).returning()
       await tx.insert(recordActivities).values({ tenantId: auth.tenantId, recordId: created.id, userId: auth.sub, actionType: 'CREATED', details: { customData } })

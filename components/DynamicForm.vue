@@ -20,6 +20,7 @@ const props = defineProps<{
   // asi que pasar su id es directo.
   entityId: string
   disabled?: boolean
+  disabledFields?: string[]
   // Pedido directo del usuario (2026-09-04, "no parece la ventana como la de
   // pedido"): pages/registros/[entity]/nuevo.vue y .../[id]/editar.vue ahora
   // arman una tarjeta propia por cada Campo Tabla (fiel a Screen/Form Pedido
@@ -127,7 +128,7 @@ defineExpose({ validateAll })
       <select
         v-if="field.dataType === 'text' && Array.isArray(field.validationRules?.enum)"
         :id="`field-${field.name}`"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
@@ -142,7 +143,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'text'"
         :id="`field-${field.name}`"
         type="text"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         :maxlength="(field.validationRules?.maxLength as number) || undefined"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
@@ -155,7 +156,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'number'"
         :id="`field-${field.name}`"
         type="number"
-        :disabled="disabled || isCalculated(field)"
+        :disabled="disabled || disabledFields?.includes(field.name) || isCalculated(field)"
         :min="field.validationRules?.min as number"
         :max="field.validationRules?.max as number"
         :step="field.validationRules?.integer ? 1 : 'any'"
@@ -173,7 +174,7 @@ defineExpose({ validateAll })
           :id="`field-${field.name}`"
           type="number"
           inputmode="decimal"
-          :disabled="disabled || isCalculated(field)"
+          :disabled="disabled || disabledFields?.includes(field.name) || isCalculated(field)"
           :min="field.validationRules?.allowNegative ? (field.validationRules?.min as number) : Math.max(0, Number(field.validationRules?.min ?? 0))"
           :max="field.validationRules?.max as number"
           :step="1 / Math.pow(10, currencyDecimals(field.validationRules))"
@@ -192,7 +193,7 @@ defineExpose({ validateAll })
         <input
           :id="`field-${field.name}`"
           type="checkbox"
-          :disabled="disabled"
+          :disabled="disabled || disabledFields?.includes(field.name)"
           :checked="Boolean(valueFor(field.name))"
           class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
           @change="onInput(field, ($event.target as HTMLInputElement).checked)"
@@ -205,7 +206,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'date'"
         :id="`field-${field.name}`"
         type="date"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         :min="field.validationRules?.min as string"
         :max="field.validationRules?.max as string"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
@@ -219,7 +220,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'json'"
         :id="`field-${field.name}`"
         rows="4"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         placeholder="{}"
         class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
@@ -232,7 +233,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'select' || field.dataType === 'multiselect'"
         :field="field"
         :model-value="valueFor(field.name)"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         :detail="detail"
         @update:model-value="(value) => setValue(field.name, value)"
       />
@@ -242,7 +243,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'tabla'"
         :field="field"
         :model-value="(valueFor(field.name) as Record<string, unknown>[]) ?? []"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         @update:model-value="(rows) => setValue(field.name, rows)"
       />
 
@@ -252,7 +253,7 @@ defineExpose({ validateAll })
         :field="field"
         :model-value="valueFor(field.name)"
         :initial-label="relationLabels?.[field.name]?.[String(valueFor(field.name))]"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         :detail="detail"
         @update:model-value="(value) => setValue(field.name, value)"
       />
@@ -263,7 +264,7 @@ defineExpose({ validateAll })
         :field="field"
         :model-value="valueFor(field.name)"
         :entity-id="entityId"
-        :disabled="disabled"
+        :disabled="disabled || disabledFields?.includes(field.name)"
         @update:model-value="(value) => setValue(field.name, value)"
       />
 

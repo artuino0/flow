@@ -1,6 +1,7 @@
 import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { entities, entityFields, records } from '~/server/db/schema'
+import { assertEditableLineParents, StateWorkflowError, stateWorkflowSchema } from './stateWorkflow'
 import { getEntityZodSchema } from './dynamicSchema'
 import { recordNotDeleted } from './records'
 import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from './calculatedFields'
@@ -84,6 +85,8 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
   }
 
   return withTenant(tenantId, async (tx) => {
+    const [module] = await tx.select({ workflowConfig: entities.workflowConfig }).from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1)
+    const workflow = stateWorkflowSchema.safeParse(module?.workflowConfig)
     const fieldRows = (await tx
       .select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
       .from(entityFields)
@@ -161,6 +164,9 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
       const rawRow = rows[i]
       const rowNumber = i + 2 // fila 1 del CSV es el encabezado
       const resolvedRow: Record<string, unknown> = { ...rawRow }
+      // Un CSV es una vía de carga/migración masiva: respeta estados históricos
+      // explícitos que pasan el schema del Select; las filas sin estado usan el inicial.
+      if (workflow.success && workflow.data.enabled && !String(resolvedRow[workflow.data.field] ?? '').trim()) resolvedRow[workflow.data.field] = workflow.data.initial
       let rowFailed = false
 
       for (const field of relationFields) {
@@ -214,6 +220,15 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
       if (!parsed.success) {
         errors.push({ row: rowNumber, error: parsed.error.issues.map((issue) => issue.message).join('; ') })
         continue
+      }
+      try {
+        await assertEditableLineParents(tx, tenantId, entityId, fieldRows, parsed.data as Record<string, unknown>)
+      } catch (error) {
+        if (error instanceof StateWorkflowError) {
+          errors.push({ row: rowNumber, error: error.message })
+          continue
+        }
+        throw error
       }
       toInsert.push(parsed.data as Record<string, unknown>)
     }

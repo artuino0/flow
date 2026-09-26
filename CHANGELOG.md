@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.94.0] - 2026-09-26
+#### [feature]
+- [ERD-96](https://dydasoftware.atlassian.net/browse/ERD-96) - Flujo de estados fase 1: un campo Select define estados, transiciones por rol y estados bloqueantes; el servidor rechaza transiciones, ediciones y borrados no permitidos (también en Kanban, CSV y automatizaciones).
+
 ### [0.93.0] - 2026-09-25
 #### [feature]
 - [ERD-95](https://dydasoftware.atlassian.net/browse/ERD-95) - Crons compatibles con Vercel Hobby: `vercel.json` solo con facturación diaria; cola, reintentos y ETL se disparan desde un programador externo con `CRON_SECRET`.

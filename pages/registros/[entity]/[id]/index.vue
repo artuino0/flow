@@ -15,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const slug = route.params.entity as string
 const id = route.params.id as string
+const { user } = useAuth()
 
 const { data, pending, error: fetchError } = await useEntityFields(slug)
 
@@ -72,6 +73,8 @@ function onDeleted() {
         :can-update="data.permissions.canUpdate"
         :can-delete="data.permissions.canDelete"
         :label-field="data.entity.labelField"
+        :workflow-config="data.entity.workflowConfig"
+        :user-role-id="user?.roleId"
         :start-in-edit="route.query.mode === 'edit'"
         :initial-pane="route.query.tab === 'activity' ? 'activity' : 'associations'"
         :initial-activity-id="typeof route.query.activityId === 'string' ? route.query.activityId : undefined"

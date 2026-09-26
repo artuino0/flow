@@ -13,6 +13,7 @@ import { createNotifications, publishNotifications } from '~/server/utils/notifi
 import { generateIncrementalValue } from '~/server/utils/incrementalField'
 import { recordNotDeleted } from '~/server/utils/records'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
+import { enforceWorkflowChange, stateWorkflowSchema } from '~/server/utils/stateWorkflow'
 
 // HU-ERD-49: ejecucion real de las acciones de un trigger que matcheo
 // (ERD-48 solo resolvia QUE triggers disparan, nunca ejecutaba nada). Se
@@ -212,6 +213,8 @@ async function runUpdateFieldAction(tenantId: string, entityId: string, recordId
     if (!validated.success) return { ok: false, retryable: false, error: `El valor calculado no pasa la validación del campo "${parsed.data.field}": ${JSON.stringify(validated.error.flatten().fieldErrors)}` }
     try {
       await assertWritableRelations(tx, tenantId, relationFields, validated.data as Record<string, unknown>, currentData)
+      const nextData = validated.data as Record<string, unknown>
+      await enforceWorkflowChange(tx, { tenantId, entityId, roleId: '', userId: null, recordId, current: currentData, next: nextData, changedFields: Object.keys(nextData).filter(name => JSON.stringify(currentData[name]) !== JSON.stringify(nextData[name])) })
     } catch (error) {
       return { ok: false, retryable: false, error: error instanceof Error ? error.message : String(error) }
     }
@@ -238,7 +241,8 @@ async function runUpsertRecordAction(
     id: entities.id,
     slug: entities.slug,
     isActive: entities.isActive,
-    deletedAt: entities.deletedAt
+    deletedAt: entities.deletedAt,
+    workflowConfig: entities.workflowConfig
   }).from(entities).where(and(eq(entities.id, settings.targetEntityId), eq(entities.tenantId, tenantId))).limit(1))
   if (!targetEntity?.isActive || targetEntity.deletedAt) return { ok: false, retryable: false, error: 'El módulo destino no existe o está deshabilitado' }
 
@@ -298,6 +302,7 @@ async function runUpsertRecordAction(
           if (!validated.success) throw new Error(`El registro destino no cumple sus campos obligatorios: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
           await assertWritableRelations(tx, tenantId, targetFields, validated.data as Record<string, unknown>, currentData)
           const changes = Object.keys(validated.data as Record<string, unknown>).filter(field => JSON.stringify(currentData[field]) !== JSON.stringify((validated.data as Record<string, unknown>)[field])).map(field => ({ field, old: currentData[field], new: (validated.data as Record<string, unknown>)[field] }))
+          await enforceWorkflowChange(tx, { tenantId, entityId: targetEntity.id, roleId: '', userId: null, recordId: target.id, current: currentData, next: validated.data as Record<string, unknown>, changedFields: changes.map(change => change.field) })
           if (changes.length) {
             ;[target] = await tx.update(records).set({ customData: validated.data, isDirty: false, updatedAt: new Date() }).where(eq(records.id, target.id)).returning()
             await tx.insert(recordActivities).values({ tenantId, recordId: target.id, userId: null, actionType: 'UPDATED', details: { changes, workflowActionId: actionId, sourceRecordId } })
@@ -306,6 +311,8 @@ async function runUpsertRecordAction(
         }
       } else {
         let preparedData = await applyCalculatedFields(tx, tenantId, targetEntity.id, writableMappedData, undefined, targetFields)
+        const workflow = stateWorkflowSchema.safeParse(targetEntity.workflowConfig)
+        if (workflow.success && workflow.data.enabled) preparedData = { ...preparedData, [workflow.data.field]: workflow.data.initial }
         const validated = targetSchema.safeParse(preparedData)
         if (!validated.success) throw new Error(`Faltan datos para crear el registro destino: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
         let customData = { ...(validated.data as Record<string, unknown>) }

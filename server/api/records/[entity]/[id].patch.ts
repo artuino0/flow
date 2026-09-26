@@ -9,6 +9,7 @@ import { recordNotDeleted } from '~/server/utils/records'
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { assertBlockingWorkflowActions, WorkflowTransitionBlockedError } from '~/server/utils/workflowPreflight'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents } from '~/server/utils/calculatedFields'
+import { assertEditableLineParents, enforceWorkflowChange, StateWorkflowError } from '~/server/utils/stateWorkflow'
 
 const bodySchema = z.object({
   changes: z.record(z.any()).refine(value => Object.keys(value).length > 0, 'Debes enviar al menos un cambio'),
@@ -37,8 +38,17 @@ export default defineEventHandler(async event => {
     const parsed = dynamicSchema.safeParse(customData)
     if (!parsed.success) throw createError({ statusCode: 422, statusMessage: 'Los cambios no son válidos para este módulo', data: parsed.error.flatten() })
     customData = parsed.data as Record<string, unknown>
+    const changedNames = [...new Set([...Object.keys(currentData), ...Object.keys(customData)])].filter(field => JSON.stringify(currentData[field]) !== JSON.stringify(customData[field]))
 
     await assertWritableRelations(tx, auth.tenantId, allFields, customData, currentData)
+    try {
+      await assertEditableLineParents(tx, auth.tenantId, entity.id, allFields, customData)
+      await assertEditableLineParents(tx, auth.tenantId, entity.id, allFields, currentData)
+      await enforceWorkflowChange(tx, { tenantId: auth.tenantId, entityId: entity.id, roleId: auth.roleId!, userId: auth.sub, recordId: id, current: currentData, next: customData, changedFields: changedNames })
+    } catch (error) {
+      if (error instanceof StateWorkflowError) throw createError({ statusCode: error.statusCode, statusMessage: error.message })
+      throw error
+    }
     try {
       await assertBlockingWorkflowActions(auth.tenantId, entity.id, customData, currentData)
     } catch (error) {
