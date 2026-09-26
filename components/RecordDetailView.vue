@@ -299,11 +299,20 @@ async function changeState(to: string, label?: string) {
   const target = props.workflowConfig.states[to]
   if (target?.locked && !await confirmAction({ title: 'Cambiar estado', message: `¿${label || `Pasar a ${to}`}? El registro quedará bloqueado.`, confirmLabel: 'Cambiar estado' })) return
   try {
-    await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, { method: 'PATCH', body: { changes: { [props.workflowConfig.field]: to } } })
-    toast.updated('Estado actualizado', `El registro pasó a ${to}.`)
+    const body = { changes: { [props.workflowConfig.field]: to } }
+    try {
+      await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, { method: 'PATCH', body })
+    } catch (error) {
+      const warnings = (error as { data?: { data?: { warnings?: string[] } } })?.data?.data?.warnings
+      if (!warnings?.length || !await confirmAction({ title: 'Advertencias de transición', message: warnings.join('\n'), confirmLabel: 'Continuar de todos modos' })) throw error
+      await $fetch(`/api/records/${props.entitySlug}/${props.record.id}`, { method: 'PATCH', body: { ...body, acknowledgeWarnings: true } })
+    }
+    const stateField = props.fields.find(field => field.name === props.workflowConfig?.field)
+    const stateLabel = (stateField?.validationRules?.options as Array<{ value: string; label: string }> | undefined)?.find(option => option.value === to)?.label ?? to
+    toast.updated('Estado actualizado', `El registro pasó a ${stateLabel}.`)
     window.location.reload()
   } catch (error) {
-    const statusMessage = (error as { data?: { statusMessage?: string } } | null)?.data?.statusMessage
+    const statusMessage = (error as { data?: { statusMessage?: string; data?: { warnings?: string[] } } } | null)?.data?.statusMessage
     toast.error('No se pudo cambiar el estado', statusMessage || 'La transición no está permitida.')
   }
 }
@@ -337,7 +346,7 @@ async function changeState(to: string, label?: string) {
           </div>
 
           <div v-if="record && availableTransitions.length" class="flex flex-wrap gap-2">
-            <button v-for="transition in availableTransitions" :key="`${transition.from}-${transition.to}`" type="button" class="rounded bg-brand-blue px-3 py-2 text-xs font-semibold text-white hover:opacity-90" @click="changeState(transition.to, transition.label)">{{ transition.label || `Pasar a ${transition.to}` }}</button>
+            <button v-for="transition in availableTransitions" :key="`${transition.from}-${transition.to}`" type="button" class="rounded bg-brand-blue px-3 py-2 text-xs font-semibold text-white hover:opacity-90" @click="changeState(transition.to, transition.label)">{{ transition.label || `Pasar a ${(statusField?.validationRules?.options as Array<{ value: string; label: string }> | undefined)?.find(option => option.value === transition.to)?.label || transition.to}` }}</button>
           </div>
           <p v-if="record && isWorkflowLocked" class="text-xs text-brand-text-muted">Registro bloqueado por el estado actual.</p>
 

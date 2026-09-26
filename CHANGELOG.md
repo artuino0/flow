@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.95.0] - 2026-09-26
+#### [feature]
+- [ERD-99](https://dydasoftware.atlassian.net/browse/ERD-99) - Reglas al cambiar de estado (campo requerido, comparación partida-dato y agregados) en modo bloquea o advierte, en ficha, Kanban y automatizaciones; ajustes de fase 1 y corrección de DataCloneError.
+
 ### [0.94.2] - 2026-09-26
 #### [bug]
 - [ERD-98](https://dydasoftware.atlassian.net/browse/ERD-98) - CFDI (XML/PDF), CSD cifrados y archivos de usuario ahora usan el almacenamiento de objetos (`local` o R2) con claves por organización; script de migración para on-premise. En producción con R2 solo falta desplegar.

@@ -31,6 +31,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ updated: [record: BoardRecord] }>()
 const toast = useToast()
+const { confirm: confirmAction } = useConfirm()
 const localColumns = ref<BoardColumn[]>([])
 const movingId = ref<string | null>(null)
 const draggedId = ref<string | null>(null)
@@ -113,10 +114,15 @@ async function moveRecord(recordId: string, targetKey: string) {
   movingId.value = recordId
 
   try {
-    const updated = await $fetch<BoardRecord>(`/api/records/${props.entitySlug}/${recordId}`, {
-      method: 'PATCH',
-      body: { changes: { [props.config.statusField]: nextValue }, expectedUpdatedAt: record.updatedAt }
-    })
+    const body = { changes: { [props.config.statusField]: nextValue }, expectedUpdatedAt: record.updatedAt }
+    let updated: BoardRecord
+    try {
+      updated = await $fetch<BoardRecord>(`/api/records/${props.entitySlug}/${recordId}`, { method: 'PATCH', body })
+    } catch (error) {
+      const warnings = (error as { data?: { data?: { warnings?: string[] } } })?.data?.data?.warnings
+      if (!warnings?.length || !await confirmAction({ title: 'Advertencias de transición', message: warnings.join('\n'), confirmLabel: 'Continuar de todos modos' })) throw error
+      updated = await $fetch<BoardRecord>(`/api/records/${props.entitySlug}/${recordId}`, { method: 'PATCH', body: { ...body, acknowledgeWarnings: true } })
+    }
     optimistic.updatedAt = updated.updatedAt
     optimistic.customData = { ...updated.customData }
     emit('updated', updated)

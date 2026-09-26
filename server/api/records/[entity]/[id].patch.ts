@@ -14,6 +14,7 @@ import { assertEditableLineParents, enforceWorkflowChange, StateWorkflowError } 
 const bodySchema = z.object({
   changes: z.record(z.any()).refine(value => Object.keys(value).length > 0, 'Debes enviar al menos un cambio'),
   expectedUpdatedAt: z.string().datetime().optional()
+  , acknowledgeWarnings: z.boolean().optional()
 })
 
 export default defineEventHandler(async event => {
@@ -44,8 +45,9 @@ export default defineEventHandler(async event => {
     try {
       await assertEditableLineParents(tx, auth.tenantId, entity.id, allFields, customData)
       await assertEditableLineParents(tx, auth.tenantId, entity.id, allFields, currentData)
-      await enforceWorkflowChange(tx, { tenantId: auth.tenantId, entityId: entity.id, roleId: auth.roleId!, userId: auth.sub, recordId: id, current: currentData, next: customData, changedFields: changedNames })
+      await enforceWorkflowChange(tx, { tenantId: auth.tenantId, entityId: entity.id, roleId: auth.roleId!, userId: auth.sub, recordId: id, current: currentData, next: customData, changedFields: changedNames, acknowledgeWarnings: body.acknowledgeWarnings })
     } catch (error) {
+      if (error instanceof StateWorkflowError && error.message.startsWith('WARNINGS:')) throw createError({ statusCode: 422, statusMessage: 'La transición tiene advertencias', data: { warnings: JSON.parse(error.message.slice(9)) } })
       if (error instanceof StateWorkflowError) throw createError({ statusCode: error.statusCode, statusMessage: error.message })
       throw error
     }

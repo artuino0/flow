@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EntityFieldMeta, StateWorkflowConfig } from '~/composables/useEntityFields'
+import { toRaw } from 'vue'
 
 const props = defineProps<{ moduleId: string; fields: EntityFieldMeta[]; config?: StateWorkflowConfig | null; selectedField?: string | null }>()
 const emit = defineEmits<{ saved: [] }>()
@@ -8,8 +9,9 @@ const saving = ref(false)
 const enabled = ref(Boolean(props.config?.enabled))
 const fieldName = ref(props.config?.field ?? props.selectedField ?? '')
 const initial = ref(props.config?.initial ?? '')
-const states = ref<StateWorkflowConfig['states']>(structuredClone(props.config?.states ?? {}))
-const transitions = ref<StateWorkflowConfig['transitions']>(structuredClone(props.config?.transitions ?? []))
+const clonePlain = <T>(value: T): T => JSON.parse(JSON.stringify(toRaw(value))) as T
+const states = ref<StateWorkflowConfig['states']>(clonePlain(props.config?.states ?? {}))
+const transitions = ref<StateWorkflowConfig['transitions']>(clonePlain(props.config?.transitions ?? []))
 const roles = ref<Array<{ id: string; name: string }>>([])
 const from = ref('')
 const to = ref('')
@@ -24,8 +26,8 @@ watch(() => props.config, value => {
   enabled.value = Boolean(value?.enabled)
   fieldName.value = value?.field ?? props.selectedField ?? ''
   initial.value = value?.initial ?? ''
-  states.value = structuredClone(value?.states ?? {})
-  transitions.value = structuredClone(value?.transitions ?? [])
+  states.value = clonePlain(value?.states ?? {})
+  transitions.value = clonePlain(value?.transitions ?? [])
 }, { immediate: true })
 watch([fieldName, options], () => {
   const values = options.value.map(option => option.value)
@@ -54,7 +56,7 @@ function addTransition() {
 async function save() {
   saving.value = true
   try {
-    const workflowConfig = enabled.value ? { enabled: true, field: fieldName.value, initial: initial.value, states: states.value, transitions: transitions.value, rules: props.config?.rules ?? [] } : null
+    const workflowConfig = enabled.value ? JSON.parse(JSON.stringify({ enabled: true, field: fieldName.value, initial: initial.value, states: states.value, transitions: transitions.value, rules: toRaw(props.config?.rules ?? []) })) : null
     await $fetch(`/api/entities/${props.moduleId}`, { method: 'PUT', body: { workflowConfig } })
     toast.updated('Flujo de estados guardado', enabled.value ? 'Las reglas ya se aplican en el servidor.' : 'El flujo quedó desactivado.')
     emit('saved')

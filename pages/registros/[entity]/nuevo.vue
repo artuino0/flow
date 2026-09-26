@@ -61,6 +61,7 @@ const tablaFields = computed(() => (data.value?.fields ?? []).filter((f) => f.da
 const hasTablaFields = computed(() => tablaFields.value.length > 0)
 
 const formValues = ref<Record<string, unknown>>({})
+const fixedWorkflowValues = computed(() => data.value?.entity.workflowConfig?.enabled ? { [data.value.entity.workflowConfig.field]: data.value.entity.workflowConfig.initial } : {})
 const returnTo = computed(() => {
   const from = typeof route.query.from === 'string' ? route.query.from : ''
   return /^\/registros\/[A-Za-z0-9_-]+\/[0-9a-fA-F-]{36}$/.test(from) ? from : `/registros/${slug}`
@@ -156,7 +157,7 @@ async function onSubmit() {
           </div>
           
           <div class="p-5">
-            <DynamicForm v-if="visibleGeneralFields.length > 0" ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" />
+            <DynamicForm v-if="visibleGeneralFields.length > 0" ref="generalFormRef" v-model="formValues" :fields="generalFields" :entity-id="data.entity.id" :disabled="submitting" :fixed-values="fixedWorkflowValues" />
             <p v-else class="text-sm text-brand-text-muted">No hay campos generales configurados.</p>
             
             <p v-if="submitError" class="mt-4 text-sm text-brand-error-text">{{ submitError }}</p>

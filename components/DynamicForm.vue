@@ -21,6 +21,7 @@ const props = defineProps<{
   entityId: string
   disabled?: boolean
   disabledFields?: string[]
+  fixedValues?: Record<string, unknown>
   // Pedido directo del usuario (2026-09-04, "no parece la ventana como la de
   // pedido"): pages/registros/[entity]/nuevo.vue y .../[id]/editar.vue ahora
   // arman una tarjeta propia por cada Campo Tabla (fiel a Screen/Form Pedido
@@ -69,7 +70,7 @@ function valueFor(name: string): unknown {
 // Para binds de :value en el template - siempre string, evita el quirk de
 // TS al tipar `unknown ?? ''` (NonNullable<unknown> colapsa a "{}").
 function displayValue(name: string): string {
-  const v = props.modelValue[name]
+  const v = props.fixedValues && name in props.fixedValues ? props.fixedValues[name] : props.modelValue[name]
   return v === null || v === undefined ? '' : String(v)
 }
 
@@ -90,6 +91,7 @@ function isCalculated(field: EntityFieldMeta): boolean {
 }
 
 function setValue(name: string, value: unknown) {
+  if (props.fixedValues && name in props.fixedValues) return
   emit('update:modelValue', { ...props.modelValue, [name]: value })
 }
 
@@ -128,7 +130,7 @@ defineExpose({ validateAll })
       <select
         v-if="field.dataType === 'text' && Array.isArray(field.validationRules?.enum)"
         :id="`field-${field.name}`"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
@@ -143,7 +145,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'text'"
         :id="`field-${field.name}`"
         type="text"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         :maxlength="(field.validationRules?.maxLength as number) || undefined"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
@@ -206,7 +208,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'date'"
         :id="`field-${field.name}`"
         type="date"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         :min="field.validationRules?.min as string"
         :max="field.validationRules?.max as string"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
@@ -220,7 +222,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'json'"
         :id="`field-${field.name}`"
         rows="4"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         placeholder="{}"
         class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
@@ -233,7 +235,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'select' || field.dataType === 'multiselect'"
         :field="field"
         :model-value="valueFor(field.name)"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         :detail="detail"
         @update:model-value="(value) => setValue(field.name, value)"
       />
@@ -243,7 +245,7 @@ defineExpose({ validateAll })
         v-else-if="field.dataType === 'tabla'"
         :field="field"
         :model-value="(valueFor(field.name) as Record<string, unknown>[]) ?? []"
-        :disabled="disabled || disabledFields?.includes(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         @update:model-value="(rows) => setValue(field.name, rows)"
       />
 

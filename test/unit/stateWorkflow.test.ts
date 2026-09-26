@@ -32,4 +32,18 @@ describe('stateWorkflowSchema', () => {
   it('rechaza campos exceptuados en estados no bloqueantes', () => {
     expect(stateWorkflowSchema.safeParse({ ...valid, states: { ...valid.states, borrador: { locked: false, editableFields: ['nota'] } } }).success).toBe(false)
   })
+
+  it('acepta las tres formas de regla con modo y destino', () => {
+    const rules = [
+      { type: 'required', mode: 'block', when: { to: 'pagado' }, fields: ['referencia'], message: 'Falta referencia' },
+      { type: 'lineCompare', mode: 'warn', when: { from: 'borrador', to: 'pagado' }, lineEntity: 'partidas', relationField: 'pedido', valueField: 'cantidad', relatedField: 'producto', compareField: 'disponible', operator: '<=', message: 'Excede inventario' },
+      { type: 'aggregate', mode: 'block', when: { to: 'pagado' }, lineEntity: 'partidas', relationField: 'pedido', aggregate: 'count', operator: '>', value: 0, message: 'Agrega partidas' }
+    ]
+    expect(stateWorkflowSchema.safeParse({ ...valid, rules }).success).toBe(true)
+  })
+
+  it('rechaza reglas con operadores o modos no permitidos', () => {
+    const rule = { type: 'aggregate', mode: 'ignore', when: { to: 'pagado' }, relationField: 'pedido', aggregate: 'count', operator: '!=', value: 0, message: 'Agrega partidas' }
+    expect(stateWorkflowSchema.safeParse({ ...valid, rules: [rule] }).success).toBe(false)
+  })
 })

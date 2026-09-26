@@ -77,6 +77,7 @@ interface ActionOutcome {
   retryable: boolean
   responseStatus?: number
   error?: string
+  acceptedWarnings?: string[]
 }
 
 /** Snapshot de UN disparo de trigger - lo que se firma/manda al webhook y lo que queda en trigger_logs.request_payload para reusar tal cual en los reintentos. */
@@ -211,16 +212,18 @@ async function runUpdateFieldAction(tenantId: string, entityId: string, recordId
     const schema = await getEntityZodSchema(tenantId, entityId)
     const validated = schema.safeParse(merged)
     if (!validated.success) return { ok: false, retryable: false, error: `El valor calculado no pasa la validación del campo "${parsed.data.field}": ${JSON.stringify(validated.error.flatten().fieldErrors)}` }
+    let acceptedWarnings: string[] = []
     try {
       await assertWritableRelations(tx, tenantId, relationFields, validated.data as Record<string, unknown>, currentData)
       const nextData = validated.data as Record<string, unknown>
-      await enforceWorkflowChange(tx, { tenantId, entityId, roleId: '', userId: null, recordId, current: currentData, next: nextData, changedFields: Object.keys(nextData).filter(name => JSON.stringify(currentData[name]) !== JSON.stringify(nextData[name])) })
+      const transition = await enforceWorkflowChange(tx, { tenantId, entityId, roleId: '', userId: null, recordId, current: currentData, next: nextData, changedFields: Object.keys(nextData).filter(name => JSON.stringify(currentData[name]) !== JSON.stringify(nextData[name])), acknowledgeWarnings: true })
+      acceptedWarnings = transition?.acceptedWarnings ?? []
     } catch (error) {
       return { ok: false, retryable: false, error: error instanceof Error ? error.message : String(error) }
     }
     await tx.update(records).set({ customData: validated.data, updatedAt: new Date() }).where(eq(records.id, recordId))
     await recalculateCalculatedDependents(tx, tenantId, entityId, currentData, validated.data as Record<string, unknown>)
-    return { ok: true, retryable: false }
+    return { ok: true, retryable: false, ...(acceptedWarnings.length ? { acceptedWarnings } : {}) }
   })
 }
 
@@ -302,7 +305,7 @@ async function runUpsertRecordAction(
           if (!validated.success) throw new Error(`El registro destino no cumple sus campos obligatorios: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
           await assertWritableRelations(tx, tenantId, targetFields, validated.data as Record<string, unknown>, currentData)
           const changes = Object.keys(validated.data as Record<string, unknown>).filter(field => JSON.stringify(currentData[field]) !== JSON.stringify((validated.data as Record<string, unknown>)[field])).map(field => ({ field, old: currentData[field], new: (validated.data as Record<string, unknown>)[field] }))
-          await enforceWorkflowChange(tx, { tenantId, entityId: targetEntity.id, roleId: '', userId: null, recordId: target.id, current: currentData, next: validated.data as Record<string, unknown>, changedFields: changes.map(change => change.field) })
+          await enforceWorkflowChange(tx, { tenantId, entityId: targetEntity.id, roleId: '', userId: null, recordId: target.id, current: currentData, next: validated.data as Record<string, unknown>, changedFields: changes.map(change => change.field), acknowledgeWarnings: true })
           if (changes.length) {
             ;[target] = await tx.update(records).set({ customData: validated.data, isDirty: false, updatedAt: new Date() }).where(eq(records.id, target.id)).returning()
             await tx.insert(recordActivities).values({ tenantId, recordId: target.id, userId: null, actionType: 'UPDATED', details: { changes, workflowActionId: actionId, sourceRecordId } })
@@ -474,7 +477,7 @@ async function runActionsPipeline(
   actions: TriggerActionRow[],
   payload: TriggerPayload,
   branch?: WorkflowBranch
-): Promise<{ anyFailed: boolean; anyRetryable: boolean; lastError?: string; lastResponseStatus?: number }> {
+): Promise<{ anyFailed: boolean; anyRetryable: boolean; lastError?: string; lastResponseStatus?: number; acceptedWarnings: string[] }> {
   const rawBody = JSON.stringify(payload)
   const templateData = payload.record?.data ?? {}
 
@@ -482,6 +485,7 @@ async function runActionsPipeline(
   let anyRetryable = false
   let lastError: string | undefined
   let lastResponseStatus: number | undefined
+  const acceptedWarnings: string[] = []
 
   const [entity] = await withTenant(tenantId, tx => tx.select({ slug: entities.slug }).from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1))
   const recordPath = entity && recordId ? `/registros/${entity.slug}/${recordId}` : undefined
@@ -526,9 +530,10 @@ async function runActionsPipeline(
       lastError = outcome.error
     }
     if (outcome.responseStatus !== undefined) lastResponseStatus = outcome.responseStatus
+    if (outcome.acceptedWarnings?.length) acceptedWarnings.push(...outcome.acceptedWarnings)
   }
 
-  return { anyFailed, anyRetryable, lastError, lastResponseStatus }
+  return { anyFailed, anyRetryable, lastError, lastResponseStatus, acceptedWarnings }
 }
 
 /**
@@ -567,7 +572,7 @@ export async function executeTriggerActions(
     return
   }
 
-  const { anyFailed, anyRetryable, lastError, lastResponseStatus } = await runActionsPipeline(tenantId, entityId, recordId, actions, payload, decision === undefined ? undefined : decision ? 'yes' : 'no')
+  const { anyFailed, anyRetryable, lastError, lastResponseStatus, acceptedWarnings } = await runActionsPipeline(tenantId, entityId, recordId, actions, payload, decision === undefined ? undefined : decision ? 'yes' : 'no')
   const status = resolveStatus(anyFailed, anyRetryable, 1)
 
   await withTenant(tenantId, (tx) =>
@@ -578,7 +583,7 @@ export async function executeTriggerActions(
       status,
       attemptCount: 1,
       lastError: lastError ?? null,
-      requestPayload: payload,
+      requestPayload: { ...payload, ...(acceptedWarnings.length ? { acceptedWarnings } : {}) },
       responseStatus: lastResponseStatus ?? null
     })
   )
