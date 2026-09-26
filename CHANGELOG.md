@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.94.1] - 2026-09-26
+#### [bug]
+- [ERD-97](https://dydasoftware.atlassian.net/browse/ERD-97) - `qa-deploy.ps1` ahora sí detiene el servidor QA anterior (por `.qa-pid` y dueño del puerto), espera a liberar el puerto y muestra el error de arranque del log.
+
 ### [0.94.0] - 2026-09-26
 #### [feature]
 - [ERD-96](https://dydasoftware.atlassian.net/browse/ERD-96) - Flujo de estados fase 1: un campo Select define estados, transiciones por rol y estados bloqueantes; el servidor rechaza transiciones, ediciones y borrados no permitidos (también en Kanban, CSV y automatizaciones).

@@ -44,10 +44,40 @@ $pidFile = Join-Path $qa '.qa-pid'
 $logFile = Join-Path $qa 'qa-server.log'
 
 function Stop-Qa {
-  $procs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-    Where-Object { $_.CommandLine -and $_.CommandLine -like "*frontback-qa*\.output\server\index.mjs*" }
-  foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force; Write-Host "QA detenido (PID $($p.ProcessId))" }
+  $pids = [System.Collections.Generic.HashSet[int]]::new()
+  if (Test-Path $pidFile) {
+    $savedPid = 0
+    if ([int]::TryParse((Get-Content -Raw $pidFile).Trim(), [ref]$savedPid) -and
+        (Get-Process -Id $savedPid -ErrorAction SilentlyContinue)) {
+      [void]$pids.Add($savedPid)
+    }
+  }
+
+  $connections = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+  foreach ($connection in $connections) {
+    $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($connection.OwningProcess)"
+    if ($owner.CommandLine -match '\.output[\\/]server[\\/]index\.mjs') {
+      [void]$pids.Add([int]$connection.OwningProcess)
+    } else {
+      throw "El puerto $Port está ocupado por PID $($connection.OwningProcess), que no parece ser el servidor QA (.output/server/index.mjs). No se detuvo."
+    }
+  }
+
+  foreach ($processId in $pids) {
+    if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+      Stop-Process -Id $processId -Force
+      Write-Host "QA detenido (PID $processId)"
+    }
+  }
+
   if (Test-Path $pidFile) { Remove-Item $pidFile -Force }
+  $deadline = (Get-Date).AddSeconds(15)
+  do {
+    $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if (-not $listeners) { return }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+  throw "El puerto $Port sigue ocupado después de esperar 15 segundos."
 }
 
 if (-not (Test-Path (Join-Path $qa '.env'))) { throw "No existe $qa\.env. Haz la preparación única descrita en el encabezado del script." }
@@ -89,6 +119,12 @@ try {
   $proc = Start-Process -FilePath 'node' -ArgumentList '--env-file=.env', '.output/server/index.mjs' `
     -WorkingDirectory $qa -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" -WindowStyle Hidden -PassThru
   $proc.Id | Set-Content $pidFile
+  Start-Sleep -Seconds 2
+  $proc.Refresh()
+  if ($proc.HasExited) {
+    $errTail = if (Test-Path "$logFile.err") { (Get-Content "$logFile.err" -Tail 20) -join "`n" } else { '(qa-server.log.err no existe)' }
+    throw "El servidor QA terminó al arrancar (código $($proc.ExitCode)). Últimas líneas de qa-server.log.err:`n$errTail"
+  }
 } finally {
   Pop-Location
 }
