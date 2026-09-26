@@ -1,8 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/job-queue", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/trigger-retries", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/olap-etl", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/billing-usage", "schedule": "10 6 * * *" }
   ]
 }

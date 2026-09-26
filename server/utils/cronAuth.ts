@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { H3Event, createError, getHeader } from 'h3'
 
+// En Vercel Hobby, job-queue, trigger-retries y olap-etl se disparan cada 15 min por un programador externo; al pasar a Pro, volver a agregarlos a vercel.json.
+
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)

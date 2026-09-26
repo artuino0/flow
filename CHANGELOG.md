@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.93.0] - 2026-09-25
+#### [feature]
+- [ERD-95](https://dydasoftware.atlassian.net/browse/ERD-95) - Crons compatibles con Vercel Hobby: `vercel.json` solo con facturación diaria; cola, reintentos y ETL se disparan desde un programador externo con `CRON_SECRET`.
+
 ### [0.92.2] - 2026-09-25
 #### [bug]
 - [ERD-94](https://dydasoftware.atlassian.net/browse/ERD-94) - Los 15 `confirm()` nativos se reemplazan por el diálogo de Flow (variante destructiva en rojo, foco en Cancelar, `Esc` cancela), incluida la salida de Ajustes con cambios sin guardar.
