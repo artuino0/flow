@@ -14,6 +14,15 @@ export interface PutStoredObjectInput {
   cacheControl?: string
 }
 
+export interface StoredObjectAdapter {
+  put(input: PutStoredObjectInput): Promise<void>
+  get(key: string): Promise<Buffer>
+  delete(key: string): Promise<void>
+}
+
+let adapter: StoredObjectAdapter | null = null
+export function setStoredObjectAdapter(value: StoredObjectAdapter | null) { adapter = value }
+
 function localRoot() {
   return process.env.FILES_STORAGE_DIR
     ? path.resolve(process.env.FILES_STORAGE_DIR)
@@ -64,6 +73,7 @@ export function localObjectPath(key: string) {
 
 export async function putStoredObject(input: PutStoredObjectInput): Promise<void> {
   assertKey(input.key)
+  if (adapter) return adapter.put(input)
   if (driver() === 'local') {
     const target = localObjectPath(input.key)
     await fs.mkdir(path.dirname(target), { recursive: true })
@@ -82,6 +92,7 @@ export async function putStoredObject(input: PutStoredObjectInput): Promise<void
 
 export async function getStoredObject(key: string): Promise<Buffer> {
   assertKey(key)
+  if (adapter) return adapter.get(key)
   if (driver() === 'local') {
     try { return await fs.readFile(localObjectPath(key)) } catch (error: any) {
       if (error?.code === 'ENOENT') throw new StoredObjectNotFoundError('Archivo no encontrado')
@@ -101,6 +112,7 @@ export async function getStoredObject(key: string): Promise<Buffer> {
 
 export async function deleteStoredObject(key: string): Promise<void> {
   assertKey(key)
+  if (adapter) return adapter.delete(key)
   if (driver() === 'local') {
     await fs.rm(localObjectPath(key), { force: true })
     return

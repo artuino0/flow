@@ -1,9 +1,9 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { files, entities } from '~/server/db/schema'
+import { deleteStoredObject, getStoredObject, localObjectPath, putStoredObject } from '~/server/utils/objectStorage'
 
 type Tx = typeof db
 
@@ -20,12 +20,6 @@ type Tx = typeof db
 // real, sin pasar por HTTP ni por multipart/form-data.
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB
-
-function storageDir(): string {
-  return process.env.FILES_STORAGE_DIR
-    ? path.resolve(process.env.FILES_STORAGE_DIR)
-    : path.resolve(process.cwd(), 'uploads')
-}
 
 export class FileTooLargeError extends Error {}
 export class FileEntityNotFoundError extends Error {}
@@ -80,12 +74,8 @@ export async function storeFile(
     await assertEntityInTenant(tx, tenantId, entityId)
 
     const id = randomUUID()
-    const diskName = `${id}-${sanitizeForDisk(input.fileName)}`
-    const relativeKey = path.join(tenantId, diskName)
-    const fullPath = path.join(storageDir(), relativeKey)
-
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true })
-    fs.writeFileSync(fullPath, input.buffer)
+    const relativeKey = `tenants/${tenantId}/files/${id}-${sanitizeForDisk(input.fileName)}`
+    await putStoredObject({ key: relativeKey, body: input.buffer, contentType: input.mimeType || 'application/octet-stream' })
 
     try {
       const [row] = await tx
@@ -105,7 +95,7 @@ export async function storeFile(
     } catch (err) {
       // Si el insert falla (ej. entityId no existe -> FK violation), no dejar
       // el archivo huerfano en disco.
-      fs.rmSync(fullPath, { force: true })
+      await deleteStoredObject(relativeKey)
       const code = (err as { code?: string; cause?: { code?: string } })?.code ?? (err as { cause?: { code?: string } })?.cause?.code
       if (code === '23503') {
         throw new FileEntityNotFoundError(`La entidad ${entityId} no existe en este tenant`)
@@ -117,6 +107,7 @@ export async function storeFile(
 
 export interface FileRecord extends StoredFile {
   fullPath: string
+  storageKey: string
 }
 
 /** Busca la metadata de un archivo (para servirlo o borrarlo) - null si no existe en este tenant. */
@@ -131,7 +122,8 @@ export async function getFile(tenantId: string, fileId: string): Promise<FileRec
       mimeType: row.mimeType,
       sizeBytes: row.sizeBytes,
       createdAt: row.createdAt,
-      fullPath: path.join(storageDir(), row.storageKey)
+      fullPath: localObjectPath(row.storageKey.replaceAll('\\', '/')),
+      storageKey: row.storageKey
     }
   })
 }
@@ -144,6 +136,13 @@ export async function deleteFile(tenantId: string, fileId: string): Promise<bool
   await withTenant(tenantId, async (tx) => {
     await tx.delete(files).where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
   })
-  fs.rmSync(record.fullPath, { force: true })
+  await deleteStoredObject(record.storageKey.replaceAll('\\', '/'))
   return true
+}
+
+export async function readFile(tenantId: string, fileId: string): Promise<Buffer | null> {
+  const record = await getFile(tenantId, fileId)
+  if (!record) return null
+  if (!record.storageKey.replaceAll('\\', '/').startsWith(`tenants/${tenantId}/files/`) && !record.storageKey.replaceAll('\\', '/').startsWith(`${tenantId}/`)) return null
+  return getStoredObject(record.storageKey.replaceAll('\\', '/'))
 }

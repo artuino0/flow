@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { and, eq, sql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import type { db } from '~/server/db'
@@ -10,6 +8,7 @@ import { buildStampInput, snapshotEmisor, validarReceptorParaTimbrar, type Emiso
 import type { PacPaymentStampInput, PacProvider, PacStampInput, PacStampResult } from '~/server/utils/pac/provider'
 import { PacProviderError } from '~/server/utils/pac/provider'
 import { createTransporter, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { getStoredObject, putStoredObject, StoredObjectNotFoundError } from '~/server/utils/objectStorage'
 
 // Fases D/F/G de DOCS/HU_Timbrado_CFDI_PAC.md: el motor de timbrado.
 //
@@ -32,33 +31,33 @@ type Tx = typeof db
 
 export class CfdiStampError extends CfdiDocumentError {}
 
-function storageDir(): string {
-  return process.env.FILES_STORAGE_DIR ? path.resolve(process.env.FILES_STORAGE_DIR) : path.resolve(process.cwd(), 'uploads')
-}
-
 function binaryKey(tenantId: string, docId: string, kind: 'xml' | 'pdf'): string {
-  return path.join('cfdi', tenantId, `${docId}.${kind}`)
+  return `tenants/${tenantId}/cfdi/${docId}.${kind}`
 }
 
 async function logEvent(tx: Tx, tenantId: string, documentId: string, tipo: string, detalle: Record<string, unknown>, userId: string | null) {
   await tx.insert(cfdiEvents).values({ tenantId, documentId, tipo, detalle, createdBy: userId })
 }
 
-function storeCfdiBinaries(tenantId: string, docId: string, xml: Buffer, pdf: Buffer): { xmlKey: string; pdfKey: string } {
+async function storeCfdiBinaries(tenantId: string, docId: string, xml: Buffer, pdf: Buffer): Promise<{ xmlKey: string; pdfKey: string }> {
   const xmlKey = binaryKey(tenantId, docId, 'xml')
   const pdfKey = binaryKey(tenantId, docId, 'pdf')
   // clave determinista por documento: re-adopcion/reintento simplemente sobrescribe
-  fs.mkdirSync(path.dirname(path.join(storageDir(), xmlKey)), { recursive: true })
-  fs.writeFileSync(path.join(storageDir(), xmlKey), xml)
-  fs.writeFileSync(path.join(storageDir(), pdfKey), pdf)
+  await putStoredObject({ key: xmlKey, body: xml, contentType: 'application/xml' })
+  await putStoredObject({ key: pdfKey, body: pdf, contentType: 'application/pdf' })
   return { xmlKey, pdfKey }
 }
 
-export function loadCfdiBinary(tenantId: string, docId: string, kind: 'xml' | 'pdf'): { fullPath: string; fileName: string } | null {
+export async function loadCfdiBinary(tenantId: string, docId: string, kind: 'xml' | 'pdf'): Promise<{ body: Buffer; fileName: string } | null> {
   const key = binaryKey(tenantId, docId, kind)
-  const fullPath = path.join(storageDir(), key)
-  if (!fs.existsSync(fullPath)) return null
-  return { fullPath, fileName: `${docId}.${kind}` }
+  try { return { body: await getStoredObject(key), fileName: `${docId}.${kind}` } } catch (error) {
+    if (!(error instanceof StoredObjectNotFoundError)) throw error
+    // Registros previos a ERD-98 apuntan a cfdi/<tenant>/<documento>.<tipo>.
+    try { return { body: await getStoredObject(`cfdi/${tenantId}/${docId}.${kind}`), fileName: `${docId}.${kind}` } } catch (legacyError) {
+      if (!(legacyError instanceof StoredObjectNotFoundError)) throw legacyError
+    }
+    return null
+  }
 }
 
 export interface StampSummary {
@@ -69,7 +68,7 @@ export interface StampSummary {
 }
 
 async function adoptDocument(tenantId: string, documentId: string, result: PacStampResult & { adoptado?: boolean }, userId: string | null): Promise<StampSummary> {
-  const { xmlKey, pdfKey } = storeCfdiBinaries(tenantId, documentId, result.xml, result.pdf)
+  const { xmlKey, pdfKey } = await storeCfdiBinaries(tenantId, documentId, result.xml, result.pdf)
   return withTenant(tenantId, async (tx) => {
     const [row] = await tx
       .update(cfdiDocuments)
@@ -304,8 +303,8 @@ export async function sendCfdiEmail(tenantId: string, documentId: string, para?:
   const destino = (para?.trim() || doc.documento.receptorCorreo || '').trim()
   if (!destino || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destino)) throw new CfdiDocumentError('Indica un correo de destino válido')
 
-  const xml = doc.documento.xmlStorageKey ? loadCfdiBinary(tenantId, documentId, 'xml') : null
-  const pdf = doc.documento.pdfStorageKey ? loadCfdiBinary(tenantId, documentId, 'pdf') : null
+  const xml = doc.documento.xmlStorageKey ? await loadCfdiBinary(tenantId, documentId, 'xml') : null
+  const pdf = doc.documento.pdfStorageKey ? await loadCfdiBinary(tenantId, documentId, 'pdf') : null
   if (!xml || !pdf) throw new CfdiStampError('Los archivos timbrados ya no están en disco; no se puede enviar', 409)
 
   let smtp
@@ -326,8 +325,8 @@ export async function sendCfdiEmail(tenantId: string, documentId: string, para?:
     subject: `CFDI ${folioTexto} de ${doc.documento.emisorNombre ?? 'tu proveedor'}`,
     html: `<p>Hola, ${doc.documento.receptorNombre ?? ''}:</p><p>Adjuntamos el comprobante fiscal digital <strong>${folioTexto}</strong> (UUID ${uuidCorto}) en sus versiones XML y PDF.</p><p>Saludos.</p>`,
     attachments: [
-      { filename: `${folioTexto}_${uuidCorto}.xml`.replace(/\s/g, ''), contentType: 'application/xml', content: fs.readFileSync(xml.fullPath) },
-      { filename: `${folioTexto}_${uuidCorto}.pdf`.replace(/\s/g, ''), contentType: 'application/pdf', content: fs.readFileSync(pdf.fullPath) }
+      { filename: `${folioTexto}_${uuidCorto}.xml`.replace(/\s/g, ''), contentType: 'application/xml', content: xml.body },
+      { filename: `${folioTexto}_${uuidCorto}.pdf`.replace(/\s/g, ''), contentType: 'application/pdf', content: pdf.body }
     ]
   })
   await withTenant(tenantId, (tx) => logEvent(tx, tenantId, documentId, 'email_enviado', { para: destino }, null))

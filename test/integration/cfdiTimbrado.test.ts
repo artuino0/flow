@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type * as CfdiDocumentsModule from '../../server/utils/cfdiDocuments'
 import type * as TimbradoModule from '../../server/utils/cfdi/timbrado'
+import { getStoredObject, setStoredObjectAdapter, type StoredObjectAdapter } from '../../server/utils/objectStorage'
 import type {
   PacCancelInput,
   PacPaymentStampInput,
@@ -158,12 +159,30 @@ describe('stampDocument: camino feliz', () => {
     const detail = await docs.getDocumentDetail(TENANT, id)
     expect(detail.documento.uuidFiscal).toBe(res.uuidFiscal)
     expect(detail.documento.xmlStorageKey).toBeTruthy()
-    const xmlPath = path.join(storageDir, detail.documento.xmlStorageKey!)
-    expect(fs.readFileSync(xmlPath, 'utf8')).toBe('<xml fake/>')
+    expect(detail.documento.xmlStorageKey).toMatch(new RegExp(`^tenants/${TENANT}/cfdi/`))
+    expect((await getStoredObject(detail.documento.xmlStorageKey!)).toString('utf8')).toBe('<xml fake/>')
+    expect((await timbrado.loadCfdiBinary(TENANT, id, 'pdf'))?.body.toString('utf8')).toBe('%PDF fake')
     expect(await eventTipos(id)).toEqual(expect.arrayContaining(['folio_asignado', 'intento_timbrado', 'timbrado_ok']))
 
     const [serie] = await admin`select next_folio from cfdi_series where id = ${serieI}`
     expect(serie.next_folio).toBe(2)
+  })
+
+  it('guarda y lee XML/PDF mediante el adaptador remoto en memoria sin borrar los CFDI', async () => {
+    const objects = new Map<string, Buffer>()
+    const adapter: StoredObjectAdapter = {
+      async put({ key, body }) { objects.set(key, Buffer.from(body)) },
+      async get(key) { const body = objects.get(key); if (!body) throw new Error('missing'); return Buffer.from(body) },
+      async delete(key) { objects.delete(key) }
+    }
+    setStoredObjectAdapter(adapter)
+    try {
+      const { id } = await createDoc()
+      await timbrado.stampDocument(TENANT, id, null, new FakeProvider())
+      expect((await timbrado.loadCfdiBinary(TENANT, id, 'xml'))?.body.toString()).toBe('<xml fake/>')
+      expect((await timbrado.loadCfdiBinary(TENANT, id, 'pdf'))?.body.toString()).toBe('%PDF fake')
+      expect(objects.size).toBe(2)
+    } finally { setStoredObjectAdapter(null) }
   })
 
   it('doble timbrado: 409 sin volver a llamar al PAC', async () => {

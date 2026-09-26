@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type * as PacSettingsModule from '../../server/utils/pacSettings'
 import type { getPacProvider as GetPacProvider } from '../../server/utils/pac/provider'
+import { getStoredObject, setStoredObjectAdapter, type StoredObjectAdapter } from '../../server/utils/objectStorage'
 
 // Fase B de DOCS/HU_Timbrado_CFDI_PAC.md: configuracion PAC por tenant.
 // Postgres REAL (RLS FORCE sobre tenant_pac_settings, migracion 0049) + disco
@@ -127,11 +128,11 @@ describe('CSD: binarios a disco, contraseña cifrada, validaciones', () => {
     )
 
     let full = await mod.getFullPacSettings(TENANT_A)
-    expect(full.csdCerPath && fs.existsSync(full.csdCerPath)).toBe(true)
-    expect(full.csdKeyPath && fs.existsSync(full.csdKeyPath)).toBe(true)
+    expect(full.csdCerStorageKey).toBeTruthy()
+    expect(full.csdKeyStorageKey).toBeTruthy()
     expect(full.csdPassword).toBe(CSD_PASSWORD_PLAIN)
-    expect(full.csdCerPath!.startsWith(path.join(storageDir, TENANT_A))).toBe(true)
-    const primerCer = full.csdCerPath!
+    expect(full.csdCerStorageKey!.startsWith(`tenants/${TENANT_A}/csd/`)).toBe(true)
+    const primerCer = full.csdCerStorageKey!
 
     const summary = await mod.getPacSummary(TENANT_A)
     expect(summary?.hasCsd).toBe(true)
@@ -151,7 +152,7 @@ describe('CSD: binarios a disco, contraseña cifrada, validaciones', () => {
     )
     expect(fs.existsSync(primerCer)).toBe(false)
     full = await mod.getFullPacSettings(TENANT_A)
-    expect(fs.readFileSync(full.csdCerPath!, 'utf8')).toBe('cer-dos')
+    expect((await getStoredObject(full.csdCerStorageKey!)).toString('utf8')).toBe('cer-dos')
     const summary2 = await mod.getPacSummary(TENANT_A)
     expect(summary2?.csdCerFileName).toBe('CSD_2.cer')
   })
@@ -159,13 +160,34 @@ describe('CSD: binarios a disco, contraseña cifrada, validaciones', () => {
   it('deleteCsdFiles borra archivos y columnas, y es idempotente', async () => {
     const full = await mod.getFullPacSettings(TENANT_A)
     expect(await mod.deleteCsdFiles(TENANT_A)).toBe(true)
-    expect(fs.existsSync(full.csdCerPath!)).toBe(false)
-    expect(fs.existsSync(full.csdKeyPath!)).toBe(false)
+    await expect(getStoredObject(full.csdCerStorageKey!)).rejects.toThrow()
+    await expect(getStoredObject(full.csdKeyStorageKey!)).rejects.toThrow()
     const summary = await mod.getPacSummary(TENANT_A)
     expect(summary?.hasCsd).toBe(false)
     expect(summary?.csdCerFileName).toBeNull()
     // la API key sobrevive (borrar el CSD no desconfigura el PAC)
     expect(summary?.hasApiKey).toBe(true)
     expect(await mod.deleteCsdFiles(TENANT_A)).toBe(false)
+  })
+
+  it('guarda y recupera los binarios CSD con el adaptador remoto en memoria', async () => {
+    const objects = new Map<string, Buffer>()
+    const adapter: StoredObjectAdapter = {
+      async put({ key, body }) { objects.set(key, Buffer.from(body)) },
+      async get(key) { const value = objects.get(key); if (!value) throw new Error('missing'); return Buffer.from(value) },
+      async delete(key) { objects.delete(key) }
+    }
+    setStoredObjectAdapter(adapter)
+    try {
+      await mod.storeCsdFiles(TENANT_A,
+        { fileName: 'remoto.cer', buffer: Buffer.from('cer-remoto') },
+        { fileName: 'remoto.key', buffer: Buffer.from('key-remoto') })
+      const full = await mod.getFullPacSettings(TENANT_A)
+      expect(full.csdCerStorageKey && objects.get(full.csdCerStorageKey)?.toString()).toBe('cer-remoto')
+      expect(full.csdKeyStorageKey && objects.get(full.csdKeyStorageKey)?.toString()).toMatch(/^v1\./)
+      expect(full.csdKeyStorageKey && objects.get(full.csdKeyStorageKey)?.toString()).not.toContain('key-remoto')
+      expect(await mod.readCsdPrivateKey(TENANT_A)).toEqual(Buffer.from('key-remoto'))
+      expect(full.csdPassword).toBe(CSD_PASSWORD_PLAIN)
+    } finally { setStoredObjectAdapter(null) }
   })
 })

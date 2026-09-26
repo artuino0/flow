@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.94.2] - 2026-09-26
+#### [bug]
+- [ERD-98](https://dydasoftware.atlassian.net/browse/ERD-98) - CFDI (XML/PDF), CSD cifrados y archivos de usuario ahora usan el almacenamiento de objetos (`local` o R2) con claves por organización; script de migración para on-premise. En producción con R2 solo falta desplegar.
+
 ### [0.94.1] - 2026-09-26
 #### [bug]
 - [ERD-97](https://dydasoftware.atlassian.net/browse/ERD-97) - `qa-deploy.ps1` ahora sí detiene el servidor QA anterior (por `.qa-pid` y dueño del puerto), espera a liberar el puerto y muestra el error de arranque del log.

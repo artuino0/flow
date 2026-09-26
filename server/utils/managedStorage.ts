@@ -62,7 +62,7 @@ export async function storeManagedFile(tenantId: string, entityId: string, input
     const [entity] = await tx.select({ id: entities.id }).from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1)
     if (!entity) throw createError({ statusCode: 422, statusMessage: 'La entidad no existe en este tenant' })
     const id = randomUUID()
-    const storageKey = key(tenantId, 'records', id, input.fileName)
+    const storageKey = key(tenantId, 'files', id, input.fileName)
     await reserveStorage(tenantId, input.buffer.length)
     try {
       await putStoredObject({ key: storageKey, body: input.buffer, contentType: input.mimeType })
@@ -81,12 +81,17 @@ export async function getManagedFile(tenantId: string, fileId: string) {
     return row ?? null
   })
 }
-export async function readManagedFile(storageKey: string) { return getStoredObject(storageKey) }
+export async function readManagedFile(tenantId: string, storageKey: string) {
+  const normalized = storageKey.replaceAll('\\', '/')
+  const legacyPrefix = `${tenantId}/`
+  if (!normalized.startsWith(`tenants/${tenantId}/files/`) && !normalized.startsWith(`tenants/${tenantId}/records/`) && !normalized.startsWith(legacyPrefix)) throw new StoredObjectNotFoundError('Archivo no encontrado')
+  return getStoredObject(normalized)
+}
 export async function deleteManagedFile(tenantId: string, fileId: string) {
   const file = await getManagedFile(tenantId, fileId)
   if (!file) return false
   await withTenant(tenantId, async tx => { await tx.delete(files).where(and(eq(files.id, fileId), eq(files.tenantId, tenantId))) })
-  await deleteStoredObject(file.storageKey).catch(error => { if (!(error instanceof StoredObjectNotFoundError)) throw error })
+  await deleteStoredObject(file.storageKey.replaceAll('\\', '/')).catch(error => { if (!(error instanceof StoredObjectNotFoundError)) throw error })
   await releaseStorage(tenantId, file.sizeBytes)
   return true
 }

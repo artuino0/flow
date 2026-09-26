@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
 
   setResponseHeader(event, 'Content-Type', file.mimeType)
   setResponseHeader(event, 'Content-Disposition', `inline; filename="${file.fileName.replace(/"/g, '')}"`)
-  try { return await readManagedFile(file.storageKey) } catch (error) {
+  try { return await readManagedFile(auth.tenantId, file.storageKey) } catch (error) {
     if (error instanceof StoredObjectNotFoundError) throw createError({ statusCode: 404, statusMessage: 'El archivo ya no existe en almacenamiento' })
     throw error
   }

@@ -1,10 +1,10 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { randomUUID, X509Certificate } from 'node:crypto'
+import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { tenantPacSettings } from '~/server/db/schema'
 import { encryptSetting, decryptSetting } from '~/server/utils/settingsCrypto'
+import { deleteStoredObject, getStoredObject, putStoredObject } from '~/server/utils/objectStorage'
 
 // Fase B de DOCS/HU_Timbrado_CFDI_PAC.md: credenciales PAC por tenant.
 // Secretos (API key, contraseña del CSD) SIEMPRE cifrados con settingsCrypto
@@ -24,10 +24,6 @@ const MAX_CSD_SIZE_BYTES = 100 * 1024 // los CSD reales pesan ~2-5 KB; 100 KB es
 
 export class PacNotConfiguredError extends Error {}
 export class CsdInvalidError extends Error {}
-
-function storageDir(): string {
-  return process.env.FILES_STORAGE_DIR ? path.resolve(process.env.FILES_STORAGE_DIR) : path.resolve(process.cwd(), 'uploads')
-}
 
 // Mismo saneo que tenantLogo.ts/fileStorage.ts (duplicado a proposito, ver
 // comentario alla: 2 lineas no justifican romper el aislamiento del util).
@@ -72,8 +68,8 @@ export interface FullPacSettings {
   apiKey: string
   sandbox: boolean
   csdPassword: string | null
-  csdCerPath: string | null
-  csdKeyPath: string | null
+  csdCerStorageKey: string | null
+  csdKeyStorageKey: string | null
 }
 
 /**
@@ -93,14 +89,13 @@ export async function getFullPacSettings(tenantId: string): Promise<FullPacSetti
     if (row.provider !== 'lab' && !row.apiKeyEncrypted) {
       throw new PacNotConfiguredError('La facturación no está configurada para esta organización')
     }
-    const dir = storageDir()
     return {
       provider: row.provider,
       apiKey: row.apiKeyEncrypted ? decryptSetting(row.apiKeyEncrypted) : '',
       sandbox: row.sandbox,
       csdPassword: row.csdPasswordEncrypted ? decryptSetting(row.csdPasswordEncrypted) : null,
-      csdCerPath: row.csdCerStorageKey ? path.join(dir, row.csdCerStorageKey) : null,
-      csdKeyPath: row.csdKeyStorageKey ? path.join(dir, row.csdKeyStorageKey) : null
+      csdCerStorageKey: row.csdCerStorageKey,
+      csdKeyStorageKey: row.csdKeyStorageKey
     }
   })
 }
@@ -169,16 +164,14 @@ export async function storeCsdFiles(tenantId: string, cer: CsdFileInput, key: Cs
     if (file.buffer.length > MAX_CSD_SIZE_BYTES) throw new CsdInvalidError('Cada archivo del CSD debe pesar menos de 100 KB')
   }
 
-  const cerKey = path.join(tenantId, `csd-cer-${randomUUID()}-${sanitizeForDisk(cer.fileName, 'csd.cer')}`)
-  const keyKey = path.join(tenantId, `csd-key-${randomUUID()}-${sanitizeForDisk(key.fileName, 'csd.key')}`)
-  const dir = storageDir()
+  const cerKey = `tenants/${tenantId}/csd/${randomUUID()}-${sanitizeForDisk(cer.fileName, 'csd.cer')}`
+  const keyKey = `tenants/${tenantId}/csd/${randomUUID()}-${sanitizeForDisk(key.fileName, 'csd.key')}`
 
   const previous = await withTenant(tenantId, async (tx) => {
     const [row] = await tx.select({ cer: tenantPacSettings.csdCerStorageKey, key: tenantPacSettings.csdKeyStorageKey }).from(tenantPacSettings).where(eq(tenantPacSettings.tenantId, tenantId)).limit(1)
     if (!row) throw new PacNotConfiguredError('Guarda la API key del PAC antes de subir el certificado')
-    fs.mkdirSync(path.join(dir, tenantId), { recursive: true })
-    fs.writeFileSync(path.join(dir, cerKey), cer.buffer)
-    fs.writeFileSync(path.join(dir, keyKey), key.buffer)
+    await putStoredObject({ key: cerKey, body: cer.buffer, contentType: 'application/pkix-cert' })
+    await putStoredObject({ key: keyKey, body: Buffer.from(encryptSetting(key.buffer.toString('base64'))), contentType: 'application/octet-stream' })
     await tx
       .update(tenantPacSettings)
       .set({
@@ -193,8 +186,18 @@ export async function storeCsdFiles(tenantId: string, cer: CsdFileInput, key: Cs
     return row
   })
 
-  if (previous.cer) fs.rmSync(path.join(dir, previous.cer), { force: true })
-  if (previous.key) fs.rmSync(path.join(dir, previous.key), { force: true })
+  if (previous.cer) await deleteStoredObject(previous.cer.replaceAll('\\', '/'))
+  if (previous.key) await deleteStoredObject(previous.key.replaceAll('\\', '/'))
+}
+
+/** Lee la llave privada CSD descifrándola solo en memoria para uso interno. */
+export async function readCsdPrivateKey(tenantId: string): Promise<Buffer | null> {
+  return withTenant(tenantId, async (tx) => {
+    const [row] = await tx.select({ key: tenantPacSettings.csdKeyStorageKey }).from(tenantPacSettings).where(eq(tenantPacSettings.tenantId, tenantId)).limit(1)
+    if (!row?.key) return null
+    const stored = await getStoredObject(row.key.replaceAll('\\', '/'))
+    return Buffer.from(decryptSetting(stored.toString('utf8')), 'base64')
+  })
 }
 
 /** Borra el CSD (archivos + columnas). Idempotente: false si no habia. */
@@ -206,9 +209,8 @@ export async function deleteCsdFiles(tenantId: string): Promise<boolean> {
       .update(tenantPacSettings)
       .set({ csdCerStorageKey: null, csdKeyStorageKey: null, csdCerFileName: null, csdKeyFileName: null, csdValidUntil: null, updatedAt: new Date() })
       .where(eq(tenantPacSettings.tenantId, tenantId))
-    const dir = storageDir()
-    if (row.cer) fs.rmSync(path.join(dir, row.cer), { force: true })
-    if (row.key) fs.rmSync(path.join(dir, row.key), { force: true })
+    if (row.cer) await deleteStoredObject(row.cer.replaceAll('\\', '/'))
+    if (row.key) await deleteStoredObject(row.key.replaceAll('\\', '/'))
     return true
   })
 }
