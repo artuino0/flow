@@ -561,6 +561,13 @@
       "when": 1790306295552,
       "breakpoints": true,
       "tag": "0079_erd102_password_reset"
+    },
+    {
+      "version": "7",
+      "idx": 80,
+      "when": 1790520986935,
+      "breakpoints": true,
+      "tag": "0080_tenant_plan_history"
     }
   ]
 }
