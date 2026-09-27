@@ -19,6 +19,7 @@ let admin: postgres.Sql
 let getPlanUsage: typeof import('../../server/utils/billing').getPlanUsage
 let getAvailablePlansForTenant: typeof import('../../server/utils/billing').getAvailablePlansForTenant
 let syncStripeSubscription: typeof import('../../server/utils/billing').syncStripeSubscription
+let syncStripeInvoice: typeof import('../../server/utils/billing').syncStripeInvoice
 let checkout: (event: unknown) => Promise<unknown>
 
 beforeAll(async () => {
@@ -33,7 +34,7 @@ beforeAll(async () => {
   process.env.STRIPE_PRICE_STARTER_MONTHLY = 'price_starter'
   process.env.STRIPE_PRICE_CRECIMIENTO_MONTHLY = 'price_crecimiento'
   process.env.STRIPE_PRICE_AGENDA_MONTHLY = 'price_agenda'
-  ;({ getPlanUsage, getAvailablePlansForTenant, syncStripeSubscription } = await import('../../server/utils/billing'))
+  ;({ getPlanUsage, getAvailablePlansForTenant, syncStripeSubscription, syncStripeInvoice } = await import('../../server/utils/billing'))
   checkout = (await import('../../server/api/billing/checkout.post')).default as typeof checkout
 }, 120_000)
 
@@ -66,6 +67,18 @@ function stripeSubscription(tenantId: string, priceId: string) {
     trial_end: null,
     cancel_at_period_end: false
   } as Parameters<typeof syncStripeSubscription>[0]
+}
+
+function stripeInvoice(tenantId: string, subscriptionId: string): Parameters<typeof syncStripeInvoice>[0] {
+  return {
+    id: `in_${tenantId}`,
+    metadata: null,
+    parent: { type: 'subscription_details', quote_details: null, subscription_details: { subscription: subscriptionId, metadata: { tenantId } } },
+    status: 'paid', currency: 'mxn', subtotal: 100, total: 100, amount_paid: 100,
+    period_start: 1_700_000_000, period_end: 1_702_592_000, created: 1_700_000_000,
+    due_date: null, status_transitions: { finalized_at: null, marked_uncollectible_at: null, paid_at: 1_700_000_000, voided_at: null },
+    hosted_invoice_url: null, invoice_pdf: null, number: 'INV-107', customer: 'cus_test'
+  }
 }
 
 describe('cambio de plan en checkout', () => {
@@ -110,6 +123,44 @@ describe('cambio de plan en checkout', () => {
     expect(history[0]).toMatchObject({ key: 'starter' })
     expect(history[0]!.ended_at).not.toBeNull()
     expect(history[1]).toMatchObject({ key: 'crecimiento', source: 'stripe_webhook', ended_at: null })
+  })
+
+  it('conserva el periodo raíz anterior y acepta el periodo del item actual', async () => {
+    const tenantId = await tenantOn('starter')
+    const payload = stripeSubscription(tenantId, 'price_crecimiento')
+    payload.current_period_start = 1_700_000_000
+    payload.current_period_end = 1_702_592_000
+    payload.items.data[0]!.current_period_start = 1_710_000_000
+    payload.items.data[0]!.current_period_end = 1_712_592_000
+    await syncStripeSubscription(payload)
+
+    const [legacy] = await admin`select current_period_start, current_period_end from tenant_subscriptions where tenant_id = ${tenantId}`
+    expect(legacy!.current_period_start).toEqual(new Date(1_700_000_000_000))
+    expect(legacy!.current_period_end).toEqual(new Date(1_702_592_000_000))
+
+    delete payload.current_period_start
+    delete payload.current_period_end
+    await syncStripeSubscription(payload)
+    const [current] = await admin`select current_period_start, current_period_end from tenant_subscriptions where tenant_id = ${tenantId}`
+    expect(current!.current_period_start).toEqual(new Date(1_710_000_000_000))
+    expect(current!.current_period_end).toEqual(new Date(1_712_592_000_000))
+  })
+
+  it('asocia la factura actual mediante la metadata de la suscripción padre', async () => {
+    const tenantId = await tenantOn('starter')
+    const payload = stripeSubscription(tenantId, 'price_crecimiento')
+    await syncStripeSubscription(payload)
+    const invoice = stripeInvoice(tenantId, payload.id)
+
+    await syncStripeInvoice(invoice)
+    const [stored] = await admin`select tenant_id, provider_invoice_id from tenant_billing_invoices where provider_invoice_id = ${invoice.id}`
+    expect(stored).toMatchObject({ tenant_id: tenantId, provider_invoice_id: invoice.id })
+  })
+
+  it('explica el fallo si la factura no incluye ningún tenant', async () => {
+    const invoice = stripeInvoice(randomUUID(), 'sub_without_tenant')
+    invoice.parent!.subscription_details!.metadata = null
+    await expect(syncStripeInvoice(invoice)).rejects.toThrow('No se pudo asociar la factura de Stripe con un tenant')
   })
 
   it('permite volver a Agenda tras cambiar a Starter si el consumo cabe', async () => {

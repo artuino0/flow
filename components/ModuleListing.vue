@@ -9,6 +9,7 @@
 // titulo de pestaña) pero con el MISMO componente por dentro, mismo criterio
 // que components/ModuleWizard.vue para el asistente.
 import { Blocks, Eye, Plus, RotateCcw, Settings2, Trash2 } from '@lucide/vue'
+import type { NavigationFailure } from 'vue-router'
 import { moduleIconComponent } from '~/utils/moduleIcons'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
 
@@ -81,7 +82,7 @@ const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 // (con @click normal sobre <NuxtLink>, vue-router arranca la navegación
 // primero y el preventDefault async llegaría tarde). Clicks con modificadores
 // (ctrl/medio) se dejan al navegador, igual que hace guardEvent de vue-router.
-async function onCreateClick(event: MouseEvent, navigate: (e?: MouseEvent) => Promise<void> | void) {
+async function onCreateClick(event: MouseEvent, navigate: (e?: MouseEvent) => Promise<void | NavigationFailure>) {
   if (props.moduleKind === 'dimension') return navigate(event)
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
   event.preventDefault()
@@ -139,7 +140,7 @@ async function onRestore(module: ModuleRow) {
       <template #actions>
         <NuxtLink to="/organizacion" class="flex h-[35px] items-center rounded border border-brand-border px-4 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
         <NuxtLink v-slot="{ href, navigate }" custom :to="basePath + '/nuevo'">
-          <a :href="href" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
+          <a :href="href ?? undefined" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
             <Blocks class="h-4 w-4" :stroke-width="1.75" />
             {{ createLabel }}
           </a>
@@ -178,7 +179,7 @@ async function onRestore(module: ModuleRow) {
         </div>
         <NuxtLink v-slot="{ href, navigate }" custom :to="`${basePath}/nuevo`">
           <a
-            :href="href"
+            :href="href ?? undefined"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
             @click="onCreateClick($event, navigate)"
           >

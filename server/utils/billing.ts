@@ -266,19 +266,46 @@ export async function getBillingOverview(tenantId: string) {
 
 function stripeDate(seconds: number | null | undefined) { return seconds ? new Date(seconds * 1000) : null }
 
+/**
+ * Campos consumidos de Stripe.Subscription. La versión actual entrega el
+ * periodo en SubscriptionItem; los payloads anteriores pueden traerlo en la
+ * raíz. Los tipos de los valores se toman del SDK instalado.
+ */
+export interface StripeSubscriptionSync {
+  id: string
+  status: Stripe.Subscription['status']
+  metadata: Stripe.Subscription['metadata']
+  customer: Stripe.Subscription['customer']
+  trial_end: Stripe.Subscription['trial_end']
+  cancel_at_period_end: Stripe.Subscription['cancel_at_period_end']
+  items: {
+    data: Array<{
+      price: { id: Stripe.Price['id']; recurring?: { interval?: Stripe.Price.Recurring['interval'] } | null }
+      current_period_start?: Stripe.SubscriptionItem['current_period_start'] | null
+      current_period_end?: Stripe.SubscriptionItem['current_period_end'] | null
+    }>
+  }
+  current_period_start?: number | null
+  current_period_end?: number | null
+}
+
 async function findPlanFromStripePrice(priceId: string | null | undefined) {
   if (!priceId) return null
   const plans = (await listPlans()).filter(plan => plan.isActive)
   return plans.find(plan => planPriceId(plan, 'month') === priceId || planPriceId(plan, 'year') === priceId) ?? null
 }
 
-export async function syncStripeSubscription(subscription: Stripe.Subscription, tenantId?: string | null) {
+export async function syncStripeSubscription(subscription: StripeSubscriptionSync, tenantId?: string | null) {
   const resolvedTenantId = tenantId ?? subscription.metadata.tenantId
   if (!resolvedTenantId) throw new Error('Stripe no entregó el tenant de la suscripción')
   const priceId = subscription.items.data[0]?.price.id ?? null
   const plan = await findPlanFromStripePrice(priceId)
   if (!plan) throw new Error('El Price ID de Stripe no está vinculado a ningún plan de Flow')
   const interval = subscription.items.data[0]?.price.recurring?.interval === 'year' ? 'year' : 'month'
+  // Conservar la prioridad del campo raíz para payloads anteriores; el SDK
+  // actual expone las fechas en el item.
+  const periodStart = subscription.current_period_start ?? subscription.items.data[0]?.current_period_start ?? null
+  const periodEnd = subscription.current_period_end ?? subscription.items.data[0]?.current_period_end ?? null
   const effectiveLimits = await getEffectivePlanLimits(resolvedTenantId, plan.id)
   await withTenant(resolvedTenantId, async tx => {
     await tx.execute(sql`SELECT set_config('app.plan_change_source', 'stripe_webhook', true)`)
@@ -291,8 +318,8 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
       stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
       stripeSubscriptionId: subscription.id,
       stripePriceId: priceId,
-      currentPeriodStart: stripeDate(subscription.current_period_start),
-      currentPeriodEnd: stripeDate(subscription.current_period_end),
+      currentPeriodStart: stripeDate(periodStart),
+      currentPeriodEnd: stripeDate(periodEnd),
       trialEndsAt: stripeDate(subscription.trial_end),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       updatedAt: new Date()
@@ -302,7 +329,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
         planId: plan.id, provider: 'stripe', status: subscription.status, billingInterval: interval,
         stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         stripeSubscriptionId: subscription.id, stripePriceId: priceId,
-        currentPeriodStart: stripeDate(subscription.current_period_start), currentPeriodEnd: stripeDate(subscription.current_period_end),
+        currentPeriodStart: stripeDate(periodStart), currentPeriodEnd: stripeDate(periodEnd),
         trialEndsAt: stripeDate(subscription.trial_end), cancelAtPeriodEnd: subscription.cancel_at_period_end, updatedAt: new Date()
       }
     })
@@ -311,16 +338,12 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
   return getTenantSubscription(resolvedTenantId)
 }
 
-export async function syncStripeInvoice(invoice: Stripe.Invoice, tenantId?: string | null) {
-  const subscriptionRef = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id
-  let resolvedTenantId = tenantId ?? invoice.metadata.tenantId ?? null
-  let subscription = null as Awaited<ReturnType<typeof getTenantSubscription>>
-  if (!resolvedTenantId && subscriptionRef) {
-    const [row] = await db.select().from(tenantSubscriptions).where(eq(tenantSubscriptions.stripeSubscriptionId, subscriptionRef)).limit(1)
-    resolvedTenantId = row?.tenantId ?? null
-  }
+type StripeInvoiceSync = Pick<Stripe.Invoice, 'id' | 'metadata' | 'parent' | 'status' | 'currency' | 'subtotal' | 'total' | 'amount_paid' | 'period_start' | 'period_end' | 'created' | 'due_date' | 'status_transitions' | 'hosted_invoice_url' | 'invoice_pdf' | 'number' | 'customer'>
+
+export async function syncStripeInvoice(invoice: StripeInvoiceSync, tenantId?: string | null) {
+  const resolvedTenantId = tenantId ?? invoice.metadata?.tenantId ?? invoice.parent?.subscription_details?.metadata?.tenantId ?? null
   if (!resolvedTenantId) throw new Error('No se pudo asociar la factura de Stripe con un tenant')
-  subscription = await getTenantSubscription(resolvedTenantId)
+  const subscription = await getTenantSubscription(resolvedTenantId)
   await withTenant(resolvedTenantId, tx => tx.insert(tenantBillingInvoices).values({
     tenantId: resolvedTenantId,
     subscriptionId: subscription?.id ?? null,

@@ -1,4 +1,5 @@
 import { getHeader, readRawBody } from 'h3'
+import type Stripe from 'stripe'
 import { getStripeClient, syncStripeInvoice, syncStripeSubscription } from '~/server/utils/billing'
 import { logger } from '~/server/utils/logger'
 
@@ -25,9 +26,9 @@ export default defineEventHandler(async event => {
         await syncStripeSubscription(subscription, session.metadata?.tenantId)
       }
     } else if (stripeEvent.type.startsWith('customer.subscription.')) {
-      await syncStripeSubscription(stripeEvent.data.object)
+      await syncStripeSubscription(stripeEvent.data.object as Stripe.Subscription)
     } else if (stripeEvent.type.startsWith('invoice.')) {
-      await syncStripeInvoice(stripeEvent.data.object)
+      await syncStripeInvoice(stripeEvent.data.object as Stripe.Invoice)
     }
   } catch (error) {
     logger.error('stripe_webhook_sync_failed', { eventId: stripeEvent.id, type: stripeEvent.type, errorMessage: error instanceof Error ? error.message : String(error) })

@@ -140,7 +140,7 @@ export async function applyCalculatedFields(
     .where(eq(entityFields.entityId, entityId))
 
   const result = { ...input }
-  const calculated = new Map(fields.map(field => [field.name, { field, calculation: getCalculation(field) }]).filter((entry) => entry[1].calculation))
+  const calculated = new Map<string, { field: CalculatedFieldRow; calculation: CalculationConfig | null }>(fields.map(field => [field.name, { field, calculation: getCalculation(field) }] as const).filter((entry) => entry[1].calculation))
   const visiting = new Set<string>()
   const completed = new Set<string>()
 
@@ -165,7 +165,7 @@ export async function applyCalculatedFields(
     } else if (calculation.kind === 'expression') {
       const node = parsedExpression(calculation.expression)
       for (const ref of collectFieldRefs(node)) if (calculated.has(ref)) await evaluate(ref)
-      const byName = new Map(fields.map(field => [field.name, field]))
+      const byName = new Map<string, CalculatedFieldRow>(fields.map(field => [field.name, field] as const))
       value = evaluateExpressionNumber(node, ref => expressionValue(byName.get(ref), result[ref]))
     } else if (recordId) {
       const [sourceEntity] = await tx
@@ -222,7 +222,7 @@ export async function recalculateCalculatedDependents(
     .limit(1)
   if (!sourceEntity) return
 
-  const candidates = await tx
+  const candidates: Array<CalculatedFieldRow & { entityId: string }> = await tx
     .select({
       entityId: entityFields.entityId,
       name: entityFields.name,

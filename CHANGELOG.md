@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.101.1] - 2026-09-27
+#### [bug]
+- [ERD-107](https://dydasoftware.atlassian.net/browse/ERD-107) - Typecheck en 0 (18 diagnósticos); periodos de suscripción con fechas de la API actual de Stripe y facturas asociadas por `parent.subscription_details.metadata`.
+
 ### [0.101.0] - 2026-09-27
 #### [feature]
 - [ERD-105](https://dydasoftware.atlassian.net/browse/ERD-105) - Duplicar registro con sus partidas desde la ficha y el listado (nuevo folio, estado inicial y totales recalculados), con aviso y enlace al original.
