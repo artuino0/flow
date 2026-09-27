@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, BadgeDollarSign, Building2, Check, ChevronRight, CloudOff, Database, FileText, Gauge, Globe, HardDrive, Layers, MessageCircle, Plus, Power, RefreshCw, Save, SlidersHorizontal, Trash2, Undo2, Zap } from '@lucide/vue'
+import { AlertCircle, BadgeDollarSign, Building2, Check, ChevronRight, CloudOff, Database, FileText, Gauge, Globe, HardDrive, Layers, MessageCircle, Plus, Power, RefreshCw, Save, SlidersHorizontal, Sparkles, Trash2, Undo2, Zap } from '@lucide/vue'
 import { PLAN_CONCEPTS } from '~/utils/planConcepts'
 import { bytesToGb, dateTimeLocalToIso, formatPlanPrice, normalizeOverrideValue, normalizePlanLimits } from '~/utils/platformPlanForm'
 
@@ -13,13 +13,14 @@ type Draft = Omit<Plan, 'id' | 'limits'> & { limits: Record<string, number | str
 const conceptGroups = [
   { name: 'Core', concepts: ['users', 'usersIncluded', 'modules'], icon: Database },
   { name: 'Automatización', concepts: ['activeFlows', 'executions'], icon: Zap },
+  { name: 'IA', concepts: ['aiCredits'], icon: Sparkles },
   { name: 'Comunicaciones', concepts: ['emails'], icon: MessageCircle },
   { name: 'Facturación', concepts: ['stamps'], icon: FileText },
   { name: 'Sites', concepts: ['sites', 'pages', 'forms', 'formSubmissions'], icon: Globe },
   { name: 'Almacenamiento', concepts: ['storageBytes'], icon: HardDrive }
 ]
-const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', emails: 'Correos al mes', storageBytes: 'Almacenamiento (GB)', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
-const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', emails: 'correos', storageBytes: 'GB', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
+const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', aiCredits: 'Créditos de IA al mes', emails: 'Correos al mes', storageBytes: 'Almacenamiento (GB)', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
+const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', aiCredits: 'créditos', emails: 'correos', storageBytes: 'GB', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
 const { data, error, status, refresh } = await useFetch<{ plans: Plan[]; organizations: Organization[]; overrides: Override[] }>('/api/platform/plans')
 const { confirm: confirmAction } = useConfirm()
 const planRows = computed(() => data.value?.plans ?? [])

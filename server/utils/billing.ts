@@ -157,15 +157,16 @@ export async function getPlanUsage(tenantId: string): Promise<{ plan: string; co
       (SELECT count(*) FROM site_pages p JOIN sites s ON s.id = p.site_id WHERE s.tenant_id = ${tenantId}::uuid) AS pages,
       (SELECT count(*) FROM site_form_connections WHERE tenant_id = ${tenantId}::uuid) AS forms,
       (SELECT count(*) FROM site_form_submissions WHERE tenant_id = ${tenantId}::uuid AND created_at >= (SELECT start_at FROM period)) AS submissions
+      ,(SELECT COALESCE(SUM(CASE WHEN kind = 'refund' THEN -credits ELSE credits END), 0) FROM ai_credit_ledger WHERE tenant_id = ${tenantId}::uuid AND package_id IS NULL AND period_start = (SELECT start_at FROM period)) AS ai_credits
   `)) as unknown as Array<Record<string, string | number | bigint | null>>
   const row = rows[0] ?? {}
   const definitions: Array<[PlanConcept, string, number | null]> = [
     ['users', 'Usuarios', limits.users], ['modules', 'Módulos personalizados', limits.modules], ['activeFlows', 'Flujos activos', limits.activeFlows],
     ['executions', 'Ejecuciones mensuales', limits.executions], ['emails', 'Correos mensuales', limits.emails], ['storageBytes', 'Almacenamiento', limits.storageBytes],
-    ['stamps', 'Timbres mensuales', limits.stamps], ['sites', 'Sitios', limits.sites], ['pages', 'Páginas', limits.pages], ['forms', 'Formularios', limits.forms], ['formSubmissions', 'Envíos de formulario', limits.formSubmissions]
+    ['stamps', 'Timbres mensuales', limits.stamps], ['aiCredits', 'Créditos de IA mensuales', limits.aiCredits], ['sites', 'Sitios', limits.sites], ['pages', 'Páginas', limits.pages], ['forms', 'Formularios', limits.forms], ['formSubmissions', 'Envíos de formulario', limits.formSubmissions]
   ]
   return { plan: plan.name, code: plan.code, usage: definitions.map(([concept, label, limit]) => {
-    const column: Record<PlanConcept, string> = { users: 'users', usersIncluded: 'users', modules: 'modules', activeFlows: 'flows', executions: 'executions', emails: 'emails', storageBytes: 'storage', stamps: 'stamps', sites: 'sites', pages: 'pages', forms: 'forms', formSubmissions: 'submissions' }
+    const column: Record<PlanConcept, string> = { users: 'users', usersIncluded: 'users', modules: 'modules', activeFlows: 'flows', executions: 'executions', emails: 'emails', storageBytes: 'storage', stamps: 'stamps', aiCredits: 'ai_credits', sites: 'sites', pages: 'pages', forms: 'forms', formSubmissions: 'submissions' }
     const used = asNumber(row[column[concept]])
     return { concept, label, used, limit, percent: limit === null ? null : limit === 0 ? (used > 0 ? 100 : 0) : Math.round(used / limit * 1000) / 10 }
   }) }

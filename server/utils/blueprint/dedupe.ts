@@ -67,5 +67,17 @@ export function dedupeBlueprint(input: Blueprint, current: TenantShape): { norma
     merges.push({ from: module.ref, to: match.slug, discardedFields, message: `Usé tu módulo ${match.name} existente en lugar de crear uno nuevo` })
   }
   redirect(normalized, aliases)
+  // Si el plano ya trae la instantánea del módulo, conserva una sola caja.
+  // Las referencias al create fusionado ya quedaron redirigidas al slug real.
+  for (const merge of merges) {
+    const duplicateIndex = normalized.modules.findIndex(module => module.ref === merge.from)
+    const snapshot = normalized.modules.find(module => module.ref !== merge.from && module.slug === merge.to && module.action === 'extend' && module.snapshot)
+    if (duplicateIndex < 0 || !snapshot) continue
+    const duplicate = normalized.modules[duplicateIndex]!
+    snapshot.fields.push(...duplicate.fields)
+    if (duplicate.lines?.length) snapshot.lines = [...(snapshot.lines ?? []), ...duplicate.lines]
+    if (!snapshot.workflow && duplicate.workflow) snapshot.workflow = duplicate.workflow
+    normalized.modules.splice(duplicateIndex, 1)
+  }
   return { normalized, merges }
 }

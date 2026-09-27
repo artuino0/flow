@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.103.0] - 2026-09-27
+#### [feature]
+- [ERD-108](https://dydasoftware.atlassian.net/browse/ERD-108) - Diseñador de módulos fase 2 (sin UI): sesiones con generación e iteración por IA, créditos aiCredits con paquetes y ledger, recuperación de reservas huérfanas, migración 0082 y variables AI_PROVIDER / ANTHROPIC_API_KEY / AI_DESIGNER_MODEL / AI_DESIGNER_TIMEOUT_MS.
+
 ### [0.102.0] - 2026-09-27
 #### [feature]
 - [ERD-106](https://dydasoftware.atlassian.net/browse/ERD-106) - Diseñador de módulos fase 1 (base sin IA ni UI): plano v1 con validador, filtro de duplicados, diff y aplicador transaccional, API /api/blueprints, migración 0081 e instalador de plantillas (taller mecánico).

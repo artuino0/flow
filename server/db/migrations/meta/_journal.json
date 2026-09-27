@@ -575,6 +575,13 @@
       "when": 1790520987935,
       "breakpoints": true,
       "tag": "0081_blueprint_applications"
+    },
+    {
+      "version": "7",
+      "idx": 82,
+      "when": 1790520988935,
+      "breakpoints": true,
+      "tag": "0082_module_designer"
     }
   ]
 }

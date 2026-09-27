@@ -127,3 +127,56 @@ export async function completeJson(params: AiCompletionParams): Promise<string> 
   const provider = readProviderName()
   return provider === 'anthropic' ? completeWithAnthropic(params) : completeWithOpenAi(params)
 }
+
+export interface DesignerCompletion {
+  value: unknown
+  inputTokens: number
+  outputTokens: number
+  model: string
+}
+
+export function getDesignerTimeoutMs() {
+  const configured = Number(process.env.AI_DESIGNER_TIMEOUT_MS)
+  return Number.isFinite(configured) && configured > 0 ? configured : 90_000
+}
+
+/** Contrato aislado: los reportes conservan su prompt, modelo, timeout y formato previos. */
+export async function completeDesignerJson(params: AiCompletionParams): Promise<DesignerCompletion> {
+  const provider = readProviderName()
+  const apiKey = provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY
+  if (!apiKey) throw new AiProviderNotConfiguredError(`AI_PROVIDER=${provider} requiere ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} en el archivo .env.`)
+  const model = process.env.AI_DESIGNER_MODEL?.trim() || (provider === 'anthropic' ? process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5' : process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini')
+  const timeoutMs = getDesignerTimeoutMs()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const anthropic = provider === 'anthropic'
+    const response = await fetch(anthropic ? 'https://api.anthropic.com/v1/messages' : 'https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: anthropic ? { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } : { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(anthropic ? {
+        model, max_tokens: 8192, system: params.system,
+        messages: [{ role: 'user', content: params.prompt }],
+        tools: [{ name: 'return_design', description: 'Devuelve el mensaje y el plano completo.', input_schema: { type: 'object', properties: { message: { type: 'string' }, blueprint: { type: 'object' } }, required: ['message', 'blueprint'] } }],
+        tool_choice: { type: 'tool', name: 'return_design' }
+      } : {
+        model, response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: params.system }, { role: 'user', content: params.prompt }]
+      }),
+      signal: controller.signal
+    })
+    if (!response.ok) throw new Error(`${provider} respondió HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`)
+    if (anthropic) {
+      const data = await response.json() as { content?: Array<{ type: string; name?: string; input?: unknown }>; usage?: { input_tokens?: number; output_tokens?: number }; model?: string }
+      const value = data.content?.find(block => block.type === 'tool_use' && block.name === 'return_design')?.input
+      if (!value) throw new Error('La respuesta de Anthropic no incluyó el plano estructurado')
+      return { value, inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0, model: data.model || model }
+    }
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string }
+    const content = data.choices?.[0]?.message?.content
+    if (!content) throw new Error('La respuesta de OpenAI no incluyó el plano estructurado')
+    return { value: JSON.parse(content) as unknown, inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0, model: data.model || model }
+  } finally {
+    clearTimeout(timeout)
+  }
+}

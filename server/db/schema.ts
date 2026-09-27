@@ -513,6 +513,46 @@ export const blueprintApplications = pgTable('blueprint_applications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => ({ tenantKeyUnique: uniqueIndex('blueprint_applications_tenant_key_unique').on(table.tenantId, table.idempotencyKey) }))
 
+export const moduleDesignSessions = pgTable('module_design_sessions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull(),
+  status: text('status').notNull().default('draft'),
+  messages: jsonb('messages').$type<Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }>>().notNull().default(sql`'[]'::jsonb`),
+  blueprint: jsonb('blueprint').notNull(),
+  version: integer('version').notNull().default(1),
+  creditsConsumed: integer('credits_consumed').notNull().default(0),
+  processingAt: timestamp('processing_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  discardedAt: timestamp('discarded_at', { withTimezone: true })
+}, table => ({ tenantIdx: index('module_design_sessions_tenant_idx').on(table.tenantId, table.createdAt) }))
+
+export const aiCreditPackages = pgTable('ai_credit_packages', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  quantity: integer('quantity').notNull(),
+  remaining: integer('remaining').notNull(),
+  purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull().defaultNow(),
+  origin: text('origin').notNull()
+}, table => ({ availableIdx: index('ai_credit_packages_available_idx').on(table.tenantId, table.purchasedAt) }))
+
+export const aiCreditLedger = pgTable('ai_credit_ledger', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').notNull().references(() => moduleDesignSessions.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  credits: integer('credits').notNull(),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  model: text('model'),
+  packageId: uuid('package_id').references(() => aiCreditPackages.id),
+  periodStart: timestamp('period_start', { withTimezone: true }),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ tenantDateIdx: index('ai_credit_ledger_tenant_date_idx').on(table.tenantId, table.createdAt) }))
+
 export const tenantPlanHistory = pgTable('tenant_plan_history', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
