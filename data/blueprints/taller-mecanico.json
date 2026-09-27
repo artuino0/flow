@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "summary": "Taller mecánico: clientes, vehículos, órdenes, técnicos y refacciones",
+  "modules": [
+    {
+      "ref": "clientes", "action": "create", "kind": "hecho", "name": "Clientes", "singularName": "Cliente", "slug": "clientes", "fields": [
+        { "name": "nombre", "label": "Nombre", "dataType": "text", "required": true },
+        { "name": "telefono", "label": "Teléfono", "dataType": "text" },
+        { "name": "correo", "label": "Correo electrónico", "dataType": "text" }
+      ]
+    },
+    {
+      "ref": "vehiculos", "action": "create", "kind": "hecho", "name": "Vehículos", "singularName": "Vehículo", "slug": "vehiculos", "fields": [
+        { "name": "placas", "label": "Placas", "dataType": "text", "required": true },
+        { "name": "marca", "label": "Marca", "dataType": "text" },
+        { "name": "modelo", "label": "Modelo", "dataType": "text" },
+        { "name": "cliente", "label": "Cliente", "dataType": "relation", "required": true, "validationRules": { "relationEntity": "clientes" } }
+      ]
+    },
+    {
+      "ref": "tecnicos", "action": "create", "kind": "hecho", "name": "Técnicos", "singularName": "Técnico", "slug": "tecnicos", "fields": [
+        { "name": "nombre", "label": "Nombre", "dataType": "text", "required": true },
+        { "name": "especialidad", "label": "Especialidad", "dataType": "text" }
+      ]
+    },
+    {
+      "ref": "tipos_servicio", "action": "create", "kind": "dimension", "name": "Tipos de servicio", "singularName": "Tipo de servicio", "slug": "tipos-servicio", "fields": [
+        { "name": "nombre", "label": "Nombre", "dataType": "text", "required": true },
+        { "name": "descripcion", "label": "Descripción", "dataType": "text" }
+      ]
+    },
+    {
+      "ref": "ordenes", "action": "create", "kind": "hecho", "name": "Órdenes de servicio", "singularName": "Orden de servicio", "slug": "ordenes-servicio", "fields": [
+        { "name": "folio", "label": "Folio", "dataType": "incremental", "validationRules": { "digits": 6, "prefix": "OS-" } },
+        { "name": "fecha", "label": "Fecha", "dataType": "date", "required": true },
+        { "name": "vehiculo", "label": "Vehículo", "dataType": "relation", "required": true, "validationRules": { "relationEntity": "vehiculos" } },
+        { "name": "tecnico", "label": "Técnico", "dataType": "relation", "validationRules": { "relationEntity": "tecnicos" } },
+        { "name": "tipo_servicio", "label": "Tipo de servicio", "dataType": "relation", "validationRules": { "relationEntity": "tipos_servicio" } },
+        { "name": "descripcion", "label": "Trabajo solicitado", "dataType": "text" },
+        { "name": "estado", "label": "Estado", "dataType": "select", "required": true, "validationRules": { "options": [
+          { "value": "recibida", "label": "Recibida" }, { "value": "en_proceso", "label": "En proceso" },
+          { "value": "terminada", "label": "Terminada" }, { "value": "entregada", "label": "Entregada" }
+        ] } },
+        { "name": "total_refacciones", "label": "Total de refacciones", "dataType": "currency", "validationRules": { "calculation": { "kind": "rollup", "aggregate": "sum", "sourceEntity": "refacciones", "relationField": "orden", "valueField": "importe" } } }
+      ],
+      "lines": [{ "childRef": "refacciones", "relationField": "orden", "totals": ["importe"] }],
+      "workflow": {
+        "enabled": true, "field": "estado", "initial": "recibida",
+        "states": {
+          "recibida": { "locked": false, "editableFields": [] },
+          "en_proceso": { "locked": false, "editableFields": [] },
+          "terminada": { "locked": false, "editableFields": [] },
+          "entregada": { "locked": true, "editableFields": [] }
+        },
+        "transitions": [
+          { "from": "recibida", "to": "en_proceso", "roles": "all" },
+          { "from": "en_proceso", "to": "terminada", "roles": "all" },
+          { "from": "terminada", "to": "entregada", "roles": "all" }
+        ],
+        "rules": [
+          { "type": "required", "mode": "block", "when": { "to": "en_proceso" }, "fields": ["vehiculo", "tecnico"], "message": "Asigna un vehículo y un técnico" },
+          { "type": "aggregate", "mode": "block", "when": { "to": "entregada" }, "lineEntity": "refacciones", "relationField": "orden", "aggregate": "count", "operator": ">=", "value": 1, "message": "Agrega al menos una refacción" }
+        ]
+      }
+    },
+    {
+      "ref": "refacciones", "action": "create", "kind": "hecho", "name": "Refacciones", "singularName": "Refacción", "slug": "refacciones", "fields": [
+        { "name": "orden", "label": "Orden", "dataType": "relation", "required": true, "validationRules": { "relationEntity": "ordenes" } },
+        { "name": "descripcion", "label": "Refacción", "dataType": "text", "required": true },
+        { "name": "cantidad", "label": "Cantidad", "dataType": "number", "required": true, "validationRules": { "min": 0 } },
+        { "name": "precio_unitario", "label": "Precio unitario", "dataType": "currency", "required": true },
+        { "name": "importe", "label": "Importe", "dataType": "currency", "validationRules": { "calculation": { "kind": "formula", "operator": "multiply", "leftField": "cantidad", "rightField": "precio_unitario" } } }
+      ]
+    }
+  ],
+  "associations": [
+    { "name": "especialidades-tecnicos", "sourceRef": "tecnicos", "targetRef": "tipos_servicio" }
+  ]
+}

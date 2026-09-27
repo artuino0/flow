@@ -502,6 +502,17 @@ export const tenantSubscriptions = pgTable('tenant_subscriptions', {
   tenantIdx: index('tenant_subscriptions_tenant_idx').on(table.tenantId)
 }))
 
+export const blueprintApplications = pgTable('blueprint_applications', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id'),
+  idempotencyKey: text('idempotency_key').notNull(),
+  blueprintHash: text('blueprint_hash').notNull(),
+  appliedBlueprint: jsonb('applied_blueprint').notNull(),
+  result: jsonb('result').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ tenantKeyUnique: uniqueIndex('blueprint_applications_tenant_key_unique').on(table.tenantId, table.idempotencyKey) }))
+
 export const tenantPlanHistory = pgTable('tenant_plan_history', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),

@@ -162,9 +162,10 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind, de
  */
 async function createEntityImpl(
   tenantId: string,
-  input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind; singularName?: string | null }
+  input: { name: string; slug: string; description: string | null; icon?: string | null; moduleKind?: ModuleKind; singularName?: string | null },
+  existingTx?: Tx
 ): Promise<EntitySummary> {
-  return withTenant(tenantId, async (tx) => {
+  const run = async (tx: Tx) => {
     let entity: typeof entities.$inferSelect
     try {
       ;[entity] = await tx
@@ -224,7 +225,8 @@ async function createEntityImpl(
       fiscalConfig: entity.fiscalConfig,
       labelConfig: entity.labelConfig
     }
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
 
 async function updateEntityImpl(
@@ -243,9 +245,10 @@ async function updateEntityImpl(
     singularName?: string | null
     fiscalConfig?: unknown
     labelConfig?: unknown
-  }
+  },
+  existingTx?: Tx
 ): Promise<EntitySummary | null> {
-  return withTenant(tenantId, async (tx) => {
+  const run = async (tx: Tx) => {
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
@@ -283,7 +286,8 @@ async function updateEntityImpl(
       fiscalConfig: entity.fiscalConfig,
       labelConfig: entity.labelConfig
     }
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
 
 export interface NavEntity {
@@ -400,5 +404,8 @@ export async function getEntityRecord(tenantId: string, entityId: string) {
 // Toda escritura que cambia módulos, campos o permisos invalida los cachés de acceso y metadatos (shortCache.ts).
 export const createEntity = invalidatesTenantAccess(createEntityImpl)
 export const updateEntity = invalidatesTenantAccess(updateEntityImpl)
+// Las variantes transaccionales difieren la invalidación hasta que confirme la transacción exterior.
+export const createEntityInTx = (tx: Tx, tenantId: string, input: Parameters<typeof createEntityImpl>[1]) => createEntityImpl(tenantId, input, tx)
+export const updateEntityInTx = (tx: Tx, tenantId: string, entityId: string, input: Parameters<typeof updateEntityImpl>[2]) => updateEntityImpl(tenantId, entityId, input, tx)
 export const deleteEntity = invalidatesTenantAccess(deleteEntityImpl)
 export const restoreEntity = invalidatesTenantAccess(restoreEntityImpl)

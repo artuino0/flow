@@ -568,6 +568,13 @@
       "when": 1790520986935,
       "breakpoints": true,
       "tag": "0080_tenant_plan_history"
+    },
+    {
+      "version": "7",
+      "idx": 81,
+      "when": 1790520987935,
+      "breakpoints": true,
+      "tag": "0081_blueprint_applications"
     }
   ]
 }

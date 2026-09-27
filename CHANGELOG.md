@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.102.0] - 2026-09-27
+#### [feature]
+- [ERD-106](https://dydasoftware.atlassian.net/browse/ERD-106) - Diseñador de módulos fase 1 (base sin IA ni UI): plano v1 con validador, filtro de duplicados, diff y aplicador transaccional, API /api/blueprints, migración 0081 e instalador de plantillas (taller mecánico).
+
 ### [0.101.1] - 2026-09-27
 #### [bug]
 - [ERD-107](https://dydasoftware.atlassian.net/browse/ERD-107) - Typecheck en 0 (18 diagnósticos); periodos de suscripción con fechas de la API actual de Stripe y facturas asociadas por `parent.subscription_details.metadata`.

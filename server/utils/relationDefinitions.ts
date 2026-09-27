@@ -119,9 +119,10 @@ export async function listRelationDefinitions(tenantId: string, entityId?: strin
  */
 export async function createRelationDefinition(
   tenantId: string,
-  input: { name: string; sourceEntityId: string; targetEntityId: string }
+  input: { name: string; sourceEntityId: string; targetEntityId: string },
+  existingTx?: Tx
 ): Promise<RelationDefinitionItem> {
-  return withTenant(tenantId, async (tx) => {
+  const run = async (tx: Tx) => {
     await assertEntityInTenant(tx, tenantId, input.sourceEntityId)
     await assertEntityInTenant(tx, tenantId, input.targetEntityId)
 
@@ -153,8 +154,11 @@ export async function createRelationDefinition(
       createdAt: created.createdAt,
       linkCount: 0
     }
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
+
+export const createRelationDefinitionInTx = (tx: Tx, tenantId: string, input: Parameters<typeof createRelationDefinition>[1]) => createRelationDefinition(tenantId, input, tx)
 
 /**
  * Renombra una relation_definition existente. Deliberadamente NO permite

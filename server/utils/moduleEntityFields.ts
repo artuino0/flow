@@ -347,10 +347,10 @@ export interface CreateEntityFieldInput {
   isRequired: boolean
 }
 
-export async function createEntityField(tenantId: string, entityId: string, input: CreateEntityFieldInput): Promise<EntityFieldSummary> {
+export async function createEntityField(tenantId: string, entityId: string, input: CreateEntityFieldInput, existingTx?: Tx): Promise<EntityFieldSummary> {
   assertValidationRules(input.dataType, input.validationRules)
 
-  return withTenant(tenantId, async (tx) => {
+  const run = async (tx: Tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
     if (input.dataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, entityId, input.validationRules)
@@ -395,10 +395,13 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
     // No hace falta marcar records.is_dirty aca a mano: el trigger
     // fn_mark_records_dirty_on_field_change (migracion 0011, ERD-18) corre
     // automaticamente en el INSERT de entity_fields.
-    invalidateEntitySchemaCache(tenantId, entityId)
+    if (!existingTx) invalidateEntitySchemaCache(tenantId, entityId)
     return toSummary(row)
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
+
+export const createEntityFieldInTx = (tx: Tx, tenantId: string, entityId: string, input: CreateEntityFieldInput) => createEntityField(tenantId, entityId, input, tx)
 
 export interface UpdateEntityFieldInput {
   label?: string
