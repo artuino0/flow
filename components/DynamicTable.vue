@@ -5,7 +5,7 @@
 //
 // Diseno Pencil: "Table Header Row" / "Table Row" / "Pagination Item"
 // (Default/Active) del .pen, envueltos en un contenedor tipo Card.
-import { Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Copy, Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from '@lucide/vue'
 import type { EntityFieldMeta, EntityPermissions } from '~/composables/useEntityFields'
 
 interface RecordRow {
@@ -39,6 +39,7 @@ const emit = defineEmits<{
   'update:page': [page: number]
   'update:sort': [value: { sortBy: string; sortDir: 'asc' | 'desc' }]
   delete: [id: string]
+  duplicate: [id: string]
 }>()
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
@@ -165,6 +166,9 @@ async function onDelete(id: string) {
                 >
                   <Pencil class="h-4 w-4" :stroke-width="1.75" />
                 </NuxtLink>
+                <button v-if="permissions.canCreate" type="button" title="Duplicar" class="flex h-8 w-8 items-center justify-center rounded border border-brand-border-light text-brand-text-secondary hover:bg-brand-bg" @click="$emit('duplicate', row.id)">
+                  <Copy class="h-4 w-4" :stroke-width="1.75" />
+                </button>
                 <button
                   v-if="permissions.canDelete"
                   type="button"

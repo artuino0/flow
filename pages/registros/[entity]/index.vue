@@ -333,6 +333,16 @@ const deleteError = ref<string | null>(null)
 // siendo "la accion terminó bien", igual que crear.
 const toast = useToast()
 
+async function onDuplicate(id: string) {
+  try {
+    const copy = await $fetch<{ id: string }>(`/api/records/${slug}/${id}/duplicate`, { method: 'POST' })
+    await navigateTo({ path: `/registros/${slug}/${copy.id}`, query: { duplicatedFrom: id } })
+  } catch (err) {
+    const message = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.error('No se pudo duplicar el registro', message || 'Inténtalo de nuevo.')
+  }
+}
+
 async function onDelete(id: string) {
   deleteError.value = null
   try {
@@ -586,6 +596,7 @@ async function onDelete(id: string) {
             @update:page="page = $event"
             @update:sort="onSort"
             @delete="onDelete"
+            @duplicate="onDuplicate"
           />
         </div>
       </template>

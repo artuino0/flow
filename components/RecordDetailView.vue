@@ -24,7 +24,7 @@
 // ningún historial de auditoría en el esquema hoy - se muestra un aviso
 // honesto en vez de datos inventados; el historial real queda para una HU futura.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Calendar, Clock, EllipsisVertical, FileText, Link2, List, Pencil, Plus, Share2, Trash2, WalletCards } from '@lucide/vue'
+import { Calendar, Clock, Copy, EllipsisVertical, FileText, Link2, List, Pencil, Plus, Share2, Trash2, WalletCards } from '@lucide/vue'
 import type { DetailLayout, EntityFieldMeta, EntityPermissions, InverseRelation, StateWorkflowConfig } from '~/composables/useEntityFields'
 
 interface RecordData {
@@ -46,6 +46,7 @@ const props = defineProps<{
   /** null = modo vista previa (configurador) - sin datos reales, sin fetch de relaciones. */
   record: RecordData | null
   canUpdate?: boolean
+  canCreate?: boolean
   canDelete?: boolean
   // Reportado por el usuario (2026-09-03): entities.labelField de ESTA
   // entidad (no de una relacionada) - el encabezado de la ficha ("displayLabel"
@@ -241,7 +242,21 @@ const toast = useToast()
 const { confirm: confirmAction } = useConfirm()
 
 const deleting = ref(false)
+const duplicating = ref(false)
 const deleteError = ref<string | null>(null)
+async function onDuplicate() {
+  if (!props.record || duplicating.value) return
+  duplicating.value = true
+  try {
+    const copy = await $fetch<{ id: string }>(`/api/records/${props.entitySlug}/${props.record.id}/duplicate`, { method: 'POST' })
+    await navigateTo({ path: `/registros/${props.entitySlug}/${copy.id}`, query: { duplicatedFrom: props.record.id } })
+  } catch (error) {
+    const message = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.error('No se pudo duplicar el registro', message || 'Inténtalo de nuevo.')
+  } finally {
+    duplicating.value = false
+  }
+}
 async function onDelete() {
   if (!props.record) return
   if (!await confirmAction({ title: 'Eliminar registro', message: '¿Eliminar este registro? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', destructive: true })) return
@@ -359,7 +374,7 @@ async function changeState(to: string, label?: string) {
               <button v-if="canEditRecord" type="button" class="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
                 <Pencil class="h-3.5 w-3.5" :stroke-width="1.75" /> Editar
               </button>
-              <div v-if="fiscalAction || (canDelete && !isWorkflowLocked)" class="relative shrink-0" data-record-actions>
+              <div v-if="fiscalAction || canCreate || (canDelete && !isWorkflowLocked)" class="relative shrink-0" data-record-actions>
                 <button
                   type="button"
                   title="Más acciones"
@@ -371,6 +386,9 @@ async function changeState(to: string, label?: string) {
                   <EllipsisVertical class="h-4 w-4" :stroke-width="1.9" />
                 </button>
                 <div v-if="actionMenuOpen" class="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[210px] overflow-hidden rounded-md border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+                  <button v-if="canCreate" type="button" :disabled="duplicating" class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg disabled:opacity-60" @click="actionMenuOpen = false; onDuplicate()">
+                    <Copy class="h-4 w-4 shrink-0" :stroke-width="1.75" />{{ duplicating ? 'Duplicando…' : 'Duplicar' }}
+                  </button>
                   <NuxtLink
                     v-if="fiscalAction"
                     :to="fiscalAction.to"

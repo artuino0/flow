@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.101.0] - 2026-09-27
+#### [feature]
+- [ERD-105](https://dydasoftware.atlassian.net/browse/ERD-105) - Duplicar registro con sus partidas desde la ficha y el listado (nuevo folio, estado inicial y totales recalculados), con aviso y enlace al original.
+
 ### [0.100.0] - 2026-09-27
 #### [feature]
 - [ERD-104](https://dydasoftware.atlassian.net/browse/ERD-104) - /platform/plans captura almacenamiento en GB y precios en formato de moneda; Ajustes › Plan valida descensos, guarda historial de planes (migración 0080) y avisa al crear con el límite alcanzado.

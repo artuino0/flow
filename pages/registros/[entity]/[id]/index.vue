@@ -56,6 +56,10 @@ function onDeleted() {
     </nav>
 
     <div class="min-h-0 flex-1 overflow-auto p-7">
+      <div v-if="route.query.duplicatedFrom" class="mb-4 rounded border border-brand-blue bg-brand-blue-bg px-4 py-3 text-sm font-semibold text-brand-blue" role="status">
+        Registro duplicado. Esta es la copia; el original sigue disponible.
+        <NuxtLink :to="`/registros/${slug}/${route.query.duplicatedFrom}`" class="ml-1 underline">Ver original</NuxtLink>
+      </div>
       <p v-if="(pending || recordPending) && !record" class="text-sm text-brand-text-muted">Cargando...</p>
       <p v-else-if="fetchError" class="text-sm text-brand-error-text">No se pudo cargar la definición de esta entidad.</p>
       <p v-else-if="recordError" class="text-sm text-brand-error-text">
@@ -71,6 +75,7 @@ function onDeleted() {
         :inverse-relations="data.inverseRelations"
         :record="record"
         :can-update="data.permissions.canUpdate"
+        :can-create="data.permissions.canCreate"
         :can-delete="data.permissions.canDelete"
         :label-field="data.entity.labelField"
         :workflow-config="data.entity.workflowConfig"
