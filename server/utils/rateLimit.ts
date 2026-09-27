@@ -51,3 +51,7 @@ export function clearLoginRateLimit(key: string): void {
 export function resetAllRateLimits(): void {
   attemptsByKey.clear()
 }
+
+/** Reutiliza los mismos límites del login para una clave de recuperación. */
+export const checkPasswordResetRateLimit = checkLoginRateLimit
+export const recordPasswordResetAttempt = recordFailedLoginAttempt

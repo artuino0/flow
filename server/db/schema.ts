@@ -1475,6 +1475,15 @@ export const tenantPacSettings = pgTable('tenant_pac_settings', {
   tenantIdx: index('tenant_pac_settings_tenant_idx').on(table.tenantId)
 }))
 
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ personIdx: index('password_reset_tokens_person_idx').on(table.personId) }))
+
 // ERD-87: cursor global de infraestructura para el ETL OLAP (sin tenant/RLS).
 export const olapEtlState = pgTable('olap_etl_state', {
   job: text('job').primaryKey(),

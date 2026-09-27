@@ -31,6 +31,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (to.path.startsWith('/invitacion/')) return
   if (to.path === '/registro') return
+  if (to.path === '/recuperar' || to.path.startsWith('/restablecer/')) return
 
   const { user, fetchMe } = useAuth()
   if (!user.value) await fetchMe()

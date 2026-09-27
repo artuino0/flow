@@ -20,6 +20,8 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/logout',
   '/api/auth/refresh',
   '/api/auth/register',
+  '/api/auth/password-reset/request',
+  '/api/auth/password-reset/confirm',
   '/api/config',
   '/api/license/status',
   '/api/license/activate',

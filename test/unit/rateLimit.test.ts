@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { checkLoginRateLimit, recordFailedLoginAttempt, clearLoginRateLimit, resetAllRateLimits } from '../../server/utils/rateLimit'
+import { checkLoginRateLimit, recordFailedLoginAttempt, clearLoginRateLimit, resetAllRateLimits, checkPasswordResetRateLimit, recordPasswordResetAttempt } from '../../server/utils/rateLimit'
 
 // HU-ERD-83 (parte 1): rateLimit.ts es logica pura en memoria (sin DB ni
 // servidor) - unit test con fake timers, mismo criterio que appConfig.test.ts
@@ -51,5 +51,17 @@ describe('rateLimit (login)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('rateLimit (recuperación de contraseña)', () => {
+  it('limita cada clave de recuperación a cinco intentos por ventana', () => {
+    const emailKey = 'password-reset:email:persona@test.com'
+    const ipKey = 'password-reset:ip:127.0.0.1'
+    for (let i = 0; i < 5; i++) recordPasswordResetAttempt(emailKey)
+    expect(checkPasswordResetRateLimit(emailKey).blocked).toBe(true)
+    expect(checkPasswordResetRateLimit(ipKey).blocked).toBe(false)
+    for (let i = 0; i < 5; i++) recordPasswordResetAttempt(ipKey)
+    expect(checkPasswordResetRateLimit(ipKey).blocked).toBe(true)
   })
 })

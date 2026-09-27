@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.98.0] - 2026-09-26
+#### [feature]
+- [ERD-102](https://dydasoftware.atlassian.net/browse/ERD-102) - Recuperación de contraseña: /recuperar con respuesta neutra y /restablecer con token de un solo uso (60 min); cierra todas las sesiones y conserva 2FA.
+
 ### [0.97.0] - 2026-09-26
 #### [feature]
 - [ERD-101](https://dydasoftware.atlassian.net/browse/ERD-101) - Dominios de Sites independientes del proveedor (Vercel o Railway por variable); UI con instrucciones DNS del proveedor activo y script de migración de dominios.

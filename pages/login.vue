@@ -207,10 +207,9 @@ const brandTagline = computed(() =>
             <input v-model="remember" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
             <span class="text-sm text-brand-text">Recordarme</span>
           </label>
-          <!-- Recuperacion de contraseña todavia no tiene endpoint - placeholder visual del diseno. -->
-          <button type="button" class="text-[13px] font-semibold text-brand-blue hover:underline">
+          <NuxtLink to="/recuperar" class="text-[13px] font-semibold text-brand-blue hover:underline">
             ¿Olvidaste tu contraseña?
-          </button>
+          </NuxtLink>
         </div>
 
         <button
