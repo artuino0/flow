@@ -8,7 +8,7 @@ function requestHostname(event: H3Event) {
 }
 function reservedHostnames() {
   const values = new Set(['localhost', '127.0.0.1', '::1'])
-  for (const raw of [process.env.APP_BASE_URL, process.env.VERCEL_URL]) {
+  for (const raw of [process.env.APP_BASE_URL, process.env.VERCEL_URL, process.env.RAILWAY_PUBLIC_DOMAIN]) {
     if (!raw) continue
     try { values.add(new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase()) } catch { /* configuración incompleta */ }
   }

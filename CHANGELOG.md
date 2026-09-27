@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.97.0] - 2026-09-26
+#### [feature]
+- [ERD-101](https://dydasoftware.atlassian.net/browse/ERD-101) - Dominios de Sites independientes del proveedor (Vercel o Railway por variable); UI con instrucciones DNS del proveedor activo y script de migración de dominios.
+
 ### [0.96.0] - 2026-09-26
 #### [feature]
 - [ERD-100](https://dydasoftware.atlassian.net/browse/ERD-100) - Límites por plan en base de datos (Agenda a Empresarial), editables sin desplegar desde /platform/plans; controles en servidor con avisos al 80/100 % y excepciones por organización.

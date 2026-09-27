@@ -1,5 +1,6 @@
 import { promises as dns } from 'node:dns'
 import { domainToASCII } from 'node:url'
+import { createError } from 'h3'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { getDomain } from 'tldts'
 import { db, withTenant } from '~/server/db'
@@ -24,6 +25,17 @@ interface DnsInstruction {
   name: string
   value: string
   purpose: 'routing' | 'ownership'
+}
+
+export type SiteDomainProviderName = 'vercel' | 'railway'
+interface SiteDomainProvider {
+  name: SiteDomainProviderName
+  configured: boolean
+  register(hostname: string): Promise<Record<string, unknown>>
+  status(hostname: string, providerData?: Record<string, unknown>): Promise<Record<string, unknown>>
+  remove(hostname: string, providerData?: Record<string, unknown>): Promise<void>
+  dns(hostname: string, providerData?: Record<string, unknown>): DnsInstruction[]
+  verified(data: Record<string, unknown>): boolean
 }
 
 interface VercelVerificationChallenge {
@@ -80,6 +92,114 @@ export function domainDnsInstructions(hostname: string, recordType = inferDomain
   return recordType === 'apex'
     ? { type: 'A', name: '@', value: apexIp, purpose: 'routing' }
     : { type: 'CNAME', name: relativeDnsName(hostname), value: cnameTarget, purpose: 'routing' }
+}
+
+export function providerName(): SiteDomainProviderName {
+  const requested = process.env.SITE_DOMAIN_PROVIDER?.trim().toLowerCase()
+  if (requested && requested !== 'vercel' && requested !== 'railway') {
+    throw createError({ statusCode: 503, statusMessage: 'SITE_DOMAIN_PROVIDER debe ser vercel o railway' })
+  }
+  if (requested) return requested as SiteDomainProviderName
+  if (process.env.VERCEL_TOKEN?.trim()) return 'vercel'
+  if (process.env.RAILWAY_API_TOKEN?.trim()) return 'railway'
+  throw createError({ statusCode: 503, statusMessage: 'Configura SITE_DOMAIN_PROVIDER y las credenciales del proveedor, VERCEL_TOKEN o RAILWAY_API_TOKEN' })
+}
+
+function railwayConfig() {
+  const token = process.env.RAILWAY_API_TOKEN?.trim()
+  const project = process.env.RAILWAY_PROJECT_ID?.trim()
+  const service = process.env.RAILWAY_SERVICE_ID?.trim()
+  const environment = process.env.RAILWAY_ENVIRONMENT_ID?.trim()
+  if (!token || !project || !service || !environment) return null
+  return { token, project, service, environment }
+}
+
+async function railwayRequest(query: string, variables: Record<string, unknown>) {
+  const config = railwayConfig()
+  if (!config) throw createError({ statusCode: 503, statusMessage: 'Railway requiere RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, RAILWAY_SERVICE_ID y RAILWAY_ENVIRONMENT_ID' })
+  const response = await fetch('https://backboard.railway.com/graphql/v2', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ query, variables })
+  })
+  const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; errors?: { message?: string }[] }
+  if (!response.ok || body.errors?.length) throw new Error(body.errors?.map(error => error.message).filter(Boolean).join('; ') || `Railway respondió ${response.status}`)
+  return body.data ?? {}
+}
+
+const railwayDomainFields = `id domain edgeId verified certificateStatus status {
+  verificationToken verificationDnsHost dnsRecords {
+    currentValue fqdn hostlabel purpose recordType requiredValue status zone
+  }
+}`
+
+function railwayDns(hostname: string, data: Record<string, unknown> = {}): DnsInstruction[] {
+  const domain = (data.railway ?? data) as Record<string, unknown>
+  const status = (domain.status ?? {}) as Record<string, unknown>
+  const records = Array.isArray(status.dnsRecords) ? status.dnsRecords as Record<string, unknown>[] : []
+  const result = records.flatMap(record => {
+    const type = String(record.recordType ?? '').replace('DNS_RECORD_TYPE_', '').toUpperCase()
+    const value = String(record.requiredValue ?? '')
+    if (!['A', 'CNAME', 'TXT'].includes(type) || !value) return []
+    return [{ type: type as DnsInstruction['type'], name: String(record.fqdn ?? record.hostlabel ?? '@'), value, purpose: String(record.purpose ?? '').includes('OWNERSHIP') ? 'ownership' as const : 'routing' as const }]
+  })
+  const token = typeof status.verificationToken === 'string' ? status.verificationToken : ''
+  if (token && !result.some(record => record.purpose === 'ownership')) {
+    result.push({ type: 'TXT', name: String(status.verificationDnsHost ?? `_railway-verify.${hostname}`), value: token, purpose: 'ownership' })
+  }
+  return result
+}
+
+function railwayDnsVerified(data: Record<string, unknown>) {
+  const domain = (data.railway ?? data) as Record<string, unknown>
+  const status = domain.status as Record<string, unknown> | undefined
+  const records = Array.isArray(status?.dnsRecords) ? status.dnsRecords as Record<string, unknown>[] : []
+  return status?.verified === true || (records.length > 0
+    && records.every(record => String(record.status).includes('PROPAGATED') || String(record.status).includes('VALID')))
+}
+
+function railwayVerified(data: Record<string, unknown>) {
+  const domain = (data.railway ?? data) as Record<string, unknown>
+  const certificate = String(domain.certificateStatus ?? '')
+  const dnsVerified = domain.verified === true || railwayDnsVerified(data)
+  return dnsVerified && (!certificate || /(?:ISSUED|VALID|COMPLETE)$/.test(certificate))
+}
+
+async function railwayDomain(hostname: string, existing?: Record<string, unknown>) {
+  const id = typeof existing?.id === 'string' ? existing.id : ''
+  if (id) {
+    const data = await railwayRequest(`query customDomain($id: String!) { customDomain(id: $id) { ${railwayDomainFields} } }`, { id })
+    return data.customDomain as Record<string, unknown>
+  }
+  const config = railwayConfig()
+  if (!config) throw createError({ statusCode: 503, statusMessage: 'Railway requiere RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, RAILWAY_SERVICE_ID y RAILWAY_ENVIRONMENT_ID' })
+  const data = await railwayRequest(`mutation customDomainCreate($input: CustomDomainCreateInput!) { customDomainCreate(input: $input) { ${railwayDomainFields} } }`, {
+    input: { projectId: config.project, serviceId: config.service, environmentId: config.environment, domain: hostname }
+  })
+  const result = data.customDomainCreate as Record<string, unknown> | undefined
+  if (!result) throw new Error('Railway no devolvió el dominio creado')
+  return result
+}
+
+export function getSiteDomainProvider(name = providerName()): SiteDomainProvider {
+  if (name === 'railway') return {
+    name, configured: Boolean(railwayConfig()),
+    register: async hostname => await railwayDomain(hostname) as Record<string, unknown>,
+    status: async (hostname, data) => await railwayDomain(hostname, (data?.railway as Record<string, unknown>) ?? data),
+    remove: async (_hostname, data) => {
+      const id = String(((data?.railway ?? data) as Record<string, unknown> | undefined)?.id ?? '')
+      if (id) await railwayRequest('mutation customDomainDelete($id: String!) { customDomainDelete(id: $id) }', { id })
+    },
+    dns: (hostname, data) => railwayDns(hostname, data), verified: railwayVerified
+  }
+  return {
+    name, configured: Boolean(vercelConfig()),
+    register: async hostname => await addDomainToVercel(hostname) as Record<string, unknown>,
+    status: async hostname => await addDomainToVercel(hostname) as Record<string, unknown>,
+    remove: async hostname => await removeDomainFromVercel(hostname),
+    dns: (hostname, data) => [...ownershipInstructions(hostname, { vercel: data?.vercel }), domainDnsInstructions(hostname)],
+    verified: data => (data.vercel as VercelDomainResponse | undefined)?.verified !== false
+  }
 }
 
 function vercelConfig() {
@@ -205,14 +325,17 @@ function ownershipInstructions(hostname: string, providerData: Record<string, un
 function presentDomain(row: DomainPresentationRow) {
   const providerData = (row.providerData ?? {}) as Record<string, unknown>
   const recordType = inferDomainRecordType(row.hostname)
-  const routing = domainDnsInstructions(row.hostname, recordType)
+  let provider: SiteDomainProvider | undefined
+  try { provider = getSiteDomainProvider((row.provider as SiteDomainProviderName | undefined) ?? providerName()) } catch { /* UI informa que el proveedor no está configurado */ }
+  const dnsRecords = provider?.dns(row.hostname, providerData) ?? []
   return {
     ...row,
     recordType,
-    dns: routing,
-    dnsRecords: [...ownershipInstructions(row.hostname, providerData), routing],
-    providerConfigured: Boolean(vercelConfig()),
-    ownershipVerified: (providerData.vercel as VercelDomainResponse | undefined)?.verified !== false,
+    dns: dnsRecords.find(record => record.purpose === 'routing') ?? dnsRecords[0] ?? null,
+    dnsRecords,
+    providerConfigured: provider?.configured ?? false,
+    providerName: provider?.name ?? row.provider,
+    ownershipVerified: provider?.name === 'railway' ? railwayVerified(providerData) : (providerData.vercel as VercelDomainResponse | undefined)?.verified !== false,
     dnsVerified: providerData.dnsVerified === true
   }
 }
@@ -281,17 +404,18 @@ export async function createSiteDomain(
   })
   if (!binding) return null
 
-  let registration: VercelDomainResponse
+  const provider = getSiteDomainProvider()
+  let registration: Record<string, unknown>
   try {
-    registration = await addDomainToVercel(hostname)
+    registration = await provider.register(hostname)
   } catch (error) {
-    if (error instanceof VercelApiError && error.status === 403) {
+    if (provider.name === 'vercel' && error instanceof VercelApiError && error.status === 403) {
       throw createError({
         statusCode: 502,
         statusMessage: 'La credencial de Flow no tiene permisos para administrar dominios en el proyecto de Vercel'
       })
     }
-    if (error instanceof VercelApiError && error.status === 409) {
+    if (provider.name === 'vercel' && error instanceof VercelApiError && error.status === 409) {
       throw createError({
         statusCode: 409,
         statusMessage: 'El dominio ya está asignado a otro proyecto. Vuelve a intentarlo para obtener la verificación TXT o retíralo del proyecto anterior.'
@@ -304,12 +428,16 @@ export async function createSiteDomain(
     })
   }
 
-  const dnsVerified = await verifyDns(hostname, recordType)
-  const active = registration.verified !== false && dnsVerified
+  const dnsRecords = provider.dns(hostname, { [provider.name]: registration })
+  const dnsVerified = provider.name === 'railway'
+    ? railwayVerified(registration)
+    : await verifyDns(hostname, recordType)
+  const active = provider.verified({ [provider.name]: registration }) && dnsVerified
   const providerData: Record<string, unknown> = {
     recordType,
-    vercelConfigured: true,
-    vercel: registration,
+    [`${provider.name}Configured`]: true,
+    [provider.name]: registration,
+    dnsRecords,
     dnsVerified
   }
 
@@ -321,6 +449,7 @@ export async function createSiteDomain(
         hostname,
         rootPageId: input.rootPageId || null,
         isPrimary: binding.isPrimary,
+        provider: provider.name,
         status: active ? 'active' : 'pending',
         providerData,
         createdBy: userId
@@ -348,20 +477,23 @@ export async function verifySiteDomain(tenantId: string, domainId: string) {
   const recordType = inferDomainRecordType(current.hostname)
   let verified = false
   let dnsVerified = false
-  let vercel: VercelDomainResponse | undefined
+  let providerResult: Record<string, unknown> | undefined
+  const provider = getSiteDomainProvider((current.provider || 'vercel') as SiteDomainProviderName)
   let providerError: string | undefined
   try {
-    vercel = await addDomainToVercel(current.hostname)
-    verified = vercel.verified === true
-    if (!verified) {
+    providerResult = await provider.status(current.hostname, (current.providerData ?? {}) as Record<string, unknown>)
+    verified = provider.verified({ [provider.name]: providerResult })
+    if (!verified && provider.name === 'vercel') {
       try {
-        vercel = await verifyDomainWithVercel(current.hostname)
-        verified = vercel.verified === true
+        providerResult = await verifyDomainWithVercel(current.hostname) as Record<string, unknown>
+        verified = provider.verified({ [provider.name]: providerResult })
       } catch {
         // Keep the verification challenge so the tenant can copy its TXT record.
       }
     }
-    dnsVerified = await verifyDns(current.hostname, recordType)
+    dnsVerified = provider.name === 'railway'
+      ? railwayDnsVerified({ railway: providerResult })
+      : await verifyDns(current.hostname, recordType)
   } catch (error) {
     providerError = error instanceof Error ? error.message : 'No se pudo verificar el dominio'
   }
@@ -371,7 +503,7 @@ export async function verifySiteDomain(tenantId: string, domainId: string) {
     const nextProviderData: Record<string, unknown> = {
       ...previousProviderData,
       recordType,
-      ...(vercel ? { vercel } : {}),
+      ...(providerResult ? { [provider.name]: providerResult, dnsRecords: provider.dns(current.hostname, { [provider.name]: providerResult }) } : {}),
       verified,
       dnsVerified
     }
@@ -397,7 +529,12 @@ export async function deleteSiteDomain(tenantId: string, domainId: string) {
     return row ?? null
   })
   if (!current) return false
-  await removeDomainFromVercel(current.hostname)
+  const domain = await withTenant(tenantId, async tx => {
+    const [row] = await tx.select({ provider: siteDomains.provider, providerData: siteDomains.providerData })
+      .from(siteDomains).where(and(eq(siteDomains.id, domainId), eq(siteDomains.tenantId, tenantId))).limit(1)
+    return row ?? null
+  })
+  if (domain) await getSiteDomainProvider(domain.provider as SiteDomainProviderName).remove(current.hostname, domain.providerData as Record<string, unknown>)
   return withTenant(tenantId, async tx => {
     const deleted = await tx.delete(siteDomains)
       .where(and(eq(siteDomains.id, domainId), eq(siteDomains.tenantId, tenantId)))

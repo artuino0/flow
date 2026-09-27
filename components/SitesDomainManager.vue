@@ -130,16 +130,11 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
             <div class="actions"><button title="Verificar DNS" :disabled="checking === domain.id" @click="verifyDomain(domain)"><RefreshCw :class="{ spin: checking === domain.id }" /></button><button title="Desconectar" @click="removeDomain(domain)"><Trash2 /></button></div>
           </div>
           <div v-if="domain.status !== 'active'" class="dns-panel">
-            <p v-if="!domain.providerConfigured" class="provider-warning">Flow Sites no tiene configurada la conexión administrativa con Vercel. El administrador de la plataforma debe completar esa conexión.</p>
+            <p v-if="!domain.providerConfigured" class="provider-warning">Flow Sites no tiene configurada la conexión administrativa con el proveedor de dominios seleccionado. El administrador de la plataforma debe completar esa conexión.</p>
             <p v-if="domain.providerData?.providerError" class="provider-warning">{{ domain.providerData.providerError }}</p>
             <div class="dns-intro">
               <b>Agrega estos registros en tu proveedor de dominio</b>
-              <span v-if="domain.recordType === 'apex'">
-                Flow detectó que {{ domain.hostname }} es un dominio raíz. Para dirigirlo a Flow usa el registro A mostrado abajo; si aparece un TXT de verificación, agrega ambos.
-              </span>
-              <span v-else>
-                Flow detectó que {{ domain.hostname }} es un subdominio. Conecta únicamente ese nombre con el registro CNAME mostrado abajo.
-              </span>
+              <span>Configura los registros indicados por el proveedor para {{ domain.hostname }}. Agrega todos los registros de enrutamiento y verificación que aparecen abajo.</span>
             </div>
             <div v-for="(record, index) in domain.dnsRecords" :key="`${record.type}-${record.name}`" class="dns-record">
               <span class="dns-purpose">{{ record.purpose === 'ownership' ? 'Verificar propiedad' : 'Dirigir el dominio a Flow' }}</span>
@@ -148,12 +143,7 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
               <label>Valor<strong>{{ record.value }}</strong><button @click="copyValue(`${domain.id}-${index}-value`, record.value)"><Check v-if="copied === `${domain.id}-${index}-value`" /><Copy v-else /></button></label>
             </div>
             <div class="dns-help">
-              <p v-if="domain.recordType === 'apex'">
-                Este registro activa <strong>{{ domain.hostname }}</strong>. Si también quieres <strong>www.{{ domain.hostname }}</strong>, conéctalo en Flow como otro dominio y te mostraremos su CNAME.
-              </p>
-              <p v-else>
-                Este registro activa solamente <strong>{{ domain.hostname }}</strong>; no modifica el dominio raíz.
-              </p>
+              <p>Estos registros aplican a <strong>{{ domain.hostname }}</strong>. Sigue los tipos, nombres y valores que proporciona el proveedor activo.</p>
               <p>Conserva los registros MX y TXT de correo. Reemplaza únicamente registros A o CNAME anteriores que usen exactamente el mismo nombre.</p>
             </div>
           </div>
