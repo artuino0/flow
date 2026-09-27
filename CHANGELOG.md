@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.99.0] - 2026-09-27
+#### [feature]
+- [ERD-103](https://dydasoftware.atlassian.net/browse/ERD-103) - /platform/plans con diseño Flow (lista, editor General/Precios/Límites, excepciones y confirmación al desactivar); sin cambios de API.
+
 ### [0.98.0] - 2026-09-26
 #### [feature]
 - [ERD-102](https://dydasoftware.atlassian.net/browse/ERD-102) - Recuperación de contraseña: /recuperar con respuesta neutra y /restablecer con token de un solo uso (60 min); cierra todas las sesiones y conserva 2FA.
