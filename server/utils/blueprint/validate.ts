@@ -30,18 +30,18 @@ const issueMessage = (issue: ZodIssue): string => {
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)])) : value
 const same = (a: unknown, b: unknown) => JSON.stringify(stable(a)) === JSON.stringify(stable(b))
 
-export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, input: unknown): Promise<BlueprintValidationResult> {
-  const shape = blueprintSchema.safeParse(input)
-  if (!shape.success) return { normalized: null, errors: shape.error.issues.map(issue => ({ path: pathOf(issue.path), message: issueMessage(issue) })), merges: [], current: null, newFields: new Map() }
-  const current = await loadBlueprintTenant(tx, tenantId)
-  const { normalized, merges } = dedupeBlueprint(shape.data, current)
+function invalidBlueprintShape(issues: ZodIssue[]): BlueprintValidationResult {
+  return { normalized: null, errors: issues.map(issue => ({ path: pathOf(issue.path), message: issueMessage(issue) })), merges: [], current: null, newFields: new Map() }
+}
+
+async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaited<ReturnType<typeof loadBlueprintTenant>>, knownRoles: Set<string>): Promise<BlueprintValidationResult> {
+  const { normalized, merges } = dedupeBlueprint(input, current)
   const errors: BlueprintValidationError[] = []
   const add = (path: string, message: string, code?: string) => errors.push({ path, message, ...(code ? { code } : {}) })
   const bySlug = new Map(current.modules.map(module => [module.slug, module]))
   const refs = new Map<string, Blueprint['modules'][number]>()
   const proposedSlugs = new Set<string>()
   const mergeRefs = new Set(merges.map(merge => merge.from))
-  const knownRoles = new Set((await tx.select({ id: roles.id }).from(roles).where(eq(roles.tenantId, tenantId))).map(role => role.id))
   let creates = 0
   for (const [index, module] of normalized.modules.entries()) {
     const base = `modules[${index}]`
@@ -236,6 +236,33 @@ export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, i
     if (existing && (bySlug.get(association.sourceRef)?.id !== existing.sourceEntityId || bySlug.get(association.targetRef)?.id !== existing.targetEntityId)) add(`associations[${index}].name`, 'La asociación existente usa otros módulos y no se puede cambiar')
   }
   return { normalized, errors, merges, current, newFields: new Map(normalized.modules.map(module => [module.ref, module.fields.filter(field => !((current.fieldsById.get(bySlug.get(module.slug)?.id ?? '') ?? []).some(existing => existing.name === field.name)))])) }
+}
+
+export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, input: unknown): Promise<BlueprintValidationResult> {
+  const shape = blueprintSchema.safeParse(input)
+  if (!shape.success) return invalidBlueprintShape(shape.error.issues)
+  const current = await loadBlueprintTenant(tx, tenantId)
+  const knownRoles = new Set((await tx.select({ id: roles.id }).from(roles).where(eq(roles.tenantId, tenantId))).map(role => role.id))
+  return validateBlueprintAgainstCurrent(shape.data, current, knownRoles)
+}
+
+/** Evaluación sin base de datos: materializa la misma forma que exportBlueprint carga del tenant. */
+export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot: Blueprint): Promise<BlueprintValidationResult> {
+  const shape = blueprintSchema.safeParse(input)
+  if (!shape.success) return invalidBlueprintShape(shape.error.issues)
+  const fieldsById = new Map(snapshot.modules.map(module => [module.slug, module.fields.map(field => ({
+    name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), validationRules: field.validationRules ?? {}
+  }))]))
+  const modules = snapshot.modules.map(module => ({
+    id: module.slug, slug: module.slug, moduleKind: module.kind, name: module.name,
+    singularName: module.singularName ?? null, description: module.description ?? null, icon: module.icon ?? null,
+    detailLayout: module.detailLayout ?? null, workflowConfig: module.workflow ?? null
+  }))
+  const associations = snapshot.associations.map(association => ({
+    name: association.name, sourceEntityId: association.sourceRef, targetEntityId: association.targetRef
+  }))
+  const current = { modules, fieldsById, associations } as unknown as Awaited<ReturnType<typeof loadBlueprintTenant>>
+  return validateBlueprintAgainstCurrent(shape.data, current, new Set())
 }
 
 export async function validateBlueprint(tenantId: string, input: unknown): Promise<BlueprintValidationResult> {

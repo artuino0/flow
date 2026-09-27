@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
 import { moduleDesignSessions } from '~/server/db/schema'
-import { completeDesignerJson } from '~/server/utils/aiProvider'
+import { completeDesignerJson, type DesignerCompletion } from '~/server/utils/aiProvider'
 import { exportBlueprint } from '~/server/utils/blueprint/export'
 import { validateBlueprint } from '~/server/utils/blueprint/validate'
 import { diffBlueprint } from '~/server/utils/blueprint/diff'
@@ -33,6 +33,57 @@ export function designerContext(current: Blueprint, instruction: string) {
   return { index: schema.map(module => ({ name: module.name, slug: module.slug, keyFields: module.fields.slice(0, 5).map(field => field.name) })), relevant }
 }
 
+export async function runDesignerGeneration(options: {
+  current: Blueprint
+  blueprint: unknown
+  conversation: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }>
+  instruction: string
+  validate: (proposal: unknown) => ReturnType<typeof validateBlueprint>
+  complete?: typeof completeDesignerJson
+}) {
+  const { current, blueprint, conversation, instruction, validate } = options
+  const complete = options.complete ?? completeDesignerJson
+  const trusted = trustedBlueprintStrings(current)
+  const prompt = JSON.stringify({ tenantSchema: designerContext(current, instruction), conversation: conversation.slice(-20), currentBlueprint: blueprint, request: instruction })
+  const usage = { inputTokens: 0, outputTokens: 0, model: '' }
+  let result: Awaited<ReturnType<typeof validateBlueprint>> | null = null
+  let message = ''
+  let errors: Array<{ path: string; message: string }> = []
+  let proposal: unknown
+  let firstValid = false
+  let repairs = 0
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) repairs++
+    const completion: DesignerCompletion = await complete({ system: DESIGNER_SYSTEM_PROMPT, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, proposedBlueprint: proposal, errors, instruction: 'Corrige TODOS los errores y duplicados. Devuelve el plano completo.' }) })
+    usage.inputTokens += completion.inputTokens
+    usage.outputTokens += completion.outputTokens
+    usage.model = completion.model
+    const parsed = answerSchema.safeParse(completion.value)
+    if (!parsed.success) {
+      errors = [{ path: '', message: 'La respuesta no tiene message y blueprint válidos' }]
+      proposal = completion.value
+      continue
+    }
+    message = parsed.data.message
+    proposal = parsed.data.blueprint
+    if (containsUnsafeBlueprintText(proposal, trusted)) { errors = [{ path: 'blueprint', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]; continue }
+    const fieldDedupe = mergeDesignerFields(proposal, current)
+    result = await validate(attempt === 1 ? fieldDedupe.blueprint : proposal)
+    if (attempt === 1) result.merges.push(...fieldDedupe.merges)
+    errors = result.errors.filter(error => error.code !== 'plan_limit')
+    if (attempt === 0) errors.push(...fieldDedupe.merges.map(merge => ({ path: 'modules', message: `Duplicado de ${merge.to}: reutiliza el campo existente` })))
+    if (result.normalized) for (const existing of current.modules) {
+      const matches = result.normalized.modules.filter(module => module.slug === existing.slug)
+      if (matches.length !== 1 || !matches[0]?.snapshot) errors.push({ path: 'modules', message: `El plano completo debe conservar exactamente una instantánea de ${existing.slug}` })
+    }
+    if (attempt === 0) firstValid = errors.length === 0 && result.merges.length === 0
+    if (!errors.length && (!result.merges.length || attempt === 1)) break
+    if (result.merges.length) errors.push(...result.merges.map(merge => ({ path: 'modules', message: `Duplicado de ${merge.to}: usa extend y conserva campos existentes` })))
+  }
+  const valid = Boolean(result?.normalized && errors.every(error => error.message.startsWith('Duplicado de')))
+  return { valid, result, message, errors, usage, firstValid, repairs, proposal }
+}
+
 export async function generateDesign(tenantId: string, sessionId: string, instruction: string) {
   await recoverOrphanedAiReservations(tenantId)
   const [previous] = await withTenant(tenantId, tx => tx.select().from(moduleDesignSessions).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId))).limit(1))
@@ -44,40 +95,11 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     const [session] = await withTenant(tenantId, tx => tx.select().from(moduleDesignSessions).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId))).limit(1))
     if (!session) throw createError({ statusCode: 404, statusMessage: 'Sesión no encontrada' })
     const current = await exportBlueprint(tenantId)
-    const trusted = trustedBlueprintStrings(current)
     const conversation = [...session.messages, { role: 'user' as const, content: instruction, createdAt: new Date().toISOString() }]
-    const prompt = JSON.stringify({ tenantSchema: designerContext(current, instruction), conversation: conversation.slice(-20), currentBlueprint: session.blueprint, request: instruction })
-    let result: Awaited<ReturnType<typeof validateBlueprint>> | null = null
-    let message = ''
-    let errors: Array<{ path: string; message: string }> = []
-    let proposal: unknown
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const completion = await completeDesignerJson({ system: DESIGNER_SYSTEM_PROMPT, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, proposedBlueprint: proposal, errors, instruction: 'Corrige TODOS los errores y duplicados. Devuelve el plano completo.' }) })
-      usage.inputTokens += completion.inputTokens
-      usage.outputTokens += completion.outputTokens
-      usage.model = completion.model
-      const parsed = answerSchema.safeParse(completion.value)
-      if (!parsed.success) {
-        errors = [{ path: '', message: 'La respuesta no tiene message y blueprint válidos' }]
-        proposal = completion.value
-        continue
-      }
-      message = parsed.data.message
-      proposal = parsed.data.blueprint
-      if (containsUnsafeBlueprintText(proposal, trusted)) { errors = [{ path: 'blueprint', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]; continue }
-      const fieldDedupe = mergeDesignerFields(proposal, current)
-      result = await validateBlueprint(tenantId, attempt === 1 ? fieldDedupe.blueprint : proposal)
-      if (attempt === 1) result.merges.push(...fieldDedupe.merges)
-      errors = result.errors.filter(error => error.code !== 'plan_limit')
-      if (attempt === 0) errors.push(...fieldDedupe.merges.map(merge => ({ path: 'modules', message: `Duplicado de ${merge.to}: reutiliza el campo existente` })))
-      if (result.normalized) for (const existing of current.modules) {
-        const matches = result.normalized.modules.filter(module => module.slug === existing.slug)
-        if (matches.length !== 1 || !matches[0]?.snapshot) errors.push({ path: 'modules', message: `El plano completo debe conservar exactamente una instantánea de ${existing.slug}` })
-      }
-      if (!errors.length && (!result.merges.length || attempt === 1)) break
-      if (result.merges.length) errors.push(...result.merges.map(merge => ({ path: 'modules', message: `Duplicado de ${merge.to}: usa extend y conserva campos existentes` })))
-    }
-    if (!result?.normalized || errors.some(error => !error.message.startsWith('Duplicado de'))) throw createError({ statusCode: 422, statusMessage: 'La IA no produjo un plano válido', data: { errors } })
+    const generated = await runDesignerGeneration({ current, blueprint: session.blueprint, conversation, instruction, validate: proposal => validateBlueprint(tenantId, proposal) })
+    Object.assign(usage, generated.usage)
+    const { result, message, errors } = generated
+    if (!generated.valid || !result?.normalized) throw createError({ statusCode: 422, statusMessage: 'La IA no produjo un plano válido', data: { errors } })
     const normalized = result.normalized
     const diff = await diffBlueprint(tenantId, result)
     const merges = result.merges

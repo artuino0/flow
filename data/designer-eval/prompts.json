@@ -1,0 +1,14 @@
+[
+  { "id": "taller", "base": "empty", "description": "Diseña un taller mecánico con clientes, vehículos, órdenes de servicio, técnicos, refacciones y estados de reparación." },
+  { "id": "horeca", "base": "empty", "description": "Diseña un distribuidor HORECA con clientes, productos, pedidos y partidas con cantidad, precio e importe." },
+  { "id": "cotizaciones", "base": "empty", "description": "Diseña cotizaciones con clientes, partidas, importes y estados de aprobación y rechazo." },
+  { "id": "nomina", "base": "empty", "description": "Diseña nómina con empleados, periodos, percepciones, deducciones y recibos." },
+  { "id": "inventario", "base": "empty", "description": "Diseña inventario con productos, almacenes, existencias y movimientos de entrada y salida." },
+  { "id": "agenda", "base": "empty", "description": "Diseña una agenda de citas con clientes, personal, servicios, horarios y estado de cada cita." },
+  { "id": "renta", "base": "taller", "description": "Agrega garantías a las órdenes del taller y renta de equipo con contratos, entregas, devoluciones y cargos por demora." },
+  { "id": "contable", "base": "taller", "description": "Agrega compras a proveedores para refacciones y extiende la estructura para un despacho contable: clientes fiscales, obligaciones y vencimientos." },
+  { "id": "escuela", "base": "taller", "description": "Extiende la estructura existente para una escuela con alumnos, cursos e inscripciones." },
+  { "id": "veterinaria", "base": "taller", "description": "Extiende la estructura existente para una clínica veterinaria con mascotas, consultas, tratamientos y citas." },
+  { "id": "constructora", "base": "taller", "description": "Extiende la estructura existente para una constructora con obras, estimaciones y partidas." },
+  { "id": "ecommerce", "base": "taller", "description": "Extiende la estructura existente para un e-commerce con productos, pedidos y partidas." }
+]

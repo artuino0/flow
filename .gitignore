@@ -13,6 +13,7 @@ node_modules
 # La clave privada del emisor y las licencias locales nunca van al repositorio.
 /.license-issuer/
 /data/license/
+/data/designer-eval/results/
 
 # Salidas de playwright-cli (capturas y logs con datos reales)
 .playwright-cli/
