@@ -3,7 +3,7 @@ import Stripe from 'stripe'
 import { db, withTenant } from '~/server/db'
 import { effectiveStorageLimit, getEffectivePlanLimits, getPlanByKey, listPlans, type PlanConcept, type PlanLimits } from '~/server/utils/plans'
 import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
-import { sites, subscriptionPlans, tenantBillingInvoices, tenantSubscriptions, tenants, tenantUsageSnapshots, triggerLogs, users } from '~/server/db/schema'
+import { sites, subscriptionPlans, tenantBillingInvoices, tenantPlanHistory, tenantSubscriptions, tenants, tenantUsageSnapshots, triggerLogs, users } from '~/server/db/schema'
 
 export type BillingInterval = 'month' | 'year'
 export type UsageResource = 'storageBytes' | 'users' | 'sites' | 'automationExecutions' | 'emails'
@@ -12,9 +12,20 @@ const usageResources: UsageResource[] = ['storageBytes', 'users', 'sites', 'auto
 const asNumber = (value: string | number | bigint | null | undefined) => Number(value ?? 0)
 const isoDate = (date = new Date()) => date.toISOString().slice(0, 10)
 const periodStart = () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+function formatStorage(bytes: number) {
+  if (bytes === 0) return '0 MB'
+  if (bytes < 1024) return `${bytes} B`
+  const unit = bytes >= 1024 ** 3 ? 'GB' : bytes >= 1024 ** 2 ? 'MB' : 'KB'
+  const divisor = unit === 'GB' ? 1024 ** 3 : unit === 'MB' ? 1024 ** 2 : 1024
+  return `${new Intl.NumberFormat('es-MX', { maximumFractionDigits: 1 }).format(bytes / divisor)} ${unit}`
+}
+function formatUsageValue(item: PlanUsageItem, value: number) {
+  return item.concept === 'storageBytes' ? formatStorage(value) : value.toLocaleString('es-MX')
+}
 
 export class BillingNotConfiguredError extends Error {}
 export class PlanNotAvailableError extends Error {}
+export class PlanChangeNotAllowedError extends Error {}
 
 export function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim()
@@ -31,6 +42,32 @@ function planPriceId(plan: typeof subscriptionPlans.$inferSelect, interval: Bill
 }
 export async function listPublicPlans() {
   return (await listPlans()).filter(plan => plan.isActive && plan.isPublic)
+}
+
+export async function getAvailablePlansForTenant(tenantId: string) {
+  const [current, plans] = await Promise.all([getTenantSubscription(tenantId), listPublicPlans()])
+  const agenda = plans.find(plan => plan.code === 'agenda')
+  let hadAgenda = current?.plan.code === 'agenda'
+  if (!hadAgenda && agenda) {
+    const history = await withTenant(tenantId, tx => tx.select({ id: tenantPlanHistory.id })
+      .from(tenantPlanHistory)
+      .where(and(eq(tenantPlanHistory.tenantId, tenantId), eq(tenantPlanHistory.planId, agenda.id)))
+      .limit(1))
+    hadAgenda = history.length > 0
+  }
+  const visible = plans.filter(plan => plan.code !== 'agenda' || hadAgenda)
+  const usage = current && visible.some(plan => plan.sortOrder < current.plan.sortOrder)
+    ? (await getPlanUsage(tenantId)).usage
+    : []
+  return Promise.all(visible.map(async plan => {
+    if (!current || plan.sortOrder >= current.plan.sortOrder) return { ...plan, blockedBy: [] as Array<PlanUsageItem & { limit: number }> }
+    const limits = await getEffectivePlanLimits(tenantId, plan.id)
+    const blockedBy = usage.flatMap(item => {
+      const limit = limits[item.concept]
+      return limit !== null && item.used > limit ? [{ ...item, limit }] : []
+    })
+    return { ...plan, blockedBy }
+  }))
 }
 
 export async function getTenantSubscription(tenantId: string): Promise<({ id: string; tenantId: string; planId: string; provider: string; status: string; billingInterval: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null; stripePriceId: string | null; currentPeriodStart: Date | null; currentPeriodEnd: Date | null; trialEndsAt: Date | null; cancelAtPeriodEnd: boolean; createdAt: Date; updatedAt: Date } & { plan: (typeof subscriptionPlans.$inferSelect & { limits: PlanLimits }) }) | null> {
@@ -244,6 +281,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
   const interval = subscription.items.data[0]?.price.recurring?.interval === 'year' ? 'year' : 'month'
   const effectiveLimits = await getEffectivePlanLimits(resolvedTenantId, plan.id)
   await withTenant(resolvedTenantId, async tx => {
+    await tx.execute(sql`SELECT set_config('app.plan_change_source', 'stripe_webhook', true)`)
     await tx.insert(tenantSubscriptions).values({
       tenantId: resolvedTenantId,
       planId: plan.id,
@@ -309,9 +347,16 @@ export async function syncStripeInvoice(invoice: Stripe.Invoice, tenantId?: stri
 }
 
 export async function createStripeCheckout(tenantId: string, planCode: string, interval: BillingInterval) {
+  const plan = (await getAvailablePlansForTenant(tenantId)).find(row => row.code === planCode)
+  if (!plan) {
+    if (planCode === 'agenda') throw new PlanChangeNotAllowedError('El plan Agenda solo está disponible para organizaciones que ya lo tienen.')
+    throw new PlanNotAvailableError('El plan seleccionado no está disponible')
+  }
+  if (plan.blockedBy.length) {
+    const detail = plan.blockedBy.map(item => `${item.label} (${formatUsageValue(item, item.used)} de ${formatUsageValue(item, item.limit)})`).join(', ')
+    throw new PlanChangeNotAllowedError(`Tu consumo actual supera el plan ${plan.name} en: ${detail}. Contacta a soporte.`)
+  }
   const stripe = getStripeClient()
-  const plan = (await listPlans()).find(row => row.code === planCode && row.isActive && row.isPublic)
-  if (!plan) throw new PlanNotAvailableError('El plan seleccionado no está disponible')
   const priceId = planPriceId(plan, interval)
   if (!priceId) throw new BillingNotConfiguredError(`Falta vincular el precio ${interval === 'year' ? 'anual' : 'mensual'} de ${plan.name} en Stripe`)
   const [tenant] = await db.select({ name: tenants.name, email: tenants.email }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)

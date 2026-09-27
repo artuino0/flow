@@ -382,6 +382,21 @@ async function restoreEntityImpl(tenantId: string, entityId: string): Promise<En
   })
 }
 
+// HU-ERD-104c: lectura de un módulo por id (incluido si está borrado) para que
+// restore.post.ts pueda revisar moduleKind/deletedAt ANTES de restaurar -
+// restoreEntity solo devuelve el módulo ya restaurado (demasiado tarde para
+// decidir si consumir cuota de 'modules').
+export async function getEntityRecord(tenantId: string, entityId: string) {
+  return withTenant(tenantId, async (tx) => {
+    const [entity] = await tx
+      .select()
+      .from(entities)
+      .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId)))
+      .limit(1)
+    return entity ?? null
+  })
+}
+
 // Toda escritura que cambia módulos, campos o permisos invalida los cachés de acceso y metadatos (shortCache.ts).
 export const createEntity = invalidatesTenantAccess(createEntityImpl)
 export const updateEntity = invalidatesTenantAccess(updateEntityImpl)

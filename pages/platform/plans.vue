@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { AlertCircle, BadgeDollarSign, Building2, Check, ChevronRight, CloudOff, Gauge, Layers, Plus, Power, RefreshCw, Save, SlidersHorizontal, Trash2, Undo2 } from '@lucide/vue'
+import { AlertCircle, BadgeDollarSign, Building2, Check, ChevronRight, CloudOff, Database, FileText, Gauge, Globe, HardDrive, Layers, MessageCircle, Plus, Power, RefreshCw, Save, SlidersHorizontal, Trash2, Undo2, Zap } from '@lucide/vue'
 import { PLAN_CONCEPTS } from '~/utils/planConcepts'
-import { dateTimeLocalToIso, formatPlanPrice, normalizeOverrideValue, normalizePlanLimits, priceInputToCents } from '~/utils/platformPlanForm'
+import { bytesToGb, dateTimeLocalToIso, formatPlanPrice, normalizeOverrideValue, normalizePlanLimits } from '~/utils/platformPlanForm'
 
 definePageMeta({ fullBleed: true })
 
@@ -11,15 +11,15 @@ type Override = { id: string; tenantId: string; concept: string; value: number |
 type Draft = Omit<Plan, 'id' | 'limits'> & { limits: Record<string, number | string | null> }
 
 const conceptGroups = [
-  { name: 'Core', concepts: ['users', 'usersIncluded', 'modules'] },
-  { name: 'Automatización', concepts: ['activeFlows', 'executions'] },
-  { name: 'Comunicaciones', concepts: ['emails'] },
-  { name: 'Facturación', concepts: ['stamps'] },
-  { name: 'Sites', concepts: ['sites', 'pages', 'forms', 'formSubmissions'] },
-  { name: 'Almacenamiento', concepts: ['storageBytes'] }
+  { name: 'Core', concepts: ['users', 'usersIncluded', 'modules'], icon: Database },
+  { name: 'Automatización', concepts: ['activeFlows', 'executions'], icon: Zap },
+  { name: 'Comunicaciones', concepts: ['emails'], icon: MessageCircle },
+  { name: 'Facturación', concepts: ['stamps'], icon: FileText },
+  { name: 'Sites', concepts: ['sites', 'pages', 'forms', 'formSubmissions'], icon: Globe },
+  { name: 'Almacenamiento', concepts: ['storageBytes'], icon: HardDrive }
 ]
-const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', emails: 'Correos al mes', storageBytes: 'Almacenamiento', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
-const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', emails: 'correos', storageBytes: 'bytes', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
+const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', emails: 'Correos al mes', storageBytes: 'Almacenamiento (GB)', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
+const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', emails: 'correos', storageBytes: 'GB', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
 const { data, error, status, refresh } = await useFetch<{ plans: Plan[]; organizations: Organization[]; overrides: Override[] }>('/api/platform/plans')
 const { confirm: confirmAction } = useConfirm()
 const planRows = computed(() => data.value?.plans ?? [])
@@ -27,7 +27,6 @@ const orgRows = computed(() => data.value?.organizations ?? [])
 const selectedKey = ref('')
 const creating = ref(false)
 const draft = reactive<Draft>(emptyDraft())
-const prices = reactive({ monthly: '0', annual: '0' })
 const savedSnapshot = ref('')
 const activeSection = ref('general')
 const editingCode = ref(false)
@@ -54,8 +53,7 @@ function loadPlan(key: string) {
   selectedKey.value = plan?.code || ''
   creating.value = !plan
   Object.assign(draft, plan ? { ...plan, limits: { ...plan.limits } } : emptyDraft())
-  prices.monthly = String(draft.monthlyPriceCents / 100)
-  prices.annual = String(draft.annualPriceCents / 100)
+  if (plan && plan.limits.storageBytes != null) draft.limits.storageBytes = bytesToGb(plan.limits.storageBytes)
   savedSnapshot.value = JSON.stringify(draft)
   actionError.value = ''
   activeSection.value = 'general'
@@ -70,9 +68,15 @@ async function selectPlan(key: string) {
   loadPlan(key)
 }
 
-function updatePrice(period: 'monthly' | 'annual', value: string) {
-  prices[period] = value
-  draft[period === 'monthly' ? 'monthlyPriceCents' : 'annualPriceCents'] = priceInputToCents(value)
+function isLimitModified(concept: string) {
+  if (!selectedPlan.value) return false
+  const saved = selectedPlan.value.limits[concept]
+  return draft.limits[concept] !== (concept === 'storageBytes' && saved != null ? bytesToGb(saved) : saved)
+}
+
+function formatOverrideValue(row: Override) {
+  if (row.value == null) return 'Ilimitado'
+  return row.concept === 'storageBytes' ? bytesToGb(row.value) : row.value
 }
 
 function payload(source: Draft | Plan) {
@@ -121,7 +125,7 @@ async function deactivatePlan() {
   saving.value = true
   actionError.value = ''
   try {
-    await $fetch(`/api/platform/plans/${encodeURIComponent(plan.code)}`, { method: 'PUT', body: { ...payload(plan), isActive: false } })
+    await $fetch(`/api/platform/plans/${encodeURIComponent(plan.code)}`, { method: 'PUT', body: { ...payload({ ...plan, limits: { ...plan.limits, storageBytes: bytesToGb(plan.limits.storageBytes) } }), isActive: false } })
     await refresh()
     loadPlan(plan.code)
     toast.value = `Plan ${plan.name} desactivado.`
@@ -139,13 +143,13 @@ async function toggleActive() {
 
 async function saveOverride() {
   overrideError.value = ''
-  if (!override.tenantId || !override.concept || override.reason.trim().length < 5 || (!override.unlimited && override.value !== '' && (!Number.isInteger(Number(override.value)) || Number(override.value) < 0))) {
+  if (!override.tenantId || !override.concept || override.reason.trim().length < 5 || (!override.unlimited && override.value !== '' && !(Number(override.value) >= 0 && (override.concept === 'storageBytes' ? Number.isFinite(Number(override.value)) : Number.isInteger(Number(override.value)))))) {
     overrideError.value = 'Selecciona organización y concepto, indica un valor válido o deja el campo vacío para ilimitado, y escribe un motivo de al menos 5 caracteres.'
     return
   }
   overrideSaving.value = true
   try {
-    await $fetch('/api/platform/overrides', { method: 'PUT', body: { tenantId: override.tenantId, concept: override.concept, value: normalizeOverrideValue(override.value, override.unlimited), reason: override.reason, validFrom: dateTimeLocalToIso(override.validFrom), validUntil: dateTimeLocalToIso(override.validUntil) } })
+    await $fetch('/api/platform/overrides', { method: 'PUT', body: { tenantId: override.tenantId, concept: override.concept, value: normalizeOverrideValue(override.value, override.unlimited, override.concept), reason: override.reason, validFrom: dateTimeLocalToIso(override.validFrom), validUntil: dateTimeLocalToIso(override.validUntil) } })
     Object.assign(override, { tenantId: '', concept: 'users', value: '', reason: '', validFrom: '', validUntil: '', unlimited: false })
     await refresh()
     toast.value = 'Excepción guardada.'
@@ -246,8 +250,8 @@ function formatDate(value: string | null) {
           <section id="plans-prices" class="scroll-mt-5 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
             <div class="flex items-center gap-2 border-b border-brand-border-light px-5 py-4"><BadgeDollarSign class="h-4 w-4 text-brand-blue" /><div><h3 class="text-sm font-bold">Precios</h3><p class="text-xs text-brand-text-secondary">Importes informativos en MXN y referencias de Stripe.</p></div></div>
             <div class="grid gap-6 p-5 sm:grid-cols-2">
-              <div class="space-y-4"><h4 class="text-[11px] font-bold tracking-wide text-brand-text-muted">MENSUAL</h4><label class="block text-[13px] font-semibold">Precio mensual <span class="font-normal text-brand-text-muted">MXN</span><input :value="prices.monthly" type="number" min="0" step="0.01" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-normal focus:border-brand-blue focus:outline-none" @input="updatePrice('monthly', ($event.target as HTMLInputElement).value)" /></label><label class="block text-[13px] font-semibold">Stripe Price ID mensual<input v-model="draft.stripeMonthlyPriceId" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-mono text-xs font-normal focus:border-brand-blue focus:outline-none" placeholder="price_..." /></label></div>
-              <div class="space-y-4"><h4 class="text-[11px] font-bold tracking-wide text-brand-text-muted">ANUAL</h4><label class="block text-[13px] font-semibold">Precio anual <span class="font-normal text-brand-text-muted">MXN</span><input :value="prices.annual" type="number" min="0" step="0.01" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-normal focus:border-brand-blue focus:outline-none" @input="updatePrice('annual', ($event.target as HTMLInputElement).value)" /></label><label class="block text-[13px] font-semibold">Stripe Price ID anual<input v-model="draft.stripeAnnualPriceId" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-mono text-xs font-normal focus:border-brand-blue focus:outline-none" placeholder="price_..." /></label></div>
+              <div class="space-y-4"><h4 class="text-[11px] font-bold tracking-wide text-brand-text-muted">MENSUAL</h4><label class="block text-[13px] font-semibold">Precio mensual <span class="font-normal text-brand-text-muted">MXN</span><CurrencyInput :model-value="draft.monthlyPriceCents" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-normal focus:border-brand-blue focus:outline-none" @update:model-value="draft.monthlyPriceCents = $event ?? 0" /></label><label class="block text-[13px] font-semibold">Stripe Price ID mensual<input v-model="draft.stripeMonthlyPriceId" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-mono text-xs font-normal focus:border-brand-blue focus:outline-none" placeholder="price_..." /></label></div>
+              <div class="space-y-4"><h4 class="text-[11px] font-bold tracking-wide text-brand-text-muted">ANUAL</h4><label class="block text-[13px] font-semibold">Precio anual <span class="font-normal text-brand-text-muted">MXN</span><CurrencyInput :model-value="draft.annualPriceCents" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-normal focus:border-brand-blue focus:outline-none" @update:model-value="draft.annualPriceCents = $event ?? 0" /></label><label class="block text-[13px] font-semibold">Stripe Price ID anual<input v-model="draft.stripeAnnualPriceId" class="mt-1.5 w-full rounded border border-brand-border px-3 py-2.5 font-mono text-xs font-normal focus:border-brand-blue focus:outline-none" placeholder="price_..." /></label></div>
             </div>
             <p class="mx-5 mb-5 rounded bg-brand-info-bg px-3 py-2 text-xs font-semibold text-brand-info-text">{{ [draft.stripeMonthlyPriceId, draft.stripeAnnualPriceId].filter(Boolean).length }} de 2 Price IDs capturados. La conexión con Stripe no se verifica aquí.</p>
           </section>
@@ -256,10 +260,10 @@ function formatDate(value: string | null) {
             <div class="flex items-center gap-2 border-b border-brand-border-light px-5 py-4"><Gauge class="h-4 w-4 text-brand-blue" /><div><h3 class="text-sm font-bold">Límites</h3><p class="text-xs text-brand-text-secondary">Vacío o ilimitado = sin límite para ese concepto.</p></div></div>
             <div class="overflow-x-auto"><div class="min-w-[560px]">
               <div class="grid grid-cols-[minmax(160px,1fr)_120px_90px_90px] gap-3 border-b border-brand-border-light bg-brand-bg px-5 py-2 text-[10px] font-bold tracking-wide text-brand-text-secondary"><span>CONCEPTO</span><span>VALOR</span><span>UNIDAD</span><span>ILIMITADO</span></div>
-              <template v-for="group in conceptGroups" :key="group.name"><h4 class="bg-brand-surface px-5 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-brand-blue">{{ group.name }}</h4>
-                <div v-for="concept in group.concepts" :key="concept" class="grid grid-cols-[minmax(160px,1fr)_120px_90px_90px] items-center gap-3 border-b border-brand-border-light px-5 py-2.5 last:border-b-0" :class="draft.limits[concept] !== selectedPlan?.limits[concept] && selectedPlan ? 'bg-brand-info-bg' : ''">
-                  <div><label :for="`limit-${concept}`" class="text-[13px] font-semibold">{{ labels[concept] }}</label><small v-if="draft.limits[concept] !== selectedPlan?.limits[concept] && selectedPlan" class="block text-[11px] text-brand-blue">Modificado</small></div>
-                  <input :id="`limit-${concept}`" v-model.number="draft.limits[concept]" type="number" min="0" step="1" :disabled="draft.limits[concept] === null" placeholder="Ilimitado" class="min-w-0 rounded border border-brand-border px-2 py-1.5 text-right text-[13px] focus:border-brand-blue focus:outline-none disabled:bg-brand-bg disabled:text-brand-text-muted" />
+              <template v-for="group in conceptGroups" :key="group.name"><h4 class="flex items-center gap-1.5 bg-brand-surface px-5 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-brand-blue"><component :is="group.icon" class="h-4 w-4" />{{ group.name }}</h4>
+                <div v-for="concept in group.concepts" :key="concept" class="grid grid-cols-[minmax(160px,1fr)_120px_90px_90px] items-center gap-3 border-b border-brand-border-light px-5 py-2.5 last:border-b-0" :class="isLimitModified(concept) ? 'bg-brand-info-bg' : ''">
+                  <div><label :for="`limit-${concept}`" class="text-[13px] font-semibold">{{ labels[concept] }}</label><small v-if="isLimitModified(concept)" class="block text-[11px] text-brand-blue">Modificado</small></div>
+                  <input :id="`limit-${concept}`" v-model.number="draft.limits[concept]" type="number" min="0" :step="concept === 'storageBytes' ? 'any' : '1'" :disabled="draft.limits[concept] === null" placeholder="Ilimitado" class="min-w-0 rounded border border-brand-border px-2 py-1.5 text-right text-[13px] focus:border-brand-blue focus:outline-none disabled:bg-brand-bg disabled:text-brand-text-muted" />
                   <span class="text-xs text-brand-text-secondary">{{ units[concept] }}</span>
                   <label class="flex items-center gap-1.5 text-xs text-brand-text-secondary"><input type="checkbox" :checked="draft.limits[concept] === null" class="h-4 w-4 accent-brand-blue" @change="draft.limits[concept] = draft.limits[concept] === null ? 0 : null" />{{ draft.limits[concept] === null ? 'Sí' : 'No' }}</label>
                 </div>
@@ -277,7 +281,7 @@ function formatDate(value: string | null) {
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_220px_150px_100px]">
               <label class="text-xs font-semibold">Organización <span class="text-brand-error-text">*</span><select v-model="override.tenantId" class="mt-1.5 w-full rounded border border-brand-border bg-white px-3 py-2.5 text-[13px] font-normal"><option value="">Selecciona una organización</option><option v-for="org in orgRows" :key="org.id" :value="org.id">{{ org.name }} · {{ org.slug }}</option></select></label>
               <label class="text-xs font-semibold">Concepto <span class="text-brand-error-text">*</span><select v-model="override.concept" class="mt-1.5 w-full rounded border border-brand-border bg-white px-3 py-2.5 text-[13px] font-normal"><option v-for="concept in PLAN_CONCEPTS" :key="concept" :value="concept">{{ labels[concept] }}</option></select></label>
-              <label class="text-xs font-semibold">Valor <span class="font-normal text-brand-text-muted">vacío = ilimitado</span><input v-model="override.value" type="number" min="0" step="1" :disabled="override.unlimited" class="mt-1.5 w-full rounded border border-brand-border bg-white px-3 py-2.5 text-[13px] font-normal disabled:bg-brand-neutral-bg" /></label>
+              <label class="text-xs font-semibold">Valor <span class="font-normal text-brand-text-muted">{{ override.concept === 'storageBytes' ? 'GB · vacío = ilimitado' : 'vacío = ilimitado' }}</span><input v-model="override.value" type="number" min="0" :step="override.concept === 'storageBytes' ? 'any' : '1'" :disabled="override.unlimited" class="mt-1.5 w-full rounded border border-brand-border bg-white px-3 py-2.5 text-[13px] font-normal disabled:bg-brand-neutral-bg" /></label>
               <label class="text-xs font-semibold">Ilimitado<span class="mt-3 flex items-center gap-2 font-normal"><input v-model="override.unlimited" type="checkbox" class="h-4 w-4 accent-brand-blue" />{{ override.unlimited ? 'Sí' : 'No' }}</span></label>
             </div>
             <div class="mt-4 grid items-end gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_200px_200px_auto]">
@@ -290,7 +294,7 @@ function formatDate(value: string | null) {
           </div>
           <div v-if="data.overrides.length" class="overflow-x-auto">
             <table class="w-full min-w-[780px] text-left text-[13px]"><thead class="bg-brand-bg text-[10px] font-bold tracking-wide text-brand-text-secondary"><tr><th class="px-5 py-3">ORGANIZACIÓN</th><th class="px-4 py-3">CONCEPTO</th><th class="px-4 py-3">VALOR</th><th class="px-4 py-3">MOTIVO</th><th class="px-4 py-3">VIGENCIA</th><th class="px-4 py-3"><span class="sr-only">Acciones</span></th></tr></thead>
-              <tbody><tr v-for="row in data.overrides" :key="row.id" class="border-t border-brand-border-light"><td class="px-5 py-3 font-semibold">{{ orgRows.find(org => org.id === row.tenantId)?.name || row.tenantId }}</td><td class="px-4 py-3">{{ labels[row.concept] || row.concept }}</td><td class="px-4 py-3 font-semibold">{{ row.value ?? 'Ilimitado' }}</td><td class="px-4 py-3 text-brand-text-secondary">{{ row.reason }}</td><td class="px-4 py-3 text-brand-text-secondary">{{ row.validFrom ? `Desde ${formatDate(row.validFrom)} · ` : '' }}{{ row.validUntil ? `Hasta ${formatDate(row.validUntil)}` : 'Sin vencimiento' }}</td><td class="px-4 py-3"><button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-error-text hover:underline" :aria-label="`Quitar excepción de ${orgRows.find(org => org.id === row.tenantId)?.name || row.tenantId}`" @click="removeOverride(row)"><Trash2 class="h-3.5 w-3.5" />Quitar</button></td></tr></tbody>
+              <tbody><tr v-for="row in data.overrides" :key="row.id" class="border-t border-brand-border-light"><td class="px-5 py-3 font-semibold">{{ orgRows.find(org => org.id === row.tenantId)?.name || row.tenantId }}</td><td class="px-4 py-3">{{ labels[row.concept] || row.concept }}</td><td class="px-4 py-3 font-semibold">{{ formatOverrideValue(row) }}</td><td class="px-4 py-3 text-brand-text-secondary">{{ row.reason }}</td><td class="px-4 py-3 text-brand-text-secondary">{{ row.validFrom ? `Desde ${formatDate(row.validFrom)} · ` : '' }}{{ row.validUntil ? `Hasta ${formatDate(row.validUntil)}` : 'Sin vencimiento' }}</td><td class="px-4 py-3"><button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-error-text hover:underline" :aria-label="`Quitar excepción de ${orgRows.find(org => org.id === row.tenantId)?.name || row.tenantId}`" @click="removeOverride(row)"><Trash2 class="h-3.5 w-3.5" />Quitar</button></td></tr></tbody>
             </table>
           </div>
           <div v-else class="flex flex-col items-center gap-2 px-5 py-8 text-center"><Building2 class="h-6 w-6 text-brand-text-muted" /><h3 class="text-sm font-bold">Sin excepciones activas</h3><p class="text-xs text-brand-text-secondary">Cuando una organización necesite un límite distinto al de su plan, agrégalo aquí con su motivo.</p><button v-if="!planRows.length && orgRows.length" type="button" class="text-xs font-semibold text-brand-blue underline" @click="showOverrideForm = true">Agregar excepción</button></div>

@@ -71,6 +71,22 @@ const deletingId = ref<string | null>(null)
 // composables/useToast.ts.
 const toast = useToast()
 const { confirm: confirmAction } = useConfirm()
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
+
+// HU-ERD-104c: crear un módulo de hechos consume cuota del plan ('modules') -
+// avisar al presionar el botón, antes de abrir el asistente. Los catálogos
+// (moduleKind='dimension') no cuentan para la cuota: nunca se bloquean.
+// Los NuxtLink de crear usan el slot `custom` (renderizan su propio <a>):
+// así el handler decide SIEMPRE antes que el navigate interno de RouterLink
+// (con @click normal sobre <NuxtLink>, vue-router arranca la navegación
+// primero y el preventDefault async llegaría tarde). Clicks con modificadores
+// (ctrl/medio) se dejan al navegador, igual que hace guardEvent de vue-router.
+async function onCreateClick(event: MouseEvent, navigate: (e?: MouseEvent) => Promise<void> | void) {
+  if (props.moduleKind === 'dimension') return navigate(event)
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+  event.preventDefault()
+  if (await checkBeforeCreate('modules')) await navigate()
+}
 
 async function onDelete(module: ModuleRow) {
   if (!await confirmAction({ title: `Deshabilitar ${props.noun}`, message: `¿Deshabilitar el ${props.noun} "${module.name}"? Sus registros y referencias seguirán disponibles para consulta.`, confirmLabel: 'Deshabilitar', destructive: true })) return
@@ -97,6 +113,10 @@ async function onRestore(module: ModuleRow) {
     await refresh()
     toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} restaurado`, `"${module.name}" vuelve a estar disponible.`)
   } catch (err: any) {
+    // HU-ERD-104c: restaurar un módulo de hechos vuelve a consumir cuota de
+    // 'modules' y el servidor ahora lo bloquea con 402 'plan_limit' - mostrar
+    // el mismo aviso con "Mejorar plan" en vez del toast genérico.
+    if (await handlePlanLimitError(err)) return
     deleteError.value = err?.data?.statusMessage || `No se pudo restaurar el ${props.noun}`
     toast.error('No se pudo restaurar', deleteError.value)
   } finally {
@@ -118,9 +138,11 @@ async function onRestore(module: ModuleRow) {
     >
       <template #actions>
         <NuxtLink to="/organizacion" class="flex h-[35px] items-center rounded border border-brand-border px-4 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
-        <NuxtLink :to="basePath + '/nuevo'" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover">
-          <Blocks class="h-4 w-4" :stroke-width="1.75" />
-          {{ createLabel }}
+        <NuxtLink v-slot="{ href, navigate }" custom :to="basePath + '/nuevo'">
+          <a :href="href" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
+            <Blocks class="h-4 w-4" :stroke-width="1.75" />
+            {{ createLabel }}
+          </a>
         </NuxtLink>
       </template>
     </ListPageHeader>
@@ -154,12 +176,15 @@ async function onRestore(module: ModuleRow) {
             Crea tu primer {{ noun }} para empezar a modelar entidades personalizadas de tu negocio.
           </p>
         </div>
-        <NuxtLink
-          :to="`${basePath}/nuevo`"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-        >
-          <Plus class="h-4 w-4" :stroke-width="1.75" />
-          {{ createLabel }}
+        <NuxtLink v-slot="{ href, navigate }" custom :to="`${basePath}/nuevo`">
+          <a
+            :href="href"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            @click="onCreateClick($event, navigate)"
+          >
+            <Plus class="h-4 w-4" :stroke-width="1.75" />
+            {{ createLabel }}
+          </a>
         </NuxtLink>
       </div>
       <p v-else-if="filteredModules.length === 0" class="text-sm text-brand-text-muted">{{ showDeleted ? 'No hay módulos borrados' : `Ningún ${noun} coincide con "${search}".` }}</p>

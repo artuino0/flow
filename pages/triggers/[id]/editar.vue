@@ -90,6 +90,9 @@ const entityFields = computed(() => fieldsData.value?.fields ?? [])
 // ver composables/useToast.ts.
 const toast = useToast()
 const { confirm: confirmAction } = useConfirm()
+// HU-ERD-104c: activar consume cuota de 'activeFlows' y el servidor responde
+// 402 'plan_limit' al tope - mostrar el mismo aviso con "Mejorar plan".
+const { handlePlanLimitError } = usePlanLimit()
 
 // ---- Encabezado: nombre, evento, activo ----
 const name = ref('')
@@ -116,6 +119,7 @@ async function onSaveHeader() {
     await refresh()
     toast.updated('Automatización actualizada', `"${name.value}" se guardó correctamente.`)
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) return
     saveError.value = err?.data?.statusMessage || 'No se pudo guardar la automatización'
     toast.error('No se pudo guardar la automatización', saveError.value)
   } finally {

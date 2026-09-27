@@ -32,8 +32,12 @@ const saving = ref(false)
 const form = reactive({ name: '', slug: '', locale: 'es-MX' })
 const formError = ref<string | null>(null)
 const toast = useToast()
+// HU-ERD-104c: aviso de límite del plan ('sites') al presionar "Crear sitio",
+// antes de abrir el modal, y mismo aviso si el servidor responde 402 al guardar.
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 
-function openCreate() {
+async function openCreate() {
+  if (!await checkBeforeCreate('sites')) return
   Object.assign(form, { name: '', slug: '', locale: 'es-MX' })
   formError.value = null
   createOpen.value = true
@@ -54,6 +58,10 @@ async function createSite() {
     toast.success('Sitio creado', 'Ya puedes comenzar a diseñar sus páginas.')
     await navigateTo('/sites/' + site.id + '/overview')
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) {
+      createOpen.value = false
+      return
+    }
     formError.value = err?.data?.statusMessage || 'No se pudo crear el sitio'
   } finally {
     saving.value = false

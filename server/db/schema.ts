@@ -502,6 +502,18 @@ export const tenantSubscriptions = pgTable('tenant_subscriptions', {
   tenantIdx: index('tenant_subscriptions_tenant_idx').on(table.tenantId)
 }))
 
+export const tenantPlanHistory = pgTable('tenant_plan_history', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  planId: uuid('plan_id').notNull().references(() => plans.id),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  source: text('source').notNull()
+}, table => ({
+  tenantPlanIdx: index('tenant_plan_history_tenant_plan_idx').on(table.tenantId, table.planId),
+  openUnique: uniqueIndex('tenant_plan_history_open_unique').on(table.tenantId).where(sql`ended_at IS NULL`)
+}))
+
 // Historial inmutable de las facturas de la suscripción SaaS; es distinto de
 // Facturación CFDI, que pertenece al negocio del tenant.
 export const tenantBillingInvoices = pgTable('tenant_billing_invoices', {

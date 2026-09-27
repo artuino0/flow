@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.100.0] - 2026-09-27
+#### [feature]
+- [ERD-104](https://dydasoftware.atlassian.net/browse/ERD-104) - /platform/plans captura almacenamiento en GB y precios en formato de moneda; Ajustes › Plan valida descensos, guarda historial de planes (migración 0080) y avisa al crear con el límite alcanzado.
+
 ### [0.99.0] - 2026-09-27
 #### [feature]
 - [ERD-103](https://dydasoftware.atlassian.net/browse/ERD-103) - /platform/plans con diseño Flow (lista, editor General/Precios/Límites, excepciones y confirmación al desactivar); sin cambios de API.

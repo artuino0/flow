@@ -156,6 +156,7 @@ async function onLogout(reason?: 'inactividad') {
       v-if="confirmDialog"
       :title="confirmDialog.title"
       :confirm-label="confirmDialog.confirmLabel"
+      :cancel-label="confirmDialog.cancelLabel"
       :destructive="confirmDialog.destructive"
       @cancel="settleConfirm(false)"
       @confirm="settleConfirm(true)"

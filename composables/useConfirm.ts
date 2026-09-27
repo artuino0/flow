@@ -2,6 +2,9 @@ export interface ConfirmOptions {
   title: string
   message: string
   confirmLabel?: string
+  // HU-ERD-104c: texto del botón de cancelar (default "Cancelar" en
+  // SettingsConfirmDialog) - el aviso de límite de plan lo usa como "Cerrar".
+  cancelLabel?: string
   destructive?: boolean
 }
 

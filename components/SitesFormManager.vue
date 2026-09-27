@@ -62,6 +62,10 @@ const fieldsLoading = ref(false)
 const saving = ref(false)
 const modalError = ref('')
 const toast = useToast()
+// HU-ERD-104c: conectar un formulario detectado crea una conexión y consume
+// cuota del plan ('forms') - aviso antes de abrir el modal (solo cuando aún no
+// está conectado) y mismo aviso si el servidor responde 402 al guardar.
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 
 const coreEntities = computed(() => (entityData.value?.entities ?? []).filter(entity => entity.isActive && !entity.deletedAt))
 const mappableTargetFields = computed(() => targetFields.value.filter(field =>
@@ -168,6 +172,7 @@ async function loadTargetFields(
   }
 }
 async function openConnection(form: DetectedForm) {
+  if (!form.connection && !await checkBeforeCreate('forms')) return
   selectedForm.value = form
   selectedEntityId.value = form.connection?.entityId ?? ''
   modalError.value = ''
@@ -233,6 +238,10 @@ async function saveConnection() {
     toast.success('Formulario conectado', 'Los envíos quedarán asociados al módulo seleccionado.')
     closeConnection()
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) {
+      closeConnection()
+      return
+    }
     modalError.value = err?.data?.statusMessage || 'No se pudo guardar la conexión.'
   } finally {
     saving.value = false

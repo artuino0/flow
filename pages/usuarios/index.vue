@@ -87,6 +87,10 @@ function roleName(roleId: string | null): string {
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts.
 const toast = useToast()
+// HU-ERD-104c: cada invitación cuenta contra la cuota de 'users' del plan -
+// aviso al presionar "Invitar usuario", antes de abrir el modal, y mismo
+// aviso si el servidor responde 402 al enviarla.
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 
 // --- Invitar usuario (Invite Modal del diseño) ---
 const inviteOpen = ref(false)
@@ -98,7 +102,8 @@ const inviting = ref(false)
 const inviteUrl = ref<string | null>(null)
 const inviteCopied = ref(false)
 
-function openInviteModal() {
+async function openInviteModal() {
+  if (!await checkBeforeCreate('users')) return
   inviteEmail.value = ''
   inviteRoleId.value = roles.value[0]?.id ?? null
   inviteRoleSelectorOpen.value = false
@@ -133,6 +138,10 @@ async function onInvite() {
     if (!result.inviteUrl) inviteOpen.value = false
     toast.success('Invitación enviada', `Se envió una invitación a ${email}.`)
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) {
+      inviteOpen.value = false
+      return
+    }
     inviteError.value = err?.data?.statusMessage || 'No se pudo enviar la invitación'
     toast.error('No se pudo enviar la invitación', inviteError.value)
   } finally {

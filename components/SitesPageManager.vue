@@ -32,6 +32,9 @@ const saving = ref(false)
 const formError = ref('')
 const form = reactive({ siteId: props.siteId ?? '', title: '', path: props.kind === 'landing' ? '/landing/' : '/' })
 const toast = useToast()
+// HU-ERD-104c: aviso de límite del plan ('pages') al presionar "Nueva página",
+// antes de abrir el modal, y mismo aviso si el servidor responde 402 al guardar.
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 
 const rows = computed(() => (data.value?.pages ?? [])
   .filter(page => !props.siteId || page.siteId === props.siteId)
@@ -55,7 +58,8 @@ const title = computed(() => props.kind === 'landing' ? 'Landing pages' : 'Pági
 const singular = computed(() => props.kind === 'landing' ? 'landing page' : 'página')
 function countFor(key: string) { return counts.value[key as keyof typeof counts.value] ?? 0 }
 
-function openCreate() {
+async function openCreate() {
+  if (!await checkBeforeCreate('pages')) return
   Object.assign(form, { siteId: props.siteId ?? sitesData.value?.sites?.[0]?.id ?? '', title: '', path: props.kind === 'landing' ? '/landing/' : '/' })
   formError.value = ''
   createOpen.value = true
@@ -84,6 +88,10 @@ async function createPage() {
     toast.success((props.kind === 'landing' ? 'Landing page' : 'Página') + ' creada', 'El borrador está listo para editar.')
     await navigateTo('/sites/' + form.siteId + '/pages/' + page.id)
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) {
+      createOpen.value = false
+      return
+    }
     formError.value = err?.data?.statusMessage || 'No se pudo crear el contenido.'
   } finally {
     saving.value = false

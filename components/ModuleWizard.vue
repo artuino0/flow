@@ -55,6 +55,11 @@ const creating = ref(false)
 // intermedios (POST inicial, guardar diseño del detalle) son "continuar",
 // no "terminar", un toast en cada uno seria ruido.
 const toast = useToast()
+// HU-ERD-104c: si el consumo cambió entre el aviso preventivo del listado y
+// este POST, el servidor responde 402 'plan_limit' - mostrar el mismo aviso
+// con "Mejorar plan". (Los catálogos/dimension no consumen cuota y el
+// servidor nunca los rechaza con ese código.)
+const { handlePlanLimitError } = usePlanLimit()
 
 watch(name, (value) => {
   if (!slugTouched.value) slug.value = slugify(value)
@@ -140,6 +145,7 @@ async function onContinue() {
     step.value = 'campos'
     await loadFields()
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) return
     createError.value = err?.data?.statusMessage || `No se pudo crear el ${props.noun}`
     toast.error(`No se pudo crear el ${props.noun}`, createError.value)
   } finally {

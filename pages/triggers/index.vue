@@ -89,6 +89,11 @@ const filteredTriggers = computed(() => {
 // ver composables/useToast.ts.
 const toast = useToast()
 const { confirm: confirmAction } = useConfirm()
+// HU-ERD-104c: los flujos activos consumen cuota del plan ('activeFlows').
+// El servidor la revisa al ACTIVAR (PUT /api/triggers/[id]), no al crear el
+// borrador; el aviso preventivo al presionar "Nueva automatización" evita que
+// el usuario configure un flujo que después no va a poder activar.
+const { checkBeforeCreate, handlePlanLimitError } = usePlanLimit()
 
 const toggleError = ref<string | null>(null)
 async function onToggleActive(row: TriggerRow) {
@@ -99,6 +104,7 @@ async function onToggleActive(row: TriggerRow) {
     await $fetch(`/api/triggers/${row.id}`, { method: 'PUT', body: { isActive: next } })
   } catch (err: any) {
     row.isActive = !next
+    if (await handlePlanLimitError(err)) return
     toggleError.value = err?.data?.statusMessage || 'No se pudo cambiar el estado de la automatización'
     // Toast ademas del inline (a diferencia de otras acciones de esta
     // pantalla): el switch ya revirtio SOLO visualmente al valor anterior -
@@ -138,7 +144,8 @@ const newEvent = ref<'on_create' | 'on_update' | 'on_delete'>('on_create')
 const createError = ref<string | null>(null)
 const creating = ref(false)
 
-function openCreate() {
+async function openCreate() {
+  if (!await checkBeforeCreate('activeFlows')) return
   newName.value = ''
   newEntityId.value = entitiesData.value?.entities[0]?.id ?? ''
   newEvent.value = 'on_create'
@@ -158,6 +165,10 @@ async function onCreate() {
     toast.success('Automatización creada', `"${newName.value}" ya está disponible.`)
     await navigateTo(`/triggers/${created.id}/editar`)
   } catch (err: any) {
+    if (await handlePlanLimitError(err)) {
+      showCreate.value = false
+      return
+    }
     createError.value = err?.data?.statusMessage || 'No se pudo crear la automatización'
     toast.error('No se pudo crear la automatización', createError.value)
   } finally {
