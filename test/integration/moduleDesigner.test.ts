@@ -8,6 +8,7 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 const tenantId = randomUUID()
 const otherTenant = randomUUID()
 const splitTenant = randomUUID()
+const patchTenant = randomUUID()
 let testDb: TestDb
 let admin: postgres.Sql
 let sessions: typeof import('../../server/utils/moduleDesigner/sessions')
@@ -16,6 +17,7 @@ let exporter: typeof import('../../server/utils/blueprint/export')
 let withTenant: typeof import('../../server/db').withTenant
 let userId: string
 let splitUserId: string
+let patchUserId: string
 let adminRoleId: string
 let ordinaryRoleId: string
 const fetchMock = vi.fn()
@@ -30,10 +32,16 @@ async function proposal(name = 'Órdenes', slug = 'ordenes') {
   return base
 }
 
+async function patchProposal() {
+  const base = await exporter.exportBlueprint(patchTenant)
+  base.modules.push({ ref: 'ordenes', action: 'create', kind: 'hecho', name: 'Órdenes', slug: 'ordenes', fields: [{ name: 'nota', label: 'Nota', dataType: 'text' }] })
+  return base
+}
+
 beforeAll(async () => {
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
-  await admin`INSERT INTO tenants (id, name, slug) VALUES (${tenantId}, 'Taller', 'designer-taller'), (${otherTenant}, 'Otro', 'designer-otro'), (${splitTenant}, 'Dividido', 'designer-dividido')`
+  await admin`INSERT INTO tenants (id, name, slug) VALUES (${tenantId}, 'Taller', 'designer-taller'), (${otherTenant}, 'Otro', 'designer-otro'), (${splitTenant}, 'Dividido', 'designer-dividido'), (${patchTenant}, 'Parches', 'designer-parches')`
   const [adminRole] = await admin`INSERT INTO roles (tenant_id, name, is_system) VALUES (${tenantId}, 'Administrador', true) RETURNING id`
   adminRoleId = adminRole.id
   const [ordinaryRole] = await admin`INSERT INTO roles (tenant_id, name, is_system) VALUES (${tenantId}, 'Operador', false) RETURNING id`
@@ -44,6 +52,9 @@ beforeAll(async () => {
   const [splitRole] = await admin`INSERT INTO roles (tenant_id, name, is_system) VALUES (${splitTenant}, 'Administrador', true) RETURNING id`
   const [splitUser] = await admin`INSERT INTO users (tenant_id, role_id, person_id) VALUES (${splitTenant}, ${splitRole.id}, ${person.id}) RETURNING id`
   splitUserId = splitUser.id
+  const [patchRole] = await admin`INSERT INTO roles (tenant_id, name, is_system) VALUES (${patchTenant}, 'Administrador', true) RETURNING id`
+  const [patchUser] = await admin`INSERT INTO users (tenant_id, role_id, person_id) VALUES (${patchTenant}, ${patchRole.id}, ${person.id}) RETURNING id`
+  patchUserId = patchUser.id
   await admin`INSERT INTO entities (tenant_id, name, singular_name, slug, module_kind) VALUES (${tenantId}, 'Clientes', 'Cliente', 'clientes', 'dimension')`
   process.env.APP_DATABASE_URL = testDb.appUrl
   process.env.AI_PROVIDER = 'openai'
@@ -87,6 +98,41 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     expect(rows.map(row => [row.kind, row.credits])).toEqual([['generate', 2], ['iterate', 1]])
     expect(rows[0]).toMatchObject({ input_tokens: 50, output_tokens: 100, model: 'test-designer' })
     expect((await sessions.findSession(tenantId, session.id)).creditsConsumed).toBe(3)
+  })
+
+  it('aplica un parche de campo sin alterar el resto y guarda parche y versión completa', async () => {
+    const session = await sessions.createModuleDesignSession(patchTenant, patchUserId) as { id: string }
+    aiReply({ message: 'Preparé órdenes.', mode: 'full', blueprint: await patchProposal() })
+    const generator = await import('../../server/utils/moduleDesigner/generate')
+    await generator.generateDesign(patchTenant, session.id, 'Crea órdenes')
+    const before = (await sessions.findSession(patchTenant, session.id)).blueprint as Awaited<ReturnType<typeof proposal>>
+    const patch = { mode: 'patch', message: 'Agregué el folio.', explanation: 'Agregué el folio a Órdenes.\n### ¿Por qué?\n- **Folio**: identifica cada orden.', operations: [{ op: 'addField', slug: 'ordenes', field: { name: 'folio', label: 'Folio', dataType: 'text' } }] }
+    aiReply(patch, 20, 15)
+    const result = await generator.generateDesign(patchTenant, session.id, 'Agrega el campo folio a Órdenes')
+    const expected = structuredClone(before)
+    expected.modules.find(module => module.slug === 'ordenes')!.fields.push({ name: 'folio', label: 'Folio', dataType: 'text' })
+    expect(result.blueprint).toEqual(expected)
+    expect(result.patch).toEqual(patch)
+    const saved = await sessions.findSession(patchTenant, session.id)
+    expect(saved.messages.at(-1)).toMatchObject({ mode: 'patch', patch, blueprintVersion: saved.version, blueprint: expected })
+    const providerPrompt = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body).messages[1].content)
+    expect(providerPrompt.currentBlueprint.modules.find((module: { slug: string }) => module.slug === 'ordenes')).not.toHaveProperty('snapshot')
+  })
+
+  it('autorrepara un parche inválido usando el plano vigente y conserva los demás campos', async () => {
+    const session = await sessions.createModuleDesignSession(patchTenant, patchUserId) as { id: string }
+    aiReply({ message: 'Preparé órdenes.', mode: 'full', blueprint: await patchProposal() })
+    const generator = await import('../../server/utils/moduleDesigner/generate')
+    await generator.generateDesign(patchTenant, session.id, 'Crea órdenes')
+    fetchMock.mockClear()
+    aiReply({ mode: 'patch', message: 'Campo repetido', operations: [{ op: 'addField', slug: 'ordenes', field: { name: 'nota', label: 'Nota', dataType: 'text' } }] })
+    aiReply({ mode: 'patch', message: 'Campo corregido', operations: [{ op: 'addField', slug: 'ordenes', field: { name: 'folio', label: 'Folio', dataType: 'text' } }] })
+    const result = await generator.generateDesign(patchTenant, session.id, 'Agrega folio')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.blueprint.modules.find(module => module.slug === 'ordenes')?.fields.map(field => field.name)).toEqual(['nota', 'folio'])
+    const repairPrompt = JSON.parse(JSON.parse(fetchMock.mock.calls[1]?.[1]?.body).messages[1].content)
+    expect(repairPrompt.errors[0].message).toContain('ya existe')
+    expect(repairPrompt.currentBlueprint.modules.find((module: { slug: string }) => module.slug === 'ordenes')).toHaveProperty('fields')
   })
 
   it('acepta estados en arreglo del proveedor, advierte pérdidas y aplica el flujo', async () => {

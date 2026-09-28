@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.111.0] - 2026-09-28
+#### [feature]
+- [ERD-117](https://dydasoftware.atlassian.net/browse/ERD-117) - Diseñador: la IA edita con parches en lugar de regenerar el plano (88% menos tokens de salida, 76% menos tiempo).
+
 ### [0.110.0] - 2026-09-28
 #### [feature]
 - [ERD-116](https://dydasoftware.atlassian.net/browse/ERD-116) - Diseñador: nodo Usuarios del Sistema en el diagrama, aparición escalonada de novedades y pulso en relaciones; incluye script de usuarios QA y manual de agentes.
