@@ -19,6 +19,7 @@
 // del Constructor de Modulos.
 import { ChevronRight, FilePlus, FileText, Pencil, Filter, LayoutGrid, List, MoreHorizontal, Plus, Printer, RefreshCw, Search, Settings2, Upload, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import { calendarRange, localDateTimeToIso } from '~/utils/calendar'
 import { formatRelativeTime } from '~/utils/relativeTime'
 import { isListFilterable, listFilterOperators, type ListFilterOperator } from '~/utils/listFilters'
 
@@ -241,7 +242,18 @@ interface BoardResponse {
   relationLabels: Record<string, Record<string, string>>
 }
 const boardEnabled = computed(() => Boolean(meta.value?.boardConfig?.enabled))
-const viewMode = ref<'table' | 'board'>(boardEnabled.value ? (meta.value?.boardConfig.defaultView ?? 'table') : 'table')
+const calendarEnabled = computed(() => Boolean(meta.value?.calendarConfig?.enabled))
+type RecordView = 'table' | 'board' | 'calendar'
+const initialView: RecordView = calendarEnabled.value ? 'calendar' : boardEnabled.value && meta.value?.boardConfig.defaultView === 'board' ? 'board' : 'table'
+const viewMode = ref<RecordView>(initialView)
+const initialCalendarView = meta.value?.calendarConfig?.defaultView ?? 'month'
+const calendarRangeValue = ref(calendarRange(new Date(), initialCalendarView))
+interface CalendarResponse {
+  config: NonNullable<typeof meta.value>['calendarConfig']
+  events: Array<{ id: string; customData: Record<string, unknown>; updatedAt: string; date: string; time: string; durationMinutes: number; title: string; color: string | null; groupValue: string; groupLabel: string }>
+  relationLabels: Record<string, Record<string, string>>
+  timezone: string
+}
 const moduleDescription = computed(() => slug.toLowerCase() === 'prospectos'
   ? 'Gestiona oportunidades y avances comerciales.'
   : `Gestiona los registros y la operación de ${meta.value?.entity?.name || slug}.`)
@@ -259,24 +271,51 @@ const { data: boardData, pending: boardPending, error: boardError, refresh: refr
   immediate: boardEnabled.value,
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
+const { data: calendarData, pending: calendarPending, error: calendarError, refresh: refreshCalendar } = await useFetch<CalendarResponse>(`/api/records/${slug}/calendar`, {
+  key: () => `record-calendar-${slug}-${calendarRangeValue.value.from}-${calendarRangeValue.value.to}-${assignedToMe.value}`,
+  query: computed(() => ({ ...calendarRangeValue.value, assignedToMe: assignedToMe.value || undefined })),
+  immediate: calendarEnabled.value,
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
 onMounted(() => {
   const saved = localStorage.getItem(`flow-record-view:${slug}`)
-  if (boardEnabled.value && (saved === 'table' || saved === 'board')) viewMode.value = saved
+  if (saved === 'table' || (saved === 'board' && boardEnabled.value) || (saved === 'calendar' && calendarEnabled.value)) viewMode.value = saved
 })
 watch(viewMode, value => {
   if (import.meta.client) localStorage.setItem(`flow-record-view:${slug}`, value)
   if (value === 'board' && !boardData.value) void refreshBoard()
+  if (value === 'calendar' && !calendarData.value) void refreshCalendar()
 })
 async function refreshCurrentView() {
   if (refreshing.value) return
   refreshing.value = true
   try {
     if (viewMode.value === 'board') await refreshBoard()
+    else if (viewMode.value === 'calendar') await refreshCalendar()
     else await refreshRecords()
   } finally {
     refreshing.value = false
   }
 }
+
+function onCalendarCreate(payload: { date: string; time: string }) {
+  const config = meta.value?.calendarConfig
+  if (!config) return
+  const query: Record<string, string> = {}
+  if (config.startDateField) query[config.startDateField] = payload.date
+  if (config.startTimeField) {
+    const field = meta.value?.fields.find(item => item.name === config.startTimeField)
+    query[config.startTimeField] = field?.dataType === 'datetime'
+      ? localDateTimeToIso(payload.date, payload.time, calendarData.value?.timezone ?? 'America/Mexico_City')
+      : payload.time
+  }
+  void navigateTo({ path: `/registros/${slug}/nuevo`, query })
+}
+function onCalendarUpdated(updated: CalendarResponse['events'][number]) {
+  reconcileBoardRecord({ id: updated.id, customData: updated.customData, updatedAt: updated.updatedAt })
+  void refreshCalendar()
+}
+function onCalendarOpen(id: string) { void navigateTo(`/registros/${slug}/${id}`) }
 
 function reconcileBoardRecord(updated: { id: string; customData: Record<string, unknown>; updatedAt: string }) {
   const listRecord = recordsData.value?.data.find(record => record.id === updated.id)
@@ -480,15 +519,16 @@ async function onDelete(id: string) {
       </div>
 
       <div class="toolbar-right">
-        <div v-if="boardEnabled" class="view-toggle" aria-label="Vista de registros">
+        <div v-if="boardEnabled || calendarEnabled" class="view-toggle" aria-label="Vista de registros">
           <button type="button" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'">
             <List class="h-3.5 w-3.5" :stroke-width="1.75" />
             Tabla
           </button>
-          <button type="button" :class="{ active: viewMode === 'board' }" @click="viewMode = 'board'">
+          <button v-if="boardEnabled" type="button" :class="{ active: viewMode === 'board' }" @click="viewMode = 'board'">
             <LayoutGrid class="h-3.5 w-3.5" :stroke-width="1.75" />
             Kanban
           </button>
+          <button v-if="calendarEnabled" type="button" :class="{ active: viewMode === 'calendar' }" @click="viewMode = 'calendar'">Calendario</button>
         </div>
 
         <button type="button" class="toolbar-icon-button" title="Actualizar" :disabled="refreshing" @click="refreshCurrentView">
@@ -555,16 +595,16 @@ async function onDelete(id: string) {
     </div>
 
     <main class="records-content" :class="{ 'board-content': viewMode === 'board' }">
-      <p v-if="metaPending || recordsPending || (viewMode === 'board' && boardPending)" class="content-message">Cargando...</p>
+      <p v-if="metaPending || (viewMode === 'table' && recordsPending) || (viewMode === 'board' && boardPending) || (viewMode === 'calendar' && calendarPending)" class="content-message">Cargando...</p>
       <p v-else-if="metaError" class="content-message text-brand-error-text">
         {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
       </p>
-      <p v-else-if="recordsError || (viewMode === 'board' && boardError)" class="content-message text-brand-error-text">No se pudieron cargar los registros.</p>
+      <p v-else-if="(viewMode === 'table' && recordsError) || (viewMode === 'board' && boardError) || (viewMode === 'calendar' && calendarError)" class="content-message text-brand-error-text">No se pudieron cargar los registros.</p>
 
-      <template v-else-if="meta && recordsData">
+      <template v-else-if="meta">
         <p v-if="deleteError" class="content-message text-brand-error-text">{{ deleteError }}</p>
-        <p v-if="meta.fields.filter((f) => f.name !== 'id').length === 0" class="content-message">Esta entidad todavía no tiene campos configurados.</p>
-        <p v-else-if="visibleFields.length === 0" class="content-message">
+        <p v-if="viewMode !== 'calendar' && meta.fields.filter((f) => f.name !== 'id').length === 0" class="content-message">Esta entidad todavía no tiene campos configurados.</p>
+        <p v-else-if="viewMode === 'table' && visibleFields.length === 0" class="content-message">
           Todas las columnas están ocultas en el diseño del listado de este módulo.
         </p>
         <RecordKanbanBoard
@@ -583,7 +623,23 @@ async function onDelete(id: string) {
           :filter-operator="appliedFilterOperator"
           @updated="reconcileBoardRecord"
         />
-        <div v-else class="table-wrap">
+        <RecordCalendar
+          v-else-if="viewMode === 'calendar' && calendarData && meta.calendarConfig"
+          :entity-slug="slug"
+          :entity-name="meta.entity.name"
+          :config="calendarData.config"
+          :fields="meta.fields"
+          :events="calendarData.events"
+          :timezone="calendarData.timezone"
+          :pending="calendarPending"
+          :can-update="meta.permissions.canUpdate"
+          :assigned-to-me="assignedToMe"
+          @range-change="calendarRangeValue = $event"
+          @create-record="onCalendarCreate"
+          @open-record="onCalendarOpen"
+          @updated="onCalendarUpdated"
+        />
+        <div v-else-if="viewMode === 'table' && recordsData" class="table-wrap">
           <DynamicTable
             :entity-slug="slug"
             :fields="visibleFields"

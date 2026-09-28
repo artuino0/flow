@@ -23,6 +23,7 @@ export interface ResolvedEntity {
   // tras un bug real encontrado por tests e2e; se aplica la leccion aca).
   listLayout?: unknown
   boardConfig?: unknown
+  calendarConfig?: unknown
   workflowConfig?: unknown
   // Reportado por el usuario (2026-09-03): campo propio (texto) que se usa
   // como etiqueta cuando ESTA entidad es el destino de una relacion (ver
@@ -131,6 +132,7 @@ async function loadEntityAccessBySlug(tenantId: string, roleId: string, entitySl
         detailLayout: entities.detailLayout,
         listLayout: entities.listLayout,
         boardConfig: entities.boardConfig,
+        calendarConfig: entities.calendarConfig,
         workflowConfig: entities.workflowConfig,
         labelField: entities.labelField,
         singularName: entities.singularName

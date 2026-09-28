@@ -23,7 +23,7 @@ function changes(row: Application, tenantEntities: Entity[], associations: Assoc
   const touched = new Set(result.touchedModuleIds ?? [])
   for (const module of result.modules ?? []) touched.add(module.id)
   for (const field of result.fields ?? []) touched.add(field.entityId)
-  for (const slug of [...(result.layouts ?? []), ...(result.workflows ?? [])]) {
+  for (const slug of [...(result.layouts ?? []), ...(result.workflows ?? []), ...(result.calendarConfigs ?? [])]) {
     const entity = bySlug.get(slug)
     if (entity) touched.add(entity.id)
   }
@@ -49,6 +49,10 @@ function changes(row: Application, tenantEntities: Entity[], associations: Assoc
   for (const slug of result.workflows ?? []) {
     const entity = bySlug.get(slug)
     if (entity && !created.has(entity.id) && !Object.hasOwn(prior.get(entity.id) ?? {}, 'workflowConfig')) warnings.push(`No se pueden restaurar los estados de ${entity.name}; se conservarán como están`)
+  }
+  for (const slug of result.calendarConfigs ?? []) {
+    const entity = bySlug.get(slug)
+    if (entity && !created.has(entity.id) && !Object.hasOwn(prior.get(entity.id) ?? {}, 'calendarConfig')) warnings.push(`No se puede restaurar el calendario de ${entity.name}; se conservará como está`)
   }
   return { result, created, touched, prior, warnings, createdAssociations }
 }
@@ -115,9 +119,10 @@ export async function undoBlueprintApplication(tenantId: string, applicationId: 
     }
     for (const roleId of [...(state.result.createdRoles ?? [])].reverse()) await tx.delete(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, tenantId)))
     for (const before of state.prior.values()) {
-      const input: { detailLayout?: unknown; workflowConfig?: unknown } = {}
+      const input: { detailLayout?: unknown; workflowConfig?: unknown; calendarConfig?: unknown } = {}
       if (Object.hasOwn(before, 'detailLayout')) input.detailLayout = before.detailLayout
       if (Object.hasOwn(before, 'workflowConfig')) input.workflowConfig = before.workflowConfig
+      if (Object.hasOwn(before, 'calendarConfig')) input.calendarConfig = before.calendarConfig
       if (Object.keys(input).length && !await updateEntityInTx(tx, tenantId, before.entityId, input)) throw createError({ statusCode: 409, statusMessage: `No se pudo restaurar el módulo ${before.slug}` })
     }
     for (const association of [...state.createdAssociations].reverse()) {

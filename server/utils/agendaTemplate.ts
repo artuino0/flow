@@ -1,6 +1,3 @@
-import { and, eq } from 'drizzle-orm'
-import { withTenant } from '~/server/db'
-import { entities } from '~/server/db/schema'
 import { applyBlueprint } from '~/server/utils/blueprint/apply'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
 
@@ -45,12 +42,14 @@ export const agendaBlueprint: Blueprint = {
         { name: 'cliente', label: 'Cliente', dataType: 'relation', required: true, validationRules: { relationEntity: 'agenda-clientes' } },
         { name: 'fecha', label: 'Fecha', dataType: 'date', required: true },
         { name: 'hora', label: 'Hora', dataType: 'text', required: true },
+        { name: 'duracion_minutos', label: 'Duración en minutos', dataType: 'number', validationRules: { min: 1, integer: true } },
         { name: 'personal', label: 'Personal que atiende', dataType: 'user', required: true, isOwnerField: true, validationRules: { roles: ['Personal'] } },
         { name: 'recurso', label: 'Recurso', dataType: 'relation', validationRules: { relationEntity: 'agenda-recursos' } },
         { name: 'estado', label: 'Estado', dataType: 'select', required: true, validationRules: { options: statusOptions } },
         { name: 'notas', label: 'Notas', dataType: 'text' }
       ],
-      lines: [{ childRef: 'agenda-servicios-cita', relationField: 'cita', totals: ['importe'] }]
+      lines: [{ childRef: 'agenda-servicios-cita', relationField: 'cita', totals: ['importe'] }],
+      calendarConfig: { enabled: true, startDateField: 'fecha', startTimeField: 'hora', durationField: 'duracion_minutos', endField: null, titleField: 'asunto', colorField: 'estado', groupByField: 'personal', defaultView: 'day' }
     },
     {
       ref: 'agenda-servicios-cita', action: 'create', kind: 'hecho', name: 'Servicios de la cita', singularName: 'Servicio de la cita', slug: 'agenda-servicios-cita',
@@ -73,9 +72,5 @@ export const agendaBlueprint: Blueprint = {
 
 export async function installAgendaTemplate(tenantId: string) {
   const result = await applyBlueprint(tenantId, null, agendaBlueprint, 'system:agenda:v1', 'agenda')
-  const appointment = result.modules.find(module => module.slug === 'agenda-citas')
-  if (appointment) await withTenant(tenantId, tx => tx.update(entities).set({
-    boardConfig: { enabled: true, statusField: 'estado', titleField: 'asunto', secondaryFields: ['fecha', 'personal'], defaultView: 'board' }
-  }).where(and(eq(entities.id, appointment.id), eq(entities.tenantId, tenantId))))
   return result
 }

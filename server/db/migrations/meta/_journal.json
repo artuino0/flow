@@ -631,6 +631,13 @@
       "when": 1790607394935,
       "breakpoints": true,
       "tag": "0089_parent_detail_relation_visibility"
+    },
+    {
+      "version": "7",
+      "idx": 90,
+      "when": 1790607395935,
+      "breakpoints": true,
+      "tag": "0090_entity_calendar_config"
     }
   ]
 }

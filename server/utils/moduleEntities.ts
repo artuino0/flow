@@ -44,6 +44,7 @@ export interface EntitySummary {
   // resuelto por resolveListLayout() (server/utils/listLayout.ts).
   listLayout?: unknown
   boardConfig?: unknown
+  calendarConfig?: unknown
   // Reportado por el usuario (2026-09-03, ver comentario largo en
   // server/db/schema.ts): campo propio de tipo texto (por name, nunca "id")
   // que se usa como etiqueta cuando ESTA entidad es destino de una relacion.
@@ -220,6 +221,7 @@ async function createEntityImpl(
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
       boardConfig: entity.boardConfig,
+      calendarConfig: entity.calendarConfig,
       labelField: entity.labelField,
       singularName: entity.singularName,
       fiscalConfig: entity.fiscalConfig,
@@ -240,6 +242,7 @@ async function updateEntityImpl(
     detailLayout?: unknown
     listLayout?: unknown
     boardConfig?: unknown
+    calendarConfig?: unknown
     workflowConfig?: unknown
     labelField?: string | null
     singularName?: string | null
@@ -257,6 +260,7 @@ async function updateEntityImpl(
     if (input.detailLayout !== undefined) setValues.detailLayout = input.detailLayout
     if (input.listLayout !== undefined) setValues.listLayout = input.listLayout
     if (input.boardConfig !== undefined) setValues.boardConfig = input.boardConfig
+    if (input.calendarConfig !== undefined) setValues.calendarConfig = input.calendarConfig
     if (input.workflowConfig !== undefined) setValues.workflowConfig = input.workflowConfig
     if (input.labelField !== undefined) setValues.labelField = input.labelField
     if (input.singularName !== undefined) setValues.singularName = input.singularName
@@ -281,6 +285,7 @@ async function updateEntityImpl(
       moduleKind: entity.moduleKind as ModuleKind,
       detailLayout: entity.detailLayout,
       listLayout: entity.listLayout,
+      calendarConfig: entity.calendarConfig,
       labelField: entity.labelField,
       singularName: entity.singularName,
       fiscalConfig: entity.fiscalConfig,

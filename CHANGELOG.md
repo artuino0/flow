@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.112.0] - 2026-09-28
+#### [feature]
+- [ERD-118](https://dydasoftware.atlassian.net/browse/ERD-118) - Vista Calendario día/semana/mes por módulo (configurable, con Solo los suyos), activada en Agenda (migración 0090).
+
 ### [0.111.0] - 2026-09-28
 #### [feature]
 - [ERD-117](https://dydasoftware.atlassian.net/browse/ERD-117) - Diseñador: la IA edita con parches en lugar de regenerar el plano (88% menos tokens de salida, 76% menos tiempo).

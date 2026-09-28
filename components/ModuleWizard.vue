@@ -10,7 +10,7 @@
 // Paso1 de punta a punta via este componente, en vez de inferir un layout
 // nuevo, porque es la MISMA pantalla en los dos puntos de entrada.
 import { ArrowRight, Blocks, Check, ChevronRight } from '@lucide/vue'
-import type { BoardConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
 
 const props = defineProps<{
@@ -75,6 +75,7 @@ const inverseRelations = ref<InverseRelation[]>([])
 const detailLayout = ref<DetailLayout>({ properties: [], relations: [], showActivity: false })
 const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
 const boardConfig = ref<BoardConfig>({ enabled: false, statusField: null, titleField: null, secondaryFields: [], defaultView: 'table' })
+const calendarConfig = ref<CalendarConfig>({ enabled: false, startDateField: null, startTimeField: null, durationField: null, endField: null, titleField: null, colorField: null, groupByField: null, defaultView: 'month' })
 
 async function loadFields() {
   if (!slug.value) return
@@ -84,12 +85,14 @@ async function loadFields() {
     detailLayout: DetailLayout
     listLayout: ListLayout
     boardConfig: BoardConfig
+    calendarConfig: CalendarConfig
   }>(`/api/entities/${slug.value}/fields`)
   fields.value = res.fields
   inverseRelations.value = res.inverseRelations
   detailLayout.value = res.detailLayout
   listLayout.value = res.listLayout
   boardConfig.value = res.boardConfig
+  calendarConfig.value = res.calendarConfig
 }
 
 const savingDetailLayout = ref(false)
@@ -116,7 +119,7 @@ async function onSaveListLayout() {
   listLayoutError.value = null
   savingListLayout.value = true
   try {
-    await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { listLayout: listLayout.value, boardConfig: boardConfig.value } })
+    await $fetch(`/api/entities/${entityId.value}`, { method: 'PUT', body: { listLayout: listLayout.value, boardConfig: boardConfig.value, calendarConfig: calendarConfig.value } })
     toast.success(`${props.noun.charAt(0).toUpperCase()}${props.noun.slice(1)} creado`, `"${name.value}" ya está disponible.`)
     router.push(props.basePath)
   } catch (err: any) {
@@ -457,7 +460,7 @@ async function onContinue() {
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" :fields="fields" />
+        <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields" />
         <ModuleListPreviewCard :entity-slug="slug" :entity-name="name" :fields="fields" :list-layout="listLayout" />
       </div>
     </template>

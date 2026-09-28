@@ -3,6 +3,7 @@ import { db, withTenant } from '~/server/db'
 import { entities, entityFields, relationDefinitions } from '~/server/db/schema'
 import { detailLayoutSchema } from '~/server/utils/detailLayout'
 import { stateWorkflowSchema } from '~/server/utils/stateWorkflow'
+import { calendarConfigSchema } from '~/server/utils/calendarConfig'
 import { KNOWN_DATA_TYPES } from '~/server/utils/dynamicSchema'
 import type { Blueprint, BlueprintField } from './schema'
 
@@ -28,6 +29,7 @@ export async function exportBlueprint(tenantId: string): Promise<Blueprint> {
       modules: current.modules.map(module => {
         const layout = detailLayoutSchema.safeParse(module.detailLayout)
         const workflow = stateWorkflowSchema.safeParse(module.workflowConfig)
+        const calendar = calendarConfigSchema.safeParse(module.calendarConfig)
         return {
           ref: module.slug,
           action: 'extend' as const,
@@ -42,6 +44,7 @@ export async function exportBlueprint(tenantId: string): Promise<Blueprint> {
             .map(field => ({ name: field.name, label: field.label, dataType: field.dataType as BlueprintField['dataType'], required: field.isRequired, isOwnerField: field.isOwnerField, validationRules: field.validationRules as Record<string, unknown> })),
           ...(layout.success ? { detailLayout: layout.data, lines: layout.data.relations.filter(relation => relation.editable).map(relation => ({ childRef: relation.entitySlug, relationField: relation.fieldName, ...(relation.totals ? { totals: relation.totals } : {}) })) } : {}),
           ...(workflow.success ? { workflow: workflow.data } : {}),
+          ...(calendar.success ? { calendarConfig: calendar.data } : {}),
           snapshot: true
         }
       }),

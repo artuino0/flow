@@ -9,6 +9,7 @@ import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
 import { labelConfigSchema } from '~/utils/labelTemplates'
 import { boardConfigSchema } from '~/server/utils/boardConfig'
+import { calendarConfigSchema } from '~/server/utils/calendarConfig'
 import { validateWorkflowConfig, StateWorkflowError } from '~/server/utils/stateWorkflow'
 
 // PUT /api/entities/:id { name?, description?, isActive?, icon?, detailLayout?, listLayout?, labelField?, singularName? }
@@ -38,6 +39,7 @@ const bodySchema = z.object({
   detailLayout: detailLayoutSchema.nullable().optional(),
   listLayout: listLayoutSchema.nullable().optional(),
   boardConfig: boardConfigSchema.nullable().optional(),
+  calendarConfig: calendarConfigSchema.nullable().optional(),
   workflowConfig: z.unknown().nullable().optional(),
   // Reportado por el usuario (2026-09-03, ver comentario largo en
   // server/db/schema.ts): "Campo a mostrar" del picker de relaciones
@@ -111,6 +113,29 @@ export default defineEventHandler(async (event) => {
     const used = [body.boardConfig.titleField, ...body.boardConfig.secondaryFields].filter((name): name is string => Boolean(name))
     const missing = used.filter(name => !byName.has(name))
     if (missing.length) throw createError({ statusCode: 422, statusMessage: `El tablero referencia campos inexistentes: ${missing.join(', ')}` })
+  }
+
+  if (body.calendarConfig?.enabled) {
+    const existing = await withTenant(auth.tenantId, tx => tx
+      .select({ name: entityFields.name, dataType: entityFields.dataType })
+      .from(entityFields)
+      .where(eq(entityFields.entityId, id)))
+    const byName = new Map(existing.map(field => [field.name, field]))
+    const startDate = body.calendarConfig.startDateField ? byName.get(body.calendarConfig.startDateField) : null
+    if (!startDate || startDate.dataType !== 'date') throw createError({ statusCode: 422, statusMessage: 'El campo de fecha del calendario debe ser de tipo Fecha' })
+    const refs = [body.calendarConfig.startTimeField, body.calendarConfig.durationField, body.calendarConfig.endField, body.calendarConfig.titleField, body.calendarConfig.colorField, body.calendarConfig.groupByField].filter((name): name is string => Boolean(name))
+    const missing = refs.filter(name => !byName.has(name))
+    if (missing.length) throw createError({ statusCode: 422, statusMessage: `El calendario referencia campos inexistentes: ${missing.join(', ')}` })
+    const time = body.calendarConfig.startTimeField ? byName.get(body.calendarConfig.startTimeField) : null
+    if (time && !['text', 'datetime'].includes(time.dataType)) throw createError({ statusCode: 422, statusMessage: 'El campo de hora debe ser Texto u Hora/fecha' })
+    const duration = body.calendarConfig.durationField ? byName.get(body.calendarConfig.durationField) : null
+    if (duration && duration.dataType !== 'number') throw createError({ statusCode: 422, statusMessage: 'La duración debe usar un campo Número' })
+    const end = body.calendarConfig.endField ? byName.get(body.calendarConfig.endField) : null
+    if (end && !['text', 'datetime'].includes(end.dataType)) throw createError({ statusCode: 422, statusMessage: 'El campo de fin debe ser Texto u Hora/fecha' })
+    const color = body.calendarConfig.colorField ? byName.get(body.calendarConfig.colorField) : null
+    if (color && color.dataType !== 'select') throw createError({ statusCode: 422, statusMessage: 'El color del calendario debe venir de un campo Selección' })
+    const group = body.calendarConfig.groupByField ? byName.get(body.calendarConfig.groupByField) : null
+    if (group && !['user', 'relation', 'select'].includes(group.dataType)) throw createError({ statusCode: 422, statusMessage: 'El agrupador debe ser Usuario, Relación o Selección' })
   }
 
   if (body.fiscalConfig?.enabled) {

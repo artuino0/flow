@@ -35,7 +35,7 @@
 import { Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
-import type { BoardConfig, DetailLayout, EntityFieldMeta, EntityMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, EntityMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/utils/labelTemplates'
 
 definePageMeta({ layout: 'default' })
@@ -233,6 +233,7 @@ const { data: fieldsData, refresh: refreshFields } = await useFetch<{
   detailLayout: DetailLayout
   listLayout: ListLayout
   boardConfig: BoardConfig
+  calendarConfig: CalendarConfig
 }>(
   () => `/api/entities/${currentModule.value?.slug ?? ''}/fields`,
   {
@@ -279,10 +280,12 @@ async function onSaveDetailLayout() {
 // servidor, guardado explicito via "Guardar diseño").
 const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
 const boardConfig = ref<BoardConfig>({ enabled: false, statusField: null, titleField: null, secondaryFields: [], defaultView: 'table' })
+const calendarConfig = ref<CalendarConfig>({ enabled: false, startDateField: null, startTimeField: null, durationField: null, endField: null, titleField: null, colorField: null, groupByField: null, defaultView: 'month' })
 watchEffect(() => {
   if (fieldsData.value) {
     listLayout.value = fieldsData.value.listLayout
     boardConfig.value = fieldsData.value.boardConfig
+    calendarConfig.value = fieldsData.value.calendarConfig
   }
 })
 
@@ -292,7 +295,7 @@ async function onSaveListLayout() {
   listLayoutError.value = null
   savingListLayout.value = true
   try {
-    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value, boardConfig: boardConfig.value } })
+    await $fetch(`/api/entities/${moduleId}`, { method: 'PUT', body: { listLayout: listLayout.value, boardConfig: boardConfig.value, calendarConfig: calendarConfig.value } })
     toast.updated('Diseño del listado guardado', 'Los cambios se guardaron correctamente.')
   } catch (err: any) {
     listLayoutError.value = err?.data?.statusMessage || 'No se pudo guardar el diseño del listado'
@@ -557,7 +560,7 @@ async function onSaveListLayout() {
           </button>
         </div>
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" :fields="fields" />
+          <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields" />
           <ModuleListPreviewCard
             :entity-slug="currentModule.slug"
             :entity-name="currentModule.name"

@@ -5,6 +5,7 @@ import { roles } from '~/server/db/schema'
 import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 import { MODULE_ICON_KEY_SET } from '~/server/utils/moduleIcons'
 import { detailLayoutSchema } from '~/server/utils/detailLayout'
+import { calendarConfigSchema } from '~/server/utils/calendarConfig'
 import { SLUG_PATTERN } from '~/server/utils/moduleEntities'
 import { blueprintSchema, type Blueprint, type BlueprintField } from './schema'
 import { dedupeBlueprint, type BlueprintMerge } from './dedupe'
@@ -69,6 +70,11 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
         const layout = detailLayoutSchema.safeParse(existing.detailLayout)
         if (!layout.success || !same(module.detailLayout, layout.data)) add(`${base}.detailLayout`, 'La instantánea modifica el diseño de detalle existente')
       }
+      if (module.calendarConfig && !module.snapshot) add(`${base}.calendarConfig`, 'El calendario solo se incluye en una instantánea del módulo')
+      if (module.calendarConfig && module.snapshot && existing) {
+        const calendar = calendarConfigSchema.safeParse(existing.calendarConfig)
+        if (!calendar.success || !same(module.calendarConfig, calendar.data)) add(`${base}.calendarConfig`, 'La instantánea modifica la configuración de calendario existente')
+      }
     }
     if (module.icon && !MODULE_ICON_KEY_SET.has(module.icon)) add(`${base}.icon`, 'El icono no existe')
     if (module.action === 'create' && RESERVED.has(canon(module.name))) add(`${base}.name`, 'El nombre del módulo está reservado')
@@ -114,6 +120,20 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
   const fieldFor = (slug: string, name: string) => fieldsFor(slug).find(field => field.name === name)
   for (const [index, module] of normalized.modules.entries()) {
     const base = `modules[${index}]`
+    if (module.calendarConfig?.enabled) {
+      const config = module.calendarConfig
+      const startDate = config.startDateField ? fieldFor(module.slug, config.startDateField) : null
+      if (startDate?.dataType !== 'date') add(`${base}.calendarConfig.startDateField`, 'El calendario requiere un campo de fecha existente')
+      const checkType = (name: string | null, allowed: string[], part: string) => {
+        if (name && !allowed.includes(fieldFor(module.slug, name)?.dataType ?? '')) add(`${base}.calendarConfig.${part}`, 'El campo no existe o no es compatible')
+      }
+      checkType(config.startTimeField, ['text', 'datetime'], 'startTimeField')
+      checkType(config.durationField, ['number'], 'durationField')
+      checkType(config.endField, ['text', 'datetime'], 'endField')
+      if (config.titleField && !fieldFor(module.slug, config.titleField)) add(`${base}.calendarConfig.titleField`, 'El campo de título no existe')
+      checkType(config.colorField, ['select'], 'colorField')
+      checkType(config.groupByField, ['user', 'relation', 'select'], 'groupByField')
+    }
     for (const [fieldIndex, field] of module.fields.entries()) {
       const at = `${base}.fields[${fieldIndex}]`
       const rules = rulesOf(field)
@@ -269,7 +289,7 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
   const modules = snapshot.modules.map(module => ({
     id: module.slug, slug: module.slug, moduleKind: module.kind, name: module.name,
     singularName: module.singularName ?? null, description: module.description ?? null, icon: module.icon ?? null,
-    detailLayout: module.detailLayout ?? null, workflowConfig: module.workflow ?? null
+    detailLayout: module.detailLayout ?? null, workflowConfig: module.workflow ?? null, calendarConfig: module.calendarConfig ?? null
   }))
   const associations = snapshot.associations.map(association => ({
     name: association.name, sourceEntityId: association.sourceRef, targetEntityId: association.targetRef

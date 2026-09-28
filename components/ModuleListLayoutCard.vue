@@ -23,18 +23,20 @@
 // pedido explicito del usuario tras ver uuids crudos en Screen/Listado
 // Recepción ("necesitamos poder decidir que se muestra de la relacion").
 import { Check, ChevronDown, GripVertical } from '@lucide/vue'
-import type { BoardConfig, EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
+import type { BoardConfig, CalendarConfig, EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
 import { isListFilterable } from '~/utils/listFilters'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
   modelValue: ListLayout
   boardConfig?: BoardConfig
+  calendarConfig?: CalendarConfig
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: ListLayout]
   'update:boardConfig': [value: BoardConfig]
+  'update:calendarConfig': [value: CalendarConfig]
 }>()
 
 function fieldMeta(name: string): EntityFieldMeta | undefined {
@@ -51,6 +53,12 @@ const filterableCandidates = computed(() => props.fields.filter((f) => f.name !=
 const sortableFields = computed(() => props.fields.filter((f) => f.name !== 'id'))
 const boardStatusFields = computed(() => props.fields.filter(field => field.dataType === 'select'))
 const boardDisplayFields = computed(() => props.fields.filter(field => field.name !== 'id'))
+const calendarFields = computed(() => props.fields.filter(field => field.name !== 'id'))
+const calendarDateFields = computed(() => calendarFields.value.filter(field => field.dataType === 'date'))
+const calendarTimeFields = computed(() => calendarFields.value.filter(field => ['text', 'datetime'].includes(field.dataType)))
+const calendarDurationFields = computed(() => calendarFields.value.filter(field => field.dataType === 'number'))
+const calendarColorFields = computed(() => calendarFields.value.filter(field => field.dataType === 'select'))
+const calendarGroupFields = computed(() => calendarFields.value.filter(field => ['user', 'relation', 'select'].includes(field.dataType)))
 
 function updateBoard(patch: Partial<BoardConfig>) {
   if (!props.boardConfig) return
@@ -60,6 +68,10 @@ function toggleBoardSecondary(name: string) {
   if (!props.boardConfig) return
   const included = props.boardConfig.secondaryFields.includes(name)
   updateBoard({ secondaryFields: included ? props.boardConfig.secondaryFields.filter(field => field !== name) : [...props.boardConfig.secondaryFields, name].slice(0, 3) })
+}
+function updateCalendar(patch: Partial<CalendarConfig>) {
+  if (!props.calendarConfig) return
+  emit('update:calendarConfig', { ...props.calendarConfig, ...patch })
 }
 
 function toggleColumnVisible(name: string) {
@@ -369,6 +381,40 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
           </label>
         </template>
         <p v-else-if="boardStatusFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Selección para usarlo como columnas.</p>
+      </div>
+
+      <div v-if="calendarConfig" class="flex flex-col gap-3 border-t border-brand-border-light pt-4">
+        <div class="flex items-start justify-between gap-4">
+          <div><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Vista Calendario</p><p class="mt-1 text-xs leading-5 text-brand-text-muted">Organiza citas, entregas y tareas por fecha y hora.</p></div>
+          <button type="button" role="switch" :aria-checked="calendarConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors" :class="calendarConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateCalendar({ enabled: !calendarConfig.enabled })"><span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="calendarConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+        </div>
+        <template v-if="calendarConfig.enabled">
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Fecha de inicio
+            <select :value="calendarConfig.startDateField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ startDateField: ($event.target as HTMLSelectElement).value || null })"><option value="">Selecciona una fecha</option><option v-for="field in calendarDateFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Hora de inicio <span class="font-normal text-brand-text-muted">(opcional)</span>
+            <select :value="calendarConfig.startTimeField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ startTimeField: ($event.target as HTMLSelectElement).value || null })"><option value="">Sin hora</option><option v-for="field in calendarTimeFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Duración en minutos <span class="font-normal text-brand-text-muted">(opcional)</span>
+            <select :value="calendarConfig.durationField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ durationField: ($event.target as HTMLSelectElement).value || null, endField: null })"><option value="">Duración predeterminada</option><option v-for="field in calendarDurationFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Campo de fin <span class="font-normal text-brand-text-muted">(opcional, alternativo a duración)</span>
+            <select :value="calendarConfig.endField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ endField: ($event.target as HTMLSelectElement).value || null, durationField: null })"><option value="">Sin campo de fin</option><option v-for="field in calendarTimeFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Título <span class="font-normal text-brand-text-muted">(vacío usa el título del módulo)</span>
+            <select :value="calendarConfig.titleField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ titleField: ($event.target as HTMLSelectElement).value || null })"><option value="">Título del módulo</option><option v-for="field in calendarFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Color por estado
+            <select :value="calendarConfig.colorField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ colorField: ($event.target as HTMLSelectElement).value || null })"><option value="">Sin color por estado</option><option v-for="field in calendarColorFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Agrupar por persona o recurso
+            <select :value="calendarConfig.groupByField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ groupByField: ($event.target as HTMLSelectElement).value || null })"><option value="">Sin agrupación</option><option v-for="field in calendarGroupFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+          </label>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Vista inicial
+            <select :value="calendarConfig.defaultView" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateCalendar({ defaultView: ($event.target as HTMLSelectElement).value as CalendarConfig['defaultView'] })"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
+          </label>
+        </template>
+        <p v-else-if="calendarDateFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Fecha para usar el calendario.</p>
       </div>
 
       <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">

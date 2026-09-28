@@ -98,6 +98,18 @@ export interface BoardConfig {
   defaultView: 'table' | 'board'
 }
 
+export interface CalendarConfig {
+  enabled: boolean
+  startDateField: string | null
+  startTimeField: string | null
+  durationField: string | null
+  endField: string | null
+  titleField: string | null
+  colorField: string | null
+  groupByField: string | null
+  defaultView: 'day' | 'week' | 'month'
+}
+
 export interface EntityFieldsResponse {
   entity: EntityMeta
   fields: EntityFieldMeta[]
@@ -106,6 +118,7 @@ export interface EntityFieldsResponse {
   detailLayout: DetailLayout
   listLayout: ListLayout
   boardConfig: BoardConfig
+  calendarConfig: CalendarConfig
 }
 
 export function useEntityFields(slug: string) {

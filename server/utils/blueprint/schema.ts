@@ -3,6 +3,7 @@ import { KNOWN_DATA_TYPES, getValidationRulesSchema } from '~/server/utils/dynam
 import { detailLayoutSchema } from '~/server/utils/detailLayout'
 import { stateWorkflowSchema } from '~/server/utils/stateWorkflow'
 import type { CalculationConfig } from '~/server/utils/calculatedFields'
+import { calendarConfigSchema } from '~/server/utils/calendarConfig'
 
 export const blueprintFieldSchema = z.object({
   name: z.string().trim().min(1),
@@ -40,7 +41,8 @@ export const blueprintModuleSchema = z.object({
   // Una exportación contiene los campos actuales para dibujar el lienzo.
   // El validador exige que permanezcan idénticos y solo aplica los nuevos.
   snapshot: z.boolean().optional(),
-  detailLayout: detailLayoutSchema.optional()
+  detailLayout: detailLayoutSchema.optional(),
+  calendarConfig: calendarConfigSchema.optional()
 }).strict()
 
 export const blueprintSchema = z.object({

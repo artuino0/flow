@@ -40,6 +40,8 @@ export const entities = pgTable('entities', {
   listLayout: jsonb('list_layout'),
   // Vista Kanban opcional; sus columnas se derivan del campo Select elegido.
   boardConfig: jsonb('board_config'),
+  // Vista Calendario opcional, configurable por módulo.
+  calendarConfig: jsonb('calendar_config'),
   // ERD-96: reglas opcionales del flujo para un campo Select existente.
   workflowConfig: jsonb('workflow_config'),
   // Pedido directo del usuario (2026-09-01): "un selector de iconos, para

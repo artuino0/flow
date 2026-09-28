@@ -71,10 +71,12 @@ watch(() => data.value?.fields, (fields) => {
   const next = { ...formValues.value }
   let changed = false
   for (const field of fields) {
-    if (field.dataType !== 'relation') continue
     const raw = route.query[field.name]
     const value = Array.isArray(raw) ? raw[0] : raw
-    if (typeof value === 'string' && /^[0-9a-fA-F-]{36}$/.test(value) && next[field.name] == null) {
+    const isRelationId = field.dataType === 'relation' && typeof value === 'string' && /^[0-9a-fA-F-]{36}$/.test(value)
+    const isCalendarDate = field.name === data.value?.calendarConfig.startDateField && field.dataType === 'date' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    const isCalendarTime = field.name === data.value?.calendarConfig.startTimeField && ['text', 'datetime'].includes(field.dataType) && typeof value === 'string'
+    if ((isRelationId || isCalendarDate || isCalendarTime) && next[field.name] == null) {
       next[field.name] = value
       changed = true
     }

@@ -6,6 +6,7 @@ import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/det
 import { resolveListLayout } from '~/server/utils/listLayout'
 import { isListFilterable } from '~/utils/listFilters'
 import { resolveBoardConfig } from '~/server/utils/boardConfig'
+import { resolveCalendarConfig } from '~/server/utils/calendarConfig'
 import { metadataCache } from '~/server/utils/shortCache'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
@@ -77,6 +78,7 @@ export default defineEventHandler(async (event) => {
   const filterableFieldNames = fields.filter((f) => isListFilterable(f.dataType)).map((f) => f.name)
   const listLayout = resolveListLayout(entity.listLayout, fields.map((f) => f.name), filterableFieldNames)
   const boardConfig = resolveBoardConfig(entity.boardConfig, fields)
+  const calendarConfig = resolveCalendarConfig(entity.calendarConfig, fields)
 
   // Reportado por el usuario (2026-09-03, "en el array de campos siempre debe
   // existir el id... no lo podiamos eliminar... debia ser un UUID"): el
@@ -119,7 +121,7 @@ export default defineEventHandler(async (event) => {
       }
     : field)
 
-  const response = { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig }
+  const response = { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig, calendarConfig }
   metadataCache.set(cacheKey, response)
   return response
 })
