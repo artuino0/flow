@@ -4,6 +4,7 @@ import { chatAttachments, chatConversations, chatMessages, chatParticipants, ent
 import type { AuthTokenPayload } from '~/server/utils/auth'
 import { resolveChatPermissions } from '~/server/utils/chatPermissions'
 import { publishRealtime, realtimeUserTopic } from '~/server/utils/realtime'
+import { withRecordActor } from '~/server/utils/recordActorContext'
 import type { ChatAttachment, ChatConversation, ChatMessage, ChatPerson } from '~/utils/chat'
 
 type Tx = typeof db
@@ -282,10 +283,12 @@ export async function sendChatMessage(auth: AuthTokenPayload, input: SendChatMes
     await tx.update(chatParticipants).set({ archivedAt: null }).where(and(eq(chatParticipants.conversationId, input.conversationId), ne(chatParticipants.userId, auth.sub)))
     return row
   })
-  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, input.conversationId)))
+  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId, roleId: users.roleId }).from(chatParticipants)
+    .innerJoin(users, eq(users.id, chatParticipants.userId)).where(eq(chatParticipants.conversationId, input.conversationId)))
   let ownMessage: ChatMessage | null = null
   for (const user of userIds) {
-    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [message], user.id).then(items => items[0]))
+    const serialized = await withRecordActor({ userId: user.id, roleId: user.roleId }, () =>
+      withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [message], user.id).then(items => items[0])))
     if (!serialized) continue
     if (user.id === auth.sub) ownMessage = serialized
     publishRealtime(realtimeUserTopic(user.id), 'chat.message', serialized)
@@ -332,10 +335,12 @@ export async function editChatMessage(auth: AuthTokenPayload, messageId: string,
     const [row] = await tx.update(chatMessages).set({ body: body.trim(), editedAt: new Date() }).where(eq(chatMessages.id, messageId)).returning()
     return row
   })
-  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
+  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId, roleId: users.roleId }).from(chatParticipants)
+    .innerJoin(users, eq(users.id, chatParticipants.userId)).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
   let ownMessage: ChatMessage | null = null
   for (const user of userIds) {
-    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0]))
+    const serialized = await withRecordActor({ userId: user.id, roleId: user.roleId }, () =>
+      withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0])))
     if (!serialized) continue
     if (user.id === auth.sub) ownMessage = serialized
     publishRealtime(realtimeUserTopic(user.id), 'chat.updated', serialized)
@@ -352,10 +357,12 @@ export async function deleteChatMessage(auth: AuthTokenPayload, messageId: strin
     const [row] = await tx.update(chatMessages).set({ body: '', deletedAt: existing.deletedAt ?? new Date() }).where(eq(chatMessages.id, messageId)).returning()
     return row
   })
-  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId }).from(chatParticipants).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
+  const userIds = await withTenant(auth.tenantId, tx => tx.select({ id: chatParticipants.userId, roleId: users.roleId }).from(chatParticipants)
+    .innerJoin(users, eq(users.id, chatParticipants.userId)).where(eq(chatParticipants.conversationId, messageRow.conversationId)))
   let ownMessage: ChatMessage | null = null
   for (const user of userIds) {
-    const serialized = await withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0]))
+    const serialized = await withRecordActor({ userId: user.id, roleId: user.roleId }, () =>
+      withTenant(auth.tenantId, tx => serializeMessages(tx, auth.tenantId, [messageRow], user.id).then(items => items[0])))
     if (!serialized) continue
     if (user.id === auth.sub) ownMessage = serialized
     publishRealtime(realtimeUserTopic(user.id), 'chat.deleted', serialized)

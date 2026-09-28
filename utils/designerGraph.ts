@@ -38,7 +38,7 @@ export type DesignerRelationFilter = 'none' | 'all' | 'catalogs' | 'modules'
 
 export function designerFieldTypeLabel(field: BlueprintField) {
   if (field.validationRules?.calculation) return 'Calculado ƒx'
-  return ({ text: 'Texto', number: 'Número', currency: 'Monto', boolean: 'Sí/No', date: 'Fecha', json: 'Datos', relation: `Relación → ${field.validationRules?.relationEntity ?? ''}`, tabla: 'Tabla', select: 'Lista', multiselect: 'Lista múltiple', file: 'Archivo', incremental: 'Folio' } as Record<string, string>)[field.dataType] ?? field.dataType
+  return ({ text: 'Texto', number: 'Número', currency: 'Monto', boolean: 'Sí/No', date: 'Fecha', json: 'Datos', relation: `Relación → ${field.validationRules?.relationEntity ?? ''}`, user: 'Usuario', tabla: 'Tabla', select: 'Lista', multiselect: 'Lista múltiple', file: 'Archivo', incremental: 'Folio' } as Record<string, string>)[field.dataType] ?? field.dataType
 }
 
 export function buildDesignerGraph(current: Blueprint, blueprint: Blueprint, diff: DesignerDiff | null, navigation?: { layout: NavigationLayout; entities: Array<{ id: string; slug: string }> }): DiagramGraph {

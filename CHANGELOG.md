@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.108.0] - 2026-09-28
+#### [feature]
+- [ERD-114](https://dydasoftware.atlassian.net/browse/ERD-114) - Campo tipo Usuario y visibilidad por rol Todos/Solo los suyos con herencia padre-hijo, también en el diseñador con IA.
+
 ### [0.107.0] - 2026-09-28
 #### [feature]
 - [ERD-113](https://dydasoftware.atlassian.net/browse/ERD-113) - Diseñador: cada propuesta de la IA trae explicación en markdown con sección ¿Por qué? y el chat en /disenador suma modo enfoque para leerla.

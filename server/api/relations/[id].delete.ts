@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { requirePermissionForEntityId } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { relationDefinitions, recordRelations } from '~/server/db/schema'
+import { assertVisibleRecords } from '~/server/utils/visibleRecords'
 
 // DELETE /api/relations/:id (HU-ERD-19)
 export default defineEventHandler(async (event) => {
@@ -39,7 +40,8 @@ export default defineEventHandler(async (event) => {
   await requirePermissionForEntityId(event, definition.targetEntityId, 'canUpdate')
 
   await withTenant(auth.tenantId, (tx) =>
-    tx.delete(recordRelations).where(and(eq(recordRelations.id, id), eq(recordRelations.tenantId, auth.tenantId)))
+    assertVisibleRecords(tx, auth.tenantId, [existing.sourceRecordId, existing.targetRecordId]).then(() =>
+      tx.delete(recordRelations).where(and(eq(recordRelations.id, id), eq(recordRelations.tenantId, auth.tenantId))))
   )
 
   return { deleted: true, id }

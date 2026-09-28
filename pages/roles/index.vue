@@ -42,6 +42,7 @@ interface EntityPermissionRow {
   canCreate: boolean
   canUpdate: boolean
   canDelete: boolean
+  visibility: 'all' | 'own'
 }
 
 interface RolePermissionsResponse {
@@ -175,7 +176,7 @@ async function onSave() {
   try {
     const result = await $fetch<RolePermissionsResponse>(`/api/roles/${selectedRoleId.value}/permissions`, {
       method: 'PUT',
-      body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu }) => ({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu })) }
+      body: { permissions: rows.value.map(({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu, visibility }) => ({ entityId, canRead, canCreate, canUpdate, canDelete, showInMenu, visibility })) }
     })
     await $fetch(`/api/roles/${selectedRoleId.value}/app-permissions`, { method: 'PUT', body: appPermissions.value })
     await $fetch(`/api/roles/${selectedRoleId.value}/chat-permissions`, { method: 'PUT', body: chatPermissions.value })
@@ -444,6 +445,7 @@ async function onCreateRole() {
               <thead class="border-b border-brand-border-light bg-brand-bg">
                 <tr>
                   <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Entidad</th>
+                  <th class="px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">Visibilidad</th>
                   <th
                     v-for="col in visibleColumns"
                     :key="col.key"
@@ -454,6 +456,7 @@ async function onCreateRole() {
               <tbody class="divide-y divide-brand-border-light">
                 <tr v-for="row in visibleRows" :key="row.entityId" class="hover:bg-brand-bg">
                   <td class="px-4 py-3 font-medium text-brand-text">{{ row.entityName }}</td>
+                  <td class="px-4 py-3"><select v-model="row.visibility" :aria-label="`Visibilidad: ${row.entityName}`" class="rounded border border-brand-border px-2 py-1.5 text-xs"><option value="all">Todos</option><option value="own">Solo los suyos</option></select></td>
                   <td v-for="col in visibleColumns" :key="col.key" class="px-4 py-3 text-center">
                     <button
                       type="button"

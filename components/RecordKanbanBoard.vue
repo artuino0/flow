@@ -56,6 +56,7 @@ function displayValue(record: BoardRecord, name: string): string {
   const value = record.customData[name]
   if (value === null || value === undefined || value === '') return '—'
   if (field?.dataType === 'relation') return localRelationLabels.value[name]?.[String(value)] ?? String(value).slice(0, 8)
+  if (field?.dataType === 'user') return (Array.isArray(value) ? value : [value]).map(id => localRelationLabels.value[name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
   if (field?.dataType === 'select') {
     const options = Array.isArray(field.validationRules?.options) ? field.validationRules.options as Array<{ value: string; label: string }> : []
     return options.find(option => option.value === value)?.label ?? String(value)

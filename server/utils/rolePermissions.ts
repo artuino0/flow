@@ -40,6 +40,7 @@ export interface EntityPermissionRow {
   canCreate: boolean
   canUpdate: boolean
   canDelete: boolean
+  visibility: 'all' | 'own'
 }
 
 export interface RolePermissionsResult {
@@ -57,6 +58,7 @@ export interface PermissionUpdate {
   canCreate: boolean
   canUpdate: boolean
   canDelete: boolean
+  visibility?: 'all' | 'own'
 }
 
 export async function listRoles(tenantId: string): Promise<RoleSummary[]> {
@@ -155,6 +157,7 @@ async function createRoleImpl(tenantId: string, name: string, copyFromRoleId?: s
         canCreate: p.canCreate,
         canUpdate: p.canUpdate,
         canDelete: p.canDelete,
+        visibility: p.visibility,
         showInMenu: p.showInMenu
       })
       copiedPermissionCount += trueCount
@@ -210,6 +213,7 @@ async function loadRolePermissions(tx: Tx, tenantId: string, roleId: string): Pr
       canCreate: existing?.canCreate ?? false,
       canUpdate: existing?.canUpdate ?? false,
       canDelete: existing?.canDelete ?? false,
+      visibility: existing?.visibility ?? 'all',
       showInMenu: existing?.showInMenu ?? true
     }
   })
@@ -264,6 +268,7 @@ async function setRolePermissionsImpl(
           canCreate: update.canCreate,
           canUpdate: update.canUpdate,
           canDelete: update.canDelete,
+          visibility: update.visibility ?? 'all',
           showInMenu: update.showInMenu ?? true
         })
         .onConflictDoUpdate({
@@ -273,6 +278,7 @@ async function setRolePermissionsImpl(
             canCreate: update.canCreate,
             canUpdate: update.canUpdate,
             canDelete: update.canDelete,
+            ...(update.visibility === undefined ? {} : { visibility: update.visibility }),
             ...(update.showInMenu === undefined ? {} : { showInMenu: update.showInMenu })
           }
         })

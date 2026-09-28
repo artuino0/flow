@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db } from '~/server/db'
 import { entities } from '~/server/db/schema'
+import { assertWritableUsers } from '~/server/utils/userField'
 
 type Field = { name: string; dataType: string; validationRules: unknown }
 type RelationRef = { targetSlug: string; fieldName: string; value: string }
@@ -35,6 +36,7 @@ export async function assertWritableRelations(
   nextData: Record<string, unknown>,
   previousData: Record<string, unknown> = {}
 ): Promise<void> {
+  await assertWritableUsers(tx, tenantId, fields, nextData, previousData)
   const previous = new Map<string, number>()
   for (const ref of refs(fields, previousData)) {
     const key = `${ref.targetSlug}\0${ref.fieldName}\0${ref.value}`

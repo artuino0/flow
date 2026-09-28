@@ -4,6 +4,7 @@ import { requirePermissionForEntityId } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { relationDefinitions } from '~/server/db/schema'
 import { createRecordRelation, DuplicateRecordRelationError, RecordRelationValidationError } from '~/server/utils/recordAssociations'
+import { assertVisibleRecords } from '~/server/utils/visibleRecords'
 
 // POST /api/relations { relationDefinitionId, sourceRecordId, targetRecordId } (HU-ERD-19)
 // La integridad (que ambos records existan y sean del tipo de entidad esperado
@@ -39,15 +40,19 @@ export default defineEventHandler(async (event) => {
   await requirePermissionForEntityId(event, definition.targetEntityId, 'canUpdate')
 
   try {
-    const { row } = await withTenant(auth.tenantId, tx => createRecordRelation(tx, {
+    const { row } = await withTenant(auth.tenantId, async tx => {
+      await assertVisibleRecords(tx, auth.tenantId, [body.sourceRecordId, body.targetRecordId])
+      return createRecordRelation(tx, {
       tenantId: auth.tenantId,
       relationDefinitionId: body.relationDefinitionId,
       sourceRecordId: body.sourceRecordId,
       targetRecordId: body.targetRecordId
-    }))
+      })
+    })
     setResponseStatus(event, 201)
     return row
   } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) throw err
     if (err instanceof DuplicateRecordRelationError) throw createError({ statusCode: 409, statusMessage: err.message })
     if (err instanceof RecordRelationValidationError) throw createError({ statusCode: err.statusCode, statusMessage: err.message })
     // El trigger de integridad (ERD-10) rechaza con RAISE EXCEPTION si el

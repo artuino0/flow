@@ -260,6 +260,14 @@ defineExpose({ validateAll })
         @update:model-value="(value) => setValue(field.name, value)"
       />
 
+      <DynamicUserField
+        v-else-if="field.dataType === 'user'"
+        :field="field"
+        :model-value="valueFor(field.name)"
+        :disabled="disabled || disabledFields?.includes(field.name)"
+        @update:model-value="(value) => setValue(field.name, value)"
+      />
+
       <!-- file: HU-ERD-78, ver components/DynamicFileField.vue -->
       <DynamicFileField
         v-else-if="field.dataType === 'file'"

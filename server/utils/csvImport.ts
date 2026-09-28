@@ -1,6 +1,7 @@
 import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
-import { entities, entityFields, records } from '~/server/db/schema'
+import { entities, entityFields, people, records, users } from '~/server/db/schema'
+import { assertWritableUsers } from './userField'
 import { assertEditableLineParents, StateWorkflowError, stateWorkflowSchema } from './stateWorkflow'
 import { getEntityZodSchema } from './dynamicSchema'
 import { recordNotDeleted } from './records'
@@ -188,6 +189,23 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
         }
       }
 
+      for (const field of fieldRows.filter(item => item.dataType === 'user')) {
+        const raw = rawRow[field.name]
+        if (!raw?.trim()) continue
+        const rules = (field.validationRules ?? {}) as { multiple?: boolean }
+        const emails = rules.multiple ? raw.split(/[;,]/).map(item => item.trim()).filter(Boolean) : [raw.trim()]
+        const resolved: string[] = []
+        for (const email of emails) {
+          const matches = await tx.select({ id: users.id }).from(users).innerJoin(people, eq(people.id, users.personId))
+            .where(and(eq(users.tenantId, tenantId), eq(people.email, email.toLowerCase()), eq(users.isActive, true))).limit(2)
+          if (matches.length !== 1) {
+            errors.push({ row: rowNumber, error: `${field.name}: no se encontró un usuario activo con correo ${email}` })
+            rowFailed = true
+          } else resolved.push(matches[0].id)
+        }
+        resolvedRow[field.name] = rules.multiple ? resolved : resolved[0]
+      }
+
       if (rowFailed) continue
 
       // El CSV solo trae texto - coerciona antes de pasar por el schema Zod
@@ -222,8 +240,13 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
         continue
       }
       try {
+        await assertWritableUsers(tx, tenantId, fieldRows, parsed.data as Record<string, unknown>)
         await assertEditableLineParents(tx, tenantId, entityId, fieldRows, parsed.data as Record<string, unknown>)
       } catch (error) {
+        if ((error as { statusCode?: number }).statusCode === 422) {
+          errors.push({ row: rowNumber, error: (error as Error).message })
+          continue
+        }
         if (error instanceof StateWorkflowError) {
           errors.push({ row: rowNumber, error: error.message })
           continue

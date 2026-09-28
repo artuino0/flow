@@ -9,6 +9,7 @@ export interface EntityFieldMeta {
   dataType: string
   validationRules: Record<string, unknown>
   isRequired: boolean
+  isOwnerField?: boolean
 }
 
 export interface EntityMeta {

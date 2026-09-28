@@ -37,6 +37,7 @@ export function formatFieldValue(field: FormattableField, value: unknown, relati
       return Array.isArray(value) ? value.map(labelFor).join(', ') || '-' : labelFor(String(value))
     }
     case 'relation': return relationLabels?.[field.name]?.[String(value)] ?? String(value).slice(0, 8)
+    case 'user': return (Array.isArray(value) ? value : [value]).map(id => relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
     case 'json': return typeof value === 'string' ? value : JSON.stringify(value)
     default: return String(value)
   }

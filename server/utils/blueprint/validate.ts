@@ -85,7 +85,7 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
       const existingField = existingFields.find(item => item.name === field.name)
       if (existingField) {
         if (!module.snapshot && !mergeRefs.has(module.ref)) add(`${at}.name`, 'El campo ya existe en el módulo')
-        if (module.snapshot && (existingField.label !== field.label || existingField.dataType !== field.dataType || existingField.isRequired !== Boolean(field.required) || !same(existingField.validationRules, field.validationRules ?? {}))) add(at, 'La instantánea modifica un campo existente')
+        if (module.snapshot && (existingField.label !== field.label || existingField.dataType !== field.dataType || existingField.isRequired !== Boolean(field.required) || existingField.isOwnerField !== Boolean(field.isOwnerField) || !same(existingField.validationRules, field.validationRules ?? {}))) add(at, 'La instantánea modifica un campo existente')
       } else newFields.push(field)
     }
     if (newFields.length > 40) add(`${base}.fields`, 'Se pueden agregar como máximo 40 campos por módulo')
@@ -117,6 +117,9 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
     for (const [fieldIndex, field] of module.fields.entries()) {
       const at = `${base}.fields[${fieldIndex}]`
       const rules = rulesOf(field)
+      if (field.dataType === 'user' && Array.isArray(rules.roles)) for (const roleName of rules.roles) {
+        if (!knownRoles.has(String(roleName)) && !(normalized.roles ?? []).some(role => role.name === roleName)) add(`${at}.validationRules.roles`, `El rol ${roleName} no existe ni se propone en el plano`)
+      }
       if (field.dataType === 'relation') {
         if (typeof rules.relationEntity !== 'string' || !target(rules.relationEntity)) add(`${at}.validationRules.relationEntity`, 'La relación debe apuntar a un módulo existente o del plano')
         else rules.relationEntity = target(rules.relationEntity)!
@@ -235,6 +238,15 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
     const existing = current.associations.find(item => item.name === association.name)
     if (existing && (bySlug.get(association.sourceRef)?.id !== existing.sourceEntityId || bySlug.get(association.targetRef)?.id !== existing.targetEntityId)) add(`associations[${index}].name`, 'La asociación existente usa otros módulos y no se puede cambiar')
   }
+  for (const [index, role] of (normalized.roles ?? []).entries()) {
+    if (normalized.roles?.findIndex(item => item.name.toLowerCase() === role.name.toLowerCase()) !== index) add(`roles[${index}].name`, 'El rol está repetido')
+    for (const [permissionIndex, permission] of role.permissions.entries()) {
+      const resolved = target(permission.moduleRef)
+      if (!resolved) add(`roles[${index}].permissions[${permissionIndex}].moduleRef`, 'El módulo no existe')
+      else permission.moduleRef = resolved
+      if (role.permissions.findIndex(item => item.moduleRef === permission.moduleRef) !== permissionIndex) add(`roles[${index}].permissions[${permissionIndex}]`, 'El módulo está repetido para este rol')
+    }
+  }
   return { normalized, errors, merges, current, newFields: new Map(normalized.modules.map(module => [module.ref, module.fields.filter(field => !((current.fieldsById.get(bySlug.get(module.slug)?.id ?? '') ?? []).some(existing => existing.name === field.name)))])) }
 }
 
@@ -242,7 +254,7 @@ export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, i
   const shape = blueprintSchema.safeParse(input)
   if (!shape.success) return invalidBlueprintShape(shape.error.issues)
   const current = await loadBlueprintTenant(tx, tenantId)
-  const knownRoles = new Set((await tx.select({ id: roles.id }).from(roles).where(eq(roles.tenantId, tenantId))).map(role => role.id))
+  const knownRoles = new Set((await tx.select({ id: roles.id, name: roles.name }).from(roles).where(eq(roles.tenantId, tenantId))).flatMap(role => [role.id, role.name]))
   return validateBlueprintAgainstCurrent(shape.data, current, knownRoles)
 }
 
@@ -251,7 +263,7 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
   const shape = blueprintSchema.safeParse(input)
   if (!shape.success) return invalidBlueprintShape(shape.error.issues)
   const fieldsById = new Map(snapshot.modules.map(module => [module.slug, module.fields.map(field => ({
-    name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), validationRules: field.validationRules ?? {}
+    name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), isOwnerField: Boolean(field.isOwnerField), validationRules: field.validationRules ?? {}
   }))]))
   const modules = snapshot.modules.map(module => ({
     id: module.slug, slug: module.slug, moduleKind: module.kind, name: module.name,
@@ -262,7 +274,7 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
     name: association.name, sourceEntityId: association.sourceRef, targetEntityId: association.targetRef
   }))
   const current = { modules, fieldsById, associations } as unknown as Awaited<ReturnType<typeof loadBlueprintTenant>>
-  return validateBlueprintAgainstCurrent(shape.data, current, new Set())
+  return validateBlueprintAgainstCurrent(shape.data, current, new Set((snapshot.roles ?? []).map(role => role.name)))
 }
 
 export async function validateBlueprint(tenantId: string, input: unknown): Promise<BlueprintValidationResult> {

@@ -39,7 +39,8 @@ export default defineEventHandler(async (event) => {
         label: entityFields.label,
         dataType: entityFields.dataType,
         validationRules: entityFields.validationRules,
-        isRequired: entityFields.isRequired
+        isRequired: entityFields.isRequired,
+        isOwnerField: entityFields.isOwnerField
       })
       .from(entityFields)
       .where(eq(entityFields.entityId, entity.id))

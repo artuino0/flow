@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { buildFieldType, getValidationRulesSchema } from '../../server/utils/dynamicSchema'
 
+describe('campo user', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  it('valida UUID único o múltiple y sus reglas', () => {
+    const single = buildFieldType({ name: 'doctor', dataType: 'user', validationRules: {}, isRequired: true })
+    const multiple = buildFieldType({ name: 'doctores', dataType: 'user', validationRules: { multiple: true }, isRequired: true })
+    expect(single.safeParse(id).success).toBe(true)
+    expect(single.safeParse([id]).success).toBe(false)
+    expect(multiple.safeParse([id]).success).toBe(true)
+    expect(multiple.safeParse(id).success).toBe(false)
+    expect(getValidationRulesSchema('user')?.safeParse({ multiple: true, roles: ['Doctor'], defaultCurrentUser: true }).success).toBe(true)
+    expect(getValidationRulesSchema('user')?.safeParse({ multiple: true, unique: true }).success).toBe(false)
+    expect(getValidationRulesSchema('user')?.safeParse({ roles: 'Doctor' }).success).toBe(false)
+  })
+})
+
 // HU-ERD-29: cubre la generacion de schema Zod desde metadatos (entity_fields
 // -> ZodTypeAny), sin necesitar una base de datos - buildFieldType() es pura.
 

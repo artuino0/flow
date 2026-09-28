@@ -53,6 +53,26 @@ let apiTenant: string
 afterAll(async () => { await admin.end(); await testDb.stop() })
 
 describe('deshacer planos (Postgres real y RLS)', () => {
+  it('aplica y revierte roles y visibilidad propuestos junto con un campo responsable', async () => {
+    const id = await tenant('Roles de plano')
+    const plan = {
+      version: 1, summary: 'Citas por doctor',
+      modules: [{ ref: 'citas', action: 'create', kind: 'hecho', name: 'Citas', slug: 'citas', fields: [
+        { name: 'doctor', label: 'Doctor', dataType: 'user', isOwnerField: true, validationRules: { roles: ['Doctor'] } }
+      ] }], associations: [], roles: [
+        { name: 'Doctor', permissions: [{ moduleRef: 'citas', visibility: 'own', canRead: true, canCreate: true, canUpdate: true, canDelete: false }] },
+        { name: 'Recepción', permissions: [{ moduleRef: 'citas', visibility: 'all', canRead: true, canCreate: true, canUpdate: true, canDelete: true }] }
+      ]
+    }
+    const applied = await apply(id, null, plan, 'roles')
+    const [field] = await admin`select is_owner_field from entity_fields where entity_id = ${applied.modules[0].id} and name = 'doctor'`
+    expect(field.is_owner_field).toBe(true)
+    const permissions = await admin`select r.name, p.visibility from role_entity_permissions p join roles r on r.id = p.role_id where r.tenant_id = ${id} and r.name in ('Doctor', 'Recepción') order by r.name`
+    expect(permissions).toMatchObject([{ name: 'Doctor', visibility: 'own' }, { name: 'Recepción', visibility: 'all' }])
+    await undo(id, await applicationId(id, 'roles'))
+    expect(await admin`select id from roles where tenant_id = ${id} and name in ('Doctor', 'Recepción')`).toHaveLength(0)
+  }, 60_000)
+
   it('deshace el taller completo en tenant vacío y deja los módulos en papelera', async () => {
     const id = await tenant('Taller reversible')
     const applied = await apply(id, null, template, 'taller')

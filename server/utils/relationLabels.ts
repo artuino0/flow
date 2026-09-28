@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '~/server/db'
 import { entities, entityFields, records } from '~/server/db/schema'
+import { lookupUsers } from '~/server/utils/userField'
 
 // Reportado por el usuario (2026-09-03, viendo Screen/Listado Recepción con
 // las columnas "productor"/"cultivo" mostrando el uuid crudo del registro
@@ -63,13 +64,26 @@ export async function resolveRelationLabels(
   fields: SourceFieldRow[],
   rows: SourceRow[]
 ): Promise<Record<string, Record<string, string>>> {
-  const relationFields = fields.filter((f) => f.dataType === 'relation')
+  const relationFields = fields.filter((f) => f.dataType === 'relation' || f.dataType === 'user')
   if (relationFields.length === 0 || rows.length === 0) return {}
 
   const result: Record<string, Record<string, string>> = {}
   const entityMetaCache = new Map<string, { id: string; labelField: string | null; fields: LabelFieldRow[] } | null>()
 
   for (const field of relationFields) {
+    if (field.dataType === 'user') {
+      const ids = new Set<string>()
+      for (const row of rows) {
+        const value = ((row.customData ?? {}) as Record<string, unknown>)[field.name]
+        for (const id of Array.isArray(value) ? value : [value]) if (typeof id === 'string') ids.add(id)
+      }
+      const userRows = ids.size ? await lookupUsers(tx, tenantId) : []
+      result[field.name] = Object.fromEntries([...ids].map(id => {
+        const user = userRows.find(item => item.id === id)
+        return [id, user ? `${user.fullName || user.email}${user.isActive ? '' : ' (inactivo)'}` : `${id.slice(0, 8)} (inactivo)`]
+      }))
+      continue
+    }
     const rules = (field.validationRules ?? {}) as Record<string, unknown>
     const relationEntitySlug = typeof rules.relationEntity === 'string' ? rules.relationEntity : null
     if (!relationEntitySlug) continue

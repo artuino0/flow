@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import * as schema from './schema'
+import { currentRecordActor } from '~/server/utils/recordActorContext'
 
 // En runtime la app debe conectarse con APP_DATABASE_URL (rol "erp_app", sin
 // privilegios de superusuario) para que las politicas RLS (HU-ERD-12) apliquen.
@@ -36,6 +37,7 @@ export async function withTenant<T>(
   tenantId: string,
   fn: (tx: typeof db) => Promise<T>
 ): Promise<T> {
+  const actor = currentRecordActor()
   return db.transaction(async (tx) => {
     // Bug real, encontrado en produccion (2026-09-04) DESPUES de agregar
     // self_membership_lookup_users (migracion 0031): esa policy nueva sobre
@@ -52,7 +54,7 @@ export async function withTenant<T>(
     // ninguna persona real) para que self_membership_lookup_users evalue
     // limpio a "false" en vez de reventar.
     // Un solo viaje a la base: fija ambos GUC en la misma sentencia.
-    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true)`)
+    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${actor?.userId ?? NIL_UUID}, true), set_config('app.role_id', ${actor?.roleId ?? NIL_UUID}, true)`)
     return fn(tx as unknown as typeof db)
   })
 }

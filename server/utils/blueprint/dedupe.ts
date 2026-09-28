@@ -35,6 +35,7 @@ function redirect(blueprint: Blueprint, aliases: Map<string, string>) {
     association.sourceRef = resolve(association.sourceRef)
     association.targetRef = resolve(association.targetRef)
   }
+  for (const role of blueprint.roles ?? []) for (const permission of role.permissions) permission.moduleRef = resolve(permission.moduleRef)
 }
 
 export function dedupeBlueprint(input: Blueprint, current: TenantShape): { normalized: Blueprint; merges: BlueprintMerge[] } {

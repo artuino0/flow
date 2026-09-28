@@ -137,6 +137,16 @@ describe('caché de permisos', () => {
     expect(await statusOf(rbac.requirePermission(eventFor(roleId, OTHER_TENANT), 'clientes', 'canRead'))).toBe(404) // la otra organización no tiene ese módulo
   })
 
+  it('cambiar visibilidad invalida el caché de permisos y metadatos', async () => {
+    await rbac.requirePermission(eventFor(roleId), 'clientes', 'canRead')
+    expect(cache.accessCache.size).toBeGreaterThan(0)
+    cache.metadataCache.set(`${TENANT}:${roleId}:fields:clientes`, { stale: true })
+    await rolePerms.setRolePermissions(TENANT, roleId, [{ entityId, canRead: true, canCreate: false, canUpdate: false, canDelete: false, visibility: 'own' }])
+    expect(cache.accessCache.size).toBe(0)
+    expect(cache.metadataCache.get(`${TENANT}:${roleId}:fields:clientes`)).toBeUndefined()
+    expect((await rolePerms.getRolePermissions(TENANT, roleId))!.permissions.find(item => item.entityId === entityId)?.visibility).toBe('own')
+  })
+
   it('devuelve copias: modificar la respuesta no contamina el caché', async () => {
     const first = await rbac.requirePermission(eventFor(roleId), 'clientes', 'canRead')
     first.entity.name = 'MODIFICADO'

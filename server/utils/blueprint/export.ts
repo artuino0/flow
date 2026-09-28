@@ -39,7 +39,7 @@ export async function exportBlueprint(tenantId: string): Promise<Blueprint> {
           ...(module.description ? { description: module.description } : {}),
           fields: (current.fieldsById.get(module.id) ?? [])
             .filter(field => (KNOWN_DATA_TYPES as readonly string[]).includes(field.dataType))
-            .map(field => ({ name: field.name, label: field.label, dataType: field.dataType as BlueprintField['dataType'], required: field.isRequired, validationRules: field.validationRules as Record<string, unknown> })),
+            .map(field => ({ name: field.name, label: field.label, dataType: field.dataType as BlueprintField['dataType'], required: field.isRequired, isOwnerField: field.isOwnerField, validationRules: field.validationRules as Record<string, unknown> })),
           ...(layout.success ? { detailLayout: layout.data, lines: layout.data.relations.filter(relation => relation.editable).map(relation => ({ childRef: relation.entitySlug, relationField: relation.fieldName, ...(relation.totals ? { totals: relation.totals } : {}) })) } : {}),
           ...(workflow.success ? { workflow: workflow.data } : {}),
           snapshot: true

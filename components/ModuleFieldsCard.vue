@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { Blocks, Braces, Calendar, CircleDollarSign, GripVertical, Hash, KeyRound, Link2, List, ListChecks, ListOrdered, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon } from '@lucide/vue'
+import { Blocks, Braces, Calendar, CircleDollarSign, GripVertical, Hash, KeyRound, Link2, List, ListChecks, ListOrdered, Paperclip, Pencil, Plus, Table2, ToggleLeft, Trash2, Type as TypeIcon, UserRound } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -48,6 +48,7 @@ const TYPE_BADGE: Record<string, { icon: typeof TypeIcon; bg: string; text: stri
   date: { icon: Calendar, bg: 'bg-brand-pink-bg', text: 'text-brand-pink-text', label: 'Fecha' },
   json: { icon: Braces, bg: 'bg-brand-purple-bg', text: 'text-brand-purple-text', label: 'JSON' },
   relation: { icon: Link2, bg: 'bg-brand-blue-bg', text: 'text-brand-blue', label: 'Relación' },
+  user: { icon: UserRound, bg: 'bg-brand-blue-bg', text: 'text-brand-blue', label: 'Usuario' },
   // HU-ERD-71: sin badge propio en el .pen para estos 3 tipos (el diseño de
   // la lista de campos es anterior a HU-ERD-68) - se sigue el mismo patrón
   // que los demás (icono + par bg/text de marca), usando los tokens

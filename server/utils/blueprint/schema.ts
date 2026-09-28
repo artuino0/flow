@@ -9,9 +9,11 @@ export const blueprintFieldSchema = z.object({
   label: z.string().trim().min(1),
   dataType: z.enum(KNOWN_DATA_TYPES),
   required: z.boolean().optional(),
+  isOwnerField: z.boolean().optional(),
   validationRules: z.record(z.unknown()).optional()
 }).strict().superRefine((field, ctx) => {
   const result = getValidationRulesSchema(field.dataType)?.safeParse(field.validationRules ?? {})
+  if (field.isOwnerField && field.dataType !== 'user') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['isOwnerField'], message: 'Responsable requiere tipo Usuario' })
   if (result && !result.success) for (const issue of result.error.issues) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['validationRules', ...issue.path], message: issue.message })
   }
@@ -45,7 +47,15 @@ export const blueprintSchema = z.object({
   version: z.literal(1),
   summary: z.string().trim().min(1),
   modules: z.array(blueprintModuleSchema),
-  associations: z.array(z.object({ name: z.string().trim().min(1), sourceRef: z.string().trim().min(1), targetRef: z.string().trim().min(1) }).strict())
+  associations: z.array(z.object({ name: z.string().trim().min(1), sourceRef: z.string().trim().min(1), targetRef: z.string().trim().min(1) }).strict()),
+  roles: z.array(z.object({
+    name: z.string().trim().min(1),
+    permissions: z.array(z.object({
+      moduleRef: z.string().trim().min(1),
+      visibility: z.enum(['all', 'own']),
+      canRead: z.boolean(), canCreate: z.boolean(), canUpdate: z.boolean(), canDelete: z.boolean()
+    }).strict())
+  }).strict()).optional()
 }).strict()
 
 export type Blueprint = z.infer<typeof blueprintSchema>

@@ -168,6 +168,8 @@ function formatValue(field: EntityFieldMeta, value: unknown): string {
     // crudo) - misma etiqueta ya resuelta server-side que usa DynamicTable.vue.
     case 'relation':
       return props.record?.relationLabels?.[field.name]?.[String(value)] ?? String(value).slice(0, 8)
+    case 'user':
+      return (Array.isArray(value) ? value : [value]).map(id => props.record?.relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
     default:
       return String(value)
   }

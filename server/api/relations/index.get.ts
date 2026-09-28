@@ -1,8 +1,9 @@
 import { z } from 'zod'
-import { and, eq, desc } from 'drizzle-orm'
+import { and, eq, desc, getTableColumns } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { requirePermissionForEntityId } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
-import { relationDefinitions, recordRelations } from '~/server/db/schema'
+import { relationDefinitions, recordRelations, records } from '~/server/db/schema'
 
 // GET /api/relations?relationDefinitionId=...&sourceRecordId=...&targetRecordId=...&page=1&pageSize=20 (HU-ERD-19)
 const querySchema = z.object({
@@ -38,6 +39,8 @@ export default defineEventHandler(async (event) => {
 
   const offset = (query.page - 1) * query.pageSize
   return withTenant(auth.tenantId, async (tx) => {
+    const source = alias(records, 'visible_source')
+    const target = alias(records, 'visible_target')
     const conditions = [
       eq(recordRelations.tenantId, auth.tenantId),
       eq(recordRelations.relationDefinitionId, query.relationDefinitionId)
@@ -46,8 +49,10 @@ export default defineEventHandler(async (event) => {
     if (query.targetRecordId) conditions.push(eq(recordRelations.targetRecordId, query.targetRecordId))
 
     const data = await tx
-      .select()
+      .select(getTableColumns(recordRelations))
       .from(recordRelations)
+      .innerJoin(source, eq(source.id, recordRelations.sourceRecordId))
+      .innerJoin(target, eq(target.id, recordRelations.targetRecordId))
       .where(and(...conditions))
       .orderBy(desc(recordRelations.createdAt))
       .limit(query.pageSize)

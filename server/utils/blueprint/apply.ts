@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { createError } from 'h3'
 import { and, eq, sql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
-import { blueprintApplications, entities, entityFields } from '~/server/db/schema'
+import { blueprintApplications, entities, entityFields, roleEntityPermissions, roles } from '~/server/db/schema'
 import { assertPlanCapacity } from '~/server/utils/billing'
 import { createEntityInTx, updateEntityInTx } from '~/server/utils/moduleEntities'
 import { createEntityFieldInTx } from '~/server/utils/moduleEntityFields'
@@ -17,7 +17,7 @@ import type { Blueprint, BlueprintField } from './schema'
 import { validateBlueprint } from './validate'
 import { blueprintPlanImpact } from './plan'
 
-export interface BlueprintApplyResult { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[]; merges: Array<{ from: string; to: string; message: string; discardedFields: string[] }>; before?: Array<{ entityId: string; slug: string; detailLayout?: unknown; workflowConfig?: unknown }>; createdAssociations?: Array<{ id: string; name: string; sourceEntityId: string; targetEntityId: string }>; touchedModuleIds?: string[] }
+export interface BlueprintApplyResult { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[]; merges: Array<{ from: string; to: string; message: string; discardedFields: string[] }>; before?: Array<{ entityId: string; slug: string; detailLayout?: unknown; workflowConfig?: unknown }>; createdAssociations?: Array<{ id: string; name: string; sourceEntityId: string; targetEntityId: string }>; touchedModuleIds?: string[]; createdRoles?: string[]; previousRolePermissions?: Array<{ roleId: string; entityId: string; previous: typeof roleEntityPermissions.$inferSelect | null }> }
 
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)])) : value
 const hashBlueprint = (blueprint: unknown) => createHash('sha256').update(JSON.stringify(stable(blueprint))).digest('hex')
@@ -51,7 +51,7 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
       if (existing.undoneAt) throw createError({ statusCode: 409, statusMessage: 'Esta aplicación ya fue deshecha; crea una nueva sesión para aplicar el diseño otra vez' })
       return existing.result as BlueprintApplyResult
     }
-    const result: BlueprintApplyResult = { modules: [], fields: [], associations: [], layouts: [], workflows: [], merges: checked.merges, before: [], createdAssociations: [], touchedModuleIds: [] }
+    const result: BlueprintApplyResult = { modules: [], fields: [], associations: [], layouts: [], workflows: [], merges: checked.merges, before: [], createdAssociations: [], touchedModuleIds: [], createdRoles: [], previousRolePermissions: [] }
     const touched = new Set<string>()
     const before = new Map<string, NonNullable<BlueprintApplyResult['before']>[number]>()
     const ids = new Map((checked.current?.modules ?? []).map(module => [module.slug, module.id]))
@@ -65,7 +65,7 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
     const newFields = normalized.modules.flatMap(module => (checked.newFields.get(module.ref) ?? []).map(field => ({ module, field })))
     const addField = async (module: Blueprint['modules'][number], field: BlueprintField) => {
       const entityId = ids.get(module.slug)!
-      await createEntityFieldInTx(tx, tenantId, entityId, { name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), validationRules: field.validationRules ?? {} })
+      await createEntityFieldInTx(tx, tenantId, entityId, { name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), isOwnerField: field.isOwnerField ?? false, validationRules: field.validationRules ?? {} })
       result.fields.push({ entityId, name: field.name })
       touched.add(entityId)
     }
@@ -127,6 +127,23 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
       await updateEntityInTx(tx, tenantId, ids.get(module.slug)!, { workflowConfig: module.workflow })
       result.workflows.push(module.slug)
       touched.add(ids.get(module.slug)!)
+    }
+    for (const proposed of normalized.roles ?? []) {
+      let [role] = await tx.select().from(roles).where(and(eq(roles.tenantId, tenantId), eq(roles.name, proposed.name))).limit(1)
+      if (!role) {
+        ;[role] = await tx.insert(roles).values({ tenantId, name: proposed.name, isSystem: false }).returning()
+        result.createdRoles!.push(role.id)
+      }
+      if (role.isSystem) throw createError({ statusCode: 422, statusMessage: `El diseñador no puede modificar el rol de sistema ${role.name}` })
+      for (const permission of proposed.permissions) {
+        const entityId = ids.get(permission.moduleRef)
+        if (!entityId) throw createError({ statusCode: 422, statusMessage: `El módulo ${permission.moduleRef} no existe` })
+        const [previousPermission] = await tx.select().from(roleEntityPermissions).where(and(eq(roleEntityPermissions.roleId, role.id), eq(roleEntityPermissions.entityId, entityId))).limit(1)
+        result.previousRolePermissions!.push({ roleId: role.id, entityId, previous: previousPermission ?? null })
+        await tx.insert(roleEntityPermissions).values({ roleId: role.id, entityId, visibility: permission.visibility, canRead: permission.canRead, canCreate: permission.canCreate, canUpdate: permission.canUpdate, canDelete: permission.canDelete })
+          .onConflictDoUpdate({ target: [roleEntityPermissions.roleId, roleEntityPermissions.entityId], set: { visibility: permission.visibility, canRead: permission.canRead, canCreate: permission.canCreate, canUpdate: permission.canUpdate, canDelete: permission.canDelete } })
+        touched.add(entityId)
+      }
     }
     result.before = [...before.values()]
     result.touchedModuleIds = [...touched]

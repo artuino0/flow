@@ -27,6 +27,12 @@ export default defineEventHandler(async (event) => {
         .where(eq(entityFields.entityId, entity.id))
 
       let customData = stripCalculatedValues(allFields, body.customData)
+      for (const field of allFields) {
+        const rules = (field.validationRules ?? {}) as Record<string, unknown>
+        if (field.dataType === 'user' && rules.defaultCurrentUser === true && (customData[field.name] === undefined || customData[field.name] === null)) {
+          customData[field.name] = rules.multiple === true ? [auth.sub] : auth.sub
+        }
+      }
       const workflow = stateWorkflowSchema.safeParse(entity.workflowConfig)
       if (workflow.success && workflow.data.enabled) customData[workflow.data.field] = workflow.data.initial
       for (const field of allFields) {

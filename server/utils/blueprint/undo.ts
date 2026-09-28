@@ -1,7 +1,7 @@
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
-import { blueprintApplications, entities, entityFields, people, recordRelations, records, relationDefinitions, users } from '~/server/db/schema'
+import { blueprintApplications, entities, entityFields, people, recordRelations, records, relationDefinitions, roleEntityPermissions, roles, users } from '~/server/db/schema'
 import { deleteEntityInTx, updateEntityInTx } from '~/server/utils/moduleEntities'
 import { deleteEntityFieldInTx } from '~/server/utils/moduleEntityFields'
 import { deleteRelationDefinitionInTx } from '~/server/utils/relationDefinitions'
@@ -74,6 +74,10 @@ async function assess(tx: Tx, tenantId: string, row: Application, laterApplicati
     const [{ value }] = await tx.select({ value: count() }).from(recordRelations).where(and(eq(recordRelations.tenantId, tenantId), eq(recordRelations.relationDefinitionId, association.id)))
     if (value) blockers.push(`${association.name}: ${value} vínculos`)
   }
+  for (const roleId of change.result.createdRoles ?? []) {
+    const [{ value }] = await tx.select({ value: count() }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.roleId, roleId)))
+    if (value) blockers.push(`El rol creado tiene ${value} usuarios asignados`)
+  }
   return { ...change, blockers }
 }
 
@@ -105,6 +109,11 @@ export async function undoBlueprintApplication(tenantId: string, applicationId: 
     const state = await assess(tx, tenantId, row, all.slice(0, all.findIndex(item => item.id === row.id)), tenantEntities, associations)
     if (state.blockers.length) throw createError({ statusCode: 409, statusMessage: state.blockers.join('; '), data: { blockers: state.blockers } })
     if (state.warnings.length && !confirmPartial) throw createError({ statusCode: 409, statusMessage: 'Confirma la reversión parcial: ' + state.warnings.join('; '), data: { warnings: state.warnings, requiresConfirmation: true } })
+    for (const item of [...(state.result.previousRolePermissions ?? [])].reverse()) {
+      if (item.previous) await tx.update(roleEntityPermissions).set({ visibility: item.previous.visibility, canRead: item.previous.canRead, canCreate: item.previous.canCreate, canUpdate: item.previous.canUpdate, canDelete: item.previous.canDelete, showInMenu: item.previous.showInMenu }).where(and(eq(roleEntityPermissions.roleId, item.roleId), eq(roleEntityPermissions.entityId, item.entityId)))
+      else await tx.delete(roleEntityPermissions).where(and(eq(roleEntityPermissions.roleId, item.roleId), eq(roleEntityPermissions.entityId, item.entityId)))
+    }
+    for (const roleId of [...(state.result.createdRoles ?? [])].reverse()) await tx.delete(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, tenantId)))
     for (const before of state.prior.values()) {
       const input: { detailLayout?: unknown; workflowConfig?: unknown } = {}
       if (Object.hasOwn(before, 'detailLayout')) input.detailLayout = before.detailLayout

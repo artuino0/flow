@@ -596,6 +596,27 @@
       "when": 1790520990935,
       "breakpoints": true,
       "tag": "0084_blueprint_undo"
+    },
+    {
+      "version": "7",
+      "idx": 85,
+      "when": 1790607390935,
+      "breakpoints": true,
+      "tag": "0085_user_owner_visibility"
+    },
+    {
+      "version": "7",
+      "idx": 86,
+      "when": 1790607391935,
+      "breakpoints": true,
+      "tag": "0086_unique_user_fields"
+    },
+    {
+      "version": "7",
+      "idx": 87,
+      "when": 1790607392935,
+      "breakpoints": true,
+      "tag": "0087_owner_parent_inheritance"
     }
   ]
 }

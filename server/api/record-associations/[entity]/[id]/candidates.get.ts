@@ -5,6 +5,7 @@ import { entities, recordRelations, records, relationDefinitions } from '~/serve
 import { requirePermission, requirePermissionForEntityId } from '~/server/utils/rbac'
 import { recordNotDeleted } from '~/server/utils/records'
 import { recordLabel, resolveEntityLabelField } from '~/server/utils/recordAssociations'
+import { assertVisibleRecords } from '~/server/utils/visibleRecords'
 
 // GET /api/record-associations/:entity/:id/candidates?definitionId=&search=
 // Registros del otro módulo que aún pueden asociarse (excluye eliminados, el
@@ -36,6 +37,7 @@ export default defineEventHandler(async (event) => {
   await requirePermissionForEntityId(event, relatedEntityId, 'canUpdate')
 
   return withTenant(auth.tenantId, async (tx) => {
+    await assertVisibleRecords(tx, auth.tenantId, [recordId])
     const [related] = await tx.select({ labelField: entities.labelField, deletedAt: entities.deletedAt }).from(entities)
       .where(and(eq(entities.id, relatedEntityId), eq(entities.tenantId, auth.tenantId))).limit(1)
     if (!related || related.deletedAt) throw createError({ statusCode: 404, statusMessage: 'Módulo relacionado no disponible' })

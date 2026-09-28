@@ -26,7 +26,10 @@ const retryMs = Number(option('--retry-ms', '15000'))
 if (!Number.isInteger(limit) || limit < 1 || !Number.isInteger(delayMs) || delayMs < 0 || !Number.isInteger(retryMs) || retryMs < 0) throw new Error('Los parámetros numéricos deben ser enteros no negativos; --limit debe ser positivo')
 const simulated = process.argv.includes('--simulate')
 const sleep = ms => new Promise(done => setTimeout(done, ms))
-const cases = JSON.parse(await readFile(resolve(root, 'data/designer-eval/prompts.json'), 'utf8')).slice(0, limit)
+const caseId = option('--case', '')
+const allCases = JSON.parse(await readFile(resolve(root, 'data/designer-eval/prompts.json'), 'utf8'))
+const cases = (caseId ? allCases.filter(item => item.id === caseId) : allCases).slice(0, limit)
+if (!cases.length) throw new Error(`No hay casos para --case ${caseId}`)
 const rawBase = JSON.parse(await readFile(resolve(root, 'data/blueprints/taller-mecanico.json'), 'utf8'))
 
 function workshopSnapshot() {

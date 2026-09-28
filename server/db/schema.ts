@@ -136,6 +136,7 @@ export const entityFields = pgTable('entity_fields', {
   dataType: text('data_type').notNull(), // text | number | boolean | date | json | relation ...
   validationRules: jsonb('validation_rules').notNull().default({}),
   isRequired: boolean('is_required').notNull().default(false),
+  isOwnerField: boolean('is_owner_field').notNull().default(false),
   // Pedido por el usuario (2026-09-01): "el organizador" - orden en que se
   // muestran los campos, tanto en la tarjeta "Campos del módulo"
   // (ModuleFieldsCard.vue) como en el formulario real de crear/editar
@@ -210,6 +211,7 @@ export const records = pgTable('records', {
   entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'restrict' }),
   tenantId: uuid('tenant_id').notNull(),
   customData: jsonb('custom_data').notNull().default({}),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   isDirty: boolean('is_dirty').notNull().default(false),
   // ERD-87 (borrado logico): null = registro activo (comportamiento de
   // siempre); no-null = "eliminado" en la fecha indicada, sin quitar la fila
@@ -287,6 +289,7 @@ export const roleEntityPermissions = pgTable('role_entity_permissions', {
   canCreate: boolean('can_create').notNull().default(false),
   canUpdate: boolean('can_update').notNull().default(false),
   canDelete: boolean('can_delete').notNull().default(false),
+  visibility: text('visibility').$type<'all' | 'own'>().notNull().default('all'),
   showInMenu: boolean('show_in_menu').notNull().default(true)
 }, (table) => ({
   roleEntityUnique: uniqueIndex('role_entity_permissions_role_entity_unique').on(table.roleId, table.entityId)

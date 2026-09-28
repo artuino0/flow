@@ -153,6 +153,16 @@ describe('rolePermissions (Postgres real)', () => {
     })
   })
 
+  it('la visibilidad por defecto es all y se puede actualizar a own', async () => {
+    const before = await getRolePermissions(TENANT_A, roleA)
+    expect(before!.permissions.find(p => p.entityId === clientesEntityA)?.visibility).toBe('all')
+    const updated = await setRolePermissions(TENANT_A, roleA, [
+      { entityId: clientesEntityA, canRead: true, canCreate: false, canUpdate: true, canDelete: false, visibility: 'own' }
+    ])
+    expect(updated!.permissions.find(p => p.entityId === clientesEntityA)?.visibility).toBe('own')
+    expect((await getRolePermissions(TENANT_A, roleA))!.permissions.find(p => p.entityId === clientesEntityA)?.visibility).toBe('own')
+  })
+
   it('setRolePermissions rechaza (null, no guarda nada) si algun entityId es de otro tenant', async () => {
     const before = await getRolePermissions(TENANT_A, roleA)
 

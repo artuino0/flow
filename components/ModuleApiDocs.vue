@@ -19,6 +19,7 @@ function exampleValue(field: EntityFieldMeta) {
   if (field.dataType === 'select') return 'opcion'
   if (field.dataType === 'multiselect') return ['opcion']
   if (field.dataType === 'relation') return 'uuid-del-registro-relacionado'
+  if (field.dataType === 'user') return field.validationRules?.multiple === true ? ['uuid-del-usuario'] : 'uuid-del-usuario'
   return `valor de ${field.label || field.name}`
 }
 

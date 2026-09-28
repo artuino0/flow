@@ -25,7 +25,8 @@ const bodySchema = z.object({
   label: z.string().trim().min(1, 'La etiqueta es obligatoria').optional(),
   dataType: z.enum(KNOWN_DATA_TYPES).optional(),
   validationRules: z.record(z.any()).optional(),
-  isRequired: z.boolean().optional()
+  isRequired: z.boolean().optional(),
+  isOwnerField: z.boolean().optional()
 })
 
 export default defineEventHandler(async (event) => {

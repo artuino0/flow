@@ -4,6 +4,7 @@ import { withTenant } from '~/server/db'
 import { relationDefinitions } from '~/server/db/schema'
 import { requirePermission, requirePermissionForEntityId } from '~/server/utils/rbac'
 import { createRecordRelation, DuplicateRecordRelationError, RecordRelationValidationError } from '~/server/utils/recordAssociations'
+import { assertVisibleRecords } from '~/server/utils/visibleRecords'
 
 // POST /api/record-associations/:entity/:id { definitionId, relatedRecordId }
 // El registro de la ficha es el origen o el destino según el lado del módulo en
@@ -30,12 +31,15 @@ export default defineEventHandler(async (event) => {
   await requirePermissionForEntityId(event, relatedEntityId, 'canUpdate')
 
   try {
-    const { row } = await withTenant(auth.tenantId, tx => createRecordRelation(tx, {
+    const { row } = await withTenant(auth.tenantId, async tx => {
+      await assertVisibleRecords(tx, auth.tenantId, [recordId, body.relatedRecordId])
+      return createRecordRelation(tx, {
       tenantId: auth.tenantId,
       relationDefinitionId: definition.id,
       sourceRecordId: side === 'source' ? recordId : body.relatedRecordId,
       targetRecordId: side === 'source' ? body.relatedRecordId : recordId
-    }))
+      })
+    })
     setResponseStatus(event, 201)
     return row
   } catch (error) {

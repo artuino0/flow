@@ -59,7 +59,7 @@ function fingerprint(rows: EntityFieldRow[]): string {
 // (server/utils/incrementalField.ts) exactamente igual de intocable que el "id"
 // sintetico (ver fields.get.ts), pero a diferencia de "id" SI es una fila real de
 // entity_fields (necesita guardar su propia configuracion: digits/prefixSource).
-export const KNOWN_DATA_TYPES = ['text', 'number', 'currency', 'boolean', 'date', 'json', 'relation', 'tabla', 'select', 'multiselect', 'file', 'incremental'] as const
+export const KNOWN_DATA_TYPES = ['text', 'number', 'currency', 'boolean', 'date', 'json', 'relation', 'user', 'tabla', 'select', 'multiselect', 'file', 'incremental'] as const
 export type KnownDataType = (typeof KNOWN_DATA_TYPES)[number]
 
 // Tipos permitidos para una columna dentro de un campo 'tabla' - deliberadamente
@@ -202,6 +202,7 @@ const VALIDATION_RULES_SCHEMAS: Record<KnownDataType, z.ZodTypeAny> = {
   // entidad (server/utils/detailLayout.ts) para el configurador de Diseño
   // del Detalle. Un campo relation existente sin esto sigue funcionando igual.
   relation: z.object({ relationEntity: z.string().min(1).optional() }).strict(),
+  user: z.object({ multiple: z.boolean().optional(), roles: z.array(z.string().min(1)).optional(), defaultCurrentUser: z.boolean().optional(), unique: z.boolean().optional() }).strict().refine(rules => !(rules.multiple && rules.unique), { message: 'Un campo Usuario único no puede admitir varios usuarios' }),
   tabla: tableColumnsSchema,
   select: selectOptionsSchema,
   multiselect: selectOptionsSchema,
@@ -348,6 +349,9 @@ export function buildFieldType(field: EntityFieldRow): z.ZodTypeAny {
       // el trigger fn_validate_record_relation (ERD-10) sobre record_relations,
       // no este schema; aca solo se exige forma de uuid.
       base = z.string().uuid()
+      break
+    case 'user':
+      base = rules.multiple === true ? (field.isRequired ? z.array(z.string().uuid()).min(1) : z.array(z.string().uuid())) : z.string().uuid()
       break
     case 'file':
       // Referencia a una fila de la tabla files (HU-ERD-78) - mismo criterio

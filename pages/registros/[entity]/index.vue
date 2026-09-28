@@ -83,6 +83,7 @@ const filterableFields = computed(() => {
 const appliedFilterField = ref<string | null>(null)
 const appliedFilterValues = ref<string[]>([])
 const appliedFilterOperator = ref<ListFilterOperator>('eq')
+const assignedToMe = ref(false)
 
 const filterPopoverOpen = ref(false)
 const draftFieldName = ref<string | null>(null)
@@ -219,7 +220,7 @@ const {
   error: recordsError,
   refresh: refreshRecords
 } = await useFetch<RecordsResponse>(`/api/records/${slug}`, {
-  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedSearch.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}`,
+  key: () => `records-${slug}-${page.value}-${sortBy.value}-${sortDir.value}-${appliedSearch.value}-${appliedFilterField.value}-${appliedFilterOperator.value}-${appliedFilterValues.value.join(',')}-${assignedToMe.value}`,
   query: computed(() => ({
     page: page.value,
     pageSize: 20,
@@ -228,7 +229,8 @@ const {
     search: appliedSearch.value || undefined,
     filterField: appliedFilterField.value ?? undefined,
     filterValues: appliedFilterValues.value.length > 0 ? appliedFilterValues.value.join(',') : undefined,
-    filterOperator: appliedFilterField.value ? appliedFilterOperator.value : undefined
+    filterOperator: appliedFilterField.value ? appliedFilterOperator.value : undefined,
+    assignedToMe: assignedToMe.value || undefined
   })),
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
@@ -385,6 +387,7 @@ async function onDelete(id: string) {
         </div>
 
         <div class="module-actions">
+          <button type="button" class="header-button" :aria-pressed="assignedToMe" @click="assignedToMe = !assignedToMe; page = 1">Asignado a mí</button>
           <div class="relative">
             <button
               type="button"

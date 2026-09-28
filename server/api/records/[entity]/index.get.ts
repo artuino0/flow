@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, desc, asc, sql as dsql } from 'drizzle-orm'
+import { and, eq, desc, asc, or, sql as dsql } from 'drizzle-orm'
 import { requirePermission } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { records, entityFields } from '~/server/db/schema'
@@ -42,7 +42,8 @@ const querySchema = z.object({
   // ticket futuro si hace falta.
   filterField: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).optional(),
   filterValues: z.string().trim().min(1).optional(),
-  filterOperator: z.enum(['eq','neq','contains','gt','gte','lt','lte','between','is_true','is_false']).default('eq')
+  filterOperator: z.enum(['eq','neq','contains','gt','gte','lt','lte','between','is_true','is_false']).default('eq'),
+  assignedToMe: z.enum(['true', 'false']).transform(value => value === 'true').optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -69,6 +70,11 @@ export default defineEventHandler(async (event) => {
 
   return withTenant(auth.tenantId, async (tx) => {
     let where = query.search ? and(baseWhere, dsql`${records.customData}::text ilike ${'%' + query.search + '%'}`) : baseWhere
+    if (query.assignedToMe) {
+      const owners = await tx.select({ name: entityFields.name }).from(entityFields)
+        .where(and(eq(entityFields.entityId, entity.id), eq(entityFields.dataType, 'user'), eq(entityFields.isOwnerField, true)))
+      where = and(where, owners.length ? or(...owners.map(field => dsql`(${records.customData}->>${field.name} = ${auth.sub} OR ${records.customData}->${field.name} ? ${auth.sub})`)) : dsql`false`)
+    }
 
     if (query.filterField && query.filterValues) {
       const [field] = await tx

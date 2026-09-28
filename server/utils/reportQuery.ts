@@ -4,6 +4,7 @@ import { withTenant } from '~/server/db'
 import { dimCliente, dimSucursal, factEventos } from '~/server/db/schema'
 import { toDimDateId } from '~/server/utils/olapEtl'
 import { completeJson } from '~/server/utils/aiProvider'
+import { visibleFactEvent } from '~/server/utils/olapVisibility'
 
 // Épica ERD-46 (Reportería con IA): traduce la descripción en lenguaje
 // natural de un reporte (Screen/Reportes - Nuevo reporte del .pen) a un DSL
@@ -180,7 +181,7 @@ export async function executeReportQuery(tenantId: string, dsl: ReportQueryDsl):
   const measureSelection = buildMeasureSelection(dsl.measures)
 
   return withTenant(tenantId, async (tx) => {
-    const baseConds: SQL[] = [eq(factEventos.tenantId, tenantId), ...dateRangeConds(dsl.filters)]
+    const baseConds: SQL[] = [eq(factEventos.tenantId, tenantId), visibleFactEvent(), ...dateRangeConds(dsl.filters)]
     if (dsl.filters?.tipoEvento) baseConds.push(eq(factEventos.tipoEvento, dsl.filters.tipoEvento))
 
     let rows: Array<Record<string, unknown>>

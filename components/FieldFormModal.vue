@@ -39,7 +39,7 @@ import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
 import { computed, reactive, ref, watch } from 'vue'
-import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -48,6 +48,7 @@ export interface FieldDraft {
   dataType: string
   validationRules: Record<string, unknown>
   isRequired: boolean
+  isOwnerField?: boolean
 }
 
 const props = defineProps<{
@@ -85,6 +86,7 @@ const TYPE_OPTIONS: TypeOption[] = [
   { value: 'date', label: 'Fecha', icon: Calendar },
   { value: 'json', label: 'JSON', icon: Braces },
   { value: 'relation', label: 'Relación', icon: Link2 },
+  { value: 'user', label: 'Usuario', icon: UserRound },
   { value: 'select', label: 'Select', icon: List },
   { value: 'tabla', label: 'Tabla', icon: Table2 },
   // HU-ERD-78: sin referencia en el picker del .pen (revisado antes de
@@ -153,6 +155,11 @@ const form = reactive({
   label: '',
   dataType: 'text',
   isRequired: false,
+  isOwnerField: false,
+  userMultiple: false,
+  userUnique: false,
+  userRoles: '',
+  userDefaultCurrent: false,
   minLength: null as number | null,
   maxLength: null as number | null,
   min: null as number | null,
@@ -336,6 +343,11 @@ watch(
     nameTouched.value = !!field?.name
     form.dataType = field?.dataType ?? 'text'
     form.isRequired = field?.isRequired ?? false
+    form.isOwnerField = field?.isOwnerField ?? false
+    form.userMultiple = rules.multiple === true
+    form.userUnique = rules.unique === true
+    form.userRoles = Array.isArray(rules.roles) ? rules.roles.join(', ') : ''
+    form.userDefaultCurrent = rules.defaultCurrentUser === true
     form.minLength = typeof rules.minLength === 'number' ? rules.minLength : null
     form.maxLength = typeof rules.maxLength === 'number' ? rules.maxLength : null
     form.min = typeof rules.min === 'number' ? rules.min : null
@@ -550,6 +562,8 @@ function validationRulesForSubmit(): Record<string, unknown> {
     }
     case 'relation':
       return form.relationEntity ? { relationEntity: form.relationEntity } : {}
+    case 'user':
+      return { multiple: form.userMultiple, unique: form.userUnique && !form.userMultiple, roles: form.userRoles.split(',').map(role => role.trim()).filter(Boolean), defaultCurrentUser: form.userDefaultCurrent }
     case 'select':
     case 'multiselect':
       return { options: form.options.map((o) => ({ value: o.value, label: o.label, color: o.color })) }
@@ -663,7 +677,8 @@ function onSubmit() {
     label: form.label,
     dataType: form.dataType,
     validationRules: validationRulesForSubmit(),
-    isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired
+    isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired,
+    isOwnerField: form.dataType === 'user' && form.isOwnerField
   })
 }
 </script>
@@ -823,6 +838,13 @@ function onSubmit() {
           </button>
         </div>
 
+        <div v-if="form.dataType === 'user'" class="flex flex-col gap-3 rounded border border-brand-border-light p-3">
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.userMultiple" type="checkbox">Permitir varios usuarios</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.userUnique" type="checkbox" :disabled="form.userMultiple">Valor único: cada usuario solo puede aparecer en un registro</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.isOwnerField" type="checkbox">Responsable del registro</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.userDefaultCurrent" type="checkbox">Usuario actual al crear</label>
+          <label class="text-sm">Roles permitidos (nombres o ID, separados por coma)<input v-model="form.userRoles" class="mt-1 w-full rounded border border-brand-border px-3 py-2" placeholder="Doctor, Técnico"></label>
+        </div>
         <div v-if="form.dataType === 'text'" class="flex flex-col gap-2">
           <p class="text-[13px] font-semibold text-brand-text">Reglas de validación</p>
           <div class="grid grid-cols-2 gap-4">

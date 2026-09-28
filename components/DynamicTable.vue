@@ -92,6 +92,8 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
     // al uuid completo.
     case 'relation':
       return (props.relationLabels?.[field.name]?.[String(v)]) ?? String(v).slice(0, 8)
+    case 'user':
+      return (Array.isArray(v) ? v : [v]).map(id => props.relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
     default:
       return String(v)
   }

@@ -67,6 +67,7 @@ export interface EntityFieldSummary {
   dataType: string
   validationRules: unknown
   isRequired: boolean
+  isOwnerField: boolean
   sortOrder: number
 }
 
@@ -79,6 +80,7 @@ function toSummary(row: typeof entityFields.$inferSelect): EntityFieldSummary {
     dataType: row.dataType,
     validationRules: row.validationRules,
     isRequired: row.isRequired,
+    isOwnerField: row.isOwnerField,
     sortOrder: row.sortOrder
   }
 }
@@ -104,6 +106,7 @@ async function findFieldInTenant(tx: Tx, tenantId: string, fieldId: string): Pro
       dataType: entityFields.dataType,
       validationRules: entityFields.validationRules,
       isRequired: entityFields.isRequired,
+      isOwnerField: entityFields.isOwnerField,
       sortOrder: entityFields.sortOrder,
       createdAt: entityFields.createdAt,
       updatedAt: entityFields.updatedAt
@@ -345,10 +348,12 @@ export interface CreateEntityFieldInput {
   dataType: string
   validationRules: unknown
   isRequired: boolean
+  isOwnerField?: boolean
 }
 
 export async function createEntityField(tenantId: string, entityId: string, input: CreateEntityFieldInput, existingTx?: Tx): Promise<EntityFieldSummary> {
   assertValidationRules(input.dataType, input.validationRules)
+  if (input.isOwnerField && input.dataType !== 'user') throw new InvalidValidationRulesError('Responsable del registro requiere un campo de tipo Usuario')
 
   const run = async (tx: Tx) => {
     await assertEntityInTenant(tx, tenantId, entityId)
@@ -378,6 +383,7 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
           dataType: input.dataType,
           validationRules: input.validationRules ?? {},
           isRequired: Boolean(((input.validationRules ?? {}) as Record<string, unknown>).calculation) ? false : input.isRequired,
+          isOwnerField: input.isOwnerField ?? false,
           sortOrder: nextSortOrder
         })
         .returning()
@@ -408,6 +414,7 @@ export interface UpdateEntityFieldInput {
   dataType?: string
   validationRules?: unknown
   isRequired?: boolean
+  isOwnerField?: boolean
 }
 
 /**
@@ -437,6 +444,7 @@ export async function updateEntityField(
 
     const effectiveDataType = input.dataType ?? current.dataType
     const effectiveRules = input.validationRules !== undefined ? input.validationRules : current.validationRules
+    if ((input.isOwnerField ?? current.isOwnerField) && effectiveDataType !== 'user') throw new InvalidValidationRulesError('Responsable del registro requiere un campo de tipo Usuario')
     assertValidationRules(effectiveDataType, effectiveRules)
     if (effectiveDataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, current.entityId, effectiveRules)
@@ -447,6 +455,7 @@ export async function updateEntityField(
       (input.dataType !== undefined && input.dataType !== current.dataType) ||
       (input.validationRules !== undefined && JSON.stringify(input.validationRules) !== JSON.stringify(current.validationRules)) ||
       (input.isRequired !== undefined && input.isRequired !== current.isRequired)
+      || (input.isOwnerField !== undefined && input.isOwnerField !== current.isOwnerField)
 
     if (changesMetadataShape) {
       await tx.insert(entityFieldHistory).values({
@@ -464,6 +473,7 @@ export async function updateEntityField(
     if (input.validationRules !== undefined) setValues.validationRules = input.validationRules
     if (Boolean((effectiveRules as Record<string, unknown> | null)?.calculation)) setValues.isRequired = false
     else if (input.isRequired !== undefined) setValues.isRequired = input.isRequired
+    if (input.isOwnerField !== undefined) setValues.isOwnerField = input.isOwnerField
 
     const [updated] = await tx.update(entityFields).set(setValues).where(eq(entityFields.id, fieldId)).returning()
 

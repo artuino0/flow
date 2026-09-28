@@ -1,7 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { db } from '~/server/db'
-import { notificationGroupMembers, notificationGroups, notifications, people, roles, users } from '~/server/db/schema'
+import { notificationGroupMembers, notificationGroups, notifications, people, records, roleEntityPermissions, roles, users } from '~/server/db/schema'
+import { currentRecordActor } from '~/server/utils/recordActorContext'
 import { publishRealtime, realtimeUserTopic, subscribeRealtime } from '~/server/utils/realtime'
 
 type Tx = typeof db
@@ -89,6 +90,31 @@ export async function createNotifications(
 
   if (input.actorUserId) candidateIds.delete(input.actorUserId)
   if (!candidateIds.size) return []
+
+  if (input.recordId) {
+    const [record] = await tx.select({ id: records.id, entityId: records.entityId }).from(records)
+      .where(and(eq(records.id, input.recordId), eq(records.tenantId, input.tenantId), isNull(records.deletedAt))).limit(1)
+    if (!record) return []
+    const recipients = await tx.select({ id: users.id, roleId: users.roleId, isSystem: roles.isSystem, canRead: roleEntityPermissions.canRead })
+      .from(users).leftJoin(roles, eq(roles.id, users.roleId))
+      .leftJoin(roleEntityPermissions, and(eq(roleEntityPermissions.roleId, users.roleId), eq(roleEntityPermissions.entityId, record.entityId)))
+      .where(and(eq(users.tenantId, input.tenantId), inArray(users.id, [...candidateIds])))
+    const byId = new Map(recipients.map(recipient => [recipient.id, recipient]))
+    const actor = currentRecordActor()
+    const nil = '00000000-0000-0000-0000-000000000000'
+    try {
+      for (const id of [...candidateIds]) {
+        const recipient = byId.get(id)
+        if (!recipient?.roleId || (!recipient.isSystem && !recipient.canRead)) { candidateIds.delete(id); continue }
+        await tx.execute(sql`select set_config('app.user_id', ${id}, true), set_config('app.role_id', ${recipient.roleId}, true)`)
+        const visible = await tx.select({ id: records.id }).from(records).where(eq(records.id, record.id)).limit(1)
+        if (!visible.length) candidateIds.delete(id)
+      }
+    } finally {
+      await tx.execute(sql`select set_config('app.user_id', ${actor?.userId ?? nil}, true), set_config('app.role_id', ${actor?.roleId ?? nil}, true)`)
+    }
+    if (!candidateIds.size) return []
+  }
 
   const rows = await tx.insert(notifications).values(
     [...candidateIds].map(userId => ({

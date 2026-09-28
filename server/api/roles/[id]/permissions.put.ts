@@ -15,6 +15,7 @@ const bodySchema = z.object({
       canCreate: z.boolean(),
       canUpdate: z.boolean(),
       canDelete: z.boolean(),
+      visibility: z.enum(['all', 'own']).optional(),
       showInMenu: z.boolean().optional()
     })
   )

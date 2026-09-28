@@ -2,6 +2,7 @@ import { and, eq, gte, lte, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { dimCliente, dimSucursal, factEventos, users } from '~/server/db/schema'
 import { toDimDateId } from '~/server/utils/olapEtl'
+import { visibleDimensionRecord, visibleFactEvent } from '~/server/utils/olapVisibility'
 
 // HU-ERD-31: logica de agregacion del dashboard interno OLAP, separada del
 // endpoint (server/api/dashboard/metrics.get.ts) para poder testearla sin
@@ -63,7 +64,7 @@ export async function getDashboardMetrics(
   const toId = toDimDateId(to)
 
   return withTenant(tenantId, async (tx) => {
-    const eventoConds = [eq(factEventos.tenantId, tenantId), gte(factEventos.dateId, fromId), lte(factEventos.dateId, toId)]
+    const eventoConds = [eq(factEventos.tenantId, tenantId), gte(factEventos.dateId, fromId), lte(factEventos.dateId, toId), visibleFactEvent()]
     if (filters.tipoEvento) {
       eventoConds.push(eq(factEventos.tipoEvento, filters.tipoEvento))
     }
@@ -92,12 +93,12 @@ export async function getDashboardMetrics(
     const [clientesRow] = await tx
       .select({ count: dsql<number>`count(*)::int` })
       .from(dimCliente)
-      .where(eq(dimCliente.tenantId, tenantId))
+      .where(and(eq(dimCliente.tenantId, tenantId), visibleDimensionRecord('clientes')))
 
     const [sucursalesRow] = await tx
       .select({ count: dsql<number>`count(*)::int` })
       .from(dimSucursal)
-      .where(eq(dimSucursal.tenantId, tenantId))
+      .where(and(eq(dimSucursal.tenantId, tenantId), visibleDimensionRecord('sucursales')))
 
     const [usuariosTotalRow] = await tx
       .select({ count: dsql<number>`count(*)::int` })
