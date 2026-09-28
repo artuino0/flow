@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.110.0] - 2026-09-28
+#### [feature]
+- [ERD-116](https://dydasoftware.atlassian.net/browse/ERD-116) - Diseñador: nodo Usuarios del Sistema en el diagrama, aparición escalonada de novedades y pulso en relaciones; incluye script de usuarios QA y manual de agentes.
+
 ### [0.109.0] - 2026-09-28
 #### [feature]
 - [ERD-115](https://dydasoftware.atlassian.net/browse/ERD-115) - Registro con verificación de correo, planes con 30 días de prueba con tarjeta y plantilla Agenda (Citas con roles Recepción/Personal); regreso a la ruta tras logout por inactividad.

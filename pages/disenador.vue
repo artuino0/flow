@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, Maximize2, MessageSquareText, Minimize2, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
 import type { Blueprint, BlueprintField } from '~/server/utils/blueprint/schema'
 import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
+import { designerProposalChanges } from '~/utils/designerMotion'
 import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
 import { beginDesignerChat, canSendDesignerChat, designerChatEntries, designerExplanationBody, designerExplanationSummary, failDesignerChat, toggleDesignerFocus, type DesignerChatDraft } from '~/utils/designerChat'
 
@@ -25,6 +26,8 @@ const focusId = ref<string | null>(null)
 const selectedEdgeId = ref<string | null>(null)
 const relationFilter = ref<DesignerRelationFilter>('none')
 const changedIds = ref<string[]>([])
+const revealEdgeIds = ref<string[]>([])
+const revealFieldKeys = ref<string[]>([])
 const prompt = ref('')
 const chatDrafts = ref<DesignerChatDraft[]>([])
 const chatScroll = ref<HTMLElement | null>(null)
@@ -110,6 +113,8 @@ async function loadSession(id: string) {
     selectedEdgeId.value = null
     relationFilter.value = 'none'
     changedIds.value = []
+    revealEdgeIds.value = []
+    revealFieldKeys.value = []
     result.value = null
     sessionMenuOpen.value = false
   } catch (error) { errorText.value = apiError(error).message } finally { loading.value = false }
@@ -161,6 +166,9 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
     busy.value = ''
     return
   }
+  const motion = current.value && graph.value
+    ? designerProposalChanges(graph.value, buildDesignerGraph(current.value, response.blueprint, response.diff, navigation.value))
+    : { nodeIds: [], edgeIds: [], fieldKeys: [] }
   const refreshed: DesignerSession = { ...session.value, status: 'draft', blueprint: response.blueprint, version: session.value.version + 1, creditsConsumed: session.value.creditsConsumed + messageCost.value, messages: [...session.value.messages, { role: 'user', content: instruction, createdAt: chatDrafts.value.find(draft => draft.id === draftId)?.createdAt ?? new Date().toISOString() }, { role: 'assistant', content: response.message, createdAt: new Date().toISOString() }] }
   refreshed.messages[refreshed.messages.length - 1]!.explanation = response.explanation
   session.value = refreshed
@@ -170,8 +178,12 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
   credits.value = response.credits
   fieldErrors.value = []
   changedIds.value = []
+  revealEdgeIds.value = []
+  revealFieldKeys.value = []
   await nextTick()
-  changedIds.value = [...response.diff.newModules, ...response.diff.newCatalogs, ...response.diff.extendedModules, ...response.diff.states].map(item => item.slug)
+  changedIds.value = motion.nodeIds
+  revealEdgeIds.value = motion.edgeIds
+  revealFieldKeys.value = motion.fieldKeys
   relationFilter.value = 'none'
   selectedEdgeId.value = null
   selectedId.value = changedIds.value[0] ?? null
@@ -217,6 +229,7 @@ async function approve() {
   } catch (error) { const info = apiError(error); errorText.value = info.message; if (info.code === 'plan_limit' && working.value) diff.value = (await api.validate(working.value)).diff } finally { busy.value = '' }
 }
 function selectModule(id: string | null) {
+  if (id && !working.value?.modules.some(module => module.slug === id)) return
   if (selectedId.value !== id) relationFilter.value = 'none'
   selectedId.value = id
   selectedEdgeId.value = null
@@ -367,10 +380,10 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
 
       <main class="relative min-w-0 flex-1">
         <div v-if="!graph.modules.length" class="absolute inset-0 z-[1] flex items-center justify-center bg-brand-bg/90 p-6"><div class="max-w-lg rounded-lg border border-brand-border-light bg-brand-surface p-7 text-center shadow-sm"><Sparkles class="mx-auto mb-3 h-7 w-7 text-brand-orange" /><h1 class="text-lg font-bold">Diseña tu estructura</h1><p class="mt-2 text-sm leading-6 text-brand-text-secondary">Aún no hay módulos. Describe tu operación en el chat y revisa el plano antes de crearlo.</p><button type="button" class="mt-5 rounded bg-brand-orange px-4 py-2 text-xs font-semibold text-white designer-mobile-control" @click="chatOpen = true">Abrir chat</button></div></div>
-        <ClientOnly><DesignerCanvas v-if="graph.modules.length" ref="canvas" :graph="graph" :positions="positions" :selected-id="selectedId" :focus-id="focusId" :selected-edge-id="selectedEdgeId" :relation-filter="relationFilter" :changed-ids="changedIds" :disabled="session?.status === 'applied'" @select="selectModule" @edge-select="selectEdge" @clear="clearCanvasSelection" @focus="focusId = $event" @positions="savePositions" /><template #fallback><div class="h-full bg-brand-bg" /></template></ClientOnly>
+        <ClientOnly><DesignerCanvas v-if="graph.modules.length" ref="canvas" :graph="graph" :positions="positions" :selected-id="selectedId" :focus-id="focusId" :selected-edge-id="selectedEdgeId" :relation-filter="relationFilter" :changed-ids="changedIds" :reveal-edge-ids="revealEdgeIds" :reveal-field-keys="revealFieldKeys" :disabled="session?.status === 'applied'" @select="selectModule" @edge-select="selectEdge" @clear="clearCanvasSelection" @focus="focusId = $event" @positions="savePositions" /><template #fallback><div class="h-full bg-brand-bg" /></template></ClientOnly>
         <button type="button" class="absolute left-4 top-20 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-brand-orange text-white shadow-lg designer-mobile-control" aria-label="Abrir chat" @click="chatOpen = true"><MessageSquareText class="h-5 w-5" /></button>
         <button v-if="selectedId" type="button" class="absolute right-4 top-20 z-10 rounded bg-brand-surface px-3 py-2 text-xs font-semibold text-brand-blue shadow designer-mobile-control" @click="inspectorOpen = true">Ver inspector</button>
-        <span v-if="graph.modules.length" class="absolute bottom-4 left-4 z-[2] hidden rounded bg-brand-surface px-2 py-1 text-[10px] text-brand-text-muted shadow sm:block lg:left-44">{{ graph.modules.length }} módulos y catálogos · {{ graph.sections.length }} secciones</span>
+        <span v-if="graph.modules.length" class="absolute bottom-4 left-4 z-[2] hidden rounded bg-brand-surface px-2 py-1 text-[10px] text-brand-text-muted shadow sm:block lg:left-44">{{ graph.modules.filter(module => !module.system).length }} módulos y catálogos · {{ graph.sections.length }} secciones</span>
       </main>
 
       <PanelResizeHandle v-model="inspectorWidth" class="designer-handle" :min="280" :max="480" :default-value="320" :direction="-1" label="Redimensionar inspector" @commit="inspectorPanel.persist()" />

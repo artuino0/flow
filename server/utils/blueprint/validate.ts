@@ -234,6 +234,7 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
       if (!resolved) add(`associations[${index}].${part}`, 'La asociación apunta a un módulo inexistente')
       else association[part] = resolved
     }
+    if (association.sourceRef === association.targetRef) add(`associations[${index}].targetRef`, 'Una asociación no puede conectar un módulo consigo mismo; usa un campo relación de jerarquía si corresponde')
     if (normalized.associations.findIndex(item => item.name === association.name) !== index) add(`associations[${index}].name`, 'El nombre de la asociación está repetido')
     const existing = current.associations.find(item => item.name === association.name)
     if (existing && (bySlug.get(association.sourceRef)?.id !== existing.sourceEntityId || bySlug.get(association.targetRef)?.id !== existing.targetEntityId)) add(`associations[${index}].name`, 'La asociación existente usa otros módulos y no se puede cambiar')

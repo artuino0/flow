@@ -279,12 +279,40 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     await expect(checkDesignerMessageRate(tenantId, userId)).rejects.toMatchObject({ statusCode: 429 })
   })
 
-  it('bloquea Agenda y usuarios sin rol administrador', async () => {
+  it('bloquea usuarios sin rol administrador y permite Agenda', async () => {
     const event = { context: { auth: { tenantId, sub: userId, roleId: ordinaryRoleId } } } as any
     await expect(sessions.requireDesignerAccess(event)).rejects.toMatchObject({ statusCode: 403 })
     const [agenda] = await admin`SELECT id FROM plans WHERE key = 'agenda'`
     await admin`UPDATE tenant_subscriptions SET plan_id = ${agenda.id} WHERE tenant_id = ${tenantId}`
     event.context.auth.roleId = adminRoleId
-    await expect(sessions.requireDesignerAccess(event)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(sessions.requireDesignerAccess(event)).resolves.toMatchObject({ tenantId, sub: userId, roleId: adminRoleId })
+  })
+
+  it('autorrepara una auto-asociación inválida propuesta por el proveedor simulado', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const invalid = await proposal('Perfiles de doctor', 'perfiles-doctor')
+    invalid.associations.push({ name: 'Perfil de usuario doctor', sourceRef: 'perfiles-doctor', targetRef: 'perfiles-doctor' })
+    aiReply({ message: 'Propuse un perfil.', blueprint: invalid })
+    aiReply({ message: 'Corregí el perfil.', blueprint: await proposal('Perfiles de doctor', 'perfiles-doctor') })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea perfiles de doctor')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.blueprint.associations).toEqual([])
+    expect(result.message).toContain('Corregí el perfil')
+    const saved = await sessions.findSession(tenantId, session.id)
+    expect((saved.blueprint as { associations: unknown[] }).associations).toEqual([])
+  })
+
+  it('normaliza una asociación duplicada por relation y la explica', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal()
+    design.modules.at(-1)!.fields.push({ name: 'cliente', label: 'Cliente', dataType: 'relation', validationRules: { relationEntity: 'clientes' } })
+    design.associations.push({ name: 'Orden cliente', sourceRef: 'ordenes', targetRef: 'clientes' })
+    aiReply({ message: 'Preparé órdenes.', blueprint: design })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes con cliente')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.blueprint.associations).toEqual([])
+    expect(result.explanation).toContain('Omití la asociación «Orden cliente»')
   })
 })

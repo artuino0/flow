@@ -23,18 +23,27 @@ export interface DiagramModule {
   section: string
   width: number
   height: number
+  system?: true
 }
 export interface DiagramEdge {
   id: string
   source: string
   target: string
   label: string
-  kind: 'relation' | 'lines' | 'association'
+  kind: 'relation' | 'lines' | 'association' | 'user'
   state: 'existing' | 'new'
 }
 export interface DiagramSection { id: string; title: string; moduleIds: string[] }
 export interface DiagramGraph { modules: DiagramModule[]; edges: DiagramEdge[]; sections: DiagramSection[] }
 export type DesignerRelationFilter = 'none' | 'all' | 'catalogs' | 'modules'
+export const SYSTEM_USERS_ID = 'system:users'
+export const SYSTEM_SECTION_ID = 'system:section'
+
+export function designerNodeClickAction(graph: DiagramGraph, id: string): 'select' | 'info' | 'none' {
+  if (id.startsWith('section:')) return 'none'
+  const module = graph.modules.find(item => item.id === id)
+  return module?.system ? 'info' : module ? 'select' : 'none'
+}
 
 export function designerFieldTypeLabel(field: BlueprintField) {
   if (field.validationRules?.calculation) return 'Calculado ƒx'
@@ -54,7 +63,7 @@ export function buildDesignerGraph(current: Blueprint, blueprint: Blueprint, dif
       if (slug) groupBySlug.set(slug, group.parentId ? `${byId.get(group.parentId)?.name ?? 'Área'} / ${group.name}` : group.name)
     }
   }
-  const modules = blueprint.modules.map(module => {
+  const modules: DiagramModule[] = blueprint.modules.map(module => {
     const old = existing.get(module.slug)
     const added = new Set([...(additions.get(module.slug) ?? []), ...module.fields.filter(field => !old?.fields.some(item => item.name === field.name)).map(field => field.name)])
     const state = newSlugs.has(module.slug) || module.action === 'create' ? 'new' : added.size || (diff?.states ?? []).some(item => item.slug === module.slug) ? 'extended' : 'existing'
@@ -63,6 +72,13 @@ export function buildDesignerGraph(current: Blueprint, blueprint: Blueprint, dif
     return { id: module.slug, module, icon: module.icon ?? null, state, fields, section, width: 240, height: 48 + fields.length * 27 + (module.lines?.some(line => line.totals?.length) ? 28 : 0) } satisfies DiagramModule
   })
   const byRef = new Map(modules.flatMap(item => [[item.module.ref, item.id], [item.id, item.id]]))
+  if (modules.some(item => item.fields.some(field => field.dataType === 'user')) || current.modules.some(module => module.fields.some(field => field.dataType === 'user'))) {
+    modules.push({
+      id: SYSTEM_USERS_ID,
+      module: { ref: SYSTEM_USERS_ID, action: 'extend', kind: 'dimension', name: 'Usuarios', slug: SYSTEM_USERS_ID, fields: [] },
+      icon: null, state: 'existing', fields: [], section: 'Sistema', width: 220, height: 88, system: true
+    })
+  }
   const lineKeys = new Set<string>()
   const edges: DiagramEdge[] = []
   for (const item of modules) for (const line of item.module.lines ?? []) {
@@ -78,13 +94,22 @@ export function buildDesignerGraph(current: Blueprint, blueprint: Blueprint, dif
     if (!target || lineKeys.has(`${item.id}.${field.name}.${target}`)) continue
     edges.push({ id: `relation:${item.id}:${field.name}:${target}`, source: item.id, target, label: `N · ${field.label} · 1`, kind: 'relation', state: field.state === 'existing' ? 'existing' : 'new' })
   }
+  if (modules.some(module => module.system)) for (const item of modules) for (const field of item.fields) {
+    if (field.dataType !== 'user') continue
+    const cardinality = field.validationRules?.unique === true ? '1..1' : field.validationRules?.multiple === true ? 'N..N' : 'N..1'
+    edges.push({ id: `user:${item.id}:${field.name}`, source: item.id, target: SYSTEM_USERS_ID,
+      label: `${cardinality} · ${field.label}${field.isOwnerField ? ' · responsable' : ''}`,
+      kind: 'user', state: field.state === 'existing' ? 'existing' : 'new' })
+  }
   const oldAssociations = new Set(current.associations.map(item => item.name))
   for (const association of blueprint.associations) {
     const source = byRef.get(association.sourceRef)
     const target = byRef.get(association.targetRef)
     if (source && target) edges.push({ id: `association:${association.name}`, source, target, label: `N · ${association.name} · N`, kind: 'association', state: oldAssociations.has(association.name) ? 'existing' : 'new' })
   }
-  const sections = [...new Set(modules.map(module => module.section))].map(title => ({ id: title, title, moduleIds: modules.filter(module => module.section === title).map(module => module.id) }))
+  const sections = [...new Set(modules.filter(module => !module.system).map(module => module.section))]
+    .map(title => ({ id: title, title, moduleIds: modules.filter(module => !module.system && module.section === title).map(module => module.id) }))
+  if (modules.some(module => module.system)) sections.push({ id: SYSTEM_SECTION_ID, title: 'Sistema', moduleIds: [SYSTEM_USERS_ID] })
   return { modules, edges, sections }
 }
 
@@ -105,7 +130,7 @@ export function filterDesignerRelations(graph: DiagramGraph, selectedId: string 
   const byId = new Map(graph.modules.map(module => [module.id, module]))
   const edges = graph.edges.filter(edge => {
     const neighbor = edge.source === selectedId ? byId.get(edge.target) : edge.target === selectedId ? byId.get(edge.source) : undefined
-    return neighbor && (filter === 'all' || (filter === 'catalogs' ? neighbor.module.kind === 'dimension' : neighbor.module.kind === 'hecho'))
+    return neighbor && (filter === 'all' || (filter === 'catalogs' ? neighbor.system || neighbor.module.kind === 'dimension' : !neighbor.system && neighbor.module.kind === 'hecho'))
   })
   const ids = new Set([selectedId, ...edges.flatMap(edge => [edge.source, edge.target])])
   return {
@@ -136,7 +161,8 @@ export function layoutDesignerGraph(graph: DiagramGraph, saved: DesignerPosition
   let cursorY = 24
   let rowHeight = 0
   for (const section of graph.sections) {
-    const members = graph.modules.filter(module => module.section === section.title)
+    if (section.id === SYSTEM_SECTION_ID) continue
+    const members = graph.modules.filter(module => !module.system && module.section === section.title)
     const ids = new Set(members.map(module => module.id))
     const layout = new dagre.graphlib.Graph()
     layout.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 90, marginx: 24, marginy: 52 })
@@ -154,6 +180,13 @@ export function layoutDesignerGraph(graph: DiagramGraph, saved: DesignerPosition
     }
     cursorX += width + 32
     rowHeight = Math.max(rowHeight, height)
+  }
+  const system = graph.modules.find(module => module.system)
+  if (system) {
+    const x = Math.max(24, ...groups.map(group => group.x + group.width + 32))
+    const y = 24
+    groups.push({ id: SYSTEM_SECTION_ID, title: 'Sistema', x, y, width: 268, height: 180 })
+    positions[system.id] = saved[system.id] ?? { x: x + 24, y: y + 56 }
   }
   return { positions, groups }
 }

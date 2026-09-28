@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
-import { buildDesignerGraph, filterDesignerRelations, focusDesignerEdge, focusDesignerGraph, layoutDesignerGraph, visibleDesignerGraph, type DesignerDiff } from '~/utils/designerGraph'
+import { buildDesignerGraph, designerNodeClickAction, filterDesignerRelations, focusDesignerEdge, focusDesignerGraph, layoutDesignerGraph, SYSTEM_USERS_ID, visibleDesignerGraph, type DesignerDiff } from '~/utils/designerGraph'
 
 const current: Blueprint = { version: 1, summary: 'Actual', associations: [], modules: [
   { ref: 'clientes', action: 'extend', kind: 'hecho', name: 'Clientes', slug: 'clientes', snapshot: true, fields: [{ name: 'nombre', label: 'Nombre', dataType: 'text', required: true }] },
@@ -66,5 +66,42 @@ describe('grafo del diseñador', () => {
     expect(catalogs.modules.some(module => module.id === 'clientes')).toBe(false)
     expect(filterDesignerRelations(relatedGraph, 'ordenes', 'none')).toBe(relatedGraph)
     expect(filterDesignerRelations(relatedGraph, null, 'all')).toBe(relatedGraph)
+  })
+
+  it('deriva Usuarios del Sistema y las cardinalidades de campos user sin añadirlo al blueprint', () => {
+    const clinic: Blueprint = { version: 1, summary: 'Clínica', associations: [], modules: [
+      { ref: 'perfiles-doctor', action: 'create', kind: 'dimension', name: 'Perfiles de doctor', slug: 'perfiles-doctor', fields: [
+        { name: 'usuario', label: 'Usuario', dataType: 'user', validationRules: { unique: true, roles: ['Doctor'] } }
+      ] },
+      { ref: 'citas', action: 'create', kind: 'hecho', name: 'Citas', slug: 'citas', fields: [
+        { name: 'doctor_usuario', label: 'Doctor', dataType: 'user', isOwnerField: true },
+        { name: 'asistentes', label: 'Asistentes', dataType: 'user', validationRules: { multiple: true } }
+      ] }
+    ] }
+    const before = structuredClone(clinic)
+    const result = buildDesignerGraph({ version: 1, summary: 'Vacío', modules: [], associations: [] }, clinic, null)
+    expect(result.modules.find(module => module.id === SYSTEM_USERS_ID)).toMatchObject({ system: true, section: 'Sistema', fields: [], state: 'existing' })
+    expect(result.sections.find(section => section.title === 'Sistema')?.moduleIds).toEqual([SYSTEM_USERS_ID])
+    expect(result.edges.filter(edge => edge.kind === 'user').map(edge => [edge.source, edge.target, edge.label])).toEqual([
+      ['perfiles-doctor', SYSTEM_USERS_ID, '1..1 · Usuario'],
+      ['citas', SYSTEM_USERS_ID, 'N..1 · Doctor · responsable'],
+      ['citas', SYSTEM_USERS_ID, 'N..N · Asistentes']
+    ])
+    expect(clinic).toEqual(before)
+    expect(clinic.modules.some(module => module.slug === SYSTEM_USERS_ID)).toBe(false)
+    expect(filterDesignerRelations(result, 'citas', 'catalogs').modules.map(module => module.id)).toEqual(['citas', SYSTEM_USERS_ID])
+    expect(focusDesignerGraph(result, 'citas').active).toContain(SYSTEM_USERS_ID)
+    expect(focusDesignerEdge(result, 'user:citas:doctor_usuario').active).toEqual(new Set(['citas', SYSTEM_USERS_ID]))
+    expect(layoutDesignerGraph(result, { [SYSTEM_USERS_ID]: { x: 900, y: 80 } }).positions[SYSTEM_USERS_ID]).toEqual({ x: 900, y: 80 })
+  })
+
+  it('el nodo Usuarios muestra información y no abre el inspector', () => {
+    const clinic: Blueprint = { version: 1, summary: 'Clínica', associations: [], modules: [
+      { ref: 'citas', action: 'create', kind: 'hecho', name: 'Citas', slug: 'citas', fields: [{ name: 'doctor', label: 'Doctor', dataType: 'user' }] }
+    ] }
+    const result = buildDesignerGraph({ version: 1, summary: 'Vacío', modules: [], associations: [] }, clinic, null)
+    expect(designerNodeClickAction(result, SYSTEM_USERS_ID)).toBe('info')
+    expect(designerNodeClickAction(result, 'citas')).toBe('select')
+    expect(designerNodeClickAction(result, 'section:Sistema')).toBe('none')
   })
 })
