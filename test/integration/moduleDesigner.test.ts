@@ -85,6 +85,36 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     expect((await sessions.findSession(tenantId, session.id)).creditsConsumed).toBe(3)
   })
 
+  it('acepta estados en arreglo del proveedor, advierte pérdidas y aplica el flujo', async () => {
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal('Pedidos con estados', 'pedidos-estados') as unknown as { modules: Array<{ fields: unknown[]; workflow?: unknown }> }
+    const module = design.modules[design.modules.length - 1]!
+    module.fields.push({ name: 'estado', label: 'Estado', dataType: 'select', validationRules: { options: [{ value: 'recibido', label: 'Recibido' }, { value: 'confirmado', label: 'Confirmado' }] } })
+    module.workflow = { field: 'estado', states: ['recibido', 'confirmado'], transitions: [{ from: 'recibido', to: 'confirmado' }, { from: 'confirmado', to: 'desconocido' }], rules: [{ type: 'required', when: 'confirmado', fields: ['nota'], message: 'Falta nota' }] }
+    aiReply({ message: 'Preparé los pedidos.', blueprint: design })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea pedidos con estados')
+    expect(result.message).toContain('transición 2')
+    expect(result.message).toContain('regla 1')
+    expect(result.blueprint.modules.find(item => item.slug === 'pedidos-estados')?.workflow?.transitions).toEqual([{ from: 'recibido', to: 'confirmado', roles: 'all' }])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await sessions.applySession(tenantId, userId, session.id)
+    const [saved] = await admin`SELECT workflow_config FROM entities WHERE tenant_id = ${tenantId} AND slug = 'pedidos-estados'`
+    expect(saved.workflow_config).toMatchObject({ enabled: true, initial: 'recibido', states: { recibido: { locked: false, editableFields: [] } }, transitions: [{ from: 'recibido', to: 'confirmado', roles: 'all' }] })
+  })
+
+  it('sustituye un icono inexistente del proveedor sin rechazar ni cobrar otro intento', async () => {
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal('Proveedores con icono', 'proveedores-icono')
+    design.modules[design.modules.length - 1]!.icon = 'IconoInexistente'
+    aiReply({ message: 'Preparé proveedores.', blueprint: design })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea proveedores')
+    expect(result.blueprint.modules.find(item => item.slug === 'proveedores-icono')?.icon).toBe('Box')
+    expect(result.message).toContain('Usé un icono genérico para Proveedores con icono')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const saved = await sessions.findSession(tenantId, session.id)
+    expect((saved.blueprint as Awaited<ReturnType<typeof proposal>>).modules.find(item => item.slug === 'proveedores-icono')?.icon).toBe('Box')
+  })
+
   it('autorrepara una respuesta inválida con una sola llamada adicional sin cobrarla', async () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
     aiReply({ message: 'Borrador', blueprint: { version: 1, summary: 'Inválido', modules: [{ bad: true }], associations: [] } })

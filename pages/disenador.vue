@@ -2,8 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, MessageSquareText, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
 import type { Blueprint, BlueprintField } from '~/server/utils/blueprint/schema'
-import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions } from '~/utils/designerGraph'
+import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
 import { createDesignerClient, type CreditBalance, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
+import { beginDesignerChat, canSendDesignerChat, designerChatEntries, failDesignerChat, type DesignerChatDraft } from '~/utils/designerChat'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
 useHead({ title: 'Diseñador de estructura | Flow' })
@@ -20,14 +21,15 @@ const credits = ref<CreditBalance | null>(null)
 const positions = ref<DesignerPositions>({})
 const selectedId = ref<string | null>(null)
 const focusId = ref<string | null>(null)
+const selectedEdgeId = ref<string | null>(null)
+const relationFilter = ref<DesignerRelationFilter>('none')
 const changedIds = ref<string[]>([])
 const prompt = ref('')
+const chatDrafts = ref<DesignerChatDraft[]>([])
+const chatScroll = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const busy = ref<'generate' | 'save' | 'apply' | ''>('')
 const errorText = ref('')
-const aiError = ref(false)
-const aiUnavailable = ref('')
-const lastInstruction = ref('')
 const fieldErrors = ref<Array<{ path: string; message: string; code?: string }>>([])
 const reviewOpen = ref(false)
 const result = ref<DesignerApply | null>(null)
@@ -47,6 +49,7 @@ function scheduleCanvasFit() {
   fitTimer = setTimeout(() => { fitTimer = null; canvas.value?.fitCanvas() }, 150)
 }
 watch([chatWidth, inspectorWidth], scheduleCanvasFit)
+watch(selectedId, id => { if (!id) relationFilter.value = 'none' })
 onBeforeUnmount(() => { if (fitTimer) clearTimeout(fitTimer) })
 
 const graph = computed(() => current.value && working.value ? buildDesignerGraph(current.value, working.value, diff.value, navigation.value) : null)
@@ -59,6 +62,10 @@ const firstGeneration = computed(() => !(session.value?.messages ?? []).some(mes
 const messageCost = computed(() => firstGeneration.value ? 2 : 1)
 const balance = computed(() => credits.value?.includedRemaining === null ? Infinity : (credits.value?.includedRemaining ?? 0) + (credits.value?.packages ?? 0))
 const noCredits = computed(() => balance.value < messageCost.value)
+const chatCanSend = computed(() => canSendDesignerChat({ busy: Boolean(busy.value), noCredits: noCredits.value, dirty: dirty.value, applied: session.value?.status === 'applied' }))
+const chatEntries = computed(() => designerChatEntries(session.value?.messages ?? [], chatDrafts.value))
+const lastAssistantId = computed(() => [...chatEntries.value].reverse().find(message => message.role === 'assistant')?.id)
+watch(chatEntries, async () => { await nextTick(); if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight })
 const canApprove = computed(() => Boolean(session.value && session.value.status === 'draft' && hasProposal.value && !dirty.value && diff.value?.plan.allowed && !busy.value))
 const changes = computed(() => [
   { label: 'Módulos nuevos', count: diff.value?.newModules.length ?? 0 },
@@ -72,7 +79,7 @@ const fieldTypes = ['text', 'number', 'currency', 'boolean', 'date', 'select', '
 function cloneBlueprint(value: Blueprint): Blueprint { return JSON.parse(JSON.stringify(value)) as Blueprint }
 function apiError(error: unknown) {
   const e = error as { statusMessage?: string; message?: string; data?: { statusMessage?: string; data?: { code?: string; errors?: Array<{ path: string; message: string; code?: string }> } } }
-  return { message: e.data?.statusMessage || e.statusMessage || e.message || 'Ocurrió un error.', code: e.data?.data?.code, errors: e.data?.data?.errors ?? [] }
+  return { message: e.data?.statusMessage || e.statusMessage || e.message || 'Ocurrió un error.', code: e.data?.data?.code, status: (e as { statusCode?: number }).statusCode ?? (e.data as { statusCode?: number } | undefined)?.statusCode, errors: e.data?.data?.errors ?? [] }
 }
 async function refreshCredits() { credits.value = await api.getCredits() }
 async function loadSession(id: string) {
@@ -81,12 +88,15 @@ async function loadSession(id: string) {
   try {
     const selectedSession = await api.getSession(id)
     session.value = selectedSession
+    chatDrafts.value = []
     working.value = cloneBlueprint(selectedSession.blueprint)
     const validated = await api.validate(selectedSession.blueprint)
     diff.value = validated.diff
     fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
     selectedId.value = null
     focusId.value = null
+    selectedEdgeId.value = null
+    relationFilter.value = 'none'
     changedIds.value = []
     result.value = null
     sessionMenuOpen.value = false
@@ -119,38 +129,40 @@ onMounted(async () => {
   } catch (error) { errorText.value = apiError(error).message; loading.value = false }
 })
 
-async function sendPrompt(value = prompt.value) {
-  const instruction = value.trim()
-  if (!instruction || !session.value || busy.value || noCredits.value || dirty.value) return
-  busy.value = 'generate'; errorText.value = ''; aiError.value = false; aiUnavailable.value = ''
+async function sendPrompt(value = prompt.value, retryId?: string) {
+  const retry = retryId ? chatDrafts.value.find(draft => draft.id === retryId && draft.status === 'failed') : undefined
+  const instruction = (retry ? retry.content : value).trim()
+  if (!instruction || !session.value || !chatCanSend.value) return
+  if (retryId && !retry) return
+  const draftId = retry?.id ?? crypto.randomUUID()
+  chatDrafts.value = beginDesignerChat(chatDrafts.value, instruction, draftId, new Date().toISOString(), retryId)
+  if (!retryId) prompt.value = ''
+  busy.value = 'generate'; errorText.value = ''
+  let response: Awaited<ReturnType<typeof api.generate>>
   try {
-    const response = await api.generate(session.value.id, instruction)
-    const refreshed = await api.getSession(session.value.id)
-    session.value = refreshed
-    working.value = cloneBlueprint(response.blueprint)
-    diff.value = response.diff
-    fieldErrors.value = []
-    changedIds.value = []
-    await nextTick()
-    changedIds.value = [...response.diff.newModules, ...response.diff.newCatalogs, ...response.diff.extendedModules, ...response.diff.states].map(item => item.slug)
-    selectedId.value = changedIds.value[0] ?? null
-    prompt.value = ''
-    chatOpen.value = false
-    await refreshCredits()
-    sessions.value = [refreshed, ...sessions.value.filter(item => item.id !== refreshed.id)]
+    response = await api.generate(session.value.id, instruction)
   } catch (error) {
     const info = apiError(error)
-    if (info.code === 'ai_unavailable') {
-      // La IA está saturada: el error vive en el chat con su reintento (frame U0PD5F), no en el banner genérico.
-      aiUnavailable.value = info.message
-      lastInstruction.value = instruction
-      chatOpen.value = true
-    } else {
-      errorText.value = info.code === 'ai_credits' ? 'No tienes créditos suficientes. La propuesta sigue disponible para editarla manualmente.' : info.message
-      aiError.value = info.code !== 'ai_credits'
-    }
+    chatDrafts.value = failDesignerChat(chatDrafts.value, draftId, info.code, info.status)
     await Promise.allSettled([refreshCredits(), api.getSession(session.value.id).then(value => { session.value = value })])
-  } finally { busy.value = '' }
+    busy.value = ''
+    return
+  }
+  const refreshed: DesignerSession = { ...session.value, status: 'draft', blueprint: response.blueprint, version: session.value.version + 1, creditsConsumed: session.value.creditsConsumed + messageCost.value, messages: [...session.value.messages, { role: 'user', content: instruction, createdAt: chatDrafts.value.find(draft => draft.id === draftId)?.createdAt ?? new Date().toISOString() }, { role: 'assistant', content: response.message, createdAt: new Date().toISOString() }] }
+  session.value = refreshed
+  chatDrafts.value = chatDrafts.value.filter(draft => draft.id !== draftId)
+  working.value = cloneBlueprint(response.blueprint)
+  diff.value = response.diff
+  credits.value = response.credits
+  fieldErrors.value = []
+  changedIds.value = []
+  await nextTick()
+  changedIds.value = [...response.diff.newModules, ...response.diff.newCatalogs, ...response.diff.extendedModules, ...response.diff.states].map(item => item.slug)
+  relationFilter.value = 'none'
+  selectedEdgeId.value = null
+  selectedId.value = changedIds.value[0] ?? null
+  sessions.value = [refreshed, ...sessions.value.filter(item => item.id !== refreshed.id)]
+  busy.value = ''
 }
 
 async function saveBlueprint() {
@@ -189,7 +201,28 @@ async function approve() {
     sessions.value = [session.value, ...sessions.value.filter(item => item.id !== session.value?.id)]
   } catch (error) { const info = apiError(error); errorText.value = info.message; if (info.code === 'plan_limit' && working.value) diff.value = (await api.validate(working.value)).diff } finally { busy.value = '' }
 }
-function selectModule(id: string | null) { selectedId.value = id; if (id) inspectorOpen.value = true }
+function selectModule(id: string | null) {
+  if (selectedId.value !== id) relationFilter.value = 'none'
+  selectedId.value = id
+  selectedEdgeId.value = null
+  focusId.value = null
+  if (id) inspectorOpen.value = true
+}
+function selectEdge(id: string) {
+  selectedId.value = null
+  focusId.value = null
+  relationFilter.value = 'none'
+  selectedEdgeId.value = id
+}
+function clearCanvasSelection() {
+  selectedId.value = null
+  focusId.value = null
+  selectedEdgeId.value = null
+  relationFilter.value = 'none'
+}
+function setSelectedIcon(icon: string) {
+  if (selected.value?.action === 'create' && session.value?.status !== 'applied' && !busy.value) selected.value.icon = icon
+}
 async function savePositions(value: DesignerPositions) {
   positions.value = value
   try { await api.putLayout(value) } catch (error) { errorText.value = `No se pudo guardar el acomodo: ${apiError(error).message}` }
@@ -264,32 +297,29 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
       </div>
     </div>
 
-    <div v-if="errorText" role="alert" class="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800"><AlertCircle class="h-4 w-4 shrink-0" /><span class="flex-1">{{ errorText }}<span v-if="aiError"> No se cobró el crédito.</span></span><button type="button" aria-label="Cerrar aviso" @click="errorText = ''; aiError = false"><X class="h-4 w-4" /></button></div>
+    <div v-if="errorText" role="alert" class="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800"><AlertCircle class="h-4 w-4 shrink-0" /><span class="flex-1">{{ errorText }}</span><button type="button" aria-label="Cerrar aviso" @click="errorText = ''"><X class="h-4 w-4" /></button></div>
     <div v-if="result" role="status" class="flex shrink-0 items-center gap-3 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"><CheckCircle2 class="h-4 w-4" /><span>Diseño creado. {{ result.modules.length }} módulos o catálogos nuevos.</span><NuxtLink v-for="module in result.modules.slice(0, 4)" :key="module.id" :to="`/modulos/${module.id}/editar`" class="font-semibold underline">{{ module.slug }} <ExternalLink class="inline h-3 w-3" /></NuxtLink></div>
 
     <div v-if="loading" class="flex min-h-0 flex-1 items-center justify-center text-sm text-brand-text-secondary"><LoaderCircle class="mr-2 h-5 w-5 animate-spin" />Cargando estructura…</div>
     <div v-else-if="graph" class="relative flex min-h-0 flex-1">
       <aside class="designer-chat min-h-0 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface" :style="{ '--designer-chat-width': `${chatWidth}px` }" :class="chatOpen ? 'is-open' : ''">
         <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3"><div class="flex items-center gap-2"><Sparkles class="h-4 w-4 text-brand-orange" /><strong class="text-sm">Asistente de estructura</strong></div><button type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar chat" @click="chatOpen = false"><PanelLeftClose class="h-4 w-4" /></button></div>
-        <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs">
-          <div v-if="!session?.messages.length" class="space-y-4"><div class="rounded-lg bg-brand-blue-bg p-4 leading-5 text-brand-text-secondary">Describe tu negocio o el cambio que necesitas. Verás la propuesta sobre {{ current?.modules.length ? 'tu estructura actual' : 'un lienzo vacío' }} antes de crearla.</div><div><p class="mb-2 font-bold text-brand-text-muted">PRUEBA CON UNA IDEA</p><button v-for="suggestion in ['Agrega un módulo de garantías', 'Relaciona órdenes con clientes', 'Crea un catálogo de tipos de servicio']" :key="suggestion" type="button" class="mb-2 block w-full rounded-md border border-brand-border-light px-3 py-2 text-left hover:border-brand-blue hover:bg-brand-bg" @click="prompt = suggestion">{{ suggestion }}</button></div></div>
-          <div v-for="(message, index) in session?.messages" :key="`${index}-${message.createdAt}`" class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.content }}</span></div>
-          <div v-if="busy === 'generate'" role="status" class="mr-4 rounded-lg border border-brand-border-light bg-brand-bg p-3 text-brand-text-secondary"><LoaderCircle class="mr-1 inline h-3.5 w-3.5 animate-spin" />Generando propuesta y validando estructura…</div>
-          <div v-else-if="aiUnavailable" role="alert" class="mr-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-red-800">
-            <span class="mb-1 block text-[10px] font-bold uppercase tracking-wide text-red-600"><AlertCircle class="mr-1 inline h-3.5 w-3.5" />Error de IA</span>
-            {{ aiUnavailable }}
-            <button type="button" class="mt-2 inline-flex items-center gap-1 rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40" :disabled="Boolean(busy) || noCredits || dirty" @click="sendPrompt(lastInstruction)"><RotateCcw class="h-3 w-3" />Reintentar</button>
+        <div ref="chatScroll" class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs" aria-live="polite">
+          <div v-if="!chatEntries.length" class="space-y-4"><div class="rounded-lg bg-brand-blue-bg p-4 leading-5 text-brand-text-secondary">Describe tu negocio o el cambio que necesitas. Verás la propuesta sobre {{ current?.modules.length ? 'tu estructura actual' : 'un lienzo vacío' }} antes de crearla.</div><div><p class="mb-2 font-bold text-brand-text-muted">PRUEBA CON UNA IDEA</p><button v-for="suggestion in ['Agrega un módulo de garantías', 'Relaciona órdenes con clientes', 'Crea un catálogo de tipos de servicio']" :key="suggestion" type="button" class="mb-2 block w-full rounded-md border border-brand-border-light px-3 py-2 text-left hover:border-brand-blue hover:bg-brand-bg" @click="prompt = suggestion">{{ suggestion }}</button></div></div>
+          <div v-for="message in chatEntries" :key="message.id" class="space-y-2">
+            <div class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.content }}</span><div v-if="message.id === lastAssistantId && diff && hasProposal" class="mt-3 flex flex-wrap gap-1.5 border-t border-brand-border-light pt-2"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div></div>
+            <div v-if="message.draft?.status === 'pending'" role="status" class="mr-4 flex items-center gap-2 rounded-lg border border-brand-border-light bg-brand-bg px-3 py-2.5 text-brand-text-secondary"><span class="font-semibold text-brand-orange">Diseñando…</span><span class="designer-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
+            <div v-else-if="message.draft?.status === 'failed'" role="alert" class="mr-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-red-800"><p>{{ message.draft.error }}</p><NuxtLink v-if="message.draft.action === 'plan'" to="/ajustes?section=plan" class="mt-2 inline-flex rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100">Mejorar plan</NuxtLink><button v-else type="button" class="mt-2 inline-flex items-center gap-1 rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!chatCanSend" @click="sendPrompt(message.content, message.draft.id)"><RotateCcw class="h-3 w-3" />Reintentar</button></div>
           </div>
-          <div v-if="diff && hasProposal" class="border-t border-brand-border-light pt-3"><span class="mb-2 block text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Cambios propuestos</span><div class="flex flex-wrap gap-1.5"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div><p v-for="merge in diff.merges" :key="merge.from" class="mt-2 rounded bg-brand-blue-bg px-2 py-1.5 text-[11px] text-brand-blue">{{ merge.message }}</p></div>
         </div>
-        <div class="border-t border-brand-border-light p-3"><div v-if="noCredits" class="mb-2 rounded-md bg-amber-50 p-2.5 text-xs text-amber-900"><Coins class="mr-1 inline h-4 w-4" />Sin créditos suficientes. Puedes editar el plano a mano. <NuxtLink to="/ajustes?section=plan" class="font-semibold underline">Ver plan</NuxtLink></div><div v-if="dirty" class="mb-2 text-[11px] text-brand-blue">Guarda los cambios manuales antes de continuar con la IA.</div><label class="sr-only" for="designer-prompt">Describe el cambio</label><textarea id="designer-prompt" v-model="prompt" rows="3" maxlength="4000" class="w-full resize-none rounded-md border border-brand-border-light bg-brand-surface px-3 py-2 text-xs outline-none focus:border-brand-blue disabled:bg-brand-bg" :placeholder="firstGeneration ? 'Describe qué necesita tu negocio…' : 'Pide un ajuste a la propuesta…'" :disabled="noCredits || Boolean(busy) || dirty || session?.status === 'applied'" @keydown.ctrl.enter.prevent="sendPrompt()" /><div class="mt-2 flex items-center justify-between gap-2 text-[10px] text-brand-text-muted"><span>Cuesta {{ messageCost }} {{ messageCost === 1 ? 'crédito' : 'créditos' }} · Saldo {{ balance === Infinity ? 'ilimitado' : balance }}</span><button type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-40" :disabled="!prompt.trim() || noCredits || Boolean(busy) || dirty || session?.status === 'applied'" @click="sendPrompt()"><RotateCcw v-if="aiError" class="h-3 w-3" /><Send v-else class="h-3 w-3" />{{ aiError ? 'Reintentar' : 'Enviar' }}</button></div></div>
+        <div class="border-t border-brand-border-light p-3"><div v-if="noCredits" class="mb-2 rounded-md bg-amber-50 p-2.5 text-xs text-amber-900"><Coins class="mr-1 inline h-4 w-4" />Sin créditos suficientes. Puedes editar el plano a mano. <NuxtLink to="/ajustes?section=plan" class="font-semibold underline">Ver plan</NuxtLink></div><div v-if="dirty" class="mb-2 text-[11px] text-brand-blue">Guarda los cambios manuales antes de continuar con la IA.</div><label class="sr-only" for="designer-prompt">Describe el cambio</label><textarea id="designer-prompt" v-model="prompt" rows="3" maxlength="4000" class="w-full resize-none rounded-md border border-brand-border-light bg-brand-surface px-3 py-2 text-xs outline-none focus:border-brand-blue disabled:bg-brand-bg" :placeholder="firstGeneration ? 'Describe qué necesita tu negocio…' : 'Pide un ajuste a la propuesta…'" :disabled="!chatCanSend" @keydown.ctrl.enter.prevent="sendPrompt()" /><div class="mt-2 flex items-center justify-between gap-2 text-[10px] text-brand-text-muted"><span>Cuesta {{ messageCost }} {{ messageCost === 1 ? 'crédito' : 'créditos' }} · Saldo {{ balance === Infinity ? 'ilimitado' : balance }}</span><button type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-40" :disabled="!prompt.trim() || !chatCanSend" @click="sendPrompt()"><Send class="h-3 w-3" />Enviar</button></div></div>
       </aside>
 
       <PanelResizeHandle v-model="chatWidth" class="designer-handle" :min="280" :max="520" :default-value="360" label="Redimensionar chat" @commit="chatPanel.persist()" />
 
       <main class="relative min-w-0 flex-1">
         <div v-if="!graph.modules.length" class="absolute inset-0 z-[1] flex items-center justify-center bg-brand-bg/90 p-6"><div class="max-w-lg rounded-lg border border-brand-border-light bg-brand-surface p-7 text-center shadow-sm"><Sparkles class="mx-auto mb-3 h-7 w-7 text-brand-orange" /><h1 class="text-lg font-bold">Diseña tu estructura</h1><p class="mt-2 text-sm leading-6 text-brand-text-secondary">Aún no hay módulos. Describe tu operación en el chat y revisa el plano antes de crearlo.</p><button type="button" class="mt-5 rounded bg-brand-orange px-4 py-2 text-xs font-semibold text-white designer-mobile-control" @click="chatOpen = true">Abrir chat</button></div></div>
-        <ClientOnly><DesignerCanvas v-if="graph.modules.length" ref="canvas" :graph="graph" :positions="positions" :selected-id="selectedId" :focus-id="focusId" :changed-ids="changedIds" :disabled="session?.status === 'applied'" @select="selectModule" @focus="focusId = $event" @positions="savePositions" /><template #fallback><div class="h-full bg-brand-bg" /></template></ClientOnly>
+        <ClientOnly><DesignerCanvas v-if="graph.modules.length" ref="canvas" :graph="graph" :positions="positions" :selected-id="selectedId" :focus-id="focusId" :selected-edge-id="selectedEdgeId" :relation-filter="relationFilter" :changed-ids="changedIds" :disabled="session?.status === 'applied'" @select="selectModule" @edge-select="selectEdge" @clear="clearCanvasSelection" @focus="focusId = $event" @positions="savePositions" /><template #fallback><div class="h-full bg-brand-bg" /></template></ClientOnly>
         <button type="button" class="absolute left-4 top-20 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-brand-orange text-white shadow-lg designer-mobile-control" aria-label="Abrir chat" @click="chatOpen = true"><MessageSquareText class="h-5 w-5" /></button>
         <button v-if="selectedId" type="button" class="absolute right-4 top-20 z-10 rounded bg-brand-surface px-3 py-2 text-xs font-semibold text-brand-blue shadow designer-mobile-control" @click="inspectorOpen = true">Ver inspector</button>
         <span v-if="graph.modules.length" class="absolute bottom-4 left-4 z-[2] hidden rounded bg-brand-surface px-2 py-1 text-[10px] text-brand-text-muted shadow sm:block lg:left-44">{{ graph.modules.length }} módulos y catálogos · {{ graph.sections.length }} secciones</span>
@@ -299,6 +329,8 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
 
       <aside class="designer-inspector min-h-0 shrink-0 flex-col border-l border-brand-border-light bg-brand-surface" :style="{ '--designer-inspector-width': `${inspectorWidth}px` }" :class="inspectorOpen ? 'is-open' : ''">
         <div class="flex items-start justify-between gap-2 border-b border-brand-border-light px-4 py-3"><div class="min-w-0"><span class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Inspector</span><h2 class="truncate text-sm font-bold">{{ selected?.name || 'Selecciona un módulo' }}</h2><p v-if="selected" class="text-[11px] text-brand-text-secondary">{{ selected.kind === 'dimension' ? 'Catálogo' : 'Módulo' }} · {{ selected.action === 'create' ? 'Nuevo' : 'Existente' }}</p></div><button type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar inspector" @click="inspectorOpen = false"><X class="h-4 w-4" /></button></div>
+        <div v-if="selected" class="flex items-center gap-3 border-b border-brand-border-light px-4 py-3"><IconPicker :model-value="selected.icon ?? null" :disabled="selected.action !== 'create' || session?.status === 'applied' || Boolean(busy)" @update:model-value="setSelectedIcon" /><div><span class="block text-xs font-semibold">Icono del módulo</span><span class="text-[11px] text-brand-text-muted">{{ selected.action === 'create' && session?.status !== 'applied' ? 'Cámbialo y guarda los cambios gratis' : 'Solo lectura' }}</span></div></div>
+        <div v-if="selected" class="border-b border-brand-border-light px-4 py-3"><span class="mb-2 block text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Relaciones directas</span><div role="group" aria-label="Filtrar relaciones directas" class="grid grid-cols-2 gap-1 rounded-md bg-brand-bg p-1"><button v-for="option in [{ value: 'none', label: 'Ver todo' }, { value: 'all', label: 'Todas las relaciones' }, { value: 'catalogs', label: 'Catálogos relacionados' }, { value: 'modules', label: 'Módulos relacionados' }] as const" :key="option.value" type="button" :aria-pressed="relationFilter === option.value" class="rounded px-2 py-1.5 text-left text-[11px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :class="relationFilter === option.value ? 'bg-brand-surface text-brand-blue shadow-sm' : 'text-brand-text-secondary hover:bg-brand-surface/70'" @click="relationFilter = option.value">{{ option.label }}</button></div></div>
         <div class="flex border-b border-brand-border-light px-3"><button v-for="tab in [{ id: 'fields', label: 'Campos' }, { id: 'relations', label: 'Relaciones' }, { id: 'states', label: 'Estados' }] as const" :key="tab.id" type="button" class="px-2.5 py-3 text-xs font-semibold" :class="inspectorTab === tab.id ? 'border-b-2 border-brand-blue text-brand-blue' : 'text-brand-text-muted hover:text-brand-text'" @click="inspectorTab = tab.id">{{ tab.label }}</button></div>
         <div v-if="selected" class="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-xs">
           <template v-if="inspectorTab === 'fields'"><p class="mb-3 text-brand-text-muted">Los campos existentes son de solo lectura. Los cambios nuevos se guardan gratis.</p><div v-for="(field, index) in selected.fields" :key="`${selected.slug}-${index}`" class="mb-3 rounded-md border border-brand-border-light p-3" :class="fieldIsEditable(field) ? 'bg-brand-blue-bg/30' : 'bg-brand-bg/60'"><template v-if="fieldIsEditable(field) && session?.status !== 'applied'"><div class="flex items-center justify-between"><span class="font-bold text-brand-blue">{{ selected.action === 'create' ? 'Campo nuevo' : 'Se agrega' }}</span><button type="button" class="rounded p-1 text-brand-text-muted hover:bg-red-50 hover:text-red-700" :aria-label="`Quitar ${field.label}`" @click="removeField(index)"><Trash2 class="h-3.5 w-3.5" /></button></div><label class="mt-2 block font-semibold">Etiqueta<input v-model="field.label" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5 outline-none focus:border-brand-blue" /></label><label class="mt-2 block font-semibold">Nombre técnico<input v-model="field.name" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5 font-mono outline-none focus:border-brand-blue" /></label><label class="mt-2 block font-semibold">Tipo<select :value="field.dataType" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5" @change="updateType(field, ($event.target as HTMLSelectElement).value)"><option v-for="type in fieldTypes" :key="type" :value="type">{{ designerFieldTypeLabel({ ...field, dataType: type, validationRules: {} }) }}</option></select></label><label v-if="field.dataType === 'relation'" class="mt-2 block font-semibold">Módulo destino<select v-model="field.validationRules!.relationEntity" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5"><option v-for="module in working?.modules.filter(value => value.slug !== selected?.slug)" :key="module.slug" :value="module.slug">{{ module.name }}</option></select></label><label v-if="field.dataType === 'select' || field.dataType === 'multiselect'" class="mt-2 block font-semibold">Opciones (separadas por coma)<input :value="((field.validationRules?.options ?? []) as Array<{ label: string }>).map(item => item.label).join(', ')" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5" @change="updateOptions(field, ($event.target as HTMLInputElement).value)" /></label><label class="mt-2 flex items-center gap-2"><input v-model="field.required" type="checkbox" class="accent-brand-blue" />Obligatorio</label><details class="mt-2"><summary class="cursor-pointer text-brand-blue">Reglas avanzadas (JSON)</summary><textarea :value="rulesDraft[`${selected.slug}.${field.name}`] ?? JSON.stringify(field.validationRules ?? {}, null, 2)" rows="4" class="mt-2 w-full rounded border border-brand-border-light bg-white p-2 font-mono text-[10px]" @change="updateRules(field, `${selected.slug}.${field.name}`, ($event.target as HTMLTextAreaElement).value)" /></details></template><template v-else><div class="flex items-center justify-between gap-2"><strong>{{ field.label }}<span v-if="field.required" class="text-brand-orange"> *</span></strong><span class="text-[10px] text-brand-text-muted">{{ editableTypeName(field) }}</span></div><code class="mt-1 block text-[10px] text-brand-text-muted">{{ field.name }}</code></template><p v-if="fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index)" role="alert" class="mt-2 text-[11px] text-red-700">{{ fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index) }}</p></div><button v-if="session?.status !== 'applied'" type="button" class="flex w-full items-center justify-center gap-1 rounded border border-brand-blue px-3 py-2 font-semibold text-brand-blue hover:bg-brand-blue-bg" @click="addField"><Plus class="h-4 w-4" />Agregar campo</button><button v-if="selected.action === 'create' && session?.status !== 'applied'" type="button" class="mt-4 flex w-full items-center justify-center gap-1 rounded border border-red-200 px-3 py-2 font-semibold text-red-700 hover:bg-red-50" @click="removeModule"><Trash2 class="h-4 w-4" />Quitar módulo nuevo</button></template>
@@ -315,6 +347,12 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
 <style scoped>
 .designer-chat { display: flex; width: var(--designer-chat-width, 360px); }
 .designer-inspector { display: flex; width: var(--designer-inspector-width, 320px); }
+.designer-typing-dots { display: inline-flex; gap: 3px; align-items: center; }
+.designer-typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: designer-typing 1.2s ease-in-out infinite; }
+.designer-typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.designer-typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes designer-typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .designer-typing-dots i { animation: none; opacity: 0.8; } }
 @media (min-width: 1025px) {
   .designer-mobile-control { display: none !important; }
 }

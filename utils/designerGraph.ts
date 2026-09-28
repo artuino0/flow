@@ -17,6 +17,7 @@ export interface DiagramField extends BlueprintField { state: 'existing' | 'adde
 export interface DiagramModule {
   id: string
   module: BlueprintModule
+  icon: string | null
   state: 'existing' | 'extended' | 'new'
   fields: DiagramField[]
   section: string
@@ -33,6 +34,7 @@ export interface DiagramEdge {
 }
 export interface DiagramSection { id: string; title: string; moduleIds: string[] }
 export interface DiagramGraph { modules: DiagramModule[]; edges: DiagramEdge[]; sections: DiagramSection[] }
+export type DesignerRelationFilter = 'none' | 'all' | 'catalogs' | 'modules'
 
 export function designerFieldTypeLabel(field: BlueprintField) {
   if (field.validationRules?.calculation) return 'Calculado ƒx'
@@ -58,7 +60,7 @@ export function buildDesignerGraph(current: Blueprint, blueprint: Blueprint, dif
     const state = newSlugs.has(module.slug) || module.action === 'create' ? 'new' : added.size || (diff?.states ?? []).some(item => item.slug === module.slug) ? 'extended' : 'existing'
     const fields: DiagramField[] = module.fields.map(field => ({ ...field, state: state === 'new' ? 'new' : added.has(field.name) ? 'added' : 'existing' }))
     const section = groupBySlug.get(module.slug) ?? (state === 'new' ? 'Propuesta' : module.kind === 'dimension' ? 'Catálogos' : 'Sin sección')
-    return { id: module.slug, module, state, fields, section, width: 240, height: 48 + fields.length * 27 + (module.lines?.some(line => line.totals?.length) ? 28 : 0) } satisfies DiagramModule
+    return { id: module.slug, module, icon: module.icon ?? null, state, fields, section, width: 240, height: 48 + fields.length * 27 + (module.lines?.some(line => line.totals?.length) ? 28 : 0) } satisfies DiagramModule
   })
   const byRef = new Map(modules.flatMap(item => [[item.module.ref, item.id], [item.id, item.id]]))
   const lineKeys = new Set<string>()
@@ -95,6 +97,29 @@ export function visibleDesignerGraph(graph: DiagramGraph, search: string, sectio
   })
   const ids = new Set(modules.map(module => module.id))
   return { modules, edges: graph.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)), sections: graph.sections.filter(group => group.moduleIds.some(id => ids.has(id))) }
+}
+
+/** Conserva únicamente el módulo elegido, sus vecinos directos permitidos y las aristas que los unen. */
+export function filterDesignerRelations(graph: DiagramGraph, selectedId: string | null, filter: DesignerRelationFilter): DiagramGraph {
+  if (!selectedId || filter === 'none' || !graph.modules.some(module => module.id === selectedId)) return graph
+  const byId = new Map(graph.modules.map(module => [module.id, module]))
+  const edges = graph.edges.filter(edge => {
+    const neighbor = edge.source === selectedId ? byId.get(edge.target) : edge.target === selectedId ? byId.get(edge.source) : undefined
+    return neighbor && (filter === 'all' || (filter === 'catalogs' ? neighbor.module.kind === 'dimension' : neighbor.module.kind === 'hecho'))
+  })
+  const ids = new Set([selectedId, ...edges.flatMap(edge => [edge.source, edge.target])])
+  return {
+    modules: graph.modules.filter(module => ids.has(module.id)),
+    edges,
+    sections: graph.sections.map(section => ({ ...section, moduleIds: section.moduleIds.filter(id => ids.has(id)) })).filter(section => section.moduleIds.length)
+  }
+}
+
+/** Una arista elegida destaca exclusivamente sus dos extremos y ella misma. */
+export function focusDesignerEdge(graph: DiagramGraph, edgeId: string | null) {
+  const edge = graph.edges.find(item => item.id === edgeId)
+  if (!edge) return { active: new Set(graph.modules.map(module => module.id)), edges: new Set(graph.edges.map(item => item.id)) }
+  return { active: new Set([edge.source, edge.target]), edges: new Set([edge.id]) }
 }
 
 export function focusDesignerGraph(graph: DiagramGraph, focusId: string | null) {

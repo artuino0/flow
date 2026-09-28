@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.105.0] - 2026-09-28
+#### [feature]
+- [ERD-111](https://dydasoftware.atlassian.net/browse/ERD-111) - Diseñador: propuestas de la IA con estados válidos (normalizador), iconos por módulo, chat con envío inmediato/«Diseñando…»/reintentar, cuadrícula tenue en el lienzo y filtros por relación directa con resaltado.
+
 ### [0.104.0] - 2026-09-28
 #### [feature]
 - [ERD-109](https://dydasoftware.atlassian.net/browse/ERD-109) - Diseñador de módulos fase 3: pantalla /disenador con lienzo UML (vue-flow + Dagre), chat con sesiones, inspector con edición de propuestos, revisión y aprobación; acomodo guardado por tenant (migración 0083); reintentos ante IA saturada con aviso y sin cobro (503 ai_unavailable); paneles con ancho ajustable reutilizados en el editor de Sites.

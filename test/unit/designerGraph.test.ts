@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
-import { buildDesignerGraph, focusDesignerGraph, layoutDesignerGraph, visibleDesignerGraph, type DesignerDiff } from '~/utils/designerGraph'
+import { buildDesignerGraph, filterDesignerRelations, focusDesignerEdge, focusDesignerGraph, layoutDesignerGraph, visibleDesignerGraph, type DesignerDiff } from '~/utils/designerGraph'
 
 const current: Blueprint = { version: 1, summary: 'Actual', associations: [], modules: [
   { ref: 'clientes', action: 'extend', kind: 'hecho', name: 'Clientes', slug: 'clientes', snapshot: true, fields: [{ name: 'nombre', label: 'Nombre', dataType: 'text', required: true }] },
@@ -9,7 +9,7 @@ const current: Blueprint = { version: 1, summary: 'Actual', associations: [], mo
 const proposal: Blueprint = { ...current, summary: 'Taller', modules: [
   current.modules[0]!,
   { ...current.modules[1]!, fields: [...current.modules[1]!.fields, { name: 'placas', label: 'Placas', dataType: 'text' }] },
-  { ref: 'ordenes', action: 'create', kind: 'hecho', name: 'Órdenes', slug: 'ordenes', fields: [{ name: 'vehiculo', label: 'Vehículo', dataType: 'relation', validationRules: { relationEntity: 'vehiculos' } }] },
+  { ref: 'ordenes', action: 'create', kind: 'hecho', name: 'Órdenes', slug: 'ordenes', icon: 'ShoppingCart', fields: [{ name: 'vehiculo', label: 'Vehículo', dataType: 'relation', validationRules: { relationEntity: 'vehiculos' } }] },
   { ref: 'partidas', action: 'create', kind: 'hecho', name: 'Partidas', slug: 'partidas', fields: [{ name: 'orden', label: 'Orden', dataType: 'relation', validationRules: { relationEntity: 'ordenes' } }] }
 ] }
 proposal.modules[2]!.lines = [{ childRef: 'partidas', relationField: 'orden', totals: ['importe'] }]
@@ -21,6 +21,7 @@ describe('grafo del diseñador', () => {
   it('distingue módulos existentes, nuevos y campos agregados', () => {
     expect(graph.modules.find(item => item.id === 'clientes')?.state).toBe('existing')
     expect(graph.modules.find(item => item.id === 'ordenes')?.state).toBe('new')
+    expect(graph.modules.find(item => item.id === 'ordenes')?.icon).toBe('ShoppingCart')
     expect(graph.modules.find(item => item.id === 'vehiculos')?.fields.find(field => field.name === 'placas')?.state).toBe('added')
     expect(graph.modules.find(item => item.id === 'vehiculos')?.fields.find(field => field.name === 'cliente')?.state).toBe('existing')
   })
@@ -40,5 +41,30 @@ describe('grafo del diseñador', () => {
     const layout = layoutDesignerGraph(graph, { clientes: { x: 400, y: 120 } })
     expect(layout.positions.clientes).toEqual({ x: 400, y: 120 })
     expect(layout.positions.ordenes).toBeDefined()
+  })
+
+  it('resalta únicamente los extremos de una arista y limpia el resaltado', () => {
+    const highlighted = focusDesignerEdge(graph, 'line:ordenes:partidas:orden')
+    expect(highlighted.active).toEqual(new Set(['ordenes', 'partidas']))
+    expect(highlighted.edges).toEqual(new Set(['line:ordenes:partidas:orden']))
+    expect(focusDesignerEdge(graph, null).active.size).toBe(graph.modules.length)
+    expect(focusDesignerEdge(graph, null).edges.size).toBe(graph.edges.length)
+  })
+
+  it('filtra vecinos directos en ambas direcciones e incluye asociaciones M:N', () => {
+    const withCatalogs: Blueprint = { ...proposal, modules: [...proposal.modules,
+      { ref: 'categorias', action: 'create', kind: 'dimension', name: 'Categorías', slug: 'categorias', fields: [] },
+      { ref: 'etiquetas', action: 'create', kind: 'dimension', name: 'Etiquetas', slug: 'etiquetas', fields: [{ name: 'orden', label: 'Orden', dataType: 'relation', validationRules: { relationEntity: 'ordenes' } }] }
+    ], associations: [{ name: 'orden-categoria', sourceRef: 'categorias', targetRef: 'ordenes' }] }
+    const relatedGraph = buildDesignerGraph(current, withCatalogs, diff)
+    const ids = (filter: 'all' | 'catalogs' | 'modules') => new Set(filterDesignerRelations(relatedGraph, 'ordenes', filter).modules.map(module => module.id))
+    expect(ids('all')).toEqual(new Set(['ordenes', 'vehiculos', 'partidas', 'categorias', 'etiquetas']))
+    expect(ids('catalogs')).toEqual(new Set(['ordenes', 'categorias', 'etiquetas']))
+    expect(ids('modules')).toEqual(new Set(['ordenes', 'vehiculos', 'partidas']))
+    const catalogs = filterDesignerRelations(relatedGraph, 'ordenes', 'catalogs')
+    expect(catalogs.edges.map(edge => edge.id)).toEqual(['relation:etiquetas:orden:ordenes', 'association:orden-categoria'])
+    expect(catalogs.modules.some(module => module.id === 'clientes')).toBe(false)
+    expect(filterDesignerRelations(relatedGraph, 'ordenes', 'none')).toBe(relatedGraph)
+    expect(filterDesignerRelations(relatedGraph, null, 'all')).toBe(relatedGraph)
   })
 })

@@ -5,17 +5,19 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { Blocks, FolderTree, Search, Maximize2, Crosshair } from '@lucide/vue'
-import { designerFieldTypeLabel, focusDesignerGraph, layoutDesignerGraph, visibleDesignerGraph, type DiagramGraph, type DesignerPositions } from '~/utils/designerGraph'
+import { designerFieldTypeLabel, filterDesignerRelations, focusDesignerEdge, focusDesignerGraph, layoutDesignerGraph, visibleDesignerGraph, type DesignerRelationFilter, type DiagramGraph, type DesignerPositions } from '~/utils/designerGraph'
+import { moduleIconComponent } from '~/utils/moduleIcons'
 
-const props = defineProps<{ graph: DiagramGraph; positions: DesignerPositions; selectedId: string | null; focusId: string | null; changedIds: string[]; disabled?: boolean }>()
-const emit = defineEmits<{ select: [id: string | null]; focus: [id: string | null]; positions: [value: DesignerPositions] }>()
+const props = defineProps<{ graph: DiagramGraph; positions: DesignerPositions; selectedId: string | null; focusId: string | null; selectedEdgeId: string | null; relationFilter: DesignerRelationFilter; changedIds: string[]; disabled?: boolean }>()
+const emit = defineEmits<{ select: [id: string | null]; edgeSelect: [id: string]; clear: []; focus: [id: string | null]; positions: [value: DesignerPositions] }>()
 const query = ref('')
 const section = ref('')
 const nodes = shallowRef<Node[]>([])
 const edges = shallowRef<Edge[]>([])
 const { fitView, zoomIn, zoomOut } = useVueFlow()
-const visible = computed(() => visibleDesignerGraph(props.graph, query.value, section.value))
-const highlighted = computed(() => focusDesignerGraph(visible.value, props.focusId))
+const relationGraph = computed(() => filterDesignerRelations(props.graph, props.selectedId, props.relationFilter))
+const visible = computed(() => visibleDesignerGraph(relationGraph.value, query.value, section.value))
+const highlighted = computed(() => props.selectedEdgeId ? focusDesignerEdge(visible.value, props.selectedEdgeId) : focusDesignerGraph(visible.value, props.focusId))
 
 function refreshGraph() {
   const layout = layoutDesignerGraph(props.graph, props.positions)
@@ -32,18 +34,27 @@ function refreshGraph() {
     return [{ id: `section:${group.id}`, type: 'section', position: { x, y }, data: { title: group.title, count: members.length }, draggable: false, selectable: false, connectable: false, style: { width: `${width}px`, height: `${height}px`, zIndex: -1 } } as Node]
   })
   nodes.value = [...frames, ...visible.value.modules.map(module => ({
-    id: module.id, type: 'module', position: layout.positions[module.id] ?? { x: 0, y: 0 }, data: { module, dimmed: Boolean(props.focusId) && !highlighted.value.active.has(module.id), selected: props.selectedId === module.id, totalLabel: module.module.lines?.flatMap(line => line.totals ?? []).join(', ') ?? '' },
+    id: module.id, type: 'module', position: layout.positions[module.id] ?? { x: 0, y: 0 }, data: { module, related: Boolean(props.focusId || props.selectedEdgeId) && highlighted.value.active.has(module.id), selected: props.selectedId === module.id, totalLabel: module.module.lines?.flatMap(line => line.totals ?? []).join(', ') ?? '' },
     draggable: !props.disabled, connectable: false, style: { width: `${module.width}px`, zIndex: 2 }
   } as Node))]
   edges.value = visible.value.edges.filter(edge => selected.has(edge.source) && selected.has(edge.target)).map(edge => ({
     id: edge.id, source: edge.source, target: edge.target, type: 'smoothstep', label: edge.label,
     animated: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: edge.state === 'new' ? '#f97316' : '#94a3b8' },
-    style: { stroke: edge.state === 'new' ? '#e8682d' : '#8b9bac', strokeWidth: edge.kind === 'lines' ? 3 : 1.5, opacity: props.focusId && !highlighted.value.edges.has(edge.id) ? 0.16 : 1 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: props.selectedEdgeId && highlighted.value.edges.has(edge.id) ? '#c94f19' : edge.state === 'new' ? '#f97316' : '#94a3b8' },
+    style: { stroke: props.selectedEdgeId && highlighted.value.edges.has(edge.id) ? '#c94f19' : edge.state === 'new' ? '#e8682d' : '#8b9bac', strokeWidth: props.selectedEdgeId && highlighted.value.edges.has(edge.id) ? 3.5 : edge.kind === 'lines' ? 3 : 1.5 },
     labelStyle: { fill: '#526579', fontSize: '10px', fontWeight: 600 }, labelBgStyle: { fill: '#fff', fillOpacity: 0.92 }, labelBgPadding: [5, 3]
   } as Edge))
 }
-watch([() => props.graph, () => props.positions, () => props.selectedId, () => props.focusId, query, section], refreshGraph, { immediate: true })
+watch([() => props.graph, () => props.positions, () => props.selectedId, () => props.focusId, () => props.selectedEdgeId, () => props.relationFilter, query, section], refreshGraph, { immediate: true })
+watch([() => props.relationFilter, () => props.selectedId], async ([filter], [previousFilter]) => {
+  if (filter !== 'none') { query.value = ''; section.value = '' }
+  if (filter === 'none' && previousFilter === 'none') return
+  await nextTick()
+  setTimeout(() => {
+    const ids = visible.value.modules.map(module => module.id)
+    if (ids.length) void fitView({ nodes: ids, padding: 0.25, duration: 250 })
+  }, 50)
+})
 watch(() => props.changedIds.join('|'), async () => {
   if (!props.changedIds.length) return
   await nextTick()
@@ -62,15 +73,16 @@ defineExpose({ fitCanvas })
 
 <template>
   <div class="relative h-full w-full overflow-hidden bg-brand-bg">
-    <VueFlow v-model:nodes="nodes" v-model:edges="edges" class="designer-flow" :min-zoom="0.2" :max-zoom="2" :nodes-connectable="false" :elements-selectable="false" fit-view-on-init @node-click="({ node }) => { if (!node.id.startsWith('section:')) emit('select', node.id) }" @node-drag-stop="onDragStop" @pane-click="emit('select', null)">
-      <Background pattern-color="#dce5eb" :gap="22" :size="1" />
+    <VueFlow v-model:nodes="nodes" v-model:edges="edges" class="designer-flow" :min-zoom="0.2" :max-zoom="2" :nodes-connectable="false" :elements-selectable="false" fit-view-on-init @node-click="({ node }) => { if (!node.id.startsWith('section:')) emit('select', node.id) }" @edge-click="({ edge, event }) => { event?.stopPropagation(); emit('edgeSelect', edge.id) }" @node-drag-stop="onDragStop" @pane-click="emit('clear')">
+      <Background id="minor-grid" variant="lines" color="#e9eff3" :gap="20" :line-width="0.4" />
+      <Background id="major-grid" variant="lines" color="#dfe8ee" :gap="100" :line-width="0.65" />
       <MiniMap pannable zoomable :node-color="(node) => node.data?.module?.state === 'new' ? '#e8682d' : '#9daab7'" class="!border !border-brand-border-light !bg-brand-surface" />
       <Controls position="bottom-right" />
       <template #node-section="{ data }"><div class="designer-section"><span class="inline-flex items-center gap-1.5"><FolderTree class="h-3.5 w-3.5" />{{ data.title }}</span><span>{{ data.count }}</span></div></template>
       <template #node-module="{ data }">
         <Handle type="target" :position="Position.Top" class="!h-1 !w-1 !border-0 !bg-transparent" />
-        <button type="button" class="designer-module w-full text-left" :class="[data.module.state === 'new' ? 'is-new' : data.module.state === 'extended' ? 'is-extended' : '', data.module.module.kind === 'dimension' ? 'is-catalog' : '', data.selected ? 'is-selected' : '', data.dimmed ? 'is-dimmed' : '']" :aria-label="`Seleccionar ${data.module.module.name}`">
-          <div class="designer-module-head"><span class="truncate font-semibold">{{ data.module.module.name }}</span><span v-if="data.module.state === 'new'" class="designer-badge">Nuevo</span></div>
+        <button type="button" class="designer-module w-full text-left" :class="[data.module.state === 'new' ? 'is-new' : data.module.state === 'extended' ? 'is-extended' : '', data.module.module.kind === 'dimension' ? 'is-catalog' : '', data.selected ? 'is-selected' : '', data.related ? 'is-related' : '']" :aria-label="`Seleccionar ${data.module.module.name}`">
+          <div class="designer-module-head"><span class="flex min-w-0 items-center gap-2"><component :is="moduleIconComponent(data.module.icon)" class="h-4 w-4 shrink-0 text-brand-blue" :stroke-width="1.75" /><span class="truncate font-semibold">{{ data.module.module.name }}</span></span><span v-if="data.module.state === 'new'" class="designer-badge">Nuevo</span></div>
           <div class="designer-module-meta"><Blocks class="h-3 w-3" />{{ data.module.module.kind === 'dimension' ? 'Catálogo' : 'Módulo' }}<span v-if="data.module.module.workflow" class="ml-auto">Estados · {{ Object.keys(data.module.module.workflow.states).length }}</span></div>
           <div class="designer-module-fields"><div v-for="field in data.module.fields" :key="field.name" class="designer-field" :class="field.state === 'added' ? 'is-added' : ''"><span class="truncate">{{ field.label }}<b v-if="field.required" class="ml-0.5 text-brand-orange">*</b></span><span class="shrink-0 text-[10px] text-brand-text-muted">{{ designerFieldTypeLabel(field) }}</span><span v-if="field.state === 'added'" class="designer-added">Se agrega</span></div><div v-if="!data.module.fields.length" class="px-3 py-2 text-[11px] text-brand-text-muted">Sin campos</div></div>
           <div v-if="data.totalLabel" class="designer-module-total">Total al pie: {{ data.totalLabel }}</div>
@@ -96,13 +108,13 @@ defineExpose({ fitCanvas })
 @import '@vue-flow/minimap/dist/style.css';
 .designer-flow .vue-flow__node { border: 0; border-radius: 6px; background: transparent; padding: 0; }
 .designer-flow .vue-flow__node-section { pointer-events: none; }
-.designer-section { width: 100%; height: 100%; border: 1px solid #d8e1e8; border-radius: 10px; background: #f8fafb; padding: 12px 15px; color: #657789; font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; align-items: flex-start; }
+.designer-section { width: 100%; height: 100%; border: 1px solid #e9eff3; border-radius: 10px; background: #ffffff28; padding: 12px 15px; color: #657789; font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; align-items: flex-start; }
 .designer-module { display: block; overflow: hidden; border: 1px solid #aebdc9; border-radius: 7px; background: #fff; box-shadow: 0 2px 7px #33475b12; color: #243849; transition: opacity .18s, box-shadow .18s, border-color .18s; }
 .designer-module.is-new { border: 2px solid #e8682d; }
 .designer-module.is-extended { border-color: #0091ae; }
 .designer-module.is-catalog { border-style: dashed; }
 .designer-module.is-selected { box-shadow: 0 0 0 3px #0091ae35, 0 4px 12px #33475b22; }
-.designer-module.is-dimmed { opacity: .22; }
+.designer-module.is-related { box-shadow: 0 0 0 2px #d65a23, 0 4px 12px #33475b22; }
 .designer-module-head { display: flex; justify-content: space-between; gap: 6px; align-items: center; padding: 9px 11px 5px; font-size: 12px; background: #f4f7f9; }
 .designer-module.is-new .designer-module-head { background: #fff3ef; }
 .designer-module-meta { display: flex; gap: 5px; align-items: center; padding: 0 11px 7px; font-size: 10px; color: #708191; background: #f4f7f9; }
