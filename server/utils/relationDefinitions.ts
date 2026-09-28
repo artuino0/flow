@@ -219,8 +219,8 @@ export type DeleteRelationDefinitionResult = { status: 'deleted' } | { status: '
  * nunca borrar vinculos ya creados por el usuario en cascada sin que lo pida
  * explicitamente borrando cada uno primero.
  */
-export async function deleteRelationDefinition(tenantId: string, id: string): Promise<DeleteRelationDefinitionResult> {
-  return withTenant(tenantId, async (tx: Tx) => {
+export async function deleteRelationDefinition(tenantId: string, id: string, existingTx?: Tx): Promise<DeleteRelationDefinitionResult> {
+  const run = async (tx: Tx): Promise<DeleteRelationDefinitionResult> => {
     const [definition] = await tx
       .select({ id: relationDefinitions.id })
       .from(relationDefinitions)
@@ -237,5 +237,8 @@ export async function deleteRelationDefinition(tenantId: string, id: string): Pr
 
     await tx.delete(relationDefinitions).where(and(eq(relationDefinitions.id, id), eq(relationDefinitions.tenantId, tenantId)))
     return { status: 'deleted' }
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
+
+export const deleteRelationDefinitionInTx = (tx: Tx, tenantId: string, id: string) => deleteRelationDefinition(tenantId, id, tx)

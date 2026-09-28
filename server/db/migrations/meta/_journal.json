@@ -589,6 +589,13 @@
       "when": 1790520989935,
       "breakpoints": true,
       "tag": "0083_module_designer_layouts"
+    },
+    {
+      "version": "7",
+      "idx": 84,
+      "when": 1790520990935,
+      "breakpoints": true,
+      "tag": "0084_blueprint_undo"
     }
   ]
 }

@@ -483,8 +483,8 @@ export type DeleteEntityFieldResult = 'deleted' | 'not-found'
  * la proxima revalidacion perezosa (is_dirty, ERD-18) - asi lo pide
  * explicitamente el criterio de aceptacion de esta HU.
  */
-export async function deleteEntityField(tenantId: string, fieldId: string): Promise<DeleteEntityFieldResult> {
-  return withTenant(tenantId, async (tx) => {
+export async function deleteEntityField(tenantId: string, fieldId: string, existingTx?: Tx): Promise<DeleteEntityFieldResult> {
+  const run = async (tx: Tx) => {
     const current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return 'not-found'
     if (current.name === 'id') {
@@ -492,10 +492,13 @@ export async function deleteEntityField(tenantId: string, fieldId: string): Prom
     }
 
     await tx.delete(entityFields).where(eq(entityFields.id, fieldId))
-    invalidateEntitySchemaCache(tenantId, current.entityId)
+    if (!existingTx) invalidateEntitySchemaCache(tenantId, current.entityId)
     return 'deleted'
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
+
+export const deleteEntityFieldInTx = (tx: Tx, tenantId: string, fieldId: string) => deleteEntityField(tenantId, fieldId, tx)
 
 /**
  * "El organizador" (pedido del usuario, 2026-09-01): guarda un nuevo orden

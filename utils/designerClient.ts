@@ -16,6 +16,7 @@ export interface CreditBalance { included: number | null; used: number; included
 export interface DesignerValidation { normalized: Blueprint | null; errors: Array<{ path: string; message: string; code?: string }>; diff: DesignerDiff; merges: DesignerDiff['merges'] }
 export interface DesignerGeneration { message: string; blueprint: Blueprint; diff: DesignerDiff; merges: DesignerDiff['merges']; credits: CreditBalance }
 export interface DesignerApply { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[] }
+export interface DesignerApplication { id: string; createdAt: string; userId: string | null; userName: string | null; summary: string; modules: number; fields: number; associations: number; undoneAt: string | null; canUndo: boolean; reason: string | null; warnings: string[] }
 export interface DesignerNavigation { layout: NavigationLayout; entities: Array<{ id: string; slug: string }> }
 
 type Request = (url: string, options?: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown }) => Promise<unknown>
@@ -24,6 +25,8 @@ export function createDesignerClient(request: Request) {
   const send = async <T>(url: string, options?: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown }): Promise<T> => await request(url, options) as T
   return {
     listSessions: () => send<DesignerSession[]>('/api/module-designer/sessions'),
+    listApplications: () => send<DesignerApplication[]>('/api/module-designer/applications'),
+    undoApplication: (id: string, confirmPartial: boolean) => send<{ id: string; warnings: string[] }>(`/api/module-designer/applications/${encodeURIComponent(id)}/undo`, { method: 'POST', body: { confirmPartial } }),
     createSession: () => send<DesignerSession>('/api/module-designer/sessions', { method: 'POST', body: {} }),
     getSession: (id: string) => send<DesignerSession>(sessionPath(id)),
     getCurrent: () => send<Blueprint>('/api/blueprints/current'),

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.106.0] - 2026-09-28
+#### [feature]
+- [ERD-112](https://dydasoftware.atlassian.net/browse/ERD-112) - Diseñador: deshacer un diseño aplicado desde el historial en /disenador con protección ante datos capturados (migración 0084); agrupador con borde más visible.
+
 ### [0.105.0] - 2026-09-28
 #### [feature]
 - [ERD-111](https://dydasoftware.atlassian.net/browse/ERD-111) - Diseñador: propuestas de la IA con estados válidos (normalizador), iconos por módulo, chat con envío inmediato/«Diseñando…»/reintentar, cuadrícula tenue en el lienzo y filtros por relación directa con resaltado.

@@ -361,8 +361,8 @@ export type DeleteEntityResult = { status: 'deleted' } | { status: 'not-found' }
 /**
  * Envía un módulo a la papelera sin borrar metadatos ni registros.
  */
-async function deleteEntityImpl(tenantId: string, entityId: string): Promise<DeleteEntityResult> {
-  return withTenant(tenantId, async (tx: Tx) => {
+async function deleteEntityImpl(tenantId: string, entityId: string, existingTx?: Tx): Promise<DeleteEntityResult> {
+  const run = async (tx: Tx): Promise<DeleteEntityResult> => {
     const [entity] = await tx
       .select({ id: entities.id })
       .from(entities)
@@ -373,7 +373,8 @@ async function deleteEntityImpl(tenantId: string, entityId: string): Promise<Del
     await tx.update(entities).set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), isNull(entities.deletedAt)))
     return { status: 'deleted' }
-  })
+  }
+  return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
 
 async function restoreEntityImpl(tenantId: string, entityId: string): Promise<EntitySummary | null> {
@@ -408,4 +409,5 @@ export const updateEntity = invalidatesTenantAccess(updateEntityImpl)
 export const createEntityInTx = (tx: Tx, tenantId: string, input: Parameters<typeof createEntityImpl>[1]) => createEntityImpl(tenantId, input, tx)
 export const updateEntityInTx = (tx: Tx, tenantId: string, entityId: string, input: Parameters<typeof updateEntityImpl>[2]) => updateEntityImpl(tenantId, entityId, input, tx)
 export const deleteEntity = invalidatesTenantAccess(deleteEntityImpl)
+export const deleteEntityInTx = (tx: Tx, tenantId: string, entityId: string) => deleteEntityImpl(tenantId, entityId, tx)
 export const restoreEntity = invalidatesTenantAccess(restoreEntityImpl)

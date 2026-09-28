@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, MessageSquareText, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
 import type { Blueprint, BlueprintField } from '~/server/utils/blueprint/schema'
 import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
-import { createDesignerClient, type CreditBalance, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
+import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
 import { beginDesignerChat, canSendDesignerChat, designerChatEntries, failDesignerChat, type DesignerChatDraft } from '~/utils/designerChat'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
@@ -12,6 +12,7 @@ useHead({ title: 'Diseñador de estructura | Flow' })
 const api = createDesignerClient((url, options) => $fetch(url, { method: options?.method, body: options?.body as Record<string, unknown> | undefined }))
 const { confirm } = useConfirm()
 const sessions = ref<DesignerSession[]>([])
+const applications = ref<DesignerApplication[]>([])
 const session = ref<DesignerSession | null>(null)
 const current = ref<Blueprint | null>(null)
 const working = ref<Blueprint | null>(null)
@@ -28,7 +29,7 @@ const prompt = ref('')
 const chatDrafts = ref<DesignerChatDraft[]>([])
 const chatScroll = ref<HTMLElement | null>(null)
 const loading = ref(true)
-const busy = ref<'generate' | 'save' | 'apply' | ''>('')
+const busy = ref<'generate' | 'save' | 'apply' | 'undo' | ''>('')
 const errorText = ref('')
 const fieldErrors = ref<Array<{ path: string; message: string; code?: string }>>([])
 const reviewOpen = ref(false)
@@ -117,8 +118,9 @@ async function switchSession(id?: string) {
 }
 onMounted(async () => {
   try {
-    const [allSessions, base, creditBalance, nav, layout] = await Promise.all([api.listSessions(), api.getCurrent(), api.getCredits(), api.getNavigation(), api.getLayout()])
+    const [allSessions, base, creditBalance, nav, layout, applied] = await Promise.all([api.listSessions(), api.getCurrent(), api.getCredits(), api.getNavigation(), api.getLayout(), api.listApplications()])
     sessions.value = allSessions
+    applications.value = applied
     current.value = base
     credits.value = creditBalance
     navigation.value = nav
@@ -199,6 +201,7 @@ async function approve() {
     diff.value = null
     reviewOpen.value = false
     sessions.value = [session.value, ...sessions.value.filter(item => item.id !== session.value?.id)]
+    applications.value = await api.listApplications()
   } catch (error) { const info = apiError(error); errorText.value = info.message; if (info.code === 'plan_limit' && working.value) diff.value = (await api.validate(working.value)).diff } finally { busy.value = '' }
 }
 function selectModule(id: string | null) {
@@ -207,6 +210,36 @@ function selectModule(id: string | null) {
   selectedEdgeId.value = null
   focusId.value = null
   if (id) inspectorOpen.value = true
+}
+async function undoApplication(item: DesignerApplication) {
+  if (!item.canUndo || busy.value) return
+  const parts = [`Se enviarán a la papelera ${item.modules} módulos o catálogos nuevos, dejarán de estar activos ${item.fields} campos y se quitarán ${item.associations} asociaciones creadas por este diseño.`, ...item.warnings, 'Los créditos consumidos no se devuelven.']
+  if (!await confirm({ title: `Deshacer «${item.summary}»`, message: parts.join('\n\n'), confirmLabel: 'Deshacer diseño', destructive: true })) return
+  busy.value = 'undo'; errorText.value = ''
+  try {
+    await api.undoApplication(item.id, item.warnings.length > 0)
+    const [base, applied, allSessions] = await Promise.all([api.getCurrent(), api.listApplications(), api.listSessions()])
+    current.value = base
+    applications.value = applied
+    sessions.value = allSessions
+    if (session.value?.status === 'applied') {
+      await startSession()
+    } else if (session.value && working.value) {
+      const validated = await api.validate(working.value)
+      diff.value = validated.diff
+      fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
+    }
+    selectedId.value = null
+    selectedEdgeId.value = null
+    relationFilter.value = 'none'
+    result.value = null
+    sessionMenuOpen.value = false
+    await nextTick()
+    canvas.value?.fitCanvas()
+  } catch (error) {
+    errorText.value = apiError(error).message
+    applications.value = await api.listApplications().catch(() => applications.value)
+  } finally { busy.value = '' }
 }
 function selectEdge(id: string) {
   selectedId.value = null
@@ -284,9 +317,10 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
         <input v-if="working" v-model="working.summary" class="min-w-0 max-w-44 rounded border border-brand-border-light bg-brand-bg px-2 py-1 text-xs font-semibold outline-none focus:border-brand-blue sm:max-w-56" aria-label="Nombre del diseño" />
         <div class="relative">
           <button type="button" class="flex items-center gap-1 rounded border border-brand-border-light px-2 py-1 text-xs text-brand-text-secondary hover:bg-brand-bg" :aria-expanded="sessionMenuOpen" @click="sessionMenuOpen = !sessionMenuOpen"><span class="hidden sm:inline">Sesiones</span><ChevronDown class="h-3 w-3" /></button>
-          <div v-if="sessionMenuOpen" class="absolute left-0 top-8 z-50 max-h-72 w-72 overflow-y-auto rounded-md border border-brand-border-light bg-brand-surface p-1 shadow-lg">
+          <div v-if="sessionMenuOpen" class="absolute left-0 top-8 z-50 max-h-80 w-80 overflow-y-auto rounded-md border border-brand-border-light bg-brand-surface p-1 shadow-lg">
             <button type="button" class="w-full rounded px-3 py-2 text-left text-xs font-semibold text-brand-blue hover:bg-brand-bg" @click="switchSession()"><Plus class="mr-1 inline h-3 w-3" />Nuevo diseño</button>
             <button v-for="item in sessions.filter(value => value.status === 'draft' || value.status === 'error')" :key="item.id" type="button" class="flex w-full flex-col rounded px-3 py-2 text-left text-xs hover:bg-brand-bg" :class="session?.id === item.id ? 'bg-brand-blue-bg' : ''" @click="switchSession(item.id)"><span class="truncate font-semibold">{{ item.blueprint.summary }}</span><span class="text-[10px] text-brand-text-muted">{{ formatDate(item.updatedAt) }} · {{ item.status === 'applied' ? 'Creado' : 'Borrador' }}</span></button>
+            <div v-if="applications.length" class="mt-1 border-t border-brand-border-light pt-2"><h2 class="px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Diseños aplicados</h2><div v-for="item in applications" :key="item.id" class="border-b border-brand-border-light px-3 py-2 text-xs last:border-b-0"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate">{{ item.summary }}</strong><span class="text-[10px] text-brand-text-muted">{{ formatDate(item.createdAt) }} · {{ item.userName || 'Sistema' }}</span></div><button type="button" class="rounded border border-red-200 px-2 py-1 font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!item.canUndo || Boolean(busy)" :title="item.reason || undefined" @click="undoApplication(item)">Deshacer</button></div><p class="mt-1 text-[10px] text-brand-text-secondary">{{ item.modules }} módulos · {{ item.fields }} campos · {{ item.associations }} asociaciones</p><p v-if="item.reason" class="mt-1 text-[10px] text-amber-800">{{ item.reason }}</p><p v-for="warning in item.warnings" :key="warning" class="mt-1 text-[10px] text-amber-800">{{ warning }}</p></div></div>
           </div>
         </div>
         <span class="hidden rounded-full bg-brand-bg px-2.5 py-1 text-[11px] font-semibold text-brand-text-secondary lg:inline">{{ credits?.includedRemaining === null ? 'Créditos ilimitados' : `${balance} créditos` }}</span>

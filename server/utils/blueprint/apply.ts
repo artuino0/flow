@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { createError } from 'h3'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { blueprintApplications, entities, entityFields } from '~/server/db/schema'
 import { assertPlanCapacity } from '~/server/utils/billing'
@@ -17,7 +17,7 @@ import type { Blueprint, BlueprintField } from './schema'
 import { validateBlueprint } from './validate'
 import { blueprintPlanImpact } from './plan'
 
-export interface BlueprintApplyResult { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[]; merges: Array<{ from: string; to: string; message: string; discardedFields: string[] }> }
+export interface BlueprintApplyResult { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[]; merges: Array<{ from: string; to: string; message: string; discardedFields: string[] }>; before?: Array<{ entityId: string; slug: string; detailLayout?: unknown; workflowConfig?: unknown }>; createdAssociations?: Array<{ id: string; name: string; sourceEntityId: string; targetEntityId: string }>; touchedModuleIds?: string[] }
 
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)])) : value
 const hashBlueprint = (blueprint: unknown) => createHash('sha256').update(JSON.stringify(stable(blueprint))).digest('hex')
@@ -28,6 +28,7 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
   const previous = await withTenant(tenantId, tx => tx.select().from(blueprintApplications).where(and(eq(blueprintApplications.tenantId, tenantId), eq(blueprintApplications.idempotencyKey, idempotencyKey))).limit(1))
   if (previous[0]) {
     if (previous[0].blueprintHash !== blueprintHash) throw createError({ statusCode: 409, statusMessage: 'Esta clave de idempotencia se usó con otro plano' })
+    if (previous[0].undoneAt) throw createError({ statusCode: 409, statusMessage: 'Esta aplicación ya fue deshecha; crea una nueva sesión para aplicar el diseño otra vez' })
     return previous[0].result as BlueprintApplyResult
   }
   const checked = await validateBlueprint(tenantId, input)
@@ -42,25 +43,31 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
   if (incoming) await assertPlanCapacity(tenantId, 'modules', incoming)
 
   const applied = await withTenant(tenantId, async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenantId}, 112))`)
     const [reservation] = await tx.insert(blueprintApplications).values({ tenantId, userId, idempotencyKey, blueprintHash, appliedBlueprint: normalized, result: {} }).onConflictDoNothing().returning({ id: blueprintApplications.id })
     if (!reservation) {
       const [existing] = await tx.select().from(blueprintApplications).where(and(eq(blueprintApplications.tenantId, tenantId), eq(blueprintApplications.idempotencyKey, idempotencyKey))).limit(1)
       if (!existing || existing.blueprintHash !== blueprintHash) throw createError({ statusCode: 409, statusMessage: 'Esta clave de idempotencia se usó con otro plano' })
+      if (existing.undoneAt) throw createError({ statusCode: 409, statusMessage: 'Esta aplicación ya fue deshecha; crea una nueva sesión para aplicar el diseño otra vez' })
       return existing.result as BlueprintApplyResult
     }
-    const result: BlueprintApplyResult = { modules: [], fields: [], associations: [], layouts: [], workflows: [], merges: checked.merges }
+    const result: BlueprintApplyResult = { modules: [], fields: [], associations: [], layouts: [], workflows: [], merges: checked.merges, before: [], createdAssociations: [], touchedModuleIds: [] }
+    const touched = new Set<string>()
+    const before = new Map<string, NonNullable<BlueprintApplyResult['before']>[number]>()
     const ids = new Map((checked.current?.modules ?? []).map(module => [module.slug, module.id]))
     const newModules = normalized.modules.filter(module => module.action === 'create')
     for (const kind of ['dimension', 'hecho'] as const) for (const module of newModules.filter(item => item.kind === kind)) {
       const created = await createEntityInTx(tx, tenantId, { name: module.name, slug: module.slug, description: module.description ?? null, icon: module.icon ?? null, moduleKind: module.kind, singularName: module.singularName ?? null })
       ids.set(module.slug, created.id)
       result.modules.push({ id: created.id, slug: module.slug })
+      touched.add(created.id)
     }
     const newFields = normalized.modules.flatMap(module => (checked.newFields.get(module.ref) ?? []).map(field => ({ module, field })))
     const addField = async (module: Blueprint['modules'][number], field: BlueprintField) => {
       const entityId = ids.get(module.slug)!
       await createEntityFieldInTx(tx, tenantId, entityId, { name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), validationRules: field.validationRules ?? {} })
       result.fields.push({ entityId, name: field.name })
+      touched.add(entityId)
     }
     for (const { module, field } of newFields.filter(item => item.field.dataType !== 'relation' && !item.field.validationRules?.calculation && item.field.dataType !== 'incremental')) await addField(module, field)
     for (const { module, field } of newFields.filter(item => item.field.dataType === 'relation')) await addField(module, field)
@@ -69,8 +76,11 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
     const associationNames = new Set((checked.current?.associations ?? []).map(item => item.name))
     for (const association of normalized.associations) {
       if (associationNames.has(association.name)) continue
-      await createRelationDefinitionInTx(tx, tenantId, { name: association.name, sourceEntityId: ids.get(association.sourceRef)!, targetEntityId: ids.get(association.targetRef)! })
+      const created = await createRelationDefinitionInTx(tx, tenantId, { name: association.name, sourceEntityId: ids.get(association.sourceRef)!, targetEntityId: ids.get(association.targetRef)! })
       result.associations.push(association.name)
+      result.createdAssociations!.push({ id: created.id, name: created.name, sourceEntityId: created.sourceEntityId, targetEntityId: created.targetEntityId })
+      touched.add(created.sourceEntityId)
+      touched.add(created.targetEntityId)
     }
     const pending = newFields.filter(item => Boolean(item.field.validationRules?.calculation))
     while (pending.length) {
@@ -102,8 +112,10 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
       }
       const layout = { properties: old.properties.length ? old.properties : allFields.map(field => ({ name: field.name, visible: true })), relations, showActivity: old.showActivity }
       if (!isDeepStrictEqual(layout, entity?.detailLayout)) {
+        if (module.action === 'extend') before.set(ids.get(module.slug)!, { ...(before.get(ids.get(module.slug)!) ?? { entityId: ids.get(module.slug)!, slug: module.slug }), detailLayout: entity?.detailLayout ?? null })
         await updateEntityInTx(tx, tenantId, ids.get(module.slug)!, { detailLayout: layout })
         result.layouts.push(module.slug)
+        touched.add(ids.get(module.slug)!)
       }
     }
     for (const module of normalized.modules) {
@@ -111,9 +123,13 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
       const [entity] = await tx.select({ workflowConfig: entities.workflowConfig }).from(entities).where(and(eq(entities.id, ids.get(module.slug)!), eq(entities.tenantId, tenantId))).limit(1)
       if (entity?.workflowConfig) continue
       await validateWorkflowConfig(tx, tenantId, ids.get(module.slug)!, module.workflow)
+      if (module.action === 'extend') before.set(ids.get(module.slug)!, { ...(before.get(ids.get(module.slug)!) ?? { entityId: ids.get(module.slug)!, slug: module.slug }), workflowConfig: entity?.workflowConfig ?? null })
       await updateEntityInTx(tx, tenantId, ids.get(module.slug)!, { workflowConfig: module.workflow })
       result.workflows.push(module.slug)
+      touched.add(ids.get(module.slug)!)
     }
+    result.before = [...before.values()]
+    result.touchedModuleIds = [...touched]
     await tx.update(blueprintApplications).set({ result }).where(eq(blueprintApplications.id, reservation.id))
     return result
   })

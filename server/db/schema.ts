@@ -510,6 +510,8 @@ export const blueprintApplications = pgTable('blueprint_applications', {
   blueprintHash: text('blueprint_hash').notNull(),
   appliedBlueprint: jsonb('applied_blueprint').notNull(),
   result: jsonb('result').notNull(),
+  undoneAt: timestamp('undone_at', { withTimezone: true }),
+  undoneBy: uuid('undone_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => ({ tenantKeyUnique: uniqueIndex('blueprint_applications_tenant_key_unique').on(table.tenantId, table.idempotencyKey) }))
 

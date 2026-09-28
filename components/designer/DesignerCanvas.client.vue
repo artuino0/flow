@@ -108,7 +108,7 @@ defineExpose({ fitCanvas })
 @import '@vue-flow/minimap/dist/style.css';
 .designer-flow .vue-flow__node { border: 0; border-radius: 6px; background: transparent; padding: 0; }
 .designer-flow .vue-flow__node-section { pointer-events: none; }
-.designer-section { width: 100%; height: 100%; border: 1px solid #e9eff3; border-radius: 10px; background: #ffffff28; padding: 12px 15px; color: #657789; font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; align-items: flex-start; }
+.designer-section { width: 100%; height: 100%; border: 1px solid #dfe8ee; border-radius: 10px; background: #f8fafbcc; padding: 12px 15px; color: #657789; font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; align-items: flex-start; }
 .designer-module { display: block; overflow: hidden; border: 1px solid #aebdc9; border-radius: 7px; background: #fff; box-shadow: 0 2px 7px #33475b12; color: #243849; transition: opacity .18s, box-shadow .18s, border-color .18s; }
 .designer-module.is-new { border: 2px solid #e8682d; }
 .designer-module.is-extended { border-color: #0091ae; }
