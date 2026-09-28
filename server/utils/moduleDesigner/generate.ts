@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
 import { moduleDesignSessions } from '~/server/db/schema'
-import { completeDesignerJson, type DesignerCompletion } from '~/server/utils/aiProvider'
+import { AiProviderUnavailableError, completeDesignerJson, type DesignerCompletion } from '~/server/utils/aiProvider'
 import { exportBlueprint } from '~/server/utils/blueprint/export'
 import { validateBlueprint } from '~/server/utils/blueprint/validate'
 import { diffBlueprint } from '~/server/utils/blueprint/diff'
@@ -111,6 +111,10 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     return { message: chatMessage, blueprint: normalized, diff, merges, credits }
   } catch (error) {
     await finishAiCredits(tenantId, sessionId, allocations, usage, false)
+    // Proveedor saturado/caído tras los reintentos: 503 recuperable en vez de 500 genérico (HU-ERD-109b).
+    if (error instanceof AiProviderUnavailableError) {
+      throw createError({ statusCode: 503, statusMessage: 'La IA está saturada en este momento. No se cobraron créditos; intenta de nuevo en un minuto.', data: { code: 'ai_unavailable' }, cause: error })
+    }
     throw error
   }
 }

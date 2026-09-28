@@ -27,7 +27,7 @@ const APP_PREFIXES: Array<[FlowAppKey, string[]]> = [
   ['automation', ['/triggers', '/automatizacion']],
   ['sites', ['/sites']],
   ['billing', ['/facturacion', '/facturacion-print']],
-  ['settings', ['/ajustes', '/mi-cuenta', '/usuarios', '/roles', '/modulos', '/organizacion', '/catalogos', '/activar']]
+  ['settings', ['/ajustes', '/mi-cuenta', '/usuarios', '/roles', '/modulos', '/disenador', '/organizacion', '/catalogos', '/activar']]
 ]
 
 export function resolveFlowApp(path: string): FlowAppKey {
@@ -36,4 +36,3 @@ export function resolveFlowApp(path: string): FlowAppKey {
   }
   return 'core'
 }
-

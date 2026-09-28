@@ -582,6 +582,13 @@
       "when": 1790520988935,
       "breakpoints": true,
       "tag": "0082_module_designer"
+    },
+    {
+      "version": "7",
+      "idx": 83,
+      "when": 1790520989935,
+      "breakpoints": true,
+      "tag": "0083_module_designer_layouts"
     }
   ]
 }

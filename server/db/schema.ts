@@ -529,6 +529,12 @@ export const moduleDesignSessions = pgTable('module_design_sessions', {
   discardedAt: timestamp('discarded_at', { withTimezone: true })
 }, table => ({ tenantIdx: index('module_design_sessions_tenant_idx').on(table.tenantId, table.createdAt) }))
 
+export const moduleDesignerLayouts = pgTable('module_designer_layouts', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  positions: jsonb('positions').$type<Record<string, { x: number; y: number }>>().notNull().default(sql`'{}'::jsonb`),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})
+
 export const aiCreditPackages = pgTable('ai_credit_packages', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),

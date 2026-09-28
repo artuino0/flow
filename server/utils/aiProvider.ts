@@ -16,6 +16,18 @@
 // de esos SDKs.
 export class AiProviderNotConfiguredError extends Error {}
 
+/**
+ * Fallo del proveedor de IA tras agotar los reintentos (5xx sostenido, cuota
+ * 429, red caída o timeout). Quien llama la traduce a un HTTP 503 recuperable
+ * en vez de un 500 genérico (HU-ERD-109b).
+ */
+export class AiProviderUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'AiProviderUnavailableError'
+  }
+}
+
 /** Con network real (deployment) esto puede tardar varios segundos - igual se corta para no dejar la request colgada para siempre si el proveedor no responde. */
 const REQUEST_TIMEOUT_MS = 30_000
 
@@ -149,6 +161,31 @@ export function getDesignerTimeoutMs() {
   return Number.isFinite(configured) && configured > 0 ? configured : 90_000
 }
 
+/**
+ * Esperas crecientes entre reintentos por 5xx del diseñador (HU-ERD-109b).
+ * Exportada para que las pruebas puedan acortarlas; en producción son 2 s y 5 s.
+ */
+export const DESIGNER_RETRY_DELAYS_MS = [2_000, 5_000]
+
+/** Milisegundos del header retry-after (segundos o fecha HTTP); null si no viene o no se entiende. */
+function retryAfterMs(response: Response): number | null {
+  const raw = response.headers.get('retry-after')?.trim()
+  if (!raw) return null
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const date = Date.parse(raw)
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null
+}
+
+function sleepDesign(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return }
+    const onAbort = () => { clearTimeout(timer); reject(signal.reason) }
+    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve() }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 /** Contrato aislado: los reportes conservan su prompt, modelo, timeout y formato previos. */
 export async function completeDesignerJson(params: AiCompletionParams): Promise<DesignerCompletion> {
   const provider = readProviderName()
@@ -158,6 +195,9 @@ export async function completeDesignerJson(params: AiCompletionParams): Promise<
   const timeoutMs = getDesignerTimeoutMs()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  // El presupuesto total (timeoutMs) cubre todos los intentos y sus esperas.
+  const deadline = Date.now() + timeoutMs
+  const delays = [...DESIGNER_RETRY_DELAYS_MS]
   try {
     const anthropic = provider === 'anthropic'
     const url = anthropic ? 'https://api.anthropic.com/v1/messages' : openAiChatUrl()
@@ -166,34 +206,62 @@ export async function completeDesignerJson(params: AiCompletionParams): Promise<
       model, response_format: { type: 'json_object' },
       messages: [{ role: 'system', content: params.system }, { role: 'user', content: params.prompt }]
     }
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(anthropic ? {
-        model, max_tokens: 8192, system: params.system,
-        messages: [{ role: 'user', content: params.prompt }],
-        tools: [{ name: 'return_design', description: 'Devuelve el mensaje y el plano completo.', input_schema: { type: 'object', properties: { message: { type: 'string' }, blueprint: { type: 'object' } }, required: ['message', 'blueprint'] } }],
-        tool_choice: { type: 'tool', name: 'return_design' }
-      } : openAiBody),
-      signal: controller.signal
-    })
-    let finalResponse = response
-    if (!response.ok && !anthropic) {
-      const bodyText = await response.text()
-      if (!rejectsResponseFormat(response.status, bodyText)) throw new Error(`${provider} respondió HTTP ${response.status}: ${bodyText.slice(0, 300)}`)
-      finalResponse = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ model, messages: openAiBody.messages }), signal: controller.signal })
+    const requestBody = anthropic ? {
+      model, max_tokens: 8192, system: params.system,
+      messages: [{ role: 'user', content: params.prompt }],
+      tools: [{ name: 'return_design', description: 'Devuelve el mensaje y el plano completo.', input_schema: { type: 'object', properties: { message: { type: 'string' }, blueprint: { type: 'object' } }, required: ['message', 'blueprint'] } }],
+      tool_choice: { type: 'tool', name: 'return_design' }
+    } : openAiBody
+    const sendRequest = async (payload: unknown) => {
+      try {
+        return await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: controller.signal })
+      } catch (error) {
+        // Red caída, timeout o abort: el proveedor no está disponible, no es un error del plano.
+        throw new AiProviderUnavailableError(controller.signal.aborted
+          ? `El proveedor de IA no respondió dentro del tiempo límite (${timeoutMs} ms).`
+          : `No se pudo contactar al proveedor de IA: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+      }
     }
-    if (!finalResponse.ok) throw new Error(`${provider} respondió HTTP ${finalResponse.status}: ${(await finalResponse.text()).slice(0, 300)}`)
-    if (anthropic) {
-      const data = await finalResponse.json() as { content?: Array<{ type: string; name?: string; input?: unknown }>; usage?: { input_tokens?: number; output_tokens?: number }; model?: string }
-      const value = data.content?.find(block => block.type === 'tool_use' && block.name === 'return_design')?.input
-      if (!value) throw new Error('La respuesta de Anthropic no incluyó el plano estructurado')
-      return { value, inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0, model: data.model || model }
+    let rateLimitRetried = false
+    for (let attempt = 0; ; attempt++) {
+      const response = await sendRequest(requestBody)
+      if (response.status === 429 || response.status >= 500) {
+        const saturated = response.status >= 500
+        const canRetry = saturated ? attempt < delays.length : !rateLimitRetried
+        if (!canRetry) {
+          throw new AiProviderUnavailableError(saturated
+            ? `El proveedor de IA respondió HTTP ${response.status} tras ${attempt + 1} intentos.`
+            : 'El proveedor de IA rechazó la petición por cuota (HTTP 429).')
+        }
+        if (saturated) {
+          await sleepDesign(Math.max(0, Math.min(delays[attempt]!, deadline - Date.now())), controller.signal)
+            .catch(() => { throw new AiProviderUnavailableError(`El proveedor de IA no respondió dentro del tiempo límite (${timeoutMs} ms).`) })
+        } else {
+          rateLimitRetried = true
+          const wait = retryAfterMs(response) ?? delays[0] ?? 0
+          await sleepDesign(Math.max(0, Math.min(wait, deadline - Date.now())), controller.signal)
+            .catch(() => { throw new AiProviderUnavailableError(`El proveedor de IA no respondió dentro del tiempo límite (${timeoutMs} ms).`) })
+        }
+        continue
+      }
+      let finalResponse = response
+      if (!response.ok && !anthropic) {
+        const bodyText = await response.text()
+        if (!rejectsResponseFormat(response.status, bodyText)) throw new Error(`${provider} respondió HTTP ${response.status}: ${bodyText.slice(0, 300)}`)
+        finalResponse = await sendRequest({ model, messages: openAiBody.messages })
+      }
+      if (!finalResponse.ok) throw new Error(`${provider} respondió HTTP ${finalResponse.status}: ${(await finalResponse.text()).slice(0, 300)}`)
+      if (anthropic) {
+        const data = await finalResponse.json() as { content?: Array<{ type: string; name?: string; input?: unknown }>; usage?: { input_tokens?: number; output_tokens?: number }; model?: string }
+        const value = data.content?.find(block => block.type === 'tool_use' && block.name === 'return_design')?.input
+        if (!value) throw new Error('La respuesta de Anthropic no incluyó el plano estructurado')
+        return { value, inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0, model: data.model || model }
+      }
+      const data = await finalResponse.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string }
+      const content = data.choices?.[0]?.message?.content
+      if (!content) throw new Error('La respuesta de OpenAI no incluyó el plano estructurado')
+      return { value: JSON.parse(content) as unknown, inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0, model: data.model || model }
     }
-    const data = await finalResponse.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string }
-    const content = data.choices?.[0]?.message?.content
-    if (!content) throw new Error('La respuesta de OpenAI no incluyó el plano estructurado')
-    return { value: JSON.parse(content) as unknown, inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0, model: data.model || model }
   } finally {
     clearTimeout(timeout)
   }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BarChart3, Blocks, BookOpen, Building2, ClipboardList, CreditCard, FileText, FolderTree, Globe, Globe2, History, Home, LayoutDashboard, LayoutTemplate, Library, Link2, MessageCircle, Palette, PanelsTopLeft, Plug, ReceiptText, Settings, ShieldCheck, UserRound, Users, UsersRound, Zap, ChevronDown } from '@lucide/vue'
+import { BarChart3, Blocks, BookOpen, Building2, ClipboardList, CreditCard, FileText, FolderTree, Globe, Globe2, History, Home, LayoutDashboard, LayoutTemplate, Library, Link2, MessageCircle, Palette, PanelsTopLeft, Plug, ReceiptText, Settings, ShieldCheck, Sparkles, UserRound, Users, UsersRound, Zap, ChevronDown } from '@lucide/vue'
 import type { NavigationEntity, NavigationNode } from '~/utils/moduleNavigation'
 import AppNavGroup from '~/components/AppNavGroup.vue'
 import AppNavEntity from '~/components/AppNavEntity.vue'
@@ -11,6 +11,7 @@ const chat = useChat()
 const { data: nav } = await useFetch<{ groups: NavigationNode[]; unassigned: NavigationEntity[] }>('/api/nav/entities', { key: 'appnav-modules', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
 const { data: isAdmin } = await useIsAdmin()
 const { user } = useAuth()
+const { data: planUsage } = await useFetch<{ code: string }>('/api/billing/plan-usage', { key: 'appnav-plan-usage', immediate: Boolean(isAdmin.value), headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
 
 interface NavItem { label: string; to: string; icon: typeof Blocks; badge?: number }
 interface NavSection { key: string; label: string; items: NavItem[] }
@@ -69,6 +70,7 @@ const sections = computed<NavSection[]>(() => {
       ] : [] },
       { key: 'administration', label: 'ADMINISTRACIÓN', items: isAdmin.value ? [
         { label: 'Módulos de Core', to: '/modulos', icon: Blocks }, { label: 'Organización de Core', to: '/organizacion', icon: FolderTree },
+        ...(planUsage.value?.code && planUsage.value.code !== 'agenda' ? [{ label: 'Diseñador de estructura', to: '/disenador', icon: Sparkles }] : []),
         { label: 'Catálogos', to: '/catalogos', icon: Library }, { label: 'Usuarios', to: '/usuarios', icon: Users },
         { label: 'Roles y permisos', to: '/roles', icon: ShieldCheck }
       ] : [] }

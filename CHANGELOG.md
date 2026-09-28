@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.104.0] - 2026-09-28
+#### [feature]
+- [ERD-109](https://dydasoftware.atlassian.net/browse/ERD-109) - Diseñador de módulos fase 3: pantalla /disenador con lienzo UML (vue-flow + Dagre), chat con sesiones, inspector con edición de propuestos, revisión y aprobación; acomodo guardado por tenant (migración 0083); reintentos ante IA saturada con aviso y sin cobro (503 ai_unavailable); paneles con ancho ajustable reutilizados en el editor de Sites.
+
 ### [0.103.0] - 2026-09-27
 #### [feature]
 - [ERD-108](https://dydasoftware.atlassian.net/browse/ERD-108) - Diseñador de módulos fase 2 (sin UI): sesiones con generación e iteración por IA, créditos aiCredits con paquetes y ledger, recuperación de reservas huérfanas, migración 0082 y variables AI_PROVIDER / ANTHROPIC_API_KEY / AI_DESIGNER_MODEL / AI_DESIGNER_TIMEOUT_MS.

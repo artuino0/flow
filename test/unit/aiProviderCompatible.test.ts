@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { completeDesignerJson, completeJson } from '../../server/utils/aiProvider'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { AiProviderUnavailableError, completeDesignerJson, completeJson, DESIGNER_RETRY_DELAYS_MS } from '../../server/utils/aiProvider'
 
 const reply = (value: unknown) => new Response(JSON.stringify(value), { status: 200 })
+const designerReply = () => reply({ choices: [{ message: { content: JSON.stringify({ message: 'Listo', blueprint: {} }) } }] })
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+// Las esperas reales (2 s y 5 s) harían lentas las pruebas; el código las lee en cada llamada.
+beforeAll(() => { DESIGNER_RETRY_DELAYS_MS.splice(0, DESIGNER_RETRY_DELAYS_MS.length, 1, 1) })
 
 describe('proveedor compatible con OpenAI', () => {
   it('conserva la URL original cuando OPENAI_BASE_URL no existe', async () => {
@@ -40,12 +43,62 @@ describe('proveedor compatible con OpenAI', () => {
     expect(JSON.parse(fetchMock.mock.calls[1]?.[1]?.body)).not.toHaveProperty('response_format')
   })
 
-  it('no elimina el formato ante 429 ni ante errores ajenos al parámetro', async () => {
+  it('no elimina el formato ante 429: reintenta una vez y falla como no disponible', async () => {
     vi.stubEnv('AI_PROVIDER', 'openai')
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
-    const fetchMock = vi.fn().mockResolvedValue(new Response('rate limit response_format', { status: 429 }))
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('rate limit response_format', { status: 429, headers: { 'retry-after': '0' } }))
     vi.stubGlobal('fetch', fetchMock)
-    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow('HTTP 429')
+    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow(AiProviderUnavailableError)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body)).toHaveProperty('response_format')
+    expect(JSON.parse(fetchMock.mock.calls[1]?.[1]?.body)).toHaveProperty('response_format')
+  })
+})
+
+describe('reintentos del diseñador ante fallos del proveedor (HU-ERD-109b)', () => {
+  function stubOpenAi() {
+    vi.stubEnv('AI_PROVIDER', 'openai')
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+  }
+
+  it('reintenta ante 503 y responde bien cuando el proveedor se recupera', async () => {
+    stubOpenAi()
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('overloaded', { status: 503 })).mockResolvedValueOnce(designerReply())
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await completeDesignerJson({ system: 's', prompt: 'p' })
+    expect(result.value).toEqual({ message: 'Listo', blueprint: {} })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('ante 503 persistente falla como no disponible tras dos reintentos', async () => {
+    stubOpenAi()
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('overloaded', { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow(AiProviderUnavailableError)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('no reintenta un 404', async () => {
+    stubOpenAi()
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('not found', { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow('HTTP 404')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('clasifica un fallo de red como proveedor no disponible conservando la causa', async () => {
+    stubOpenAi()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('timeout simulado')))
+    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow(AiProviderUnavailableError)
+    await expect(completeDesignerJson({ system: 's', prompt: 'p' })).rejects.toThrow('timeout simulado')
+  })
+
+  it('respeta retry-after y se recupera de un 429 transitorio', async () => {
+    stubOpenAi()
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('cuota', { status: 429, headers: { 'retry-after': '0' } })).mockResolvedValueOnce(designerReply())
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await completeDesignerJson({ system: 's', prompt: 'p' })
+    expect(result.value).toEqual({ message: 'Listo', blueprint: {} })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

@@ -52,6 +52,9 @@ beforeAll(async () => {
   vi.stubGlobal('createError', createError)
   vi.stubGlobal('getRouterParam', (event: any, name: string) => event.context.params?.[name])
   ;({ withTenant } = await import('../../server/db'))
+  // Esperas de reintento reales (2 s y 5 s) harían lentas las pruebas; el código las lee en cada llamada.
+  const { DESIGNER_RETRY_DELAYS_MS } = await import('../../server/utils/aiProvider')
+  DESIGNER_RETRY_DELAYS_MS.splice(0, DESIGNER_RETRY_DELAYS_MS.length, 10, 10)
   sessions = await import('../../server/utils/moduleDesigner/sessions')
   credits = await import('../../server/utils/moduleDesigner/credits')
   exporter = await import('../../server/utils/blueprint/export')
@@ -109,12 +112,33 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
   it('devuelve el crédito ante fallo de proveedor y permite reintentar', async () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
     fetchMock.mockRejectedValueOnce(new Error('timeout simulado'))
-    await expect((await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')).rejects.toThrow('timeout simulado')
+    await expect((await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')).rejects.toMatchObject({ statusCode: 503, data: { code: 'ai_unavailable' } })
     expect((await sessions.findSession(tenantId, session.id)).status).toBe('error')
     expect(await admin`SELECT kind, credits FROM ai_credit_ledger WHERE session_id = ${session.id} ORDER BY created_at, id`).toMatchObject([{ kind: 'generate', credits: 2 }, { kind: 'refund', credits: 2 }])
     aiReply({ message: 'Listo', blueprint: await proposal() })
     await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Reintenta')
     expect((await sessions.findSession(tenantId, session.id)).status).toBe('draft')
+  })
+
+  it('responde 503 ai_unavailable ante proveedor saturado persistente y la sesión queda recuperable', async () => {
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    fetchMock.mockImplementation(async () => new Response('overloaded', { status: 503 }))
+    await expect((await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes'))
+      .rejects.toMatchObject({ statusCode: 503, statusMessage: 'La IA está saturada en este momento. No se cobraron créditos; intenta de nuevo en un minuto.', data: { code: 'ai_unavailable' } })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect((await sessions.findSession(tenantId, session.id)).status).toBe('error')
+    expect(await admin`SELECT kind, credits FROM ai_credit_ledger WHERE session_id = ${session.id} ORDER BY created_at, id`).toMatchObject([{ kind: 'generate', credits: 2 }, { kind: 'refund', credits: 2 }])
+    fetchMock.mockReset()
+    aiReply({ message: 'Listo', blueprint: await proposal() })
+    await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Reintenta')
+    expect((await sessions.findSession(tenantId, session.id)).status).toBe('draft')
+  })
+
+  it('no reintenta un 404 del proveedor', async () => {
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    fetchMock.mockImplementation(async () => new Response('not found', { status: 404 }))
+    await expect((await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')).rejects.toThrow('HTTP 404')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('consume paquetes cuando se agotan los incluidos y protege reservas simultáneas', async () => {
