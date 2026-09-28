@@ -12,6 +12,8 @@ export interface AuthUser {
   idleTimeoutMinutes?: number
   idleWarningMinutes?: number
   authenticated: boolean
+  emailVerified: boolean
+  onboardingStatus: 'email_pending' | 'plan_pending' | 'checkout_pending' | 'complete'
   tenantId: string
   roleId: string | null
   email: string | null

@@ -8,7 +8,7 @@ import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 export async function blueprintPlanImpact(tenantId: string, added: number) {
   const data = await withTenant(tenantId, async tx => {
     const [subscription] = await tx.select({ plan: subscriptionPlans }).from(tenantSubscriptions).innerJoin(subscriptionPlans, eq(subscriptionPlans.id, tenantSubscriptions.planId)).where(eq(tenantSubscriptions.tenantId, tenantId)).limit(1)
-    const [{ value: used }] = await tx.select({ value: count() }).from(entities).where(and(eq(entities.tenantId, tenantId), isNull(entities.deletedAt), eq(entities.moduleKind, 'hecho')))
+    const [{ value: used }] = await tx.select({ value: count() }).from(entities).where(and(eq(entities.tenantId, tenantId), isNull(entities.deletedAt), isNull(entities.templateKey), eq(entities.moduleKind, 'hecho')))
     return { plan: subscription?.plan, used }
   })
   const plan = data.plan ?? await getPlanByKey('starter')

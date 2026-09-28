@@ -3,10 +3,11 @@
 // (Screen/Login), estilo definido en las variables del archivo Pencil.
 import { Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
 import type { OrganizationOption } from '~/composables/useAuth'
+import { IDLE_RETURN_KEY, postLoginRoute, type IdleReturn } from '~/utils/returnToRoute'
 
 definePageMeta({ layout: false })
 
-const { login, loginWithTotp, selectOrganization } = useAuth()
+const { login, loginWithTotp, selectOrganization, user } = useAuth()
 const route = useRoute()
 
 // HU multi-organizacion (2026-09-04): "la organizacion en el login no debe
@@ -49,10 +50,14 @@ const totpCode = ref('')
 const pendingOrgToken = ref('')
 const organizations = ref<OrganizationOption[]>([])
 const inactivityNotice = route.query.reason === 'inactividad'
-const redirectPath = computed(() => {
-  const value = route.query.redirect
-  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/'
-})
+function finishLogin() {
+  let saved: IdleReturn | null = null
+  if (import.meta.client) {
+    try { saved = JSON.parse(sessionStorage.getItem(IDLE_RETURN_KEY) || 'null') as IdleReturn | null } catch { saved = null }
+    sessionStorage.removeItem(IDLE_RETURN_KEY)
+  }
+  return navigateTo(postLoginRoute(route.query.redirect, saved, user.value, inactivityNotice))
+}
 
 // HU multi-organizacion (2026-09-04), pantallas reales revisadas en Pencil
 // ("Screen/Login - Elige tu organización" y su variante "(Select abierto)",
@@ -98,7 +103,7 @@ async function onSubmit() {
       step.value = 'org-select'
       return
     }
-    await navigateTo(redirectPath.value)
+    await finishLogin()
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo iniciar sesion.'
   } finally {
@@ -117,7 +122,7 @@ async function onSubmitTotp() {
       step.value = 'org-select'
       return
     }
-    await navigateTo(redirectPath.value)
+    await finishLogin()
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'Codigo invalido.'
   } finally {
@@ -131,7 +136,7 @@ async function onSubmitOrgSelect() {
   loading.value = true
   try {
     await selectOrganization(pendingOrgToken.value, selectedTenantId.value)
-    await navigateTo(redirectPath.value)
+    await finishLogin()
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo entrar a esa organización.'
   } finally {

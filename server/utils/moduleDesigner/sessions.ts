@@ -3,7 +3,6 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import { withTenant } from '~/server/db'
 import { moduleDesignSessions } from '~/server/db/schema'
-import { getTenantSubscription } from '~/server/utils/billing'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { exportBlueprint } from '~/server/utils/blueprint/export'
 import { validateBlueprint } from '~/server/utils/blueprint/validate'
@@ -17,8 +16,6 @@ export const instructionSchema = z.string().trim().min(1).max(4000)
 
 export async function requireDesignerAccess(event: H3Event) {
   const auth = await requireAdminRole(event)
-  const subscription = await getTenantSubscription(auth.tenantId)
-  if (subscription?.plan.code === 'agenda') throw createError({ statusCode: 403, statusMessage: 'El diseñador de módulos no está disponible en el plan Agenda.' })
   return auth
 }
 

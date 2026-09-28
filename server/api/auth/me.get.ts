@@ -22,10 +22,10 @@ export default defineEventHandler(async (event) => {
   })
 
   const profile = membership
-    ? (await db.select({ email: people.email, fullName: people.fullName, phone: people.phone, totpEnabled: people.totpEnabled }).from(people).where(eq(people.id, membership.personId)).limit(1))[0]
+    ? (await db.select({ email: people.email, fullName: people.fullName, phone: people.phone, totpEnabled: people.totpEnabled, emailVerifiedAt: people.emailVerifiedAt }).from(people).where(eq(people.id, membership.personId)).limit(1))[0]
     : null
 
-  const [organization] = await db.select({ name: tenants.name, country: tenants.country, idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
+  const [organization] = await db.select({ name: tenants.name, country: tenants.country, idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes, onboardingStatus: tenants.onboardingStatus }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
   return {
     id: auth.sub,
     tenantName: organization?.name,
@@ -35,6 +35,8 @@ export default defineEventHandler(async (event) => {
     idleTimeoutMinutes: organization?.idleTimeoutMinutes ?? 30,
     idleWarningMinutes: organization?.idleWarningMinutes ?? 2,
     authenticated: true,
+    emailVerified: Boolean(profile?.emailVerifiedAt),
+    onboardingStatus: organization?.onboardingStatus ?? 'complete',
     sessionId: auth.sid,
     tenantId: auth.tenantId,
     roleId: auth.roleId,

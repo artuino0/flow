@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.109.0] - 2026-09-28
+#### [feature]
+- [ERD-115](https://dydasoftware.atlassian.net/browse/ERD-115) - Registro con verificación de correo, planes con 30 días de prueba con tarjeta y plantilla Agenda (Citas con roles Recepción/Personal); regreso a la ruta tras logout por inactividad.
+
 ### [0.108.0] - 2026-09-28
 #### [feature]
 - [ERD-114](https://dydasoftware.atlassian.net/browse/ERD-114) - Campo tipo Usuario y visibilidad por rol Todos/Solo los suyos con herencia padre-hijo, también en el diseñador con IA.

@@ -83,7 +83,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
 
     let tenant: typeof tenants.$inferSelect
     try {
-      ;[tenant] = await tx.insert(tenants).values({ name: input.organizationName.trim(), slug: normalizedSlug }).returning()
+      ;[tenant] = await tx.insert(tenants).values({ name: input.organizationName.trim(), slug: normalizedSlug, email: normalizedEmail, onboardingStatus: 'email_pending' }).returning()
     } catch (err) {
       const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
       if (code === PG_UNIQUE_VIOLATION) {
@@ -98,7 +98,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
     const [memberRole] = await tx.insert(roles).values({ tenantId: tenant.id, name: 'Miembro', isSystem: false }).returning()
 
     const passwordHash = await hashPassword(input.password)
-    const [person] = await tx.insert(people).values({ email: normalizedEmail, passwordHash, fullName: input.fullName.trim() }).returning()
+    const [person] = await tx.insert(people).values({ email: normalizedEmail, passwordHash, fullName: input.fullName.trim(), emailVerifiedAt: null }).returning()
 
     const [membership] = await tx.insert(users).values({ tenantId: tenant.id, personId: person.id, roleId: adminRole.id, isActive: true }).returning()
 

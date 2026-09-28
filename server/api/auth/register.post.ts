@@ -4,7 +4,8 @@ import { passwordPolicySchema } from '~/server/utils/passwordPolicy'
 import { issueSessionCookies } from '~/server/utils/auth'
 import { RegistrationEmailExistsError, SlugTakenError, TENANT_SLUG_PATTERN, registerTenant } from '~/server/utils/registration'
 import { DuplicateEmailError, RoleNotFoundError, inviteUser } from '~/server/utils/users'
-import { SmtpNotConfiguredError, escapeHtml, sendPlainEmail } from '~/server/utils/mailer'
+import { SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { assertVerificationDelivery, issueEmailVerification } from '~/server/utils/emailVerification'
 
 // POST /api/auth/register (HU multi-organizacion, 2026-09-04): "Registro"
 // (Screen/Registro Paso 1-4 del .pen) - crea la persona + su primera
@@ -30,6 +31,12 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, bodySchema.parse)
 
+  try { await assertVerificationDelivery() }
+  catch (error) {
+    if (error instanceof SmtpNotConfiguredError) throw createError({ statusCode: 503, statusMessage: error.message })
+    throw error
+  }
+
   let result
   try {
     result = await registerTenant(body)
@@ -42,6 +49,8 @@ export default defineEventHandler(async (event) => {
     }
     throw err
   }
+
+  await issueEmailVerification(result.personId, result.tenantId)
 
   // Paso 3: invitaciones opcionales - best-effort, cada una independiente
   // (si una falla - ej. correo repetido en la lista - las demas y la
@@ -59,19 +68,6 @@ export default defineEventHandler(async (event) => {
       }
       throw err
     }
-  }
-
-  // Paso 4 "Todo listo": "Te enviamos un correo de confirmación a..." del
-  // diseño - best-effort (nunca bloquea el registro, ya completado).
-  try {
-    await sendPlainEmail({
-      tenantId: result.tenantId,
-      to: body.email,
-      subject: `Tu organización ${body.organizationName} está lista en Flow`,
-      html: `<p>Hola ${escapeHtml(body.fullName)}, tu organización <strong>${escapeHtml(body.organizationName)}</strong> ya está lista. Ingresá con tu correo y contraseña cuando quieras.</p>`
-    })
-  } catch {
-    // best-effort, ver comentario
   }
 
   // La persona que se registra queda como Administrador de su organización

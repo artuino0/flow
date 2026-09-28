@@ -617,6 +617,20 @@
       "when": 1790607392935,
       "breakpoints": true,
       "tag": "0087_owner_parent_inheritance"
+    },
+    {
+      "version": "7",
+      "idx": 88,
+      "when": 1790607393935,
+      "breakpoints": true,
+      "tag": "0088_registration_trial_agenda"
+    },
+    {
+      "version": "7",
+      "idx": 89,
+      "when": 1790607394935,
+      "breakpoints": true,
+      "tag": "0089_parent_detail_relation_visibility"
     }
   ]
 }

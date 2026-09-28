@@ -10,6 +10,7 @@
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
 import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings, MessageCircle } from '@lucide/vue'
+import { IDLE_RETURN_KEY, safeInternalRoute } from '~/utils/returnToRoute'
 
 const { user, logout } = useAuth()
 const chat = useChat()
@@ -82,8 +83,12 @@ const initials = computed(() => {
 })
 
 async function onLogout(reason?: 'inactividad') {
+  const redirect = reason === 'inactividad' ? safeInternalRoute(navRoute.fullPath) : null
+  if (reason === 'inactividad' && redirect && user.value && import.meta.client) {
+    sessionStorage.setItem(IDLE_RETURN_KEY, JSON.stringify({ path: redirect, userId: user.value.id, tenantId: user.value.tenantId }))
+  } else if (import.meta.client) sessionStorage.removeItem(IDLE_RETURN_KEY)
   await logout()
-  await navigateTo(reason ? `/login?reason=${reason}` : '/login')
+  await navigateTo(reason ? { path: '/login', query: { reason, ...(redirect ? { redirect } : {}) } } : '/login')
 }
 </script>
 

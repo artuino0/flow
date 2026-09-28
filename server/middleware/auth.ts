@@ -2,6 +2,9 @@ import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/ut
 import { resolveApiKeyAuth } from '~/server/utils/apiKeyAuth'
 import { validateSession } from '~/server/utils/sessions'
 import { setRecordActor } from '~/server/utils/recordActorContext'
+import { and, eq } from 'drizzle-orm'
+import { db, withTenant } from '~/server/db'
+import { people, tenants, users } from '~/server/db/schema'
 
 // Middleware global (HU-ERD-15): valida el JWT de cualquier ruta /api/* salvo
 // las publicas, y deja el payload disponible en event.context.auth para que
@@ -18,6 +21,7 @@ const PUBLIC_PATHS = new Set([
   // HU multi-organizacion (2026-09-04): igual que login/totp - recibe un
   // token pendiente propio en el body, no una sesion.
   '/api/auth/login/select-org',
+  '/api/auth/email-verification/confirm',
   '/api/auth/logout',
   '/api/auth/refresh',
   '/api/auth/register',
@@ -86,4 +90,18 @@ export default defineEventHandler(async (event) => {
     event.context.apiKeyId = apiAuth.apiKeyId
     event.context.apiKeyScopes = apiAuth.scopes
   }
+
+  const auth = event.context.auth!
+  const [membership] = await withTenant(auth.tenantId, tx => tx.select({ personId: users.personId }).from(users)
+    .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId))).limit(1))
+  const [person] = membership ? await db.select({ verifiedAt: people.emailVerifiedAt }).from(people).where(eq(people.id, membership.personId)).limit(1) : []
+  const [tenant] = await db.select({ status: tenants.onboardingStatus }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
+  const onboarding = !person?.verifiedAt ? 'email_pending' : tenant?.status ?? 'complete'
+  if (onboarding === 'complete' || path === '/api/auth/me') return
+  if (onboarding === 'email_pending') {
+    if (path === '/api/auth/email-verification/resend' || path === '/api/auth/email-verification/change-email') return
+    throw createError({ statusCode: 403, statusMessage: 'Confirma tu correo antes de continuar' })
+  }
+  if (path === '/api/billing/plans' || path === '/api/billing/checkout') return
+  throw createError({ statusCode: 403, statusMessage: 'Elige un plan y completa Checkout antes de usar la aplicación' })
 })

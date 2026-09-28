@@ -31,9 +31,7 @@ beforeAll(async () => {
   process.env.APP_DATABASE_URL = testDb.appUrl
   process.env.PLAN_CACHE_TTL_MS = '0'
   process.env.STRIPE_SECRET_KEY = 'sk_test_billing_plan_changes'
-  process.env.STRIPE_PRICE_STARTER_MONTHLY = 'price_starter'
-  process.env.STRIPE_PRICE_CRECIMIENTO_MONTHLY = 'price_crecimiento'
-  process.env.STRIPE_PRICE_AGENDA_MONTHLY = 'price_agenda'
+  await admin`update plans set stripe_monthly_price_id = 'price_' || key where key in ('starter', 'crecimiento', 'agenda')`
   ;({ getPlanUsage, getAvailablePlansForTenant, syncStripeSubscription, syncStripeInvoice } = await import('../../server/utils/billing'))
   checkout = (await import('../../server/api/billing/checkout.post')).default as typeof checkout
 }, 120_000)
@@ -41,7 +39,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (admin) await admin.end()
   if (testDb) await testDb.stop()
-  for (const key of ['APP_DATABASE_URL', 'PLAN_CACHE_TTL_MS', 'STRIPE_SECRET_KEY', 'STRIPE_PRICE_STARTER_MONTHLY', 'STRIPE_PRICE_CRECIMIENTO_MONTHLY', 'STRIPE_PRICE_AGENDA_MONTHLY']) delete process.env[key]
+  for (const key of ['APP_DATABASE_URL', 'PLAN_CACHE_TTL_MS', 'STRIPE_SECRET_KEY']) delete process.env[key]
   vi.unstubAllGlobals()
 })
 
@@ -101,11 +99,11 @@ describe('cambio de plan en checkout', () => {
     await expect(checkout({})).rejects.toMatchObject({ statusCode: 409, statusMessage: expect.stringMatching(/Módulos personalizados.*Contacta a soporte/) })
   })
 
-  it('oculta Agenda y rechaza su checkout para quien nunca lo tuvo', async () => {
+  it('ofrece Agenda y permite su checkout para una organización nueva', async () => {
     const tenantId = await tenantOn('starter')
-    expect((await getAvailablePlansForTenant(tenantId)).map(plan => plan.code)).not.toContain('agenda')
+    expect((await getAvailablePlansForTenant(tenantId)).map(plan => plan.code)).toContain('agenda')
     state.planCode = 'agenda'
-    await expect(checkout({})).rejects.toMatchObject({ statusCode: 409, statusMessage: expect.stringMatching(/Agenda/) })
+    await expect(checkout({})).resolves.toEqual({ url: 'https://checkout.stripe.test/session' })
   })
 
   it('muestra Agenda a quien lo tiene actualmente', async () => {

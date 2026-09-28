@@ -11,6 +11,7 @@ export const entities = pgTable('entities', {
   slug: text('slug').notNull(),
   description: text('description'),
   isSystem: boolean('is_system').notNull().default(false),
+  templateKey: text('template_key'),
   // Rediseno "Editar Módulo" (Screen/Editar Módulo del .pen, 2026-09-01):
   // switch "Módulo activo" - true por defecto (todo modulo existente antes de
   // esta columna sigue activo, sin migracion de datos aparte). Cuando esta en
@@ -325,6 +326,8 @@ export const tenants = pgTable('tenants', {
   // criterio que defaultCurrency/timezone/country de abajo.
   slug: text('slug').notNull().default(sql`'org-' || substr(gen_random_uuid()::text, 1, 8)`),
   email: text('email'),
+  onboardingStatus: text('onboarding_status').notNull().default('complete'),
+  trialConsumedAt: timestamp('trial_consumed_at', { withTimezone: true }),
   phone: text('phone'),
   defaultCurrency: text('default_currency').notNull().default('MXN'),
   timezone: text('timezone').notNull().default('America/Mexico_City'),
@@ -387,6 +390,7 @@ export const tenants = pgTable('tenants', {
 export const people = pgTable('people', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   email: text('email').notNull(),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }).defaultNow(),
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name'),
   phone: text('phone'),
@@ -1557,6 +1561,16 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => ({ personIdx: index('password_reset_tokens_person_idx').on(table.personId) }))
+
+export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ personCreatedIdx: index('email_verification_tokens_person_created_idx').on(table.personId, table.createdAt) }))
 
 // ERD-87: cursor global de infraestructura para el ETL OLAP (sin tenant/RLS).
 export const olapEtlState = pgTable('olap_etl_state', {

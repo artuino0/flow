@@ -31,6 +31,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (to.path.startsWith('/invitacion/')) return
   if (to.path === '/registro') return
+  if (to.path === '/verificar-correo') return
   if (to.path === '/recuperar' || to.path.startsWith('/restablecer/')) return
 
   const { user, fetchMe } = useAuth()
@@ -39,10 +40,25 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const isLoggedIn = Boolean(user.value?.authenticated)
   if (isLoggedIn && to.path !== '/login') useRealtime().resumeSession()
   if (to.path === '/login') {
-    if (isLoggedIn) return navigateTo('/')
+    if (isLoggedIn) {
+      if (!user.value?.emailVerified) return navigateTo('/confirmar-correo')
+      if (user.value.onboardingStatus !== 'complete') return navigateTo('/elegir-plan')
+      return navigateTo('/')
+    }
     return
   }
   if (!isLoggedIn) return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
+
+  if (!user.value?.emailVerified) {
+    if (to.path === '/confirmar-correo') return
+    return navigateTo('/confirmar-correo')
+  }
+  if (user.value.onboardingStatus !== 'complete') {
+    if (to.path === '/elegir-plan' || to.path === '/registro-completo') return
+    return navigateTo('/elegir-plan')
+  }
+  if (to.path === '/confirmar-correo' || to.path === '/elegir-plan') return navigateTo('/')
+  if (to.path === '/registro-completo') return
 
   const { load } = useFlowAppAccess()
   const availability = await load()

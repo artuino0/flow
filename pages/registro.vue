@@ -2,15 +2,10 @@
 // HU multi-organizacion (2026-09-04): "Registro" - wizard de 4 pasos fiel al
 // diseño real (Screen/Registro Paso 1-4 del .pen, revisado por completo con
 // mcp__pencil__execute antes de escribir este archivo, pencil-antes-de-frontend
-// - nodos gQM6L/OQNF9/D6C1Ul/uwmVR). Crea la persona + su primera
-// organización (POST /api/auth/register, server/utils/registration.ts) y deja
-// la sesión iniciada de una vez como Administrador de esa organización.
+// - nodos gQM6L/OQNF9/D6C1Ul/uwmVR). El cuarto paso espera la verificación
+// del correo; el plan se elige después de seguir el enlace recibido.
 //
-// Simplificaciones deliberadas, documentadas (mismo criterio que el backend,
-// ver el comentario largo en server/api/auth/register.post.ts): "Tamaño del
-// equipo" (paso 2) y "Plan — Free — hasta 3 usuarios" (paso 4) son COSMETICOS
-// - se dibujan tal cual el diseño pero no existe ningún campo/backend detrás
-// (no hay sistema de facturación en esta entrega). El rol de cada invitado
+// "Tamaño del equipo" (paso 2) sigue siendo cosmético. El rol de cada invitado
 // (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
 // registerTenant() solo crea ese rol de arranque además de "Administrador",
 // así que se dibuja fijo, sin dropdown funcional.
@@ -118,7 +113,7 @@ function removeInvitee(index: number) {
   invitees.value.splice(index, 1)
 }
 
-// Paso 4: "Todo listo" - resultado real de POST /api/auth/register.
+// Paso 4: confirmar correo antes de elegir plan.
 const result = ref<{ tenantName: string; slug: string; invitationsSent: number } | null>(null)
 
 async function onSubmit() {
@@ -160,7 +155,7 @@ const brandText = computed(() => {
     case 3:
       return 'Colabora con tu equipo: cada persona ve solo lo que su rol le permite.'
     default:
-      return 'Ya puedes empezar a crear módulos, cargar datos e invitar a más personas cuando quieras.'
+      return 'Confirma tu correo, elige un plan y comienza con 30 días de prueba.'
   }
 })
 </script>
@@ -182,7 +177,7 @@ const brandText = computed(() => {
       <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
-            <template v-for="n in 4" :key="n">
+            <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
                 :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
@@ -190,10 +185,10 @@ const brandText = computed(() => {
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
               </div>
-              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 1 de 4</p>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 1 de 5</p>
         </div>
 
         <div>
@@ -280,7 +275,7 @@ const brandText = computed(() => {
       <div v-else-if="step === 2" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
-            <template v-for="n in 4" :key="n">
+            <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
                 :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
@@ -288,10 +283,10 @@ const brandText = computed(() => {
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
               </div>
-              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 2 de 4</p>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 2 de 5</p>
         </div>
 
         <div>
@@ -381,7 +376,7 @@ const brandText = computed(() => {
       <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
-            <template v-for="n in 4" :key="n">
+            <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
                 :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
@@ -389,10 +384,10 @@ const brandText = computed(() => {
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
               </div>
-              <div v-if="n < 4" class="h-px flex-1 bg-brand-border" />
+              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 3 de 4</p>
+          <p class="text-xs font-semibold text-brand-text-muted">Paso 3 de 5</p>
         </div>
 
         <div>
@@ -451,14 +446,14 @@ const brandText = computed(() => {
         </button>
       </div>
 
-      <!-- Paso 4: Todo listo -->
+      <!-- Paso 4: Confirmación de correo -->
       <div v-else-if="step === 4 && result" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col items-center gap-3 text-center">
           <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-success-bg">
             <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
           </div>
-          <h2 class="text-2xl font-bold text-brand-text">¡Tu organización está lista!</h2>
-          <p class="text-sm text-brand-text-secondary">Te enviamos un correo de confirmación a {{ email }}</p>
+          <h2 class="text-2xl font-bold text-brand-text">Confirma tu correo</h2>
+          <p class="text-sm text-brand-text-secondary">Enviamos un enlace de un solo uso a {{ email }}. Vence en 24 horas.</p>
         </div>
 
         <div class="rounded bg-white">
@@ -477,19 +472,13 @@ const brandText = computed(() => {
             <span class="flex-1 text-[13px] text-brand-text-secondary">Equipo</span>
             <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones enviadas</span>
           </div>
-          <!-- Cosmetico: no hay sistema de facturacion (ver el comentario largo al inicio del archivo). -->
-          <div class="flex items-center gap-3 px-4 py-3">
-            <Layers class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
-            <span class="flex-1 text-[13px] text-brand-text-secondary">Plan</span>
-            <span class="text-sm font-semibold text-brand-text">Free — hasta 3 usuarios</span>
-          </div>
         </div>
 
         <NuxtLink
-          to="/"
+          to="/confirmar-correo"
           class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover"
         >
-          Ir al dashboard <ArrowRight class="h-4 w-4" :stroke-width="2" />
+          Ver estado de mi correo <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </NuxtLink>
       </div>
     </div>

@@ -420,7 +420,7 @@ export async function acceptInvitation(token: string, newPassword: string, fullN
 
     await tx
       .update(people)
-      .set({ passwordHash, ...(fullName ? { fullName: fullName.trim() } : {}), updatedAt: new Date() })
+      .set({ passwordHash, emailVerifiedAt: new Date(), ...(fullName ? { fullName: fullName.trim() } : {}), updatedAt: new Date() })
       .where(eq(people.id, row.personId))
   })
 

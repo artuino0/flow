@@ -22,7 +22,7 @@ export interface BlueprintApplyResult { modules: Array<{ id: string; slug: strin
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)])) : value
 const hashBlueprint = (blueprint: unknown) => createHash('sha256').update(JSON.stringify(stable(blueprint))).digest('hex')
 
-export async function applyBlueprint(tenantId: string, userId: string | null, input: unknown, idempotencyKey: string): Promise<BlueprintApplyResult> {
+export async function applyBlueprint(tenantId: string, userId: string | null, input: unknown, idempotencyKey: string, templateKey?: 'agenda'): Promise<BlueprintApplyResult> {
   if (!idempotencyKey || idempotencyKey.length > 200) throw createError({ statusCode: 422, statusMessage: 'La clave de idempotencia es obligatoria y debe tener hasta 200 caracteres' })
   const blueprintHash = hashBlueprint(input)
   const previous = await withTenant(tenantId, tx => tx.select().from(blueprintApplications).where(and(eq(blueprintApplications.tenantId, tenantId), eq(blueprintApplications.idempotencyKey, idempotencyKey))).limit(1))
@@ -36,11 +36,11 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
   if (!normalized) throw createError({ statusCode: 422, statusMessage: 'El plano tiene un formato inválido', data: { errors: checked.errors } })
   if (checked.errors.some(error => error.code !== 'plan_limit')) throw createError({ statusCode: 422, statusMessage: 'El plano contiene errores', data: { errors: checked.errors } })
   const incoming = normalized.modules.filter(module => module.action === 'create' && module.kind === 'hecho').length
-  if (checked.errors.some(error => error.code === 'plan_limit')) {
+  if (!templateKey && checked.errors.some(error => error.code === 'plan_limit')) {
     const plan = await blueprintPlanImpact(tenantId, incoming)
     throw createError({ statusCode: 402, statusMessage: `Se alcanzó el límite de módulos del plan ${plan.name}. Mejora tu plan para continuar.`, data: { code: 'plan_limit', concept: 'modules', used: plan.used, limit: plan.limit, plan: plan.code } })
   }
-  if (incoming) await assertPlanCapacity(tenantId, 'modules', incoming)
+  if (incoming && !templateKey) await assertPlanCapacity(tenantId, 'modules', incoming)
 
   const applied = await withTenant(tenantId, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenantId}, 112))`)
@@ -58,6 +58,7 @@ export async function applyBlueprint(tenantId: string, userId: string | null, in
     const newModules = normalized.modules.filter(module => module.action === 'create')
     for (const kind of ['dimension', 'hecho'] as const) for (const module of newModules.filter(item => item.kind === kind)) {
       const created = await createEntityInTx(tx, tenantId, { name: module.name, slug: module.slug, description: module.description ?? null, icon: module.icon ?? null, moduleKind: module.kind, singularName: module.singularName ?? null })
+      if (templateKey) await tx.update(entities).set({ templateKey }).where(eq(entities.id, created.id))
       ids.set(module.slug, created.id)
       result.modules.push({ id: created.id, slug: module.slug })
       touched.add(created.id)

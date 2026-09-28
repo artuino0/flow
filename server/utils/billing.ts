@@ -3,7 +3,7 @@ import Stripe from 'stripe'
 import { db, withTenant } from '~/server/db'
 import { effectiveStorageLimit, getEffectivePlanLimits, getPlanByKey, listPlans, type PlanConcept, type PlanLimits } from '~/server/utils/plans'
 import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
-import { sites, subscriptionPlans, tenantBillingInvoices, tenantPlanHistory, tenantSubscriptions, tenants, tenantUsageSnapshots, triggerLogs, users } from '~/server/db/schema'
+import { sites, subscriptionPlans, tenantBillingInvoices, tenantSubscriptions, tenants, tenantUsageSnapshots, triggerLogs, users } from '~/server/db/schema'
 
 export type BillingInterval = 'month' | 'year'
 export type UsageResource = 'storageBytes' | 'users' | 'sites' | 'automationExecutions' | 'emails'
@@ -36,9 +36,7 @@ export function getStripeClient() {
 export function stripeIsConfigured() { return Boolean(process.env.STRIPE_SECRET_KEY?.trim()) }
 
 function planPriceId(plan: typeof subscriptionPlans.$inferSelect, interval: BillingInterval) {
-  const suffix = interval === 'year' ? 'ANNUAL' : 'MONTHLY'
-  const configured = process.env[`STRIPE_PRICE_${plan.code.toUpperCase()}_${suffix}`]?.trim()
-  return configured || (interval === 'year' ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId) || null
+  return (interval === 'year' ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId) || null
 }
 export async function listPublicPlans() {
   return (await listPlans()).filter(plan => plan.isActive && plan.isPublic)
@@ -46,16 +44,7 @@ export async function listPublicPlans() {
 
 export async function getAvailablePlansForTenant(tenantId: string) {
   const [current, plans] = await Promise.all([getTenantSubscription(tenantId), listPublicPlans()])
-  const agenda = plans.find(plan => plan.code === 'agenda')
-  let hadAgenda = current?.plan.code === 'agenda'
-  if (!hadAgenda && agenda) {
-    const history = await withTenant(tenantId, tx => tx.select({ id: tenantPlanHistory.id })
-      .from(tenantPlanHistory)
-      .where(and(eq(tenantPlanHistory.tenantId, tenantId), eq(tenantPlanHistory.planId, agenda.id)))
-      .limit(1))
-    hadAgenda = history.length > 0
-  }
-  const visible = plans.filter(plan => plan.code !== 'agenda' || hadAgenda)
+  const visible = plans
   const usage = current && visible.some(plan => plan.sortOrder < current.plan.sortOrder)
     ? (await getPlanUsage(tenantId)).usage
     : []
@@ -147,7 +136,7 @@ export async function getPlanUsage(tenantId: string): Promise<{ plan: string; co
     )
     SELECT
       (SELECT count(*) FROM users WHERE tenant_id = ${tenantId}::uuid AND (is_active OR invitation_token_hash IS NOT NULL)) AS users,
-      (SELECT count(*) FROM entities WHERE tenant_id = ${tenantId}::uuid AND module_kind <> 'dimension' AND deleted_at IS NULL) AS modules,
+      (SELECT count(*) FROM entities WHERE tenant_id = ${tenantId}::uuid AND module_kind <> 'dimension' AND template_key IS NULL AND deleted_at IS NULL) AS modules,
       (SELECT count(*) FROM triggers WHERE tenant_id = ${tenantId}::uuid AND is_active) AS flows,
       (SELECT count(*) FROM trigger_logs WHERE tenant_id = ${tenantId}::uuid AND created_at >= (SELECT start_at FROM period)) AS executions,
       (SELECT count(*) FROM job_queue WHERE tenant_id = ${tenantId}::uuid AND kind = 'email' AND created_at >= (SELECT start_at FROM period)) AS emails,
@@ -335,7 +324,15 @@ export async function syncStripeSubscription(subscription: StripeSubscriptionSyn
       }
     })
     await tx.execute(sql`UPDATE tenants SET storage_limit_bytes = ${effectiveStorageLimit(effectiveLimits.storageBytes)}::bigint WHERE id = ${resolvedTenantId}::uuid`)
+    await tx.update(tenants).set({ trialConsumedAt: sql`coalesce(${tenants.trialConsumedAt}, now())` }).where(eq(tenants.id, resolvedTenantId))
   })
+  if (plan.code === 'agenda' && ['trialing', 'active'].includes(subscription.status)) {
+    const { installAgendaTemplate } = await import('~/server/utils/agendaTemplate')
+    await installAgendaTemplate(resolvedTenantId)
+  }
+  if (['trialing', 'active'].includes(subscription.status)) {
+    await withTenant(resolvedTenantId, tx => tx.update(tenants).set({ onboardingStatus: 'complete' }).where(and(eq(tenants.id, resolvedTenantId), sql`${tenants.onboardingStatus} <> 'complete'`)))
+  }
   return getTenantSubscription(resolvedTenantId)
 }
 
@@ -373,7 +370,6 @@ export async function syncStripeInvoice(invoice: StripeInvoiceSync, tenantId?: s
 export async function createStripeCheckout(tenantId: string, planCode: string, interval: BillingInterval) {
   const plan = (await getAvailablePlansForTenant(tenantId)).find(row => row.code === planCode)
   if (!plan) {
-    if (planCode === 'agenda') throw new PlanChangeNotAllowedError('El plan Agenda solo está disponible para organizaciones que ya lo tienen.')
     throw new PlanNotAvailableError('El plan seleccionado no está disponible')
   }
   if (plan.blockedBy.length) {
@@ -383,17 +379,23 @@ export async function createStripeCheckout(tenantId: string, planCode: string, i
   const stripe = getStripeClient()
   const priceId = planPriceId(plan, interval)
   if (!priceId) throw new BillingNotConfiguredError(`Falta vincular el precio ${interval === 'year' ? 'anual' : 'mensual'} de ${plan.name} en Stripe`)
-  const [tenant] = await db.select({ name: tenants.name, email: tenants.email }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+  const [tenant] = await db.select({ name: tenants.name, email: tenants.email, status: tenants.onboardingStatus, trialConsumedAt: tenants.trialConsumedAt }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
   if (!tenant) throw new Error('Espacio de trabajo no encontrado')
+  if (tenant.status === 'email_pending') throw new PlanChangeNotAllowedError('Confirma tu correo antes de elegir un plan')
   const current = await getTenantSubscription(tenantId)
   const customerId = current?.stripeCustomerId || (await stripe.customers.create({ name: tenant.name, email: tenant.email ?? undefined, metadata: { tenantId } })).id
   const baseUrl = (process.env.APP_BASE_URL || 'http://localhost:3001').replace(/\/+$/, '')
+  const onboarding = tenant.status !== 'complete'
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription', customer: customerId, line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${baseUrl}/ajustes?section=plan&success=1`, cancel_url: `${baseUrl}/ajustes?section=plan&canceled=1`,
-    metadata: { tenantId, planCode }, subscription_data: { metadata: { tenantId, planCode } }
+    payment_method_collection: 'always',
+    success_url: onboarding ? `${baseUrl}/registro-completo?checkout=success` : `${baseUrl}/ajustes?section=plan&success=1`,
+    cancel_url: onboarding ? `${baseUrl}/elegir-plan?canceled=1` : `${baseUrl}/ajustes?section=plan&canceled=1`,
+    metadata: { tenantId, planCode },
+    subscription_data: { metadata: { tenantId, planCode }, ...(!tenant.trialConsumedAt ? { trial_period_days: 30 } : {}) }
   })
   if (!session.url) throw new Error('Stripe no devolvió una URL de checkout')
+  if (onboarding) await withTenant(tenantId, tx => tx.update(tenants).set({ onboardingStatus: 'checkout_pending' }).where(eq(tenants.id, tenantId)))
   return { url: session.url }
 }
 
