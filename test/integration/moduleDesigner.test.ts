@@ -75,8 +75,12 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
   it('genera por 2 créditos, itera por 1 y registra tokens y modelo', async () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
     const design = await proposal()
-    aiReply({ message: 'Creé las órdenes.', blueprint: design })
-    await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')
+    const explanation = 'Propuse Órdenes y reutilicé Clientes.\n### ¿Por qué?\n- **Órdenes**: registra cada solicitud.'
+    aiReply({ message: 'Creé las órdenes.', explanation, blueprint: design })
+    const generated = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')
+    expect(generated.explanation).toContain(explanation)
+    expect(generated.explanation).toContain('icono genérico')
+    expect((await sessions.findSession(tenantId, session.id)).messages.at(-1)?.explanation).toBe(generated.explanation)
     aiReply({ message: 'Ajusté las órdenes.', blueprint: design }, 25, 40)
     await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Ajusta las órdenes')
     const rows = await admin`SELECT kind, credits, input_tokens, output_tokens, model FROM ai_credit_ledger WHERE session_id = ${session.id} ORDER BY created_at, id`
@@ -95,6 +99,9 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea pedidos con estados')
     expect(result.message).toContain('transición 2')
     expect(result.message).toContain('regla 1')
+    expect(result.explanation).toContain('- **Ajuste automático:**')
+    expect(result.explanation).toContain('transición 2')
+    expect(result.explanation).toContain('regla 1')
     expect(result.blueprint.modules.find(item => item.slug === 'pedidos-estados')?.workflow?.transitions).toEqual([{ from: 'recibido', to: 'confirmado', roles: 'all' }])
     expect(fetchMock).toHaveBeenCalledTimes(1)
     await sessions.applySession(tenantId, userId, session.id)
@@ -110,6 +117,8 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea proveedores')
     expect(result.blueprint.modules.find(item => item.slug === 'proveedores-icono')?.icon).toBe('Box')
     expect(result.message).toContain('Usé un icono genérico para Proveedores con icono')
+    expect(result.explanation).toContain('- **Ajuste automático:** Usé un icono genérico para Proveedores con icono')
+    expect(result.explanation).toContain('### ¿Por qué?')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const saved = await sessions.findSession(tenantId, session.id)
     expect((saved.blueprint as Awaited<ReturnType<typeof proposal>>).modules.find(item => item.slug === 'proveedores-icono')?.icon).toBe('Box')
@@ -117,10 +126,11 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
 
   it('autorrepara una respuesta inválida con una sola llamada adicional sin cobrarla', async () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
-    aiReply({ message: 'Borrador', blueprint: { version: 1, summary: 'Inválido', modules: [{ bad: true }], associations: [] } })
-    aiReply({ message: 'Corregido', blueprint: await proposal() })
+    aiReply({ message: 'Borrador', explanation: 'Borrador.\n### ¿Por qué?\n- **Órdenes**: registra solicitudes.', blueprint: { version: 1, summary: 'Inválido', modules: [{ bad: true }], associations: [] } })
+    aiReply({ message: 'Corregido', explanation: 'Corregí Órdenes.\n### ¿Por qué?\n- **Órdenes**: registra solicitudes válidas.', blueprint: await proposal() })
     const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Crea órdenes')
     expect(result.message).toContain('Corregido')
+    expect(result.explanation).toContain('Corregí Órdenes')
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const rows = await admin`SELECT credits, input_tokens FROM ai_credit_ledger WHERE session_id = ${session.id}`
     expect(rows).toHaveLength(1)
@@ -253,10 +263,13 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
     const duplicated = await exporter.exportBlueprint(tenantId)
     duplicated.modules.find(module => module.slug === 'clientes')!.fields.push({ name: 'codigos', label: 'Códigos', dataType: 'text' })
-    aiReply({ message: 'Añadí códigos', blueprint: duplicated })
+    const explanation = 'Reutilicé Clientes.\n### ¿Por qué?\n- **Clientes**: evita duplicar el código.'
+    aiReply({ message: 'Añadí códigos', explanation, blueprint: duplicated })
     aiReply({ message: 'Añadí códigos', blueprint: duplicated })
     const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Agrega códigos a Clientes')
     expect(result.merges.some(merge => merge.message.includes('campo codigo'))).toBe(true)
+    expect(result.explanation).toContain(explanation)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.blueprint.modules.find(module => module.slug === 'clientes')!.fields.map(field => field.name)).toEqual(['codigo'])
   })
 

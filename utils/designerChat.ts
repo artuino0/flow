@@ -1,6 +1,13 @@
-export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; createdAt: string }
+export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; explanation?: string; createdAt: string }
 export type DesignerChatDraft = { id: string; content: string; createdAt: string; status: 'pending' | 'failed'; error: string; action: 'retry' | 'plan' }
 export type DesignerChatEntry = DesignerChatMessage & { id: string; draft?: DesignerChatDraft }
+
+export function designerExplanationSummary(explanation: string): string { return explanation.split('\n', 1)[0]?.trim() ?? '' }
+export function designerExplanationBody(explanation: string): string { return explanation.slice(explanation.indexOf('\n') + 1).trim().replace(/^### ¿Por qué\?\s*/, '') }
+
+export function toggleDesignerFocus<T extends { focused: boolean; chatWidth: number; inspectorWidth: number; canvasState: unknown }>(state: T): T {
+  return { ...state, focused: !state.focused }
+}
 
 export function canSendDesignerChat(options: { busy: boolean; noCredits: boolean; dirty: boolean; applied: boolean }): boolean {
   return !options.busy && !options.noCredits && !options.dirty && !options.applied

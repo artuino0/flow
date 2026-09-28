@@ -89,6 +89,7 @@ for (const [index, item] of cases.entries()) {
   } catch (error) { finalError = String(error?.message ?? error) }
   const blueprint = generated?.result?.normalized ?? null
   await writeFile(resolve(outputDir, `${item.id}.json`), JSON.stringify(blueprint ?? generated?.proposal ?? { error: finalError || generated?.errors }, null, 2) + '\n')
+  await writeFile(resolve(outputDir, `${item.id}.explanation.md`), `${generated?.explanation ?? ''}\n`)
   const proposed = blueprint?.modules.map(module => {
     const old = current.modules.find(existing => existing.slug === module.slug)
     return { module, fields: module.fields.filter(field => !old?.fields.some(existing => existing.name === field.name)) }

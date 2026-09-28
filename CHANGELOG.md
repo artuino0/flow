@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.107.0] - 2026-09-28
+#### [feature]
+- [ERD-113](https://dydasoftware.atlassian.net/browse/ERD-113) - Diseñador: cada propuesta de la IA trae explicación en markdown con sección ¿Por qué? y el chat en /disenador suma modo enfoque para leerla.
+
 ### [0.106.0] - 2026-09-28
 #### [feature]
 - [ERD-112](https://dydasoftware.atlassian.net/browse/ERD-112) - Diseñador: deshacer un diseño aplicado desde el historial en /disenador con protección ante datos capturados (migración 0084); agrupador con borde más visible.

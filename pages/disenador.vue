@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, MessageSquareText, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
+import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, Maximize2, MessageSquareText, Minimize2, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
 import type { Blueprint, BlueprintField } from '~/server/utils/blueprint/schema'
 import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
 import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
-import { beginDesignerChat, canSendDesignerChat, designerChatEntries, failDesignerChat, type DesignerChatDraft } from '~/utils/designerChat'
+import { beginDesignerChat, canSendDesignerChat, designerChatEntries, designerExplanationBody, designerExplanationSummary, failDesignerChat, toggleDesignerFocus, type DesignerChatDraft } from '~/utils/designerChat'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
 useHead({ title: 'Diseñador de estructura | Flow' })
@@ -36,6 +36,8 @@ const reviewOpen = ref(false)
 const result = ref<DesignerApply | null>(null)
 const inspectorTab = ref<'fields' | 'relations' | 'states'>('fields')
 const chatOpen = ref(false)
+const chatFocused = ref(false)
+const explanationText = ref('')
 const inspectorOpen = ref(false)
 const sessionMenuOpen = ref(false)
 const rulesDraft = ref<Record<string, string>>({})
@@ -51,7 +53,16 @@ function scheduleCanvasFit() {
 }
 watch([chatWidth, inspectorWidth], scheduleCanvasFit)
 watch(selectedId, id => { if (!id) relationFilter.value = 'none' })
-onBeforeUnmount(() => { if (fitTimer) clearTimeout(fitTimer) })
+function onEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  if (chatFocused.value) { chatFocused.value = false; event.stopPropagation() }
+  else if (explanationText.value) explanationText.value = ''
+}
+onMounted(() => window.addEventListener('keydown', onEscape))
+onBeforeUnmount(() => { if (fitTimer) clearTimeout(fitTimer); window.removeEventListener('keydown', onEscape) })
+function toggleFocus() {
+  chatFocused.value = toggleDesignerFocus({ focused: chatFocused.value, chatWidth: chatWidth.value, inspectorWidth: inspectorWidth.value, canvasState: { selectedId: selectedId.value, focusId: focusId.value, relationFilter: relationFilter.value } }).focused
+}
 
 const graph = computed(() => current.value && working.value ? buildDesignerGraph(current.value, working.value, diff.value, navigation.value) : null)
 const selected = computed(() => working.value?.modules.find(module => module.slug === selectedId.value) ?? null)
@@ -151,6 +162,7 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
     return
   }
   const refreshed: DesignerSession = { ...session.value, status: 'draft', blueprint: response.blueprint, version: session.value.version + 1, creditsConsumed: session.value.creditsConsumed + messageCost.value, messages: [...session.value.messages, { role: 'user', content: instruction, createdAt: chatDrafts.value.find(draft => draft.id === draftId)?.createdAt ?? new Date().toISOString() }, { role: 'assistant', content: response.message, createdAt: new Date().toISOString() }] }
+  refreshed.messages[refreshed.messages.length - 1]!.explanation = response.explanation
   session.value = refreshed
   chatDrafts.value = chatDrafts.value.filter(draft => draft.id !== draftId)
   working.value = cloneBlueprint(response.blueprint)
@@ -234,6 +246,7 @@ async function undoApplication(item: DesignerApplication) {
     relationFilter.value = 'none'
     result.value = null
     sessionMenuOpen.value = false
+    explanationText.value = ''
     await nextTick()
     canvas.value?.fitCanvas()
   } catch (error) {
@@ -335,18 +348,18 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
     <div v-if="result" role="status" class="flex shrink-0 items-center gap-3 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"><CheckCircle2 class="h-4 w-4" /><span>Diseño creado. {{ result.modules.length }} módulos o catálogos nuevos.</span><NuxtLink v-for="module in result.modules.slice(0, 4)" :key="module.id" :to="`/modulos/${module.id}/editar`" class="font-semibold underline">{{ module.slug }} <ExternalLink class="inline h-3 w-3" /></NuxtLink></div>
 
     <div v-if="loading" class="flex min-h-0 flex-1 items-center justify-center text-sm text-brand-text-secondary"><LoaderCircle class="mr-2 h-5 w-5 animate-spin" />Cargando estructura…</div>
-    <div v-else-if="graph" class="relative flex min-h-0 flex-1">
+    <div v-else-if="graph" class="designer-workspace relative flex min-h-0 flex-1" :class="{ 'is-focused': chatFocused }">
       <aside class="designer-chat min-h-0 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface" :style="{ '--designer-chat-width': `${chatWidth}px` }" :class="chatOpen ? 'is-open' : ''">
-        <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3"><div class="flex items-center gap-2"><Sparkles class="h-4 w-4 text-brand-orange" /><strong class="text-sm">Asistente de estructura</strong></div><button type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar chat" @click="chatOpen = false"><PanelLeftClose class="h-4 w-4" /></button></div>
-        <div ref="chatScroll" class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs" aria-live="polite">
+        <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3"><div class="flex items-center gap-2"><Sparkles class="h-4 w-4 text-brand-orange" /><strong class="text-sm">Asistente de estructura</strong></div><div class="flex items-center gap-1"><button type="button" class="rounded p-1.5 text-brand-text-muted hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :aria-label="chatFocused ? 'Contraer chat' : 'Expandir chat'" :title="chatFocused ? 'Contraer' : 'Expandir'" @click="toggleFocus"><Minimize2 v-if="chatFocused" class="h-4 w-4" /><Maximize2 v-else class="h-4 w-4" /></button><button v-if="!chatFocused" type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar chat" @click="chatOpen = false"><PanelLeftClose class="h-4 w-4" /></button></div></div>
+        <div ref="chatScroll" class="designer-chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs" aria-live="polite">
           <div v-if="!chatEntries.length" class="space-y-4"><div class="rounded-lg bg-brand-blue-bg p-4 leading-5 text-brand-text-secondary">Describe tu negocio o el cambio que necesitas. Verás la propuesta sobre {{ current?.modules.length ? 'tu estructura actual' : 'un lienzo vacío' }} antes de crearla.</div><div><p class="mb-2 font-bold text-brand-text-muted">PRUEBA CON UNA IDEA</p><button v-for="suggestion in ['Agrega un módulo de garantías', 'Relaciona órdenes con clientes', 'Crea un catálogo de tipos de servicio']" :key="suggestion" type="button" class="mb-2 block w-full rounded-md border border-brand-border-light px-3 py-2 text-left hover:border-brand-blue hover:bg-brand-bg" @click="prompt = suggestion">{{ suggestion }}</button></div></div>
           <div v-for="message in chatEntries" :key="message.id" class="space-y-2">
-            <div class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.content }}</span><div v-if="message.id === lastAssistantId && diff && hasProposal" class="mt-3 flex flex-wrap gap-1.5 border-t border-brand-border-light pt-2"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div></div>
+            <div class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.explanation ? designerExplanationSummary(message.explanation) : message.content }}</span><template v-if="message.role === 'assistant' && message.explanation"><details class="mt-2 border-t border-brand-border-light pt-2" :open="message.explanation.length <= 280"><summary class="cursor-pointer font-semibold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue">¿Por qué?</summary><MarkdownView class="mt-2" :source="designerExplanationBody(message.explanation)" /></details><button type="button" class="mt-2 rounded text-[11px] font-semibold text-brand-blue hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" @click="explanationText = message.explanation">Ver explicación completa</button></template><div v-if="message.id === lastAssistantId && diff && hasProposal" class="mt-3 flex flex-wrap gap-1.5 border-t border-brand-border-light pt-2"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div></div>
             <div v-if="message.draft?.status === 'pending'" role="status" class="mr-4 flex items-center gap-2 rounded-lg border border-brand-border-light bg-brand-bg px-3 py-2.5 text-brand-text-secondary"><span class="font-semibold text-brand-orange">Diseñando…</span><span class="designer-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
             <div v-else-if="message.draft?.status === 'failed'" role="alert" class="mr-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-red-800"><p>{{ message.draft.error }}</p><NuxtLink v-if="message.draft.action === 'plan'" to="/ajustes?section=plan" class="mt-2 inline-flex rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100">Mejorar plan</NuxtLink><button v-else type="button" class="mt-2 inline-flex items-center gap-1 rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!chatCanSend" @click="sendPrompt(message.content, message.draft.id)"><RotateCcw class="h-3 w-3" />Reintentar</button></div>
           </div>
         </div>
-        <div class="border-t border-brand-border-light p-3"><div v-if="noCredits" class="mb-2 rounded-md bg-amber-50 p-2.5 text-xs text-amber-900"><Coins class="mr-1 inline h-4 w-4" />Sin créditos suficientes. Puedes editar el plano a mano. <NuxtLink to="/ajustes?section=plan" class="font-semibold underline">Ver plan</NuxtLink></div><div v-if="dirty" class="mb-2 text-[11px] text-brand-blue">Guarda los cambios manuales antes de continuar con la IA.</div><label class="sr-only" for="designer-prompt">Describe el cambio</label><textarea id="designer-prompt" v-model="prompt" rows="3" maxlength="4000" class="w-full resize-none rounded-md border border-brand-border-light bg-brand-surface px-3 py-2 text-xs outline-none focus:border-brand-blue disabled:bg-brand-bg" :placeholder="firstGeneration ? 'Describe qué necesita tu negocio…' : 'Pide un ajuste a la propuesta…'" :disabled="!chatCanSend" @keydown.ctrl.enter.prevent="sendPrompt()" /><div class="mt-2 flex items-center justify-between gap-2 text-[10px] text-brand-text-muted"><span>Cuesta {{ messageCost }} {{ messageCost === 1 ? 'crédito' : 'créditos' }} · Saldo {{ balance === Infinity ? 'ilimitado' : balance }}</span><button type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-40" :disabled="!prompt.trim() || !chatCanSend" @click="sendPrompt()"><Send class="h-3 w-3" />Enviar</button></div></div>
+        <div class="designer-composer border-t border-brand-border-light p-3"><div v-if="noCredits" class="mb-2 rounded-md bg-amber-50 p-2.5 text-xs text-amber-900"><Coins class="mr-1 inline h-4 w-4" />Sin créditos suficientes. Puedes editar el plano a mano. <NuxtLink to="/ajustes?section=plan" class="font-semibold underline">Ver plan</NuxtLink></div><div v-if="dirty" class="mb-2 text-[11px] text-brand-blue">Guarda los cambios manuales antes de continuar con la IA.</div><label class="sr-only" for="designer-prompt">Describe el cambio</label><textarea id="designer-prompt" v-model="prompt" rows="3" maxlength="4000" class="w-full resize-none rounded-md border border-brand-border-light bg-brand-surface px-3 py-2 text-xs outline-none focus:border-brand-blue disabled:bg-brand-bg" :placeholder="firstGeneration ? 'Describe qué necesita tu negocio…' : 'Pide un ajuste a la propuesta…'" :disabled="!chatCanSend" @keydown.ctrl.enter.prevent="sendPrompt()" /><div class="mt-2 flex items-center justify-between gap-2 text-[10px] text-brand-text-muted"><span>Cuesta {{ messageCost }} {{ messageCost === 1 ? 'crédito' : 'créditos' }} · Saldo {{ balance === Infinity ? 'ilimitado' : balance }}</span><button type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-40" :disabled="!prompt.trim() || !chatCanSend" @click="sendPrompt()"><Send class="h-3 w-3" />Enviar</button></div></div>
       </aside>
 
       <PanelResizeHandle v-model="chatWidth" class="designer-handle" :min="280" :max="520" :default-value="360" label="Redimensionar chat" @commit="chatPanel.persist()" />
@@ -372,6 +385,10 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
           <template v-else><p v-if="!selected.workflow" class="text-brand-text-muted">Este módulo no tiene estados definidos.</p><template v-else><div class="mb-4 flex flex-wrap items-center gap-2"><template v-for="(state, name) in selected.workflow.states" :key="name"><span class="rounded-full border px-3 py-1.5 font-semibold" :class="name === selected.workflow.initial ? 'border-brand-blue bg-brand-blue-bg text-brand-blue' : 'border-brand-border-light'">{{ name }}</span></template></div><div v-for="(transition, index) in selected.workflow.transitions" :key="index" class="mb-2 flex items-center gap-2 rounded border border-brand-border-light px-3 py-2"><span class="rounded-full border border-brand-border-light bg-brand-bg px-2 py-1">{{ transition.from }}</span><span class="text-brand-blue">→</span><strong class="rounded-full border border-brand-blue bg-brand-blue-bg px-2 py-1 text-brand-blue">{{ transition.to }}</strong><small class="ml-auto text-brand-text-muted">{{ transition.label || (transition.roles === 'all' ? 'Todos' : `${transition.roles.length} roles`) }}</small></div><div v-if="selected.workflow.rules?.length" class="mt-5"><strong class="text-[10px] uppercase tracking-wide text-brand-text-muted">Reglas</strong><p v-for="rule in selected.workflow.rules" :key="rule.message" class="mt-2 rounded bg-brand-bg p-2.5 leading-5">Para pasar a <b>{{ rule.when.to }}</b>: {{ rule.message }} <span class="font-semibold">{{ rule.mode === 'block' ? '· bloquea' : '· advierte' }}</span></p></div><p class="mt-4 text-[11px] text-brand-text-muted">Los estados son de solo lectura en esta fase.</p></template></template>
         </div><div v-else class="p-5 text-xs leading-5 text-brand-text-muted">Selecciona una caja del lienzo para revisar sus campos, relaciones y estados.</div>
       </aside>
+      <aside v-if="explanationText" class="designer-explanation absolute inset-y-0 right-0 z-50 flex w-full max-w-[560px] flex-col border-l border-brand-border-light bg-brand-surface shadow-xl" aria-label="Explicación completa">
+        <div class="flex items-center justify-between border-b border-brand-border-light px-5 py-4"><h2 class="text-sm font-bold">Explicación del diseño</h2><button type="button" class="rounded p-1.5 text-brand-text-muted hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" aria-label="Cerrar explicación" @click="explanationText = ''"><X class="h-4 w-4" /></button></div>
+        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-6 text-sm leading-6"><MarkdownView :source="explanationText" /></div>
+      </aside>
     </div>
 
     <div v-if="reviewOpen" class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 pt-[8vh]" @keydown.esc="reviewOpen = false"><div role="dialog" aria-modal="true" aria-labelledby="review-title" class="w-full max-w-[600px] rounded-lg border border-brand-border-light bg-brand-surface shadow-2xl"><div class="flex items-center justify-between border-b border-brand-border-light px-5 py-4"><h2 id="review-title" class="text-base font-bold">Revisar y aprobar</h2><button type="button" aria-label="Cerrar" class="rounded p-1 hover:bg-brand-bg" @click="reviewOpen = false"><X class="h-4 w-4" /></button></div><div class="space-y-5 p-5 text-xs"><div><h3 class="mb-2 font-bold uppercase tracking-wide text-brand-text-muted">Resumen de cambios</h3><div class="grid grid-cols-2 gap-2 sm:grid-cols-3"><div v-for="item in changes" :key="item.label" class="rounded-md bg-brand-bg px-3 py-2"><b class="mr-1 text-base text-brand-text">{{ item.count }}</b>{{ item.label }}</div></div></div><p v-if="diff?.merges.length" class="rounded bg-brand-blue-bg p-3 text-brand-blue">Se reutilizaron módulos existentes: {{ diff.merges.map(item => item.to).join(', ') }}</p><div class="rounded-md bg-brand-bg p-4"><h3 class="mb-2 font-bold">Impacto en el plan</h3><p>{{ diff?.plan.name }}: {{ diff?.plan.used }} actuales + {{ diff?.plan.added }} nuevos = {{ diff?.plan.after }} / {{ diff?.plan.limit ?? 'sin límite' }} módulos.</p><p class="mt-1">Créditos usados en esta sesión: {{ session?.creditsConsumed ?? 0 }}. Aprobar no consume créditos adicionales.</p><p v-if="diff && !diff.plan.allowed" class="mt-3 font-semibold text-red-700">Se excede el límite del plan. Quita módulos nuevos o mejora tu plan.</p></div><div class="rounded-md bg-green-50 p-3 text-green-900"><CheckCircle2 class="mr-1 inline h-4 w-4" />No se borra ni renombra nada de la estructura existente.</div></div><div class="flex flex-wrap items-center justify-between gap-2 border-t border-brand-border-light px-5 py-4"><button type="button" class="rounded border border-brand-border-light px-3 py-2 text-xs font-semibold" @click="reviewOpen = false">Seguir editando</button><div class="flex gap-2"><button v-if="diff && !diff.plan.allowed" type="button" class="rounded border border-brand-blue px-3 py-2 text-xs font-semibold text-brand-blue" @click="reviewOpen = false">Quitar módulos</button><NuxtLink v-if="diff && !diff.plan.allowed" to="/ajustes?section=plan" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white"><CreditCard class="h-3.5 w-3.5" />Mejorar plan</NuxtLink><button type="button" class="rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white disabled:opacity-40" :disabled="!canApprove" @click="approve"><LoaderCircle v-if="busy === 'apply'" class="mr-1 inline h-3.5 w-3.5 animate-spin" />Aprobar y crear</button></div></div></div></div>
@@ -379,14 +396,18 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
 </template>
 
 <style scoped>
-.designer-chat { display: flex; width: var(--designer-chat-width, 360px); }
+.designer-chat { display: flex; width: var(--designer-chat-width, 360px); transition: width 180ms cubic-bezier(.25, 1, .5, 1); }
 .designer-inspector { display: flex; width: var(--designer-inspector-width, 320px); }
+.designer-workspace.is-focused > :not(.designer-chat) { visibility: hidden; pointer-events: none; }
+.designer-workspace.is-focused > .designer-chat { display: flex; position: absolute; inset: 0; z-index: 60; width: 100%; height: 100%; border-right: 0; box-shadow: none; }
+.designer-workspace.is-focused .designer-chat-scroll, .designer-workspace.is-focused .designer-composer { width: min(100%, 792px); margin-inline: auto; }
+.designer-workspace.is-focused .designer-chat-scroll { padding-inline: 1rem; }
 .designer-typing-dots { display: inline-flex; gap: 3px; align-items: center; }
 .designer-typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: designer-typing 1.2s ease-in-out infinite; }
 .designer-typing-dots i:nth-child(2) { animation-delay: 0.15s; }
 .designer-typing-dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes designer-typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
-@media (prefers-reduced-motion: reduce) { .designer-typing-dots i { animation: none; opacity: 0.8; } }
+@media (prefers-reduced-motion: reduce) { .designer-typing-dots i { animation: none; opacity: 0.8; } .designer-chat { transition: none; } }
 @media (min-width: 1025px) {
   .designer-mobile-control { display: none !important; }
 }

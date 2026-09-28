@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beginDesignerChat, canSendDesignerChat, designerChatEntries, failDesignerChat } from '../../utils/designerChat'
+import { beginDesignerChat, canSendDesignerChat, designerChatEntries, failDesignerChat, toggleDesignerFocus } from '../../utils/designerChat'
 
 describe('estado del chat del diseñador', () => {
   const when = '2026-09-27T12:00:00.000Z'
@@ -32,5 +32,14 @@ describe('estado del chat del diseñador', () => {
 
   it('al recargar muestra solo el historial guardado', () => {
     expect(designerChatEntries([], [])).toEqual([])
+  })
+
+  it('expande y contrae sin alterar anchos ni selección del lienzo', () => {
+    const canvasState = { zoom: 1.4, x: 240, y: 120, selectedId: 'pedidos', relationFilter: 'all' }
+    const base = { focused: false, chatWidth: 412, inspectorWidth: 356, canvasState }
+    const expanded = toggleDesignerFocus(base)
+    expect(expanded).toMatchObject({ focused: true, chatWidth: 412, inspectorWidth: 356 })
+    expect(toggleDesignerFocus(expanded)).toEqual(base)
+    expect(expanded.canvasState).toBe(canvasState)
   })
 })
