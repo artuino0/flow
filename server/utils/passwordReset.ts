@@ -3,8 +3,8 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db, withPerson } from '~/server/db'
 import { passwordResetTokens, people, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
-import { enqueueEmail } from '~/server/utils/jobQueue'
-import { escapeHtml, getAppBaseUrl } from '~/server/utils/mailer'
+import { sendCriticalEmail } from '~/server/utils/criticalEmail'
+import { escapeHtml, getAppBaseUrl, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
 import { invalidateTenantSessions } from '~/server/utils/shortCache'
 import { logger } from '~/server/utils/logger'
 
@@ -27,7 +27,16 @@ export async function requestPasswordReset(email: string): Promise<void> {
   })
   const link = `${getAppBaseUrl()}/restablecer/${token}`
   const html = `<p>Recibimos una solicitud para cambiar la contraseña de tu cuenta.</p><p><a href="${escapeHtml(link)}">Crear una contraseña nueva</a></p><p>Este enlace vence en 60 minutos. Si no solicitaste el cambio, puedes ignorar este correo.</p>`
-  await enqueueEmail(memberships[0].tenantId, { to: person.email, subject: 'Restablece tu contraseña', html })
+  try {
+    await resolveSmtpConfig(memberships[0].tenantId)
+  } catch (error) {
+    if (error instanceof SmtpNotConfiguredError && process.env.NODE_ENV === 'development') {
+      logger.info('development_password_reset_link', { link })
+      return
+    }
+    throw error
+  }
+  await sendCriticalEmail(memberships[0].tenantId, { to: person.email, subject: 'Restablece tu contraseña', html })
 }
 
 export async function passwordResetRateKey(token: string): Promise<string> {

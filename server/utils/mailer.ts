@@ -42,8 +42,8 @@ export function escapeHtml(s: string): string {
 export interface SmtpConfig {
   host: string
   port: number
-  user: string
-  password: string
+  user?: string
+  password?: string
   from: string
   fromName?: string
   replyTo?: string
@@ -65,9 +65,9 @@ export function readSmtpConfig(): SmtpConfig {
   const password = process.env.SMTP_PASSWORD
   const from = process.env.SMTP_FROM
 
-  if (!host || !port || !user || !password || !from) {
+  if (!host || !port || !from || Boolean(user) !== Boolean(password)) {
     throw new SmtpNotConfiguredError(
-      'El envio de correo no esta configurado en este servidor. Completa SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD y SMTP_FROM en el archivo .env.'
+      'El envio de correo no esta configurado en este servidor. Completa SMTP_HOST, SMTP_PORT y SMTP_FROM; SMTP_USER y SMTP_PASSWORD deben estar ambos presentes o ambos vacíos.'
     )
   }
 
@@ -76,7 +76,7 @@ export function readSmtpConfig(): SmtpConfig {
     throw new SmtpNotConfiguredError(`SMTP_PORT invalido: "${port}"`)
   }
 
-  return { host, port: portNumber, user, password, from: from.replace(/^FlowERP(?=\s*<)/, 'Flow'), security: portNumber === 465 ? 'ssl' : 'tls' }
+  return { host, port: portNumber, user, password, from: from.replace(/^FlowERP(?=\s*<)/, 'Flow'), security: portNumber === 465 ? 'ssl' : user ? 'tls' : 'none' }
 }
 
 /** Resuelve la configuración personalizada del tenant y cae al .env cuando
@@ -292,7 +292,7 @@ export function createTransporter(smtp: SmtpConfig) {
     port: smtp.port,
     secure: smtp.security === 'ssl' || (!smtp.security && smtp.port === 465),
     requireTLS: smtp.security === 'tls',
-    auth: { user: smtp.user, pass: smtp.password }
+    ...(smtp.user && smtp.password ? { auth: { user: smtp.user, pass: smtp.password } } : {})
   })
   if (smtp.headers && Object.keys(smtp.headers).length > 0) {
     // Todos los envíos (invitaciones, CFDI, automatizaciones) pasan por aquí:

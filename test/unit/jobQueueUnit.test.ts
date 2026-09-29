@@ -50,5 +50,6 @@ describe('classifyEmailError', () => {
     expect(classifyEmailError(new Error('Connection timeout'))).toMatchObject({ retryable: true })
     expect(classifyEmailError(Object.assign(new Error('rate exceeded'), { responseCode: 454 }))).toMatchObject({ retryable: true })
     expect(classifyEmailError('cadena rara')).toMatchObject({ retryable: true, error: 'cadena rara' })
+    expect(classifyEmailError(Object.assign(new Error('550 5.7.0 Too many emails per second'), { responseCode: 550 }))).toMatchObject({ retryable: true })
   })
 })

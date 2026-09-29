@@ -16,6 +16,21 @@ npm run dev
 
 Health check: `GET /api/health`
 
+### Correo local con Mailpit
+
+Mailpit recibe correos de prueba en `localhost:1025` y muestra la bandeja en
+<http://localhost:8025>. No entrega mensajes a destinatarios reales.
+
+```bash
+docker network create erp-dinamico-net  # solo si aún no existe
+docker run -d --name erp-dinamico-mailpit --restart unless-stopped --network erp-dinamico-net -p 1025:1025 -p 8025:8025 axllent/mailpit
+```
+
+Si el contenedor ya existe, usa `docker start erp-dinamico-mailpit`. En `.env`
+usa `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_FROM="Flow <no-responder@flow.local>"`
+y `APP_BASE_URL=http://localhost:3000`; deja `SMTP_USER` y `SMTP_PASSWORD` vacíos
+o elimínalos. Reinicia `npm run dev` después de cambiar `.env`.
+
 ## Contenedor
 
 ```bash

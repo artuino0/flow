@@ -9,9 +9,9 @@ function envSummary() {
   const port = Number(process.env.SMTP_PORT || 587)
   const user = process.env.SMTP_USER || ''
   const from = process.env.SMTP_FROM || ''
-  const configured = Boolean(host && port && user && process.env.SMTP_PASSWORD && from)
+  const configured = Boolean(host && port && from && Boolean(user) === Boolean(process.env.SMTP_PASSWORD))
   const match = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
-  return { configured, provider: 'smtp', host, port, security: port === 465 ? 'ssl' : 'tls', username: user, fromEmail: match?.[2] || from, fromName: match?.[1] || 'Flow', replyTo: '', passwordConfigured: Boolean(process.env.SMTP_PASSWORD), apiKeyConfigured: false }
+  return { configured, provider: 'smtp', host, port, security: port === 465 ? 'ssl' : user ? 'tls' : 'none', username: user, fromEmail: match?.[2] || from, fromName: match?.[1] || 'Flow', replyTo: '', passwordConfigured: Boolean(process.env.SMTP_PASSWORD), apiKeyConfigured: false }
 }
 
 export default defineEventHandler(async (event) => {

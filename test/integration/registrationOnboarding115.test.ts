@@ -3,6 +3,10 @@ import postgres from 'postgres'
 import { createTestDb, type TestDb } from '../setup/testDb'
 
 const checkoutCalls = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+vi.mock('../../server/utils/mailer', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../server/utils/mailer')>(),
+  sendPlainEmail: vi.fn(async () => {})
+}))
 vi.mock('stripe', () => ({
   default: class {
     customers = { create: async () => ({ id: 'cus_registration_test' }) }

@@ -6,6 +6,7 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 
 const { enqueueEmail } = vi.hoisted(() => ({ enqueueEmail: vi.fn(async (_tenantId: string, _payload: { to: string; subject: string; html: string }) => 'email-job') }))
 vi.mock('../../server/utils/jobQueue', () => ({ enqueueEmail }))
+vi.mock('../../server/utils/criticalEmail', () => ({ sendCriticalEmail: enqueueEmail }))
 
 let testDb: TestDb
 let admin: postgres.Sql
@@ -31,6 +32,7 @@ beforeAll(async () => {
   const [user] = await admin`insert into users (tenant_id, person_id, role_id, is_active) values (${tenantId}, ${personId}, ${role.id}, true) returning id`
   userId = user.id
   process.env.APP_DATABASE_URL = testDb.appUrl
+  Object.assign(process.env, { SMTP_HOST: 'localhost', SMTP_PORT: '2525', SMTP_USER: 'test', SMTP_PASSWORD: 'test', SMTP_FROM: 'Flow <test@local.test>' })
   vi.stubGlobal('defineEventHandler', (handler: any) => handler)
   vi.stubGlobal('readValidatedBody', async (event: any, parse: any) => parse(event.context.body))
   vi.stubGlobal('getRequestIP', (event: any) => event.context.ip)
@@ -51,6 +53,7 @@ beforeEach(() => {
 afterAll(async () => {
   await admin.end()
   await testDb.stop()
+  for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM']) delete process.env[key]
 })
 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex')

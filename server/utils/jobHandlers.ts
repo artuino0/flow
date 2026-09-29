@@ -12,6 +12,7 @@ export function classifyEmailError(error: unknown): JobOutcome {
   if (error instanceof SmtpNotConfiguredError) return { ok: false, retryable: false, error: message }
   const { responseCode, code } = (error ?? {}) as { responseCode?: number; code?: string }
   if (code === 'EAUTH') return { ok: false, retryable: false, error: `Credenciales de correo rechazadas: ${message}` }
+  if (/(?:too many emails? per second|rate limit|throttl)/i.test(message)) return { ok: false, retryable: true, error: message }
   if (typeof responseCode === 'number' && responseCode >= 500 && responseCode < 600) return { ok: false, retryable: false, error: message }
   return { ok: false, retryable: true, error: message }
 }

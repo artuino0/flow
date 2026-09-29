@@ -187,6 +187,8 @@ describe('ciclo del proceso', () => {
   })
 
   it('con la cola vacía no hace nada', async () => {
+    const startedAt = Date.now()
     expect(await queue.runJobQueueTick({ budgetMs: 2_000 })).toMatchObject({ claimed: 0, succeeded: 0 })
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
   })
 })

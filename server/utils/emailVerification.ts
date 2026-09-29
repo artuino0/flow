@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { emailVerificationTokens, people, tenants, users } from '~/server/db/schema'
-import { enqueueEmail } from '~/server/utils/jobQueue'
+import { sendCriticalEmail } from '~/server/utils/criticalEmail'
 import { escapeHtml, getAppBaseUrl, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
 import { logger } from '~/server/utils/logger'
 
@@ -50,7 +50,7 @@ export async function issueEmailVerification(personId: string, tenantId: string,
   const link = `${getAppBaseUrl()}/verificar-correo?token=${encodeURIComponent(token)}`
   try {
     await resolveSmtpConfig(tenantId)
-    await enqueueEmail(tenantId, {
+    await sendCriticalEmail(tenantId, {
       to: email,
       subject: 'Confirma tu correo para comenzar en Flow',
       html: `<p>Confirma tu correo para elegir un plan y activar tu organización.</p><p><a href="${escapeHtml(link)}">Verificar correo</a></p><p>El enlace vence en 24 horas y solo se puede usar una vez.</p>`

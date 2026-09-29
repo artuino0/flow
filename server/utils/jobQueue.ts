@@ -93,9 +93,9 @@ export type EmailJobPayload = z.infer<typeof emailJobSchema>
 
 export async function enqueueEmail(tenantId: string, payload: EmailJobPayload, options: EnqueueOptions = {}) {
   const parsed = emailJobSchema.parse(payload)
-  const usage = await getPlanUsage(tenantId)
-  const quota = usage.usage.find(item => item.concept === 'emails')!
-  if (!(IS_ONPREM_BUILD && getLicenseStatus().activated) && quota.limit !== null && quota.used >= quota.limit) {
+  const { usage, exceeded } = await emailQuota(tenantId)
+  if (exceeded) {
+    const quota = usage.usage.find(item => item.concept === 'emails')!
     const rows = await withTenant(tenantId, tx => tx.insert(jobQueue).values({
       tenantId, kind: 'email', payload: parsed, status: 'dead', lastError: `Límite del plan ${usage.plan}: se excedió la cuota mensual de correos (${quota.limit}).`,
       completedAt: new Date(), idempotencyKey: options.idempotencyKey ?? null, runAt: options.runAt ?? new Date(), maxAttempts: options.maxAttempts ?? 6
@@ -103,6 +103,31 @@ export async function enqueueEmail(tenantId: string, payload: EmailJobPayload, o
     return rows[0]?.id ?? null
   }
   return enqueueJob(tenantId, 'email', parsed, options)
+}
+
+async function emailQuota(tenantId: string) {
+  const usage = await getPlanUsage(tenantId)
+  const quota = usage.usage.find(item => item.concept === 'emails')!
+  return { usage, exceeded: !(IS_ONPREM_BUILD && getLicenseStatus().activated) && quota.limit !== null && quota.used >= quota.limit }
+}
+
+/** Reserva una sola fila para el intento inmediato; también cuenta para la cuota mensual. */
+export async function reserveImmediateEmail(tenantId: string, payload: EmailJobPayload): Promise<string | null> {
+  const parsed = emailJobSchema.parse(payload)
+  const { usage, exceeded } = await emailQuota(tenantId)
+  if (exceeded) {
+    const quota = usage.usage.find(item => item.concept === 'emails')!
+    await withTenant(tenantId, tx => tx.insert(jobQueue).values({
+      tenantId, kind: 'email', payload: parsed, status: 'dead',
+      lastError: `Límite del plan ${usage.plan}: se excedió la cuota mensual de correos (${quota.limit}).`, completedAt: new Date()
+    }))
+    return null
+  }
+  const [row] = await withTenant(tenantId, tx => tx.insert(jobQueue).values({
+    tenantId, kind: 'email', payload: parsed, status: 'processing', attempts: 1,
+    lockedAt: new Date(), lockedBy: 'immediate'
+  }).returning({ id: jobQueue.id }))
+  return row!.id
 }
 
 const MAX_ERROR_LENGTH = 1000

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.115.1] - 2026-09-29
+#### [bug]
+- [ERD-125](https://dydasoftware.atlassian.net/browse/ERD-125) - Los correos críticos (verificación, reenvío, cambio de correo y recuperación de contraseña) se envían al instante en vez de esperar hasta 15 minutos en la cola.
+
 ### [0.115.0] - 2026-09-29
 #### [feature]
 - [ERD-124](https://dydasoftware.atlassian.net/browse/ERD-124) - Onboarding guiado con Chattito: bienvenida automática la primera vez y recorridos para crear el primer módulo (manual o con el Diseñador), con progreso retomable por usuario y respeto a sus permisos.

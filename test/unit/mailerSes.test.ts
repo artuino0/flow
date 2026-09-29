@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import nodemailer from 'nodemailer'
 
 const sendMail = vi.fn(async () => ({ messageId: 'x' }))
 vi.mock('nodemailer', () => ({ default: { createTransport: vi.fn(() => ({ sendMail })) } }))
 
-import { createTransporter, SmtpNotConfiguredError, sesConfigFromRow } from '../../server/utils/mailer'
+import { createTransporter, readSmtpConfig, SmtpNotConfiguredError, sesConfigFromRow } from '../../server/utils/mailer'
 
 const platform = { region: 'us-east-1', smtpHost: 'email-smtp.us-east-1.amazonaws.com', smtpPort: 587, smtpUser: 'u', smtpPassword: 'p' }
 const row = {
@@ -42,5 +43,28 @@ describe('correo con Amazon SES por organización', () => {
     const transporter = createTransporter({ host: 'h', port: 587, user: 'u', password: 'p', from: 'f@x.com' })
     await transporter.sendMail({ to: 'a@b.com', subject: 's' })
     expect(sendMail).toHaveBeenCalledWith({ to: 'a@b.com', subject: 's' })
+  })
+})
+
+describe('SMTP local sin autenticación', () => {
+  it('usa Mailpit sin auth ni TLS y exige credenciales completas si se configuran', () => {
+    const old = Object.fromEntries(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'].map(key => [key, process.env[key]]))
+    try {
+      Object.assign(process.env, { SMTP_HOST: 'localhost', SMTP_PORT: '1025', SMTP_FROM: 'Flow <no-responder@flow.local>' })
+      delete process.env.SMTP_USER
+      delete process.env.SMTP_PASSWORD
+      const config = readSmtpConfig()
+      expect(config.security).toBe('none')
+      createTransporter(config)
+      expect(vi.mocked(nodemailer.createTransport)).toHaveBeenLastCalledWith(expect.objectContaining({ host: 'localhost', port: 1025, secure: false, requireTLS: false }))
+      expect(vi.mocked(nodemailer.createTransport).mock.lastCall?.[0]).not.toHaveProperty('auth')
+      process.env.SMTP_USER = 'incompleto'
+      expect(() => readSmtpConfig()).toThrow(SmtpNotConfiguredError)
+    } finally {
+      for (const [key, value] of Object.entries(old)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+    }
   })
 })
