@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.113.0] - 2026-09-29
+#### [feature]
+- [ERD-119](https://dydasoftware.atlassian.net/browse/ERD-119) - Diseñador: errores del plano visibles con nombres y clic para ubicarlos en el lienzo, botón Corregir con IA y aviso al abrir sesiones con errores.
+
 ### [0.112.0] - 2026-09-28
 #### [feature]
 - [ERD-118](https://dydasoftware.atlassian.net/browse/ERD-118) - Vista Calendario día/semana/mes por módulo (configurable, con Solo los suyos), activada en Agenda (migración 0090).

@@ -6,6 +6,7 @@ import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type Des
 import { designerProposalChanges } from '~/utils/designerMotion'
 import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
 import { beginDesignerChat, canSendDesignerChat, designerChatEntries, designerExplanationBody, designerExplanationSummary, failDesignerChat, toggleDesignerFocus, type DesignerChatDraft } from '~/utils/designerChat'
+import { buildDesignerRepairMessage, readableDesignerValidationErrors } from '~/utils/designerValidationErrors'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
 useHead({ title: 'Diseñador de estructura | Flow' })
@@ -35,6 +36,7 @@ const loading = ref(true)
 const busy = ref<'generate' | 'save' | 'apply' | 'undo' | ''>('')
 const errorText = ref('')
 const fieldErrors = ref<Array<{ path: string; message: string; code?: string }>>([])
+const repairingErrors = ref(false)
 const reviewOpen = ref(false)
 const result = ref<DesignerApply | null>(null)
 const inspectorTab = ref<'fields' | 'relations' | 'states'>('fields')
@@ -48,7 +50,7 @@ const chatPanel = usePanelWidth({ storageKey: 'flow-designer-chat-width', defaul
 const inspectorPanel = usePanelWidth({ storageKey: 'flow-designer-inspector-width', defaultValue: 320, min: 280, max: 480 })
 const chatWidth = chatPanel.width
 const inspectorWidth = inspectorPanel.width
-const canvas = ref<{ fitCanvas: () => void } | null>(null)
+const canvas = ref<{ fitCanvas: () => void; focusElement: (id: string) => void } | null>(null)
 let fitTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleCanvasFit() {
   if (fitTimer) clearTimeout(fitTimer)
@@ -79,9 +81,10 @@ const balance = computed(() => credits.value?.includedRemaining === null ? Infin
 const noCredits = computed(() => balance.value < messageCost.value)
 const chatCanSend = computed(() => canSendDesignerChat({ busy: Boolean(busy.value), noCredits: noCredits.value, dirty: dirty.value, applied: session.value?.status === 'applied' }))
 const chatEntries = computed(() => designerChatEntries(session.value?.messages ?? [], chatDrafts.value))
+const readableErrors = computed(() => working.value ? readableDesignerValidationErrors(fieldErrors.value, working.value) : [])
 const lastAssistantId = computed(() => [...chatEntries.value].reverse().find(message => message.role === 'assistant')?.id)
 watch(chatEntries, async () => { await nextTick(); if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight })
-const canApprove = computed(() => Boolean(session.value && session.value.status === 'draft' && hasProposal.value && !dirty.value && diff.value?.plan.allowed && !busy.value))
+const canApprove = computed(() => Boolean(session.value && session.value.status === 'draft' && hasProposal.value && !dirty.value && !fieldErrors.value.length && diff.value?.plan.allowed && !busy.value))
 const changes = computed(() => [
   { label: 'Módulos nuevos', count: diff.value?.newModules.length ?? 0 },
   { label: 'Catálogos', count: diff.value?.newCatalogs.length ?? 0 },
@@ -147,7 +150,7 @@ onMounted(async () => {
   } catch (error) { errorText.value = apiError(error).message; loading.value = false }
 })
 
-async function sendPrompt(value = prompt.value, retryId?: string) {
+async function sendPrompt(value = prompt.value, retryId?: string, repair = false) {
   const retry = retryId ? chatDrafts.value.find(draft => draft.id === retryId && draft.status === 'failed') : undefined
   const instruction = (retry ? retry.content : value).trim()
   if (!instruction || !session.value || !chatCanSend.value) return
@@ -164,6 +167,7 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
     chatDrafts.value = failDesignerChat(chatDrafts.value, draftId, info.code, info.status)
     await Promise.allSettled([refreshCredits(), api.getSession(session.value.id).then(value => { session.value = value })])
     busy.value = ''
+    if (repair) repairingErrors.value = false
     return
   }
   const motion = current.value && graph.value
@@ -176,7 +180,6 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
   working.value = cloneBlueprint(response.blueprint)
   diff.value = response.diff
   credits.value = response.credits
-  fieldErrors.value = []
   changedIds.value = []
   revealEdgeIds.value = []
   revealFieldKeys.value = []
@@ -188,7 +191,35 @@ async function sendPrompt(value = prompt.value, retryId?: string) {
   selectedEdgeId.value = null
   selectedId.value = changedIds.value[0] ?? null
   sessions.value = [refreshed, ...sessions.value.filter(item => item.id !== refreshed.id)]
+  try {
+    const validated = await api.validate(response.blueprint)
+    diff.value = validated.diff
+    fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
+  } catch (error) {
+    errorText.value = `No se pudo revalidar la propuesta: ${apiError(error).message}`
+  }
   busy.value = ''
+  if (repair) repairingErrors.value = false
+}
+
+async function repairBlueprintErrors() {
+  if (!readableErrors.value.length || !chatCanSend.value) return
+  repairingErrors.value = true
+  await sendPrompt(buildDesignerRepairMessage(readableErrors.value), undefined, true)
+}
+
+async function selectValidationError(error: { target: string | null }) {
+  if (!error.target) return
+  if (error.target.startsWith('association:')) {
+    const edgeId = error.target
+    selectEdge(edgeId)
+    await nextTick()
+    canvas.value?.focusElement(edgeId)
+    return
+  }
+  selectModule(error.target)
+  await nextTick()
+  canvas.value?.focusElement(error.target)
 }
 
 async function saveBlueprint() {
@@ -210,7 +241,7 @@ async function showReview() {
     const validated = await api.validate(working.value)
     diff.value = validated.diff
     fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
-    if (fieldErrors.value.length) { errorText.value = 'Corrige los errores del plano antes de aprobar.'; return }
+    if (fieldErrors.value.length) { errorText.value = ''; return }
     reviewOpen.value = true
   } catch (error) { errorText.value = apiError(error).message }
 }
@@ -359,6 +390,10 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
     </div>
 
     <div v-if="errorText" role="alert" class="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800"><AlertCircle class="h-4 w-4 shrink-0" /><span class="flex-1">{{ errorText }}</span><button type="button" aria-label="Cerrar aviso" @click="errorText = ''"><X class="h-4 w-4" /></button></div>
+    <section v-if="readableErrors.length" aria-label="Errores del plano" class="max-h-40 shrink-0 overflow-y-auto border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-950">
+      <div class="flex flex-wrap items-center justify-between gap-2"><strong>El plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación</strong><button v-if="hasProposal" type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="!chatCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
+      <ul class="mt-1.5 space-y-1"> <li v-for="(error, index) in readableErrors" :key="`${error.path}-${index}`" class="flex flex-wrap items-baseline gap-x-1"><button v-if="error.target" type="button" class="font-semibold underline decoration-amber-700/40 underline-offset-2 hover:text-brand-blue" @click="selectValidationError(error)">{{ error.label }}</button><strong v-else>{{ error.label }}</strong><span>: {{ error.message }}</span></li></ul>
+    </section>
     <div v-if="result" role="status" class="flex shrink-0 items-center gap-3 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"><CheckCircle2 class="h-4 w-4" /><span>Diseño creado. {{ result.modules.length }} módulos o catálogos nuevos.</span><NuxtLink v-for="module in result.modules.slice(0, 4)" :key="module.id" :to="`/modulos/${module.id}/editar`" class="font-semibold underline">{{ module.slug }} <ExternalLink class="inline h-3 w-3" /></NuxtLink></div>
 
     <div v-if="loading" class="flex min-h-0 flex-1 items-center justify-center text-sm text-brand-text-secondary"><LoaderCircle class="mr-2 h-5 w-5 animate-spin" />Cargando estructura…</div>
@@ -366,10 +401,11 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
       <aside class="designer-chat min-h-0 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface" :style="{ '--designer-chat-width': `${chatWidth}px` }" :class="chatOpen ? 'is-open' : ''">
         <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3"><div class="flex items-center gap-2"><Sparkles class="h-4 w-4 text-brand-orange" /><strong class="text-sm">Asistente de estructura</strong></div><div class="flex items-center gap-1"><button type="button" class="rounded p-1.5 text-brand-text-muted hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :aria-label="chatFocused ? 'Contraer chat' : 'Expandir chat'" :title="chatFocused ? 'Contraer' : 'Expandir'" @click="toggleFocus"><Minimize2 v-if="chatFocused" class="h-4 w-4" /><Maximize2 v-else class="h-4 w-4" /></button><button v-if="!chatFocused" type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar chat" @click="chatOpen = false"><PanelLeftClose class="h-4 w-4" /></button></div></div>
         <div ref="chatScroll" class="designer-chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs" aria-live="polite">
+          <div v-if="readableErrors.length" role="status" class="rounded-lg border border-amber-200 bg-amber-50 p-3 leading-5 text-amber-950"><p>Este plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación.</p><button v-if="hasProposal" type="button" class="mt-2 inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white disabled:opacity-50" :disabled="!chatCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
           <div v-if="!chatEntries.length" class="space-y-4"><div class="rounded-lg bg-brand-blue-bg p-4 leading-5 text-brand-text-secondary">Describe tu negocio o el cambio que necesitas. Verás la propuesta sobre {{ current?.modules.length ? 'tu estructura actual' : 'un lienzo vacío' }} antes de crearla.</div><div><p class="mb-2 font-bold text-brand-text-muted">PRUEBA CON UNA IDEA</p><button v-for="suggestion in ['Agrega un módulo de garantías', 'Relaciona órdenes con clientes', 'Crea un catálogo de tipos de servicio']" :key="suggestion" type="button" class="mb-2 block w-full rounded-md border border-brand-border-light px-3 py-2 text-left hover:border-brand-blue hover:bg-brand-bg" @click="prompt = suggestion">{{ suggestion }}</button></div></div>
           <div v-for="message in chatEntries" :key="message.id" class="space-y-2">
             <div class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.explanation ? designerExplanationSummary(message.explanation) : message.content }}</span><template v-if="message.role === 'assistant' && message.explanation"><details class="mt-2 border-t border-brand-border-light pt-2" :open="message.explanation.length <= 280"><summary class="cursor-pointer font-semibold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue">¿Por qué?</summary><MarkdownView class="mt-2" :source="designerExplanationBody(message.explanation)" /></details><button type="button" class="mt-2 rounded text-[11px] font-semibold text-brand-blue hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" @click="explanationText = message.explanation">Ver explicación completa</button></template><div v-if="message.id === lastAssistantId && diff && hasProposal" class="mt-3 flex flex-wrap gap-1.5 border-t border-brand-border-light pt-2"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div></div>
-            <div v-if="message.draft?.status === 'pending'" role="status" class="mr-4 flex items-center gap-2 rounded-lg border border-brand-border-light bg-brand-bg px-3 py-2.5 text-brand-text-secondary"><span class="font-semibold text-brand-orange">Diseñando…</span><span class="designer-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
+            <div v-if="message.draft?.status === 'pending'" role="status" class="mr-4 flex items-center gap-2 rounded-lg border border-brand-border-light bg-brand-bg px-3 py-2.5 text-brand-text-secondary"><span class="font-semibold text-brand-orange">{{ repairingErrors ? 'Corrigiendo…' : 'Diseñando…' }}</span><span class="designer-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
             <div v-else-if="message.draft?.status === 'failed'" role="alert" class="mr-4 rounded-lg border border-red-200 bg-red-50 p-3 leading-5 text-red-800"><p>{{ message.draft.error }}</p><NuxtLink v-if="message.draft.action === 'plan'" to="/ajustes?section=plan" class="mt-2 inline-flex rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100">Mejorar plan</NuxtLink><button v-else type="button" class="mt-2 inline-flex items-center gap-1 rounded border border-red-300 bg-brand-surface px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!chatCanSend" @click="sendPrompt(message.content, message.draft.id)"><RotateCcw class="h-3 w-3" />Reintentar</button></div>
           </div>
         </div>

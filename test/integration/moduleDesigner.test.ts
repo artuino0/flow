@@ -4,6 +4,7 @@ import postgres from 'postgres'
 import { sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { buildDesignerRepairMessage, readableDesignerValidationErrors } from '../../utils/designerValidationErrors'
 
 const tenantId = randomUUID()
 const otherTenant = randomUUID()
@@ -347,6 +348,30 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     expect(result.message).toContain('Corregí el perfil')
     const saved = await sessions.findSession(tenantId, session.id)
     expect((saved.blueprint as { associations: unknown[] }).associations).toEqual([])
+  })
+
+  it('corrige por parche una auto-asociación de una sesión existente y la revalida', async () => {
+    const session = await sessions.createModuleDesignSession(patchTenant, patchUserId) as { id: string }
+    const valid = await patchProposal()
+    await sessions.editSessionBlueprint(patchTenant, session.id, valid)
+    const invalid = structuredClone(valid)
+    invalid.associations.push({ name: 'Orden consigo misma', sourceRef: 'ordenes', targetRef: 'ordenes' })
+    await admin`UPDATE module_design_sessions SET blueprint = ${JSON.stringify(invalid)}::jsonb, messages = ${JSON.stringify([{ role: 'assistant', content: 'Preparé órdenes.', createdAt: new Date().toISOString() }])}::jsonb WHERE id = ${session.id}`
+
+    const validation = await (await import('../../server/utils/blueprint/validate')).validateBlueprint(patchTenant, invalid)
+    expect(validation.errors[0]).toMatchObject({ path: 'associations[0].targetRef' })
+    const readable = readableDesignerValidationErrors(validation.errors, invalid)
+    expect(readable[0]?.label).toContain('Orden consigo misma')
+    const instruction = buildDesignerRepairMessage(readable)
+    fetchMock.mockReset()
+    aiReply({ mode: 'patch', message: 'Quité la auto-asociación.', operations: [{ op: 'removeAssociation', name: 'Orden consigo misma' }] })
+
+    const generated = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(patchTenant, session.id, instruction)
+    const revalidated = await (await import('../../server/utils/blueprint/validate')).validateBlueprint(patchTenant, generated.blueprint)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body).messages[1].content).request).toContain('Orden consigo misma')
+    expect(generated.blueprint.associations).toEqual([])
+    expect(revalidated.errors).toEqual([])
   })
 
   it('normaliza una asociación duplicada por relation y la explica', async () => {

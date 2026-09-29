@@ -84,7 +84,12 @@ function focusSelected() {
   if (props.selectedId) emit('focus', props.focusId === props.selectedId ? null : props.selectedId)
 }
 function fitCanvas() { void fitView({ padding: 0.12, duration: 250 }) }
-defineExpose({ fitCanvas })
+function focusElement(id: string) {
+  const edge = props.graph.edges.find(item => item.id === id)
+  const ids = edge ? [...new Set([edge.source, edge.target])] : props.graph.modules.some(module => module.id === id) ? [id] : []
+  if (ids.length) void fitView({ nodes: ids, padding: 0.55, duration: 300 })
+}
+defineExpose({ fitCanvas, focusElement })
 </script>
 
 <template>

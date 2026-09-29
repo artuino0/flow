@@ -23,3 +23,6 @@ npm run dev
 - url_ticket: https://dydasoftware.atlassian.net/browse/{ID}
 - bump: PATCH si bug, MINOR si feature
 - push_flags: (ninguno)
+
+## Agentes
+Antes de trabajar lee `C:/desarrollo/ERP-Dinamico/AGENTS.md` (rutas absolutas de DOCS, tareas, usuarios QA y reglas).
