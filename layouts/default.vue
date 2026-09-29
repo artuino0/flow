@@ -110,6 +110,7 @@ async function onLogout(reason?: 'inactividad') {
           <span v-if="chat.unreadCount.value" class="absolute -right-1.5 -top-1.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-white">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
         </NuxtLink>
         <NotificationCenter />
+        <ChattitoToggle v-if="user?.authenticated && user.emailVerified && user.onboardingStatus === 'complete'" />
 
         <div class="h-6 w-px bg-brand-border-light" />
 

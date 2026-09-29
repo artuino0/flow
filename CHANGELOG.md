@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.114.0] - 2026-09-29
+#### [feature]
+- [ERD-123](https://dydasoftware.atlassian.net/browse/ERD-123) - Chattito, el asistente de Flow, con avatar animado, botón junto a notificaciones y panel lateral (chat local de prueba, sin IA todavía).
+
 ### [0.113.3] - 2026-09-29
 #### [bug]
 - [ERD-122](https://dydasoftware.atlassian.net/browse/ERD-122) - Solo los suyos ahora filtra de verdad y el creador se guarda al crear; sin actor ya no se ve nada.
