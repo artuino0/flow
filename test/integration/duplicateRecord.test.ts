@@ -3,6 +3,7 @@ import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withRecordActor } from '../../server/utils/recordActorContext'
 
 const tenantA = randomUUID()
 const tenantB = randomUUID()
@@ -69,7 +70,8 @@ beforeAll(async () => {
   vi.stubGlobal('getRouterParam', (request: any, name: string) => request.context.params[name])
   vi.stubGlobal('setResponseStatus', () => {})
   vi.stubGlobal('createError', createError)
-  duplicate = (await import('../../server/api/records/[entity]/[id]/duplicate.post')).default
+  const handler = (await import('../../server/api/records/[entity]/[id]/duplicate.post')).default
+  duplicate = request => withRecordActor({ userId: request.context.auth.sub, roleId: request.context.auth.roleId }, () => handler(request))
 }, 60_000)
 
 afterAll(async () => { await admin.end(); await testDb.stop() })
@@ -78,12 +80,14 @@ describe('POST duplicate (PostgreSQL real)', () => {
   it('duplica encabezado y partidas, regenera folio y recalcula valores sin tocar el original', async () => {
     const copy = await duplicate(event(tenantA, creatorRole, parentId))
     expect(copy.id).not.toBe(parentId)
+    expect(copy.createdBy).toBe(userId)
     expect(copy.customData).toMatchObject({ nombre: 'Original', estado: 'borrador', total: 31, folio: '0002' })
-    const lines = await admin`select id, custom_data from records where tenant_id = ${tenantA} and entity_id = ${childEntity} and custom_data->>'documento' = ${copy.id}`
+    const lines = await admin`select id, custom_data, created_by from records where tenant_id = ${tenantA} and entity_id = ${childEntity} and custom_data->>'documento' = ${copy.id}`
     expect(lines).toHaveLength(2)
     expect(lines.every(line => !childIds.includes(line.id))).toBe(true)
     expect(lines.map(line => line.custom_data.importe).sort()).toEqual([10, 21])
     expect(lines.every(line => !('adjunto' in line.custom_data))).toBe(true)
+    expect(lines.every(line => line.created_by === userId)).toBe(true)
     const originals = await admin`select custom_data from records where id in ${admin(childIds)}`
     expect(originals).toHaveLength(2)
     expect(originals.every(row => row.custom_data.importe === 999)).toBe(true)

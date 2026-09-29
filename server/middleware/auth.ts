@@ -1,7 +1,6 @@
 import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/utils/auth'
 import { resolveApiKeyAuth } from '~/server/utils/apiKeyAuth'
 import { validateSession } from '~/server/utils/sessions'
-import { setRecordActor } from '~/server/utils/recordActorContext'
 import { and, eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { people, tenants, users } from '~/server/db/schema'
@@ -48,7 +47,6 @@ const PUBLIC_PATHS = new Set([
 ])
 
 export default defineEventHandler(async (event) => {
-  setRecordActor({ userId: null, roleId: null })
   const path = getRequestURL(event).pathname
 
   if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) {
@@ -80,13 +78,11 @@ export default defineEventHandler(async (event) => {
     }
     await validateSession(payload)
     event.context.auth = payload
-    setRecordActor({ userId: payload.sub, roleId: payload.roleId })
   } catch {
     const apiAuth = await resolveApiKeyAuth(token).catch(() => null)
     if (!apiAuth) throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
     if (path.startsWith('/api/auth/')) throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar cuentas o sesiones' })
     event.context.auth = apiAuth.auth
-    setRecordActor({ userId: apiAuth.auth.sub, roleId: apiAuth.auth.roleId })
     event.context.apiKeyId = apiAuth.apiKeyId
     event.context.apiKeyScopes = apiAuth.scopes
   }

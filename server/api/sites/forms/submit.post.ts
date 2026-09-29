@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { submitSiteForm, type SiteFormPayload } from '~/server/utils/siteFormSubmissions'
+import { withSystemRecordAccess } from '~/server/utils/recordActorContext'
 
 const valueSchema = z.union([
   z.string().max(20_000),
@@ -44,13 +45,13 @@ export default defineEventHandler(async event => {
   const body = await readValidatedBody(event, schema.parse)
   const payload = body.payload as SiteFormPayload
   if (payload._flow_honeypot) return { ok: true }
-  const result = await submitSiteForm({
+  const result = await withSystemRecordAccess(() => submitSiteForm({
     siteId: body.siteId,
     pageId: body.pageId,
     formKey: body.formKey,
     payload,
     origin: originData(event, body.href, body.referrer)
-  })
+  }))
   setResponseStatus(event, 201)
   return { ok: true, ...result }
 })

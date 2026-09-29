@@ -2,7 +2,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-08-27',
   devtools: { enabled: true },
   nitro: {
-    experimental: { websocket: true },
+    experimental: { websocket: true, asyncContext: true },
     // La verificacion se incorpora al paquete on-premise durante el build.
     // Cambiar el .env del cliente no desactiva la licencia de ese paquete.
     replace: {

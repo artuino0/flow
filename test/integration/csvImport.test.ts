@@ -3,6 +3,7 @@ import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type { importRecords as ImportRecords, TooManyImportRowsError as TooManyImportRowsErrorType } from '../../server/utils/csvImport'
+import { withRecordActor } from '../../server/utils/recordActorContext'
 
 // HU-ERD-80: prueba server/utils/csvImport.ts contra un Postgres real
 // (embedded-postgres, misma infraestructura de HU-ERD-29) - en particular:
@@ -20,12 +21,19 @@ let TooManyImportRowsError: typeof TooManyImportRowsErrorType
 
 let productoresId: string
 let recepcionesId: string
+let importerId: string
+let importerRoleId: string
 
 beforeAll(async () => {
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
 
   await admin`insert into tenants (id, name) values (${TENANT_A}, 'Tenant A')`
+  const [role] = await admin`insert into roles (tenant_id, name) values (${TENANT_A}, 'Importador') returning id`
+  importerRoleId = role.id
+  const [person] = await admin`insert into people (email, password_hash, full_name) values (${'importador+' + TENANT_A + '@test.local'}, 'x', 'Importador') returning id`
+  const [user] = await admin`insert into users (tenant_id, role_id, person_id) values (${TENANT_A}, ${importerRoleId}, ${person.id}) returning id`
+  importerId = user.id
 
   const [productores] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Productores', 'productores') returning id`
   productoresId = productores.id as string
@@ -59,7 +67,9 @@ beforeAll(async () => {
   await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${productoresId}, ${admin.json({ nombre: 'Rancho Duplicado' })})`
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ importRecords, TooManyImportRowsError } = await import('../../server/utils/csvImport'))
+  const imported = await import('../../server/utils/csvImport')
+  TooManyImportRowsError = imported.TooManyImportRowsError
+  importRecords = (tenantId, entityId, rows) => withRecordActor({ userId: importerId, roleId: importerRoleId }, () => imported.importRecords(tenantId, entityId, rows))
 }, 60_000)
 
 afterAll(async () => {
@@ -76,7 +86,8 @@ describe('csvImport (Postgres real)', () => {
     expect(result.errors).toEqual([])
     expect(result.insertedCount).toBe(1)
 
-    const [row] = await admin`select custom_data from records where tenant_id = ${TENANT_A} and entity_id = ${recepcionesId} and custom_data->>'folio' = 'R-001'`
+    const [row] = await admin`select custom_data, created_by from records where tenant_id = ${TENANT_A} and entity_id = ${recepcionesId} and custom_data->>'folio' = 'R-001'`
+    expect(row.created_by).toBe(importerId)
     expect(row.custom_data.folio).toBe('R-001')
     expect(row.custom_data.kilos_recibidos).toBe(120.5)
     expect(row.custom_data.es_organico).toBe(true)

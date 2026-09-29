@@ -54,7 +54,7 @@ export async function withTenant<T>(
     // ninguna persona real) para que self_membership_lookup_users evalue
     // limpio a "false" en vez de reventar.
     // Un solo viaje a la base: fija ambos GUC en la misma sentencia.
-    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${actor?.userId ?? NIL_UUID}, true), set_config('app.role_id', ${actor?.roleId ?? NIL_UUID}, true)`)
+    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${actor?.userId ?? NIL_UUID}, true), set_config('app.role_id', ${actor?.roleId ?? NIL_UUID}, true), set_config('app.record_system', ${actor?.system === true ? 'on' : 'off'}, true)`)
     return fn(tx as unknown as typeof db)
   })
 }

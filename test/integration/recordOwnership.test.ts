@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import { and, eq } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
-import { withRecordActor } from '../../server/utils/recordActorContext'
+import { withRecordActor, withSystemRecordAccess } from '../../server/utils/recordActorContext'
 
 const tenantId = randomUUID()
 let testDb: TestDb
@@ -115,8 +115,15 @@ describe('visibilidad de registros por responsable', () => {
   })
 
   it('el valor por defecto all conserva la lectura existente', async () => {
-    const rows = await withTenant(tenantId, tx => tx.select().from(records).where(eq(records.entityId, appointmentEntity)))
+    const rows = await withRecordActor({ userId: receptionist, roleId: receptionRole }, () => withTenant(tenantId, tx => tx.select().from(records).where(eq(records.entityId, appointmentEntity))))
     expect(rows).toHaveLength(2)
+  })
+
+  it('sin actor falla cerrada; solo el proceso del sistema explícito puede leer sin usuario', async () => {
+    const anonymous = await withTenant(tenantId, tx => tx.select().from(records).where(eq(records.entityId, appointmentEntity)))
+    expect(anonymous).toHaveLength(0)
+    const system = await withSystemRecordAccess(() => withTenant(tenantId, tx => tx.select().from(records).where(eq(records.entityId, appointmentEntity))))
+    expect(system).toHaveLength(2)
   })
 
   it('created_by habilita registros propios, pero un hijo depende estrictamente de su padre', async () => {

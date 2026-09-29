@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.113.3] - 2026-09-29
+#### [bug]
+- [ERD-122](https://dydasoftware.atlassian.net/browse/ERD-122) - Solo los suyos ahora filtra de verdad y el creador se guarda al crear; sin actor ya no se ve nada.
+
 ### [0.113.2] - 2026-09-29
 #### [bug]
 - [ERD-121](https://dydasoftware.atlassian.net/browse/ERD-121) - Subir un archivo desde el detalle del registro ya no falla con 403 y los campos de archivo en vista muestran miniatura/nombre/tamaño en vez del id.

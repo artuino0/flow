@@ -3,6 +3,7 @@ import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type { getDashboardMetrics as GetDashboardMetrics } from '../../server/utils/dashboardMetrics'
+import { withSystemRecordAccess } from '../../server/utils/recordActorContext'
 
 // HU-ERD-31: prueba server/utils/dashboardMetrics.ts contra un Postgres real
 // (embedded-postgres, misma infraestructura de HU-ERD-29) - no unit tests con
@@ -69,7 +70,9 @@ beforeAll(async () => {
   await seedTenant(TENANT_B)
 
   process.env.APP_DATABASE_URL = testDb.appUrl
-  ;({ getDashboardMetrics } = await import('../../server/utils/dashboardMetrics'))
+  const { getDashboardMetrics: readMetrics } = await import('../../server/utils/dashboardMetrics')
+  // Estas pruebas ejercitan la agregación entre tenants como proceso de sistema.
+  getDashboardMetrics = (tenantId, options) => withSystemRecordAccess(() => readMetrics(tenantId, options))
 }, 60_000)
 
 afterAll(async () => {

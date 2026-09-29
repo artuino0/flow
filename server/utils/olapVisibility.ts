@@ -4,8 +4,9 @@ import { currentRecordActor } from '~/server/utils/recordActorContext'
 
 /** El origen OLAP es histórico; para roles own se exige que el registro transaccional siga visible por RLS. */
 export function visibleFactEvent(): SQL {
-  const roleId = currentRecordActor()?.roleId
-  if (!roleId) return sql`true`
+  const actor = currentRecordActor()
+  const roleId = actor?.roleId
+  if (!roleId) return actor?.system ? sql`true` : sql`false`
   return sql`(
     not exists (
       select 1 from role_entity_permissions permission
@@ -18,8 +19,9 @@ export function visibleFactEvent(): SQL {
 }
 
 export function visibleDimensionRecord(kind: 'clientes' | 'sucursales'): SQL {
-  const roleId = currentRecordActor()?.roleId
-  if (!roleId) return sql`true`
+  const actor = currentRecordActor()
+  const roleId = actor?.roleId
+  if (!roleId) return actor?.system ? sql`true` : sql`false`
   const dimension = kind === 'clientes' ? dimCliente : dimSucursal
   return sql`(
     not exists (
