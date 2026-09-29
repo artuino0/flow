@@ -17,6 +17,14 @@ export const TOUR_SELECTORS = {
   manualCreate: '[data-tour="manual-create"]',
   manualBasic: '[data-tour="manual-basic"]',
   manualFields: '[data-tour="manual-fields"]',
+  manualFieldAdd: '[data-tour="manual-field-add"]',
+  manualFieldModal: '[data-tour="manual-field-modal"]',
+  manualFieldLabel: '[data-tour="manual-field-label"]',
+  manualFieldType: '[data-tour="manual-field-type"]',
+  manualFieldRequired: '[data-tour="manual-field-required"]',
+  manualFieldOptions: '[data-tour="manual-field-options"]',
+  manualFieldSave: '[data-tour="manual-field-save"]',
+  manualFieldCancel: '[data-tour="manual-field-cancel"]',
   manualFieldSaved: '[data-tour="manual-field-saved"]',
   manualFieldsContinue: '[data-tour="manual-fields-continue"]',
   manualDetailSave: '[data-tour="manual-detail-save"]',
@@ -35,6 +43,7 @@ export interface OnboardingStep {
   emotion: ChattitoEmotion
   path?: string
   waitForClick?: boolean
+  interactive?: boolean
   completeWhen?: { selector: string } | { path: string }
   action?: { label: string; path: string }
   optional?: boolean
@@ -76,7 +85,19 @@ export function tourAdvance(step: OnboardingStep, index: number, total: number) 
 }
 
 export function allowsTourTargetClick(step: OnboardingStep) {
-  return step.waitForClick === true || Boolean(step.completeWhen)
+  return step.waitForClick === true || step.interactive === true || Boolean(step.completeWhen)
+}
+
+export function isManualFieldModalStep(id: TourId, step: OnboardingStep) {
+  return id === 'crear-modulo-manual' && Boolean(step.selector && [TOUR_SELECTORS.manualFieldLabel, TOUR_SELECTORS.manualFieldType, TOUR_SELECTORS.manualFieldRequired, TOUR_SELECTORS.manualFieldOptions, TOUR_SELECTORS.manualFieldSave].some(selector => selector === step.selector))
+}
+
+export function manualStepIndex(selector: OnboardingStep['selector']) {
+  return onboardingTours['crear-modulo-manual'].steps.findIndex(step => step.selector === selector)
+}
+
+export function manualFieldExitIndex(saved: boolean) {
+  return manualStepIndex(saved ? TOUR_SELECTORS.manualFieldsContinue : TOUR_SELECTORS.manualFieldAdd)
 }
 
 export function tourNeedsAdministration(id: TourId | null, sectionKey: string) {
@@ -98,7 +119,7 @@ export function destroyTourDriver(instance: { destroy: () => void } | undefined)
 export const TOUR_POPOVER_CONTROLS = { showButtons: ['close'] as const, showProgress: true }
 
 export type TourBranch = 'manual' | 'designer' | null
-export interface TourProgress { id: TourId; index: number; branch: TourBranch; originPath: string }
+export interface TourProgress { id: TourId; index: number; branch: TourBranch; originPath: string; version?: 2 }
 
 export function nextTourIndex(id: TourId, index: number, branch: TourBranch) {
   return id === 'primer-modulo' && index === 2 ? branch === 'designer' ? 4 : 3 : index + 1
@@ -113,7 +134,7 @@ export function tourChoiceDestination(branch: Exclude<TourBranch, null>) {
 export const MANUAL_TOUR_BACK_EVENT = 'flow:manual-tour-back'
 
 export function manualTourBackStage(index: number): 'campos' | 'detalle' | null {
-  return index === 5 ? 'campos' : index === 6 ? 'detalle' : null
+  return index === manualStepIndex(TOUR_SELECTORS.manualDetailSave) ? 'campos' : index === manualStepIndex(TOUR_SELECTORS.manualListSave) ? 'detalle' : null
 }
 
 export function previousTourIndex(id: TourId, index: number, branch: TourBranch) {
@@ -159,7 +180,12 @@ export const onboardingTours: Record<TourId, OnboardingTour> = {
       { selector: TOUR_SELECTORS.modulesCore, title: 'Vamos a Módulos de Core', text: 'Un módulo reúne la información de un tema de tu negocio. Presiona Módulos de Core para crear el tuyo; yo te acompaño.', side: 'right', emotion: 'happy', path: '/ajustes', completeWhen: { path: '/modulos' }, requires: 'settings.modules' },
       { selector: TOUR_SELECTORS.manualCreate, title: 'Crea un módulo', text: 'Aquí están los módulos de tu organización. Presiona Crear módulo para abrir el asistente; el límite de tu plan se revisa antes de entrar.', side: 'bottom', emotion: 'idle', path: '/modulos', completeWhen: { path: '/modulos/nuevo' }, requires: 'settings.modules' },
       { selector: TOUR_SELECTORS.manualBasic, title: 'Ponle nombre', text: 'Escribe el nombre del módulo. La dirección corta se propone sola; la descripción y el nombre en singular son opcionales. Cuando estés a gusto, presiona Continuar.', side: 'right', emotion: 'idle', path: '/modulos/nuevo', completeWhen: { selector: TOUR_SELECTORS.manualFields }, requires: 'settings.modules' },
-      { selector: TOUR_SELECTORS.manualFields, title: 'Agrega un campo', text: 'Un campo guarda un dato, como “Fecha” o “Importe”. Presiona Agregar campo, escribe su etiqueta, elige el tipo de dato y guárdalo. Yo espero a que aparezca en la lista.', side: 'right', emotion: 'idle', path: '/modulos/nuevo', completeWhen: { selector: TOUR_SELECTORS.manualFieldSaved }, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldAdd, title: 'Agrega un campo', text: 'Un campo guarda un dato, como “Fecha” o “Importe”. Presiona Agregar campo y te explico cada parte del formulario.', side: 'bottom', emotion: 'idle', path: '/modulos/nuevo', completeWhen: { selector: TOUR_SELECTORS.manualFieldModal }, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldLabel, title: '¿Cómo llamarás este dato?', text: 'Escribe la Etiqueta visible que reconocerás en el módulo. El Nombre técnico se propone solo; puedes ajustarlo si hace falta.', side: 'bottom', emotion: 'idle', path: '/modulos/nuevo', interactive: true, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldType, title: 'Elige el Tipo de dato', text: 'Texto para palabras, Número o Monto para cifras, Fecha para días, Select para una lista, Relación para otro módulo y Archivo para adjuntos. Elige el que necesites.', side: 'left', emotion: 'idle', path: '/modulos/nuevo', interactive: true, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldRequired, title: '¿Debe ser obligatorio?', text: 'Campo obligatorio exige completar el dato. Según el tipo, también puedes poner límites en Reglas de validación; déjalos vacíos si no los necesitas.', side: 'left', emotion: 'idle', path: '/modulos/nuevo', interactive: true, optional: true, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldOptions, title: 'Opciones de la lista', text: 'Si elegiste Select, agrega aquí las Opciones que podrá escoger la gente y decide si admite una o varias.', side: 'left', emotion: 'idle', path: '/modulos/nuevo', interactive: true, optional: true, requires: 'settings.modules' },
+      { selector: TOUR_SELECTORS.manualFieldSave, title: 'Guarda tu campo', text: 'Cuando termines, presiona Agregar campo. Tu campo aparecerá en la lista; Cancelar cierra el formulario sin guardarlo.', side: 'top', emotion: 'idle', path: '/modulos/nuevo', interactive: true, requires: 'settings.modules' },
       { selector: TOUR_SELECTORS.manualFieldsContinue, title: 'Revisa tus campos', text: 'Ya tienes tu primer campo. Puedes agregar más si los necesitas; luego presiona Continuar para acomodar la ficha de cada registro.', side: 'bottom', emotion: 'idle', path: '/modulos/nuevo', waitForClick: true, requires: 'settings.modules' },
       { selector: TOUR_SELECTORS.manualDetailSave, title: 'Diseño del detalle', text: 'Esta es la ficha de un registro. Acomoda aquí la información que quieres mostrar y presiona Guardar diseño para seguir.', side: 'bottom', emotion: 'idle', path: '/modulos/nuevo', completeWhen: { selector: TOUR_SELECTORS.manualListSave }, requires: 'settings.modules' },
       { selector: TOUR_SELECTORS.manualListSave, title: 'Diseño del listado', text: 'Elige las columnas y filtros de la lista. Al presionar Guardar diseño, el módulo queda listo y vuelves a Módulos de Core.', side: 'bottom', emotion: 'idle', path: '/modulos/nuevo', completeWhen: { path: '/modulos' }, requires: 'settings.modules' },
@@ -168,19 +194,31 @@ export const onboardingTours: Record<TourId, OnboardingTour> = {
   },
 }
 
-export interface WaitForTourTargetOptions { timeoutMs?: number; intervalMs?: number }
+export interface WaitForTourTargetOptions { timeoutMs?: number; intervalMs?: number; abort?: () => boolean }
 
 export async function waitForTourTarget(find: () => Element | null, isVisible: (element: Element) => boolean, options: WaitForTourTargetOptions = {}): Promise<Element | null> {
   const timeoutMs = options.timeoutMs ?? 8_000
   const intervalMs = options.intervalMs ?? 100
   const deadline = Date.now() + timeoutMs
   do {
+    if (options.abort?.()) return null
     const element = find()
     if (element && isVisible(element)) return element
     if (Date.now() >= deadline) return null
     await new Promise<void>(resolve => setTimeout(resolve, intervalMs))
   } while (Date.now() <= deadline)
   return null
+}
+
+export function watchTourTargetRemoval(root: Node, target: Element, onRemoved: () => void) {
+  const observer = new MutationObserver(() => {
+    if (!target.isConnected) {
+      observer.disconnect()
+      onRemoved()
+    }
+  })
+  observer.observe(root, { childList: true, subtree: true })
+  return () => observer.disconnect()
 }
 
 export const TOUR_TARGET_FAILURE_MESSAGE = 'Parece que esa pantalla no terminó de cargar. Te dejo seguir por tu cuenta; cuando quieras, retomamos el recorrido.'
@@ -219,11 +257,13 @@ export function manualWizardStorageKey(tenantId: string, userId: string) {
 
 export interface ManualWizardDraft { entityId: string; name: string; slug: string; step: 'campos' | 'detalle' | 'listado' }
 
-export function manualResumeIndex(index: number, draft: ManualWizardDraft | null) {
-  if (!draft || index < 2 || index === 7) return index
-  if (draft.step === 'listado') return 6
-  if (draft.step === 'detalle') return 5
-  return index <= 3 ? 3 : 4
+export function manualResumeIndex(index: number, draft: ManualWizardDraft | null, modalOpen = false, fieldSaved = false) {
+  if (!draft || index < 2 || index === onboardingTours['crear-modulo-manual'].steps.length - 1) return index
+  if (draft.step === 'listado') return manualStepIndex(TOUR_SELECTORS.manualListSave)
+  if (draft.step === 'detalle') return manualStepIndex(TOUR_SELECTORS.manualDetailSave)
+  if (index >= manualStepIndex(TOUR_SELECTORS.manualFieldsContinue)) return manualStepIndex(TOUR_SELECTORS.manualFieldsContinue)
+  if (isManualFieldModalStep('crear-modulo-manual', onboardingTours['crear-modulo-manual'].steps[index]!) && modalOpen) return index
+  return fieldSaved ? manualStepIndex(TOUR_SELECTORS.manualFieldsContinue) : manualStepIndex(TOUR_SELECTORS.manualFieldAdd)
 }
 
 export function readManualWizardDraft(storage: Pick<Storage, 'getItem'>, key: string): ManualWizardDraft | null {
@@ -256,12 +296,15 @@ export function readTourProgress(storage: Pick<Storage, 'getItem'>, key: string,
     if (progress.id !== id || typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= onboardingTours[id].steps.length) return null
     if (progress.branch !== null && progress.branch !== 'manual' && progress.branch !== 'designer') return null
     if (typeof progress.originPath !== 'string' || !progress.originPath.startsWith('/') || progress.originPath.startsWith('//')) return null
+    if (id === 'crear-modulo-manual' && progress.version !== 2 && index >= 4 && index <= 7) {
+      return { ...progress, index: index + 5, version: 2 } as TourProgress
+    }
     return progress as TourProgress
   } catch { return null }
 }
 
 export function writeTourProgress(storage: Pick<Storage, 'setItem'>, key: string, progress: TourProgress) {
-  try { storage.setItem(key, JSON.stringify(progress)) } catch { /* El progreso sigue en memoria. */ }
+  try { storage.setItem(key, JSON.stringify(progress.id === 'crear-modulo-manual' ? { ...progress, version: 2 } : progress)) } catch { /* El progreso sigue en memoria. */ }
 }
 
 export function clearTourProgress(storage: Pick<Storage, 'removeItem'>, key: string) {

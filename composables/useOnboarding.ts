@@ -3,13 +3,14 @@ import { driver } from 'driver.js'
 import { h, render } from 'vue'
 import ChattitoAvatar from '~/components/ChattitoAvatar.vue'
 import { lookAtElement } from '~/utils/chattito'
-import { allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, MANUAL_TOUR_BACK_EVENT, manualResumeIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, showDesignerAccess, TOUR_POPOVER_CONTROLS, TOUR_SELECTORS, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourProgressKey, tourStepDestination, tourStorageKey, waitForTourTarget, writeTourCompletion, writeTourProgress, type OnboardingStep, type TourBranch, type TourId, type TourProgress } from '~/utils/onboardingTours'
+import { allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, isManualFieldModalStep, MANUAL_TOUR_BACK_EVENT, manualFieldExitIndex, manualResumeIndex, manualStepIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, showDesignerAccess, TOUR_POPOVER_CONTROLS, TOUR_SELECTORS, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourProgressKey, tourStepDestination, tourStorageKey, waitForTourTarget, watchTourTargetRemoval, writeTourCompletion, writeTourProgress, type OnboardingStep, type TourBranch, type TourId, type TourProgress } from '~/utils/onboardingTours'
 
 let activeDriver: Driver | undefined
 let avatarHost: HTMLElement | undefined
 let highlightedClickCleanup: (() => void) | undefined
 let keyboardCleanup: (() => void) | undefined
 let completionCleanup: (() => void) | undefined
+let modalCleanup: (() => void) | undefined
 let expectedNavigation = false
 let tourGeneration = 0
 let stepRequest = 0
@@ -154,6 +155,8 @@ export function useOnboarding() {
     keyboardCleanup = undefined
     completionCleanup?.()
     completionCleanup = undefined
+    modalCleanup?.()
+    modalCleanup = undefined
     destroyTourDriver(activeDriver)
     activeDriver = undefined
     expectedNavigation = false
@@ -239,13 +242,23 @@ export function useOnboarding() {
       }
     }
 
+    const modalStep = isManualFieldModalStep(id, step)
+    let modalSeen = Boolean(modalStep && document.querySelector(TOUR_SELECTORS.manualFieldModal))
     const target = await waitForTourTarget(
-      () => pathMatches(destination && navigateIfNeeded ? destination : step.path, route.path) ? step.selector ? document.querySelector(step.selector) : document.body : null,
+      () => {
+        if (modalStep && document.querySelector(TOUR_SELECTORS.manualFieldModal)) modalSeen = true
+        return pathMatches(destination && navigateIfNeeded ? destination : step.path, route.path) ? step.selector ? document.querySelector(step.selector) : document.body : null
+      },
       element => step.selector ? isElementVisible(element) : true,
-      { timeoutMs: step.optional ? 250 : 8_000, intervalMs: 50 }
+      { timeoutMs: step.optional ? 250 : 8_000, intervalMs: 50, abort: modalStep ? () => modalSeen && !document.querySelector(TOUR_SELECTORS.manualFieldModal) : undefined }
     )
     if (!isCurrent()) return false
     if (!target) {
+      if (modalStep && !document.querySelector(TOUR_SELECTORS.manualFieldModal)) {
+        const saved = await waitForTourTarget(() => document.querySelector(TOUR_SELECTORS.manualFieldSaved), isElementVisible, { timeoutMs: 8_000, intervalMs: 50 })
+        if (isCurrent()) return showStep(manualFieldExitIndex(Boolean(saved)))
+        return false
+      }
       if (step.optional) return showStep(index + 1)
       finishWithMessage(id, TOUR_TARGET_FAILURE_MESSAGE)
       return false
@@ -258,12 +271,28 @@ export function useOnboarding() {
     keyboardCleanup = undefined
     completionCleanup?.()
     completionCleanup = undefined
+    modalCleanup?.()
+    modalCleanup = undefined
     destroyTourDriver(activeDriver)
     unmountAvatar()
 
     let instance: Driver
     const advance = tourAdvance(step, index, activeSteps.value.length)
     const moveForward = () => { void showStep(nextTourIndex(id, index, activeBranch.value), false) }
+    const moveBack = () => {
+      if (id === 'crear-modulo-manual') {
+        const stage = manualTourBackStage(index)
+        if (stage) window.dispatchEvent(new CustomEvent(MANUAL_TOUR_BACK_EVENT, { detail: stage }))
+        if (step.selector === TOUR_SELECTORS.manualFieldLabel) {
+          (document.querySelector(TOUR_SELECTORS.manualFieldCancel) as HTMLElement | null)?.click()
+        }
+        let previous = previousTourIndex(id, index, activeBranch.value)
+        while (previous > 0 && activeSteps.value[previous]?.optional && activeSteps.value[previous]?.selector && !document.querySelector(activeSteps.value[previous]!.selector!)) previous--
+        void showStep(previous, true)
+        return
+      }
+      void showStep(previousTourIndex(id, index, activeBranch.value), true)
+    }
     const clickTarget = () => {
       highlightedClickCleanup?.()
       highlightedClickCleanup = undefined
@@ -272,7 +301,7 @@ export function useOnboarding() {
       moveForward()
     }
 
-    if (allowsTourTargetClick(step) && element) {
+    if ((step.waitForClick || step.completeWhen) && element) {
       element.addEventListener('click', clickTarget)
       highlightedClickCleanup = () => element.removeEventListener('click', clickTarget)
     }
@@ -319,14 +348,10 @@ export function useOnboarding() {
         const controls = popover.footerButtons
         controls.replaceChildren()
         controls.classList.add('flow-tour__controls')
-        const backUnavailable = index === 0 || (id === 'crear-modulo-manual' && (index === 3 || index === 4))
+        const backUnavailable = index === 0 || (id === 'crear-modulo-manual' && (index === manualStepIndex(TOUR_SELECTORS.manualFieldAdd) || index === manualStepIndex(TOUR_SELECTORS.manualFieldsContinue)))
         const backButton = createTourButton('Atrás', 'flow-tour__back', () => {
           if (backUnavailable) return
-          if (id === 'crear-modulo-manual') {
-            const stage = manualTourBackStage(index)
-            if (stage) window.dispatchEvent(new CustomEvent(MANUAL_TOUR_BACK_EVENT, { detail: stage }))
-          }
-          void showStep(previousTourIndex(id, index, activeBranch.value), true)
+          moveBack()
         }, backUnavailable)
         if (id === 'crear-modulo-manual' && backUnavailable && index > 0) backButton.title = 'El módulo ya se creó; puedes continuar u omitir el recorrido.'
         controls.append(backButton)
@@ -437,13 +462,9 @@ export function useOnboarding() {
       if (event.key === 'Escape') { event.preventDefault(); pauseTour(); return }
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-      if (event.key === 'ArrowLeft' && index > 0 && !(id === 'crear-modulo-manual' && (index === 3 || index === 4))) {
+      if (event.key === 'ArrowLeft' && index > 0 && !(id === 'crear-modulo-manual' && (index === manualStepIndex(TOUR_SELECTORS.manualFieldAdd) || index === manualStepIndex(TOUR_SELECTORS.manualFieldsContinue)))) {
         event.preventDefault()
-        if (id === 'crear-modulo-manual') {
-          const stage = manualTourBackStage(index)
-          if (stage) window.dispatchEvent(new CustomEvent(MANUAL_TOUR_BACK_EVENT, { detail: stage }))
-        }
-        void showStep(previousTourIndex(id, index, activeBranch.value), true)
+        moveBack()
         return
       }
       if (event.key === 'ArrowRight' && (advance.kind === 'next' || advance.kind === 'finish')) {
@@ -455,6 +476,26 @@ export function useOnboarding() {
     window.addEventListener('keydown', onKeyDown)
     keyboardCleanup = () => window.removeEventListener('keydown', onKeyDown)
     instance.drive()
+    if (isManualFieldModalStep(id, step)) {
+      const modal = document.querySelector(TOUR_SELECTORS.manualFieldModal)
+      if (modal) {
+        let saveAttempted = false
+        const trackSave = (event: Event) => {
+          if ((event.target as Element).closest(TOUR_SELECTORS.manualFieldSave)) saveAttempted = true
+        }
+        modal.addEventListener('click', trackSave)
+        const stopWatching = watchTourTargetRemoval(document.body, modal, () => {
+          void (async () => {
+            const saved = saveAttempted
+              ? await waitForTourTarget(() => document.querySelector(TOUR_SELECTORS.manualFieldSaved), isElementVisible, { timeoutMs: 8_000, intervalMs: 50 })
+              : null
+            if (!isCurrent()) return
+            void showStep(manualFieldExitIndex(Boolean(saved)))
+          })()
+        })
+        modalCleanup = () => { stopWatching(); modal.removeEventListener('click', trackSave) }
+      }
+    }
     queueMicrotask(() => { if (isCurrent()) immediateCompletionCheck?.() })
     return true
   }
@@ -515,7 +556,9 @@ export function useOnboarding() {
     const draftKey = progress.id === 'crear-modulo-manual' && user.value?.authenticated
       ? manualWizardStorageKey(user.value.tenantId, user.value.id) : null
     const draft = draftKey ? readManualWizardDraft(localStorage, draftKey) : null
-    return showStep(progress.id === 'crear-modulo-manual' ? manualResumeIndex(progress.index, draft) : progress.index, true)
+    return showStep(progress.id === 'crear-modulo-manual'
+      ? manualResumeIndex(progress.index, draft, Boolean(document.querySelector(TOUR_SELECTORS.manualFieldModal)), Boolean(document.querySelector(TOUR_SELECTORS.manualFieldSaved)))
+      : progress.index, true)
   }
 
   async function startWelcomeOnce() {

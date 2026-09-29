@@ -684,7 +684,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="emit('close')">
+  <div v-if="open" :data-tour="mode === 'create' ? 'manual-field-modal' : undefined" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="emit('close')">
     <div class="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-lg bg-brand-surface shadow-xl">
       <div class="flex items-start justify-between border-b border-brand-border-light p-5">
         <div class="flex flex-col gap-0.5">
@@ -708,6 +708,7 @@ function onSubmit() {
           <div class="flex flex-col gap-1.5">
             <label for="field-label" class="text-[13px] font-semibold text-brand-text">Etiqueta visible</label>
             <input
+              :data-tour="mode === 'create' ? 'manual-field-label' : undefined"
               id="field-label"
               :value="form.label"
               type="text"
@@ -732,7 +733,7 @@ function onSubmit() {
 
         <div class="flex flex-col gap-2">
           <p class="text-[13px] font-semibold text-brand-text">Tipo de dato</p>
-          <div class="grid grid-cols-3 gap-2.5">
+          <div :data-tour="mode === 'create' ? 'manual-field-type' : undefined" class="grid grid-cols-3 gap-2.5">
             <button
               v-for="opt in TYPE_OPTIONS"
               :key="opt.value"
@@ -823,7 +824,7 @@ function onSubmit() {
           <p v-if="form.calculationMode !== 'manual'" class="text-xs text-brand-blue">El sistema mantendrá este valor actualizado y no podrá editarse manualmente.</p>
         </div>
 
-        <div v-if="form.dataType !== 'incremental' && (!(form.dataType === 'number' || form.dataType === 'currency') || form.calculationMode === 'manual')" class="flex items-center justify-between rounded border border-brand-border-light p-3">
+        <div v-if="form.dataType !== 'incremental' && (!(form.dataType === 'number' || form.dataType === 'currency') || form.calculationMode === 'manual')" :data-tour="mode === 'create' ? 'manual-field-required' : undefined" class="flex items-center justify-between rounded border border-brand-border-light p-3">
           <div class="flex flex-col gap-0.5">
             <p class="text-sm font-semibold text-brand-text">Campo obligatorio</p>
             <p class="text-xs text-brand-text-muted">El usuario no podrá guardar el registro sin completarlo</p>
@@ -941,7 +942,7 @@ function onSubmit() {
              Screen/Agregar Campo - Opciones (Select) del .pen: toggle
              Selección única/múltiple, lista de opciones (etiqueta + color +
              quitar), botón agregar. -->
-        <div v-else-if="form.dataType === 'select' || form.dataType === 'multiselect'" class="flex flex-col gap-3">
+        <div v-else-if="form.dataType === 'select' || form.dataType === 'multiselect'" :data-tour="mode === 'create' ? 'manual-field-options' : undefined" class="flex flex-col gap-3">
           <p class="text-[13px] font-semibold text-brand-text">Opciones</p>
 
           <div class="flex rounded border border-brand-border-light bg-brand-bg p-1">
@@ -1225,10 +1226,11 @@ function onSubmit() {
       </div>
 
       <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-        <button type="button" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="emit('close')">
+        <button type="button" :data-tour="mode === 'create' ? 'manual-field-cancel' : undefined" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="emit('close')">
           Cancelar
         </button>
         <button
+          :data-tour="mode === 'create' ? 'manual-field-save' : undefined"
           type="button"
           :disabled="!canSubmit || saving"
           class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"

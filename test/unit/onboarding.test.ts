@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { chattitoSessionIdentity } from '../../utils/chattito'
-import { TOUR_SELECTORS, TOUR_POPOVER_CONTROLS, allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, manualResumeIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, shouldResetOnboarding, showDesignerAccess, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourNeedsAdministration, tourNeedsMobileMenu, tourProgressKey, tourStepDestination, tourStorageKey, visibleTourSteps, waitForTourTarget, writeManualWizardDraft, writeTourCompletion, writeTourProgress } from '../../utils/onboardingTours'
+import { TOUR_SELECTORS, TOUR_POPOVER_CONTROLS, allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, isManualFieldModalStep, manualFieldExitIndex, manualResumeIndex, manualStepIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, shouldResetOnboarding, showDesignerAccess, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourNeedsAdministration, tourNeedsMobileMenu, tourProgressKey, tourStepDestination, tourStorageKey, visibleTourSteps, waitForTourTarget, writeManualWizardDraft, writeTourCompletion, writeTourProgress } from '../../utils/onboardingTours'
 
 describe('definiciones de recorridos', () => {
   it('tiene IDs únicos, textos útiles y selectores declarados', () => {
@@ -62,36 +62,48 @@ describe('definiciones de recorridos', () => {
     ])
   })
 
-  it('guía las ocho etapas reales de creación manual y ofrece el Diseñador al final', () => {
+  it('explica el modal de campo antes de continuar la creación manual', () => {
     const steps = onboardingTours['crear-modulo-manual'].steps
-    expect(steps).toHaveLength(8)
+    expect(steps).toHaveLength(13)
     expect(steps.map(step => step.selector)).toEqual([
       TOUR_SELECTORS.modulesCore, TOUR_SELECTORS.manualCreate, TOUR_SELECTORS.manualBasic,
-      TOUR_SELECTORS.manualFields, TOUR_SELECTORS.manualFieldsContinue,
+      TOUR_SELECTORS.manualFieldAdd, TOUR_SELECTORS.manualFieldLabel, TOUR_SELECTORS.manualFieldType,
+      TOUR_SELECTORS.manualFieldRequired, TOUR_SELECTORS.manualFieldOptions, TOUR_SELECTORS.manualFieldSave,
+      TOUR_SELECTORS.manualFieldsContinue,
       TOUR_SELECTORS.manualDetailSave, TOUR_SELECTORS.manualListSave, undefined,
     ])
     expect(steps.map(step => step.path)).toEqual([
       '/ajustes', '/modulos', '/modulos/nuevo', '/modulos/nuevo',
-      '/modulos/nuevo', '/modulos/nuevo', '/modulos/nuevo', '/modulos',
+      '/modulos/nuevo', '/modulos/nuevo', '/modulos/nuevo', '/modulos/nuevo',
+      '/modulos/nuevo', '/modulos/nuevo', '/modulos/nuevo', '/modulos/nuevo', '/modulos',
     ])
     expect(steps.map((step, index) => tourAdvance(step, index, steps.length).kind)).toEqual([
       'wait-action', 'wait-action', 'wait-action', 'wait-action',
+      'next', 'next', 'next', 'next', 'next',
       'wait-click', 'wait-action', 'wait-action', 'offer-designer',
     ])
     expect(steps[0]?.completeWhen).toEqual({ path: '/modulos' })
     expect(steps[1]?.completeWhen).toEqual({ path: '/modulos/nuevo' })
     expect(steps[2]?.completeWhen).toEqual({ selector: TOUR_SELECTORS.manualFields })
-    expect(steps[3]?.completeWhen).toEqual({ selector: TOUR_SELECTORS.manualFieldSaved })
-    expect(steps[5]?.completeWhen).toEqual({ selector: TOUR_SELECTORS.manualListSave })
-    expect(steps[6]?.completeWhen).toEqual({ path: '/modulos' })
-    expect(steps[7]?.action).toEqual({ label: 'Ir al Diseñador', path: '/disenador' })
-    expect(steps.slice(0, 7).every(step => step.requires === 'settings.modules')).toBe(true)
-    expect(steps[7]?.requires).toBe('designer')
+    expect(steps[3]?.completeWhen).toEqual({ selector: TOUR_SELECTORS.manualFieldModal })
+    expect(steps[3]?.text).not.toContain('ya lo tengo')
+    expect(steps.slice(4, 9).every(step => step.interactive)).toBe(true)
+    expect(steps.slice(4, 9).every(step => isManualFieldModalStep('crear-modulo-manual', step))).toBe(true)
+    expect(steps[6]?.optional).toBe(true)
     expect(steps[7]?.optional).toBe(true)
-    expect(steps.map(allowsTourTargetClick)).toEqual([true, true, true, true, true, true, true, false])
-    expect(manualTourBackStage(5)).toBe('campos')
-    expect(manualTourBackStage(6)).toBe('detalle')
+    expect(steps[10]?.completeWhen).toEqual({ selector: TOUR_SELECTORS.manualListSave })
+    expect(steps[11]?.completeWhen).toEqual({ path: '/modulos' })
+    expect(steps[12]?.action).toEqual({ label: 'Ir al Diseñador', path: '/disenador' })
+    expect(steps.slice(0, 12).every(step => step.requires === 'settings.modules')).toBe(true)
+    expect(steps[12]?.requires).toBe('designer')
+    expect(steps[12]?.optional).toBe(true)
+    expect(steps.map(allowsTourTargetClick)).toEqual([true, true, true, true, true, true, true, true, true, true, true, true, false])
+    expect(manualTourBackStage(10)).toBe('campos')
+    expect(manualTourBackStage(11)).toBe('detalle')
     expect(manualTourBackStage(3)).toBeNull()
+    expect(manualStepIndex(TOUR_SELECTORS.manualFieldAdd)).toBe(3)
+    expect(manualFieldExitIndex(false)).toBe(3)
+    expect(manualFieldExitIndex(true)).toBe(9)
   })
 
   it('solo ofrece el recorrido completo a quien tiene acceso a Ajustes y al Diseñador', () => {
@@ -109,7 +121,7 @@ describe('definiciones de recorridos', () => {
     expect(canStartTourRequest('crear-modulo-manual', user, '/', 'default', admin)).toBe(true)
     expect(canStartTourRequest('crear-modulo-manual', user, '/', 'default', member)).toBe(false)
     expect(canStartTourRequest('crear-modulo-manual', user, '/', 'default', { isAdmin: true, designerAvailable: false })).toBe(true)
-    expect(permittedTourSteps(onboardingTours['crear-modulo-manual'], { isAdmin: true, designerAvailable: false })).toHaveLength(7)
+    expect(permittedTourSteps(onboardingTours['crear-modulo-manual'], { isAdmin: true, designerAvailable: false })).toHaveLength(12)
     const panel = readFileSync(new URL('../../components/ChattitoPanel.vue', import.meta.url), 'utf8')
     expect(panel).toContain('v-if="canLaunchTour(\'primer-modulo\')"')
     expect(panel).toContain('v-if="canLaunchTour(\'crear-modulo-manual\')"')
@@ -142,6 +154,14 @@ describe('definiciones de recorridos', () => {
       manualCreate: 'components/ModuleListing.vue',
       manualBasic: 'components/ModuleWizard.vue',
       manualFields: 'components/ModuleWizard.vue',
+      manualFieldAdd: 'components/ModuleFieldsCard.vue',
+      manualFieldModal: 'components/FieldFormModal.vue',
+      manualFieldLabel: 'components/FieldFormModal.vue',
+      manualFieldType: 'components/FieldFormModal.vue',
+      manualFieldRequired: 'components/FieldFormModal.vue',
+      manualFieldOptions: 'components/FieldFormModal.vue',
+      manualFieldSave: 'components/FieldFormModal.vue',
+      manualFieldCancel: 'components/FieldFormModal.vue',
       manualFieldSaved: 'components/ModuleFieldsCard.vue',
       manualFieldsContinue: 'components/ModuleWizard.vue',
       manualDetailSave: 'components/ModuleWizard.vue',
@@ -165,6 +185,31 @@ describe('definiciones de recorridos', () => {
 })
 
 describe('espera de destinos del recorrido', () => {
+  it('espera con reintentos a que aparezca el modal después de Agregar campo', async () => {
+    vi.useFakeTimers()
+    try {
+      const modal = {} as Element
+      let mounted = false
+      const result = waitForTourTarget(() => mounted ? modal : null, () => true, { timeoutMs: 500, intervalMs: 50 })
+      await vi.advanceTimersByTimeAsync(100)
+      mounted = true
+      await vi.advanceTimersByTimeAsync(50)
+      expect(await result).toBe(modal)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('deja de esperar un control cuando el modal se cierra entre pasos', async () => {
+    vi.useFakeTimers()
+    try {
+      let modalOpen = true
+      const result = waitForTourTarget(() => null, () => true, { timeoutMs: 8_000, intervalMs: 50, abort: () => !modalOpen })
+      await vi.advanceTimersByTimeAsync(100)
+      modalOpen = false
+      await vi.advanceTimersByTimeAsync(50)
+      expect(await result).toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
   it('espera a que el elemento aparezca tras navegar', async () => {
     vi.useFakeTimers()
     try {
@@ -253,10 +298,17 @@ describe('persistencia y sesión', () => {
     writeManualWizardDraft(storage, key, { entityId: 'mod-1', name: 'Pedidos', slug: 'pedidos', step: 'detalle' })
     expect(readTourProgress(storage, progressKey, 'crear-modulo-manual')?.index).toBe(5)
     expect(readManualWizardDraft(storage, key)).toEqual({ entityId: 'mod-1', name: 'Pedidos', slug: 'pedidos', step: 'detalle' })
-    expect(manualResumeIndex(6, readManualWizardDraft(storage, key))).toBe(5)
-    expect(manualResumeIndex(3, readManualWizardDraft(storage, key))).toBe(5)
+    expect(manualResumeIndex(11, readManualWizardDraft(storage, key))).toBe(10)
+    expect(manualResumeIndex(3, readManualWizardDraft(storage, key))).toBe(10)
+    writeManualWizardDraft(storage, key, { entityId: 'mod-1', name: 'Pedidos', slug: 'pedidos', step: 'campos' })
+    expect(manualResumeIndex(5, readManualWizardDraft(storage, key), true)).toBe(5)
+    expect(manualResumeIndex(5, readManualWizardDraft(storage, key), false)).toBe(3)
+    expect(manualResumeIndex(5, readManualWizardDraft(storage, key), false, true)).toBe(9)
+    expect(manualResumeIndex(9, readManualWizardDraft(storage, key))).toBe(9)
+    storage.setItem(progressKey, JSON.stringify({ id: 'crear-modulo-manual', index: 5, branch: null, originPath: '/ajustes' }))
+    expect(readTourProgress(storage, progressKey, 'crear-modulo-manual')?.index).toBe(10)
     expect(readManualWizardDraft(storage, manualWizardStorageKey('org-1', 'usuario-2'))).toBeNull()
-    expect(tourStepDestination('crear-modulo-manual', 5, onboardingTours['crear-modulo-manual'].steps[5]!, '/ajustes')).toBe('/modulos/nuevo')
+    expect(tourStepDestination('crear-modulo-manual', 10, onboardingTours['crear-modulo-manual'].steps[10]!, '/ajustes')).toBe('/modulos/nuevo')
     storage.removeItem(key)
     clearTourProgress(storage, progressKey)
     expect(readManualWizardDraft(storage, key)).toBeNull()

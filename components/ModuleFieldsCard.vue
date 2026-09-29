@@ -365,7 +365,7 @@ async function confirmImpactModal() {
         <h2 class="text-[15px] font-bold text-brand-text">Campos del módulo</h2>
         <p class="text-sm text-brand-text-secondary">{{ realFields.length }} campo{{ realFields.length === 1 ? '' : 's' }}</p>
       </div>
-      <button type="button" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="openCreate">
+      <button type="button" data-tour="manual-field-add" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="openCreate">
         <Plus class="h-[15px] w-[15px]" :stroke-width="2" />
         Agregar campo
       </button>

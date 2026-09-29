@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.115.2] - 2026-09-29
+#### [bug]
+- [ERD-126](https://dydasoftware.atlassian.net/browse/ERD-126) - El recorrido Crear un módulo manualmente ahora explica el modal de alta de campo paso a paso (etiqueta, tipo de dato, obligatoriedad y reglas, opciones de Select, guardar o cancelar) y continúa sin trabarse si el modal se cierra a mitad.
+
 ### [0.115.1] - 2026-09-29
 #### [bug]
 - [ERD-125](https://dydasoftware.atlassian.net/browse/ERD-125) - Los correos críticos (verificación, reenvío, cambio de correo y recuperación de contraseña) se envían al instante en vez de esperar hasta 15 minutos en la cola.

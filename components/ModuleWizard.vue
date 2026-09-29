@@ -12,7 +12,7 @@
 import { ArrowRight, Blocks, Check, ChevronRight } from '@lucide/vue'
 import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
-import { MANUAL_TOUR_BACK_EVENT, manualWizardStorageKey, readManualWizardDraft, readTourProgress, tourProgressKey, writeManualWizardDraft } from '~/utils/onboardingTours'
+import { MANUAL_TOUR_BACK_EVENT, manualStepIndex, manualWizardStorageKey, readManualWizardDraft, readTourProgress, TOUR_SELECTORS, tourProgressKey, writeManualWizardDraft } from '~/utils/onboardingTours'
 
 const props = defineProps<{
   // '/modulos' o '/catalogos' - a donde vuelven Cancelar y el fin del asistente.
@@ -102,7 +102,7 @@ onMounted(async () => {
   if (keys) {
     const progress = readTourProgress(localStorage, keys.progress, 'crear-modulo-manual')
     const draft = readManualWizardDraft(localStorage, keys.draft)
-    if (progress && progress.index >= 3 && progress.index <= 6 && draft) {
+    if (progress && progress.index >= manualStepIndex(TOUR_SELECTORS.manualFieldAdd) && progress.index <= manualStepIndex(TOUR_SELECTORS.manualListSave) && draft) {
       entityId.value = draft.entityId
       name.value = draft.name
       slug.value = draft.slug
