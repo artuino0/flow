@@ -1,6 +1,6 @@
 {
   "name": "erp-dinamico-frontback",
-  "version": "0.114.0",
+  "version": "0.115.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -40,6 +40,7 @@
     "bcryptjs": "^2.4.3",
     "codemirror": "^6.0.2",
     "dompurify": "^3.4.16",
+    "driver.js": "^1.8.0",
     "drizzle-orm": "^0.45.2",
     "jsonwebtoken": "^9.0.2",
     "markdown-it": "^15.0.2",

@@ -1,4 +1,5 @@
 import type { ChattitoEmotion, ChattitoState } from '~/utils/chattito'
+import type { TourId } from '~/utils/onboardingTours'
 import { chattitoTransientDuration, transitionChattito } from '~/utils/chattito'
 
 export interface ChattitoMessage {
@@ -6,6 +7,7 @@ export interface ChattitoMessage {
   role: 'user' | 'assistant'
   text: string
   emotion?: ChattitoEmotion | 'typing'
+  action?: { kind: 'resume-tour'; tourId: TourId }
 }
 
 const initialMessages: ChattitoMessage[] = [

@@ -3,15 +3,17 @@ import { BarChart3, Blocks, BookOpen, Building2, ClipboardList, CreditCard, File
 import type { NavigationEntity, NavigationNode } from '~/utils/moduleNavigation'
 import AppNavGroup from '~/components/AppNavGroup.vue'
 import AppNavEntity from '~/components/AppNavEntity.vue'
+import { showDesignerAccess, tourNeedsAdministration } from '~/utils/onboardingTours'
 
 defineProps<{ compact?: boolean }>()
 const { activeKey } = useFlowApps()
+const { activeId: activeTourId } = useOnboarding()
 const route = useRoute()
 const chat = useChat()
 const { data: nav } = await useFetch<{ groups: NavigationNode[]; unassigned: NavigationEntity[] }>('/api/nav/entities', { key: 'appnav-modules', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
 const { data: isAdmin } = await useIsAdmin()
 const { user } = useAuth()
-const { data: planUsage } = await useFetch<{ code: string }>('/api/billing/plan-usage', { key: 'appnav-plan-usage', immediate: Boolean(isAdmin.value), headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
+const { data: planUsage } = await useDesignerPlanUsage(isAdmin)
 
 interface NavItem { label: string; to: string; icon: typeof Blocks; badge?: number }
 interface NavSection { key: string; label: string; items: NavItem[] }
@@ -70,7 +72,7 @@ const sections = computed<NavSection[]>(() => {
       ] : [] },
       { key: 'administration', label: 'ADMINISTRACIÓN', items: isAdmin.value ? [
         { label: 'Módulos de Core', to: '/modulos', icon: Blocks }, { label: 'Organización de Core', to: '/organizacion', icon: FolderTree },
-        ...(planUsage.value?.code && planUsage.value.code !== 'agenda' ? [{ label: 'Diseñador de estructura', to: '/disenador', icon: Sparkles }] : []),
+        ...(showDesignerAccess(planUsage.value?.code) ? [{ label: 'Diseñador de estructura', to: '/disenador', icon: Sparkles }] : []),
         { label: 'Catálogos', to: '/catalogos', icon: Library }, { label: 'Usuarios', to: '/usuarios', icon: Users },
         { label: 'Roles y permisos', to: '/roles', icon: ShieldCheck }
       ] : [] }
@@ -115,9 +117,9 @@ function active(to: string) {
 
       <template v-for="section in sections" :key="`${activeKey}-${section.key}`">
         <div v-if="section.items.length" class="flex flex-col gap-px" :class="compact && section.key !== sections[0]?.key ? 'border-t border-brand-border-light pt-3' : ''">
-          <button v-if="!compact" type="button" class="flex items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted" :aria-expanded="!closed[section.key]" @click="toggle(section.key)">{{ section.label }}<ChevronDown class="h-3.5 w-3.5" :class="{ '-rotate-90': closed[section.key] }" /></button>
-          <template v-if="compact || !closed[section.key]">
-            <NuxtLink v-for="item in section.items" :key="item.to" :to="item.to" :aria-label="item.label" :aria-current="active(item.to) ? 'page' : undefined" class="group relative flex items-center gap-2.5 rounded py-2 text-sm font-medium" :class="[compact ? 'justify-center px-2' : 'px-3', active(item.to) ? 'bg-brand-sidebar-active-bg font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg']">
+          <button v-if="!compact" type="button" class="flex items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted" :aria-expanded="!closed[section.key] || tourNeedsAdministration(activeTourId, section.key)" @click="toggle(section.key)">{{ section.label }}<ChevronDown class="h-3.5 w-3.5" :class="{ '-rotate-90': closed[section.key] && !tourNeedsAdministration(activeTourId, section.key) }" /></button>
+          <template v-if="compact || !closed[section.key] || tourNeedsAdministration(activeTourId, section.key)">
+            <NuxtLink v-for="item in section.items" :key="item.to" :to="item.to" :data-tour="item.to === '/modulos' ? 'modules-core' : item.to === '/disenador' ? 'designer-access' : undefined" :aria-label="item.label" :aria-current="active(item.to) ? 'page' : undefined" class="group relative flex items-center gap-2.5 rounded py-2 text-sm font-medium" :class="[compact ? 'justify-center px-2' : 'px-3', active(item.to) ? 'bg-brand-sidebar-active-bg font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg']">
               <span class="relative flex h-[17px] w-[17px] shrink-0 items-center justify-center"><component :is="item.icon" class="h-[17px] w-[17px]" :stroke-width="1.75" /><span v-if="item.badge" class="absolute -left-2 -top-2 z-10 flex min-w-[18px] items-center justify-center rounded-full bg-brand-orange px-1 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">{{ item.badge > 99 ? '99+' : item.badge }}</span></span>
               <span v-if="!compact" class="min-w-0 flex-1">{{ item.label }}</span>
             </NuxtLink>

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.115.0] - 2026-09-29
+#### [feature]
+- [ERD-124](https://dydasoftware.atlassian.net/browse/ERD-124) - Onboarding guiado con Chattito: bienvenida automática la primera vez y recorridos para crear el primer módulo (manual o con el Diseñador), con progreso retomable por usuario y respeto a sus permisos.
+
 ### [0.114.0] - 2026-09-29
 #### [feature]
 - [ERD-123](https://dydasoftware.atlassian.net/browse/ERD-123) - Chattito, el asistente de Flow, con avatar animado, botón junto a notificaciones y panel lateral (chat local de prueba, sin IA todavía).

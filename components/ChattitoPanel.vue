@@ -3,6 +3,7 @@ import { emotionForMessage, isAnimatedChattitoMessage } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
+const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour } = useOnboarding()
 const draft = ref('')
 const list = ref<HTMLElement>()
 const pending = ref(false)
@@ -11,6 +12,7 @@ let resizeStartX = 0
 let resizeStartWidth = CHATTITO_MIN_WIDTH
 
 const lastChattitoIndex = computed(() => panel.value.messages.reduce((last, message, index) => message.role === 'assistant' ? index : last, -1))
+const lastResumeMessageId = computed(() => [...panel.value.messages].reverse().find(message => message.action?.kind === 'resume-tour')?.id)
 const visibleMessages = computed(() => panel.value.messages.slice(-30))
 const visibleOffset = computed(() => panel.value.messages.length - visibleMessages.value.length)
 
@@ -86,10 +88,21 @@ onBeforeUnmount(() => {
           <article v-for="(message, index) in visibleMessages" :key="message.id" class="chattito-message" :class="`chattito-message--${message.role}`">
             <ChattitoMessageAvatar v-if="message.role === 'assistant'" :animated="isAnimatedChattitoMessage(index + visibleOffset, lastChattitoIndex)" :state="message.emotion === 'typing' ? 'typing' : panel.avatarState" size="md" />
             <span v-if="message.emotion === 'typing'" class="sr-only">Chattito está escribiendo</span>
-            <p v-else>{{ message.text }}</p>
+            <p v-else>{{ message.text }}<button v-if="message.action?.kind === 'resume-tour' && message.id === lastResumeMessageId && !activeId && pendingTour?.id === message.action.tourId" type="button" class="chattito-message__resume" @click="resumeTour(message.action.tourId)">Retomar recorrido</button></p>
           </article>
         </TransitionGroup>
       </div>
+      <section class="chattito-panel__tours" aria-label="Recorridos">
+        <strong>Recorridos</strong>
+        <div>
+          <button type="button" @click="startTour('bienvenida')">Repetir bienvenida</button>
+          <button v-if="canLaunchTour('primer-modulo')" type="button" @click="startTour('primer-modulo')">Cómo crear mi primer módulo</button>
+          <button v-if="canLaunchTour('crear-modulo-manual')" type="button" @click="startTour('crear-modulo-manual')">Crear un módulo manualmente</button>
+          <button v-if="!activeId && pendingTour" type="button" @click="resumeTour()">Continuar recorrido</button>
+          <button v-if="!activeId && pendingTour" type="button" @click="omitTour">Omitir</button>
+        </div>
+        <p v-if="!canLaunchTour('primer-modulo')" class="chattito-panel__tour-help">Este recorrido no está disponible para tu cuenta.</p>
+      </section>
       <form class="chattito-panel__composer" @submit.prevent="send">
         <label class="sr-only" for="chattito-message">Escribe a Chattito</label>
         <input id="chattito-message" v-model="draft" autocomplete="off" placeholder="Escribe un mensaje…" :disabled="pending">
@@ -103,6 +116,9 @@ onBeforeUnmount(() => {
 <style>
 .chattito-panel{position:relative;display:flex;width:var(--chattito-panel-width,400px);height:100%;flex-direction:column;border-left:1px solid #d9e2eb;background:#fdfefe;color:#213343}.chattito-panel__resize{position:absolute;z-index:1;top:0;bottom:0;left:0;width:12px;cursor:col-resize;touch-action:none}.chattito-panel__resize::after{position:absolute;top:50%;left:4px;width:3px;height:36px;border-radius:3px;background:#cbd6e2;content:"";transform:translateY(-50%)}.chattito-panel__resize:hover::after,.chattito-panel__resize:focus-visible::after{background:#0091ae}.chattito-panel__resize:focus-visible{outline:2px solid #0091ae;outline-offset:-2px}.chattito-panel__header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5eaf0;padding:16px 18px}.chattito-panel__identity{display:flex;align-items:center;gap:12px}.chattito-panel__avatar{width:56px;height:56px;flex:none}.chattito-panel__identity div{display:grid;gap:3px}.chattito-panel__identity strong{font-size:14px}.chattito-panel__identity span,.chattito-panel__footnote{font-size:11px;color:#718096}.chattito-panel__close{width:32px;height:32px;border-radius:7px;color:#516f90;font-size:24px;line-height:1}.chattito-panel__close:hover{background:#edf3f6}.chattito-panel__messages{display:flex;min-height:0;flex:1;flex-direction:column;gap:12px;overflow:auto;padding:14px 16px;scrollbar-width:thin;scrollbar-color:#cbd6e2 transparent}.chattito-message{display:flex;align-items:center;gap:4px;content-visibility:auto;contain-intrinsic-size:auto 104px}.chattito-message p{max-width:82%;margin:0;border:1px solid #e5eaf0;border-radius:14px 14px 14px 4px;background:#f5f8fa;padding:10px 12px;font-size:13px;line-height:1.5}.chattito-message--user{justify-content:flex-end;min-height:42px}.chattito-message--user p{border-color:#cdebf0;border-radius:14px 14px 4px 14px;background:#e5f5f8;color:#214e59}.chattito-panel__composer{display:flex;gap:8px;border:1px solid #d9e2eb;border-radius:12px;margin:14px 14px 0;padding:6px;background:white}.chattito-panel__composer input{min-width:0;flex:1;border:0;background:transparent;padding:7px;font-size:13px;outline:none}.chattito-panel__composer button{width:34px;height:34px;border-radius:9px;background:#0091ae;color:white;font-size:20px}.chattito-panel__composer button:disabled{opacity:.45}.chattito-panel__footnote{margin:8px 16px 13px;text-align:center}.chattito-panel-enter-active,.chattito-panel-leave-active{transition:opacity .22s ease}.chattito-panel-enter-from,.chattito-panel-leave-to{opacity:0}.chattito-message-move{transition:transform .28s ease}.chattito-message-enter-active,.chattito-message-leave-active{transition:opacity .2s ease,transform .2s ease}.chattito-message-enter-from,.chattito-message-leave-to{opacity:0;transform:translateY(8px)}
 .chattito-panel__avatar{width:42px;height:42px}.chattito-message{contain-intrinsic-size:auto 78px}
+.chattito-panel__tours{border-top:1px solid #e5eaf0;padding:13px 16px 0}.chattito-panel__tours strong{display:block;margin-bottom:8px;color:#33475b;font-size:11px;letter-spacing:.06em;text-transform:uppercase}.chattito-panel__tours div{display:flex;flex-wrap:wrap;gap:7px}.chattito-panel__tours button{border:1px solid #b9dce4;border-radius:8px;background:#eaf7f9;padding:7px 9px;color:#006e84;font-size:11px;font-weight:700}.chattito-panel__tours button:hover{border-color:#0091ae;background:#d9f0f4}.chattito-panel__tours button:focus-visible{outline:2px solid #0091ae;outline-offset:2px}
+.chattito-panel__tour-help{margin:8px 0 0;color:#516f90;font-size:11px;line-height:1.45}
+.chattito-message__resume{display:block;margin-top:9px;border:1px solid #0091ae;border-radius:7px;background:#eaf7f9;padding:6px 9px;color:#006e84;font-size:11px;font-weight:700}.chattito-message__resume:hover{background:#d9f0f4}.chattito-message__resume:focus-visible{outline:2px solid #0091ae;outline-offset:2px}
 @media(max-width:1023px){.chattito-panel{width:100vw}.chattito-panel__resize{display:none}}
 @media(prefers-reduced-motion:reduce){.chattito-panel-enter-active,.chattito-panel-leave-active,.chattito-message-move,.chattito-message-enter-active,.chattito-message-leave-active{transition:none}}
 </style>

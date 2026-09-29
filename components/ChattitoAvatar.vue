@@ -120,6 +120,7 @@ function playState() {
       animations.push(animation)
     })
   } else if (shownState.value === 'happy') {
+    if (props.lookAt !== undefined) applyLook()
     animate('.chattito-jump', [{ transform: 'none' }, { transform: `scale(${CHATTITO_DEFAULTS.happyStretch}, ${CHATTITO_DEFAULTS.happySquash})`, offset: .18 }, { transform: `translateY(${-CHATTITO_DEFAULTS.happyJump}px) scale(${CHATTITO_DEFAULTS.happySquash}, ${CHATTITO_DEFAULTS.happyStretch})`, offset: .48 }, { transform: `scale(${CHATTITO_DEFAULTS.happyStretch}, ${CHATTITO_DEFAULTS.happySquash})`, offset: .78 }, { transform: 'none' }], { duration: CHATTITO_DEFAULTS.happyDuration, easing: 'ease-in-out' })
     animate('.chattito-antenna', [{ transform: 'none' }, { transform: `rotate(${CHATTITO_DEFAULTS.antennaRotation}deg)`, offset: .25 }, { transform: `rotate(${-CHATTITO_DEFAULTS.antennaRotation}deg)`, offset: .5 }, { transform: `rotate(${CHATTITO_DEFAULTS.antennaRotation}deg)`, offset: .75 }, { transform: 'none' }], { duration: CHATTITO_DEFAULTS.happyDuration, easing: 'ease-in-out' })
   } else {

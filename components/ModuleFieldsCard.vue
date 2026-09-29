@@ -394,7 +394,7 @@ async function confirmImpactModal() {
 
     <p v-if="realFields.length === 0" class="p-6 text-center text-sm text-brand-text-muted">Todavía no agregaste ningún campo.</p>
 
-    <div v-else class="flex flex-col divide-y divide-brand-border-light">
+    <div v-else data-tour="manual-field-saved" class="flex flex-col divide-y divide-brand-border-light">
       <div
         v-for="(field, index) in realFields"
         :key="field.id"

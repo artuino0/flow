@@ -80,7 +80,7 @@ onMounted(loadDashboard)
 </script>
 
 <template>
-  <div class="dashboard">
+  <div class="dashboard" data-tour="dashboard">
     <header class="welcome">
       <div>
         <h1>Hola, {{ firstName }} <span aria-hidden="true">👋</span></h1>

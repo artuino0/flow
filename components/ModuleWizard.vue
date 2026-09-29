@@ -12,6 +12,7 @@
 import { ArrowRight, Blocks, Check, ChevronRight } from '@lucide/vue'
 import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import type { ModuleKind } from '~/server/utils/moduleEntities'
+import { MANUAL_TOUR_BACK_EVENT, manualWizardStorageKey, readManualWizardDraft, readTourProgress, tourProgressKey, writeManualWizardDraft } from '~/utils/onboardingTours'
 
 const props = defineProps<{
   // '/modulos' o '/catalogos' - a donde vuelven Cancelar y el fin del asistente.
@@ -29,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const { user } = useAuth()
 
 const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
 
@@ -76,6 +78,47 @@ const detailLayout = ref<DetailLayout>({ properties: [], relations: [], showActi
 const listLayout = ref<ListLayout>({ columns: [], filterFields: [], defaultSort: null })
 const boardConfig = ref<BoardConfig>({ enabled: false, statusField: null, titleField: null, secondaryFields: [], defaultView: 'table' })
 const calendarConfig = ref<CalendarConfig>({ enabled: false, startDateField: null, startTimeField: null, durationField: null, endField: null, titleField: null, colorField: null, groupByField: null, defaultView: 'month' })
+const manualDraftReady = ref(false)
+
+function onManualTourBack(event: Event) {
+  if (props.moduleKind !== 'hecho' || !entityId.value || !(event instanceof CustomEvent)) return
+  if (event.detail === 'campos' || event.detail === 'detalle') step.value = event.detail
+}
+
+onMounted(() => window.addEventListener(MANUAL_TOUR_BACK_EVENT, onManualTourBack))
+onBeforeUnmount(() => window.removeEventListener(MANUAL_TOUR_BACK_EVENT, onManualTourBack))
+
+function manualDraftKeys() {
+  const current = user.value
+  if (props.moduleKind !== 'hecho' || !current?.authenticated) return null
+  return {
+    progress: tourProgressKey(current.tenantId, current.id, 'crear-modulo-manual'),
+    draft: manualWizardStorageKey(current.tenantId, current.id),
+  }
+}
+
+onMounted(async () => {
+  const keys = manualDraftKeys()
+  if (keys) {
+    const progress = readTourProgress(localStorage, keys.progress, 'crear-modulo-manual')
+    const draft = readManualWizardDraft(localStorage, keys.draft)
+    if (progress && progress.index >= 3 && progress.index <= 6 && draft) {
+      entityId.value = draft.entityId
+      name.value = draft.name
+      slug.value = draft.slug
+      step.value = draft.step
+      try { await loadFields() } catch { toast.error('No se pudieron cargar los campos', 'Intenta retomar el recorrido de nuevo cuando cargue el módulo.') }
+    }
+  }
+  manualDraftReady.value = true
+})
+
+watch([step, entityId, name, slug], () => {
+  if (!manualDraftReady.value || !entityId.value || step.value === 'basica') return
+  const keys = manualDraftKeys()
+  if (!keys || !readTourProgress(localStorage, keys.progress, 'crear-modulo-manual')) return
+  writeManualWizardDraft(localStorage, keys.draft, { entityId: entityId.value, name: name.value, slug: slug.value, step: step.value })
+})
 
 async function loadFields() {
   if (!slug.value) return
@@ -198,7 +241,7 @@ async function onContinue() {
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <div :data-tour="moduleKind === 'hecho' ? 'manual-basic' : undefined" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
           <div class="border-b border-brand-border-light p-5">
             <h2 class="text-[15px] font-bold text-brand-text">Información básica</h2>
           </div>
@@ -301,6 +344,7 @@ async function onContinue() {
           <button
             type="button"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            :data-tour="moduleKind === 'hecho' ? 'manual-fields-continue' : undefined"
             @click="step = 'detalle'"
           >
             Continuar
@@ -334,7 +378,7 @@ async function onContinue() {
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <ModuleFieldsCard :entity-id="entityId" :entity-name="name" :fields="fields" @changed="loadFields" />
+        <div :data-tour="moduleKind === 'hecho' ? 'manual-fields' : undefined"><ModuleFieldsCard :entity-id="entityId" :entity-name="name" :fields="fields" @changed="loadFields" /></div>
         <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="entityId ?? undefined" />
       </div>
     </template>
@@ -359,6 +403,7 @@ async function onContinue() {
             type="button"
             :disabled="savingDetailLayout"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            :data-tour="moduleKind === 'hecho' ? 'manual-detail-save' : undefined"
             @click="onSaveDetailLayout"
           >
             <Check class="h-4 w-4" :stroke-width="1.75" />
@@ -421,6 +466,7 @@ async function onContinue() {
             type="button"
             :disabled="savingListLayout"
             class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            :data-tour="moduleKind === 'hecho' ? 'manual-list-save' : undefined"
             @click="onSaveListLayout"
           >
             <Check class="h-4 w-4" :stroke-width="1.75" />

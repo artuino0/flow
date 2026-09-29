@@ -41,7 +41,7 @@ async function goToAction(url: string) {
 
 <template>
   <div ref="root" class="relative">
-    <button type="button" title="Notificaciones" aria-label="Notificaciones" :aria-expanded="open" class="relative flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg" @click.stop="toggleOpen">
+    <button type="button" data-tour="notifications" title="Notificaciones" aria-label="Notificaciones" :aria-expanded="open" class="relative flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg" @click.stop="toggleOpen">
       <Bell class="h-[17px] w-[17px]" :stroke-width="1.75" />
       <span v-if="state.unreadCount" class="absolute right-0.5 top-0.5 flex min-w-[15px] translate-x-1/4 -translate-y-1/4 items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[15px] text-white">{{ state.unreadCount > 99 ? '99+' : state.unreadCount }}</span>
     </button>

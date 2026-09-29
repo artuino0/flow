@@ -11,6 +11,7 @@ export default defineNuxtConfig({
   },
   // HU-ERD-21: Tailwind CSS + tema por defecto.
   modules: ['@nuxtjs/tailwindcss'],
+  css: ['driver.js/dist/driver.css', '~/assets/css/onboarding.css'],
   tailwindcss: {
     cssPath: '~/assets/css/main.css',
     configPath: 'tailwind.config.ts'

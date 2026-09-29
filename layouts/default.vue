@@ -11,6 +11,7 @@
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
 import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings, MessageCircle } from '@lucide/vue'
 import { IDLE_RETURN_KEY, safeInternalRoute } from '~/utils/returnToRoute'
+import { tourNeedsMobileMenu } from '~/utils/onboardingTours'
 
 const { user, logout } = useAuth()
 const chat = useChat()
@@ -33,6 +34,7 @@ const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const profileMenuOpen = ref(false)
 const navRoute = useRoute()
+const { activeId: activeTourId, activeIndex: activeTourIndex } = useOnboarding()
 const { activeKey } = useFlowApps()
 const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
 // El chat es una superficie de trabajo de borde a borde. A diferencia de
@@ -40,6 +42,11 @@ const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
 // layout: sus propios paneles controlan el desplazamiento interno.
 const fullBleedRoute = computed(() => navRoute.meta.fullBleed === true || navRoute.path === '/chat' || navRoute.path.startsWith('/chat/') || navRoute.path === '/sites' || navRoute.path.startsWith('/sites/'))
 watch(() => navRoute.path, () => { mobileMenuOpen.value = false; profileMenuOpen.value = false })
+watch([() => navRoute.path, activeTourId, activeTourIndex], () => {
+  if (import.meta.client && tourNeedsMobileMenu(navRoute.path, activeTourId.value, activeTourIndex.value, window.matchMedia('(max-width: 639px)').matches)) {
+    mobileMenuOpen.value = true
+  }
+})
 onMounted(() => {
   try {
     sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
@@ -118,6 +125,7 @@ async function onLogout(reason?: 'inactividad') {
           <button
             type="button"
             aria-label="Abrir menú de cuenta"
+            data-tour="account"
             :aria-expanded="profileMenuOpen"
             class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"
             @click.stop="profileMenuOpen = !profileMenuOpen"
@@ -129,12 +137,12 @@ async function onLogout(reason?: 'inactividad') {
             <ChevronDown class="h-[15px] w-[15px] text-brand-text-muted transition-transform" :class="profileMenuOpen ? 'rotate-180' : ''" :stroke-width="2" />
           </button>
 
-          <div v-if="profileMenuOpen" class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+          <div v-if="profileMenuOpen" data-tour="account-menu" class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
             <div class="border-b border-brand-border-light px-4 py-3">
               <p class="truncate text-sm font-semibold text-brand-text">{{ user?.fullName || user?.email }}</p>
               <p v-if="user?.fullName" class="truncate text-xs text-brand-text-muted">{{ user.email }}</p>
             </div>
-            <NuxtLink to="/ajustes?section=perfil" class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-text-secondary hover:bg-brand-bg">
+            <NuxtLink to="/ajustes?section=perfil" data-tour="account-settings" class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-brand-text-secondary hover:bg-brand-bg">
               <Settings class="h-4 w-4 text-brand-text-muted" :stroke-width="1.8" />
               Ajustes de cuenta
             </NuxtLink>
@@ -172,6 +180,7 @@ async function onLogout(reason?: 'inactividad') {
       <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-black/30 sm:hidden" @click="mobileMenuOpen = false" />
       <aside
         v-if="!editorFullscreen"
+        data-tour="menu"
         class="z-20 h-full shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:static sm:flex"
         :class="[sidebarCollapsed ? 'w-16' : activeKey === 'sites' ? 'w-60' : 'w-80', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
         @keydown.esc="mobileMenuOpen = false"

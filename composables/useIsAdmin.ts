@@ -13,6 +13,7 @@
 // composable el dato ya esta resuelto (o en vuelo) sin una segunda llamada a
 // GET /api/roles por navegacion.
 export function useIsAdmin() {
+  const { user } = useAuth()
   return useAsyncData('appnav-is-admin', async () => {
     const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
     try {
@@ -21,5 +22,5 @@ export function useIsAdmin() {
     } catch {
       return false
     }
-  })
+  }, { watch: [() => user.value?.id, () => user.value?.tenantId, () => user.value?.roleId, () => user.value?.sessionId] })
 }

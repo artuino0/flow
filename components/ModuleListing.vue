@@ -140,7 +140,7 @@ async function onRestore(module: ModuleRow) {
       <template #actions>
         <NuxtLink to="/organizacion" class="flex h-[35px] items-center rounded border border-brand-border px-4 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
         <NuxtLink v-slot="{ href, navigate }" custom :to="basePath + '/nuevo'">
-          <a :href="href ?? undefined" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
+          <a :href="href ?? undefined" :data-tour="moduleKind === 'hecho' ? 'manual-create' : undefined" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
             <Blocks class="h-4 w-4" :stroke-width="1.75" />
             {{ createLabel }}
           </a>

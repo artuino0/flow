@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { chattitoSessionIdentity } from '~/utils/chattito'
+import { onboardingSessionIdentity, shouldResetOnboarding } from '~/utils/onboardingTours'
 
 const showNavigationFeedback = ref(false)
 const { panel: chattitoPanel, reset: resetChattito } = useChattitoPanel()
+const { reset: resetOnboarding } = useOnboarding()
 const { user } = useAuth()
+const { data: isAdmin } = useIsAdmin()
 const route = useRoute()
 const sessionIdentity = computed(() => chattitoSessionIdentity(user.value))
+const onboardingIdentity = computed(() => onboardingSessionIdentity(user.value))
 const showChattito = computed(() => Boolean(sessionIdentity.value) && route.meta.layout !== false && user.value?.emailVerified && user.value?.onboardingStatus === 'complete')
 watch(sessionIdentity, (current, previous) => {
-  if (!current || (previous && current !== previous)) resetChattito()
+  if (shouldResetOnboarding(current, previous)) resetChattito()
 }, { immediate: true, flush: 'sync' })
+watch(onboardingIdentity, (current, previous) => {
+  if (shouldResetOnboarding(current, previous)) resetOnboarding()
+}, { immediate: true, flush: 'sync' })
+watch(isAdmin, (current, previous) => {
+  if (typeof current === 'boolean' && typeof previous === 'boolean' && current !== previous) resetOnboarding()
+})
 let feedbackTimer: ReturnType<typeof setTimeout> | undefined
 
 function startNavigationFeedback() {
@@ -34,6 +44,7 @@ onBeforeUnmount(stopNavigationFeedback)
 
 <template>
   <ChattitoSymbolRegistry v-if="sessionIdentity" />
+  <OnboardingTour v-if="showChattito" />
   <NuxtLoadingIndicator color="#0091AE" :height="3" :throttle="0" :duration="1600" />
   <Transition name="navigation-feedback">
     <div v-if="showNavigationFeedback" class="navigation-feedback" role="status" aria-live="polite">
