@@ -534,6 +534,7 @@ async function onSaveListLayout() {
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
           <RecordDetailView
+            :entity-id="currentModule.id"
             :entity-slug="currentModule.slug"
             :entity-name="currentModule.name"
             :fields="fields"

@@ -20,6 +20,15 @@ export interface FormattableField {
   validationRules?: Record<string, unknown> | null
 }
 
+/** Tamaño legible para adjuntos, compartido por las vistas de solo lectura. */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
 /** Texto legible de un valor de custom_data según el tipo del campo (tablas de líneas y asociaciones). */
 export function formatFieldValue(field: FormattableField, value: unknown, relationLabels?: Record<string, Record<string, string>>): string {
   if (value === null || value === undefined || value === '') return '-'
@@ -38,6 +47,9 @@ export function formatFieldValue(field: FormattableField, value: unknown, relati
     }
     case 'relation': return relationLabels?.[field.name]?.[String(value)] ?? String(value).slice(0, 8)
     case 'user': return (Array.isArray(value) ? value : [value]).map(id => relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
+    // El ID es un identificador interno; las vistas deben usar DynamicFileValue
+    // para resolver metadata autorizada y renderizar una vista previa/enlace.
+    case 'file': return 'Archivo'
     case 'json': return typeof value === 'string' ? value : JSON.stringify(value)
     default: return String(value)
   }

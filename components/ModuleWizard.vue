@@ -397,7 +397,7 @@ async function onContinue() {
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
-        <RecordDetailView :entity-slug="slug" :entity-name="name" :fields="fields" :layout="detailLayout" :inverse-relations="inverseRelations" :record="null" />
+        <RecordDetailView :entity-id="entityId" :entity-slug="slug" :entity-name="name" :fields="fields" :layout="detailLayout" :inverse-relations="inverseRelations" :record="null" />
       </div>
     </template>
 

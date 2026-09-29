@@ -38,6 +38,7 @@ interface RecordData {
 }
 
 const props = defineProps<{
+  entityId: string
   entitySlug: string
   entityName: string
   fields: EntityFieldMeta[]
@@ -170,6 +171,8 @@ function formatValue(field: EntityFieldMeta, value: unknown): string {
       return props.record?.relationLabels?.[field.name]?.[String(value)] ?? String(value).slice(0, 8)
     case 'user':
       return (Array.isArray(value) ? value : [value]).map(id => props.record?.relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
+    case 'file':
+      return 'Archivo'
     default:
       return String(value)
   }
@@ -429,12 +432,15 @@ async function changeState(to: string, label?: string) {
         </header>
         <div v-if="visibleProperties.length === 0" class="px-[18px] py-6 text-sm text-brand-text-muted">Ninguna propiedad configurada para mostrarse en la ficha.</div>
         <div v-else-if="isEditing">
-          <DynamicForm v-model="editFormValues" detail :fields="visibleProperties" :entity-id="record!.id" :relation-labels="record?.relationLabels" :disabled="submittingEdit" :disabled-fields="isWorkflowLocked ? visibleProperties.filter(field => !lockedEditableFields.includes(field.name)).map(field => field.name) : []" />
+          <DynamicForm v-model="editFormValues" detail :fields="visibleProperties" :entity-id="entityId" :relation-labels="record?.relationLabels" :disabled="submittingEdit" :disabled-fields="isWorkflowLocked ? visibleProperties.filter(field => !lockedEditableFields.includes(field.name)).map(field => field.name) : []" />
         </div>
         <dl v-else>
           <div v-for="field in visibleProperties" :key="field.id" class="flex flex-col gap-[3px] border-b border-brand-border-light px-[18px] py-2.5 last:border-b-0">
             <dt class="text-[11px] font-semibold leading-4 text-brand-text-secondary">{{ field.label }}</dt>
-            <dd class="break-words text-[13px] font-medium leading-[18px] text-brand-text">{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</dd>
+            <dd class="break-words text-[13px] font-medium leading-[18px] text-brand-text">
+              <DynamicFileValue v-if="field.dataType === 'file' && typeof record?.customData[field.name] === 'string'" :file-id="String(record?.customData[field.name])" />
+              <template v-else>{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</template>
+            </dd>
           </div>
         </dl>
       </section>

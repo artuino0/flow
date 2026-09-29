@@ -247,7 +247,12 @@ function totalPages(state: AssociationState) {
             <tbody class="divide-y divide-brand-border-light">
               <tr v-for="row in states[definition.id]!.rows" :key="row.id" class="hover:bg-brand-bg">
                 <td v-for="(column, index) in states[definition.id]!.columns" :key="column.name" class="px-4 py-2.5 text-brand-text">
-                  <NuxtLink v-if="index === 0" :to="`/registros/${definition.relatedSlug}/${row.recordId}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">{{ cell(states[definition.id]!, column, row) === '-' ? row.label : cell(states[definition.id]!, column, row) }}</NuxtLink>
+                  <span v-if="index === 0 && column.dataType === 'file'" class="inline-flex items-center gap-2">
+                    <NuxtLink :to="`/registros/${definition.relatedSlug}/${row.recordId}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">{{ row.label }}</NuxtLink>
+                    <DynamicFileValue v-if="typeof row.customData?.[column.name] === 'string'" :file-id="String(row.customData[column.name])" compact />
+                  </span>
+                  <NuxtLink v-else-if="index === 0" :to="`/registros/${definition.relatedSlug}/${row.recordId}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">{{ cell(states[definition.id]!, column, row) === '-' ? row.label : cell(states[definition.id]!, column, row) }}</NuxtLink>
+                  <DynamicFileValue v-else-if="column.dataType === 'file' && typeof row.customData?.[column.name] === 'string'" :file-id="String(row.customData[column.name])" compact />
                   <template v-else>{{ cell(states[definition.id]!, column, row) }}</template>
                 </td>
                 <td v-if="!states[definition.id]!.columns.length" class="px-4 py-2.5"><NuxtLink :to="`/registros/${definition.relatedSlug}/${row.recordId}`" class="font-semibold text-brand-blue hover:underline">{{ row.label }}</NuxtLink></td>

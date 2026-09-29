@@ -178,7 +178,12 @@ function totalText(field: EntityFieldMeta): string {
           <tbody class="divide-y divide-brand-border-light">
             <tr v-for="row in rows" :key="row.id" class="hover:bg-brand-bg">
               <td v-for="(field, index) in columns" :key="field.name" class="whitespace-nowrap px-3 py-2.5 text-brand-text">
-                <NuxtLink v-if="index === 0" :to="`/registros/${childSlug}/${row.id}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">{{ formatFieldValue(field, row.customData[field.name], relationLabels) }}</NuxtLink>
+                <span v-if="index === 0 && field.dataType === 'file'" class="inline-flex items-center gap-2">
+                  <NuxtLink :to="`/registros/${childSlug}/${row.id}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">Archivo</NuxtLink>
+                  <DynamicFileValue v-if="typeof row.customData[field.name] === 'string'" :file-id="String(row.customData[field.name])" compact />
+                </span>
+                <NuxtLink v-else-if="index === 0" :to="`/registros/${childSlug}/${row.id}`" class="whitespace-nowrap font-semibold text-brand-blue hover:underline">{{ formatFieldValue(field, row.customData[field.name], relationLabels) }}</NuxtLink>
+                <DynamicFileValue v-else-if="field.dataType === 'file' && typeof row.customData[field.name] === 'string'" :file-id="String(row.customData[field.name])" compact />
                 <template v-else>{{ formatFieldValue(field, row.customData[field.name], relationLabels) }}</template>
               </td>
               <td v-if="permissions.canUpdate || permissions.canDelete" class="sticky right-0 whitespace-nowrap bg-brand-surface px-3 py-2.5 text-center shadow-[inset_1px_0_0_0_#e5e7eb]">

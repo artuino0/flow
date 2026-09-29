@@ -69,6 +69,7 @@ function onDeleted() {
       <RecordDetailView
         v-else-if="data && record"
         :entity-slug="slug"
+        :entity-id="data.entity.id"
         :entity-name="data.entity.name"
         :fields="data.fields"
         :layout="data.detailLayout"

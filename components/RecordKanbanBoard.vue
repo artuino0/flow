@@ -51,6 +51,11 @@ const statusOptions = computed(() => localColumns.value.filter(column => column.
 function fieldLabel(name: string) {
   return fieldsByName.value.get(name)?.label ?? name
 }
+function isFileField(name: string) { return fieldsByName.value.get(name)?.dataType === 'file' }
+function fileId(record: BoardRecord, name: string) {
+  const value = record.customData[name]
+  return typeof value === 'string' ? value : ''
+}
 function displayValue(record: BoardRecord, name: string): string {
   const field = fieldsByName.value.get(name)
   const value = record.customData[name]
@@ -62,6 +67,7 @@ function displayValue(record: BoardRecord, name: string): string {
     return options.find(option => option.value === value)?.label ?? String(value)
   }
   if (field?.dataType === 'boolean') return value ? 'Sí' : 'No'
+  if (field?.dataType === 'file') return 'Archivo'
   if (Array.isArray(value)) return value.join(', ')
   return String(value)
 }
@@ -175,6 +181,7 @@ async function loadMore(column: BoardColumn) {
   }
 }
 function cardInitials(record: BoardRecord) {
+  if (props.config.titleField && isFileField(props.config.titleField)) return record.id.slice(0, 2).toUpperCase()
   const source = props.config.titleField ? displayValue(record, props.config.titleField) : record.id.slice(0, 8)
   const parts = source.trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return '—'
@@ -234,8 +241,10 @@ function openRecord(recordId: string) {
           >
             <div class="card-top">
               <div class="card-title-copy">
-                <strong>{{ config.titleField ? displayValue(record, config.titleField) : record.id.slice(0, 8) }}</strong>
-                <span v-if="config.secondaryFields[0]">{{ displayValue(record, config.secondaryFields[0]) }}</span>
+                <DynamicFileValue v-if="config.titleField && isFileField(config.titleField) && fileId(record, config.titleField)" :file-id="fileId(record, config.titleField)" compact />
+                <strong v-else>{{ config.titleField ? displayValue(record, config.titleField) : record.id.slice(0, 8) }}</strong>
+                <DynamicFileValue v-if="config.secondaryFields[0] && isFileField(config.secondaryFields[0]) && fileId(record, config.secondaryFields[0])" :file-id="fileId(record, config.secondaryFields[0])" compact />
+                <span v-else-if="config.secondaryFields[0]">{{ displayValue(record, config.secondaryFields[0]) }}</span>
               </div>
               <button type="button" class="card-menu" aria-label="Acciones del registro" @click.stop>
                 <MoreVertical :size="15" :stroke-width="1.75" />
@@ -246,7 +255,7 @@ function openRecord(recordId: string) {
               <div v-for="field in config.secondaryFields.slice(1, 3)" :key="field">
                 <component :is="fieldIcon(field)" :size="12" :stroke-width="1.75" />
                 <dt class="sr-only">{{ fieldLabel(field) }}</dt>
-                <dd>{{ displayValue(record, field) }}</dd>
+                <dd><DynamicFileValue v-if="isFileField(field) && fileId(record, field)" :file-id="fileId(record, field)" compact /><template v-else>{{ displayValue(record, field) }}</template></dd>
               </div>
             </dl>
 

@@ -155,6 +155,7 @@ function fieldLabel(name: string) { return fieldMeta(name)?.label ?? name }
 function formatValue(value: unknown, fieldName: string) {
   if (value === null || value === undefined || value === '') return 'Vacío'
   const field = fieldMeta(fieldName)
+  if (field?.dataType === 'file') return 'Archivo'
   if (field?.dataType === 'boolean' || typeof value === 'boolean') return value === true || value === 'true' ? 'Sí' : 'No'
   if (field?.dataType === 'date' && typeof value === 'string') {
     const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value)
@@ -302,7 +303,13 @@ async function submitActivity() {
               <dl v-if="activity.actionType === 'UPDATED' && changes(activity).length" class="event-changes">
                 <div v-for="(change, index) in changes(activity)" :key="index" class="change-row">
                   <dt>{{ fieldLabel(change.field) }}</dt>
-                  <dd><span class="old-value">{{ formatValue(change.old, change.field) }}</span><ArrowRight :size="14" aria-label="cambió a" /><strong>{{ formatValue(change.new, change.field) }}</strong></dd>
+                  <dd>
+                    <DynamicFileValue v-if="fieldMeta(change.field)?.dataType === 'file' && typeof change.old === 'string'" :file-id="change.old" compact />
+                    <span v-else class="old-value">{{ formatValue(change.old, change.field) }}</span>
+                    <ArrowRight :size="14" aria-label="cambió a" />
+                    <DynamicFileValue v-if="fieldMeta(change.field)?.dataType === 'file' && typeof change.new === 'string'" :file-id="change.new" compact />
+                    <strong v-else>{{ formatValue(change.new, change.field) }}</strong>
+                  </dd>
                 </div>
               </dl>
             </article>

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.113.2] - 2026-09-29
+#### [bug]
+- [ERD-121](https://dydasoftware.atlassian.net/browse/ERD-121) - Subir un archivo desde el detalle del registro ya no falla con 403 y los campos de archivo en vista muestran miniatura/nombre/tamaño en vez del id.
+
 ### [0.113.1] - 2026-09-29
 #### [bug]
 - [ERD-120](https://dydasoftware.atlassian.net/browse/ERD-120) - El alta con flujo de estados ya no exige el estado y no deja guardar: muestra y toma el estado inicial; la importación CSV también fuerza el estado inicial.

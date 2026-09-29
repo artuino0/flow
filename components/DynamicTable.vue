@@ -94,6 +94,8 @@ function cellValue(field: EntityFieldMeta, row: RecordRow): string {
       return (props.relationLabels?.[field.name]?.[String(v)]) ?? String(v).slice(0, 8)
     case 'user':
       return (Array.isArray(v) ? v : [v]).map(id => props.relationLabels?.[field.name]?.[String(id)] ?? `${String(id).slice(0, 8)} (inactivo)`).join(', ')
+    case 'file':
+      return 'Archivo'
     default:
       return String(v)
   }
@@ -143,7 +145,8 @@ async function onDelete(id: string) {
           </tr>
           <tr v-for="row in rows" :key="row.id" class="bg-brand-surface hover:bg-brand-bg">
             <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-3 text-brand-text">
-              {{ cellValue(field, row) }}
+              <DynamicFileValue v-if="field.dataType === 'file' && typeof row.customData[field.name] === 'string'" :file-id="String(row.customData[field.name])" compact />
+              <template v-else>{{ cellValue(field, row) }}</template>
             </td>
             <td 
               class="whitespace-nowrap px-4 py-3"
