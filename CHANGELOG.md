@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.113.1] - 2026-09-29
+#### [bug]
+- [ERD-120](https://dydasoftware.atlassian.net/browse/ERD-120) - El alta con flujo de estados ya no exige el estado y no deja guardar: muestra y toma el estado inicial; la importación CSV también fuerza el estado inicial.
+
 ### [0.113.0] - 2026-09-29
 #### [feature]
 - [ERD-119](https://dydasoftware.atlassian.net/browse/ERD-119) - Diseñador: errores del plano visibles con nombres y clic para ubicarlos en el lienzo, botón Corregir con IA y aviso al abrir sesiones con errores.

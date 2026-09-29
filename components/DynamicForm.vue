@@ -9,6 +9,7 @@
 // DynamicFileField.vue) - todos demasiado complejos (dropdown propio, chips,
 // autocomplete, subida de archivos) para vivir inline en este archivo.
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import { resolveFieldValue } from '~/utils/fieldValue'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
@@ -64,13 +65,13 @@ const errors = ref<Record<string, string>>({})
 const renderableFields = computed(() => props.fields.filter((f) => f.name !== 'id' && f.dataType !== 'incremental'))
 
 function valueFor(name: string): unknown {
-  return props.modelValue[name]
+  return resolveFieldValue(name, props.modelValue, props.fixedValues)
 }
 
 // Para binds de :value en el template - siempre string, evita el quirk de
 // TS al tipar `unknown ?? ''` (NonNullable<unknown> colapsa a "{}").
 function displayValue(name: string): string {
-  const v = props.fixedValues && name in props.fixedValues ? props.fixedValues[name] : props.modelValue[name]
+  const v = valueFor(name)
   return v === null || v === undefined ? '' : String(v)
 }
 

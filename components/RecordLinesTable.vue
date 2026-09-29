@@ -25,6 +25,7 @@ interface Row { id: string; customData: Record<string, unknown> }
 const PAGE_SIZE = 100
 const fields = ref<EntityFieldMeta[]>([])
 const entityId = ref('')
+const workflowConfig = ref<{ enabled: boolean; field: string; initial: string } | null>(null)
 const listLayout = ref<ListLayout | null>(null)
 const permissions = ref<EntityPermissions>({ canRead: true, canCreate: false, canUpdate: false, canDelete: false })
 const rows = ref<Row[]>([])
@@ -53,6 +54,7 @@ const columns = computed(() => {
 const formFields = computed(() => fields.value.filter(f => f.name !== props.fieldName))
 const summable = computed(() => (props.totals ?? []).map(name => fields.value.find(f => f.name === name)).filter((f): f is EntityFieldMeta => Boolean(f)))
 const canWrite = computed(() => permissions.value.canCreate)
+const fixedWorkflowValues = computed(() => workflowConfig.value?.enabled ? { [workflowConfig.value.field]: workflowConfig.value.initial } : {})
 
 function errorMessage(err: any, fallback: string) {
   const details = err?.data?.data?.fieldErrors
@@ -83,9 +85,10 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
-    const meta = await $fetch<{ entity: { id: string }; fields: EntityFieldMeta[]; permissions: EntityPermissions; listLayout: ListLayout }>(`/api/entities/${props.childSlug}/fields`)
+    const meta = await $fetch<{ entity: { id: string; workflowConfig?: { enabled: boolean; field: string; initial: string } | null }; fields: EntityFieldMeta[]; permissions: EntityPermissions; listLayout: ListLayout }>(`/api/entities/${props.childSlug}/fields`)
     fields.value = meta.fields
     entityId.value = meta.entity.id
+    workflowConfig.value = meta.entity.workflowConfig ?? null
     permissions.value = meta.permissions
     listLayout.value = meta.listLayout
     await Promise.all([loadRows(), loadTotals()])
@@ -204,7 +207,7 @@ function totalText(field: EntityFieldMeta): string {
     </template>
 
     <RecordDrawer ref="drawerRef" :open="Boolean(editing)" :title="editing?.id ? `Editar línea` : `Nueva línea`" :subtitle="parentLabel ? `${childName} · ${parentLabel}` : childName" :busy="saving" @close="cancel">
-      <DynamicForm v-if="editing" ref="formRef" v-model="editing.values" :fields="formFields" :entity-id="entityId" :disabled="saving" />
+      <DynamicForm v-if="editing" ref="formRef" v-model="editing.values" :fields="formFields" :entity-id="entityId" :disabled="saving" :fixed-values="!editing.id ? fixedWorkflowValues : undefined" />
       <template #footer>
         <button type="button" class="rounded border border-brand-border px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg disabled:opacity-60" :disabled="saving" @click="cancel">Cancelar</button>
         <button v-if="!editing?.id" type="button" class="rounded border border-brand-orange px-3 py-2 text-[13px] font-semibold text-brand-orange hover:bg-brand-bg disabled:opacity-60" :disabled="saving" @click="save(true)">Guardar y agregar otra</button>

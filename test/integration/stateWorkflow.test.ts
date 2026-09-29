@@ -21,6 +21,7 @@ let automation: typeof import('../../server/utils/triggerActions')
 let userId: string
 let deleteRecord: (event: any) => Promise<unknown>
 let patchRecord: (event: any) => Promise<unknown>
+let createRecord: (event: any) => Promise<any>
 
 beforeAll(async () => {
   testDb = await createTestDb()
@@ -34,7 +35,7 @@ beforeAll(async () => {
   configValue = { enabled: true, field: 'estado', initial: 'borrador', states, transitions: [{ from: 'borrador', to: 'pagado', roles: [adminRoleId] }, { from: 'pagado', to: 'borrador', roles: [adminRoleId], label: 'Reabrir' }], rules: [] }
   const [entity] = await admin`insert into entities (tenant_id, name, slug, workflow_config) values (${TENANT}, 'Pedidos', 'pedidos', ${admin.json(configValue as never)}) returning id`
   entityId = entity!.id
-  await admin`insert into entity_fields (entity_id, name, label, data_type, validation_rules) values (${entityId}, 'estado', 'Estado', 'select', ${admin.json({ options: [{ value: 'borrador', label: 'Borrador' }, { value: 'pagado', label: 'Pagado' }] } as never)}), (${entityId}, 'nota', 'Nota', 'text', '{}'::jsonb), (${entityId}, 'cliente', 'Cliente', 'text', '{}'::jsonb), (${entityId}, 'referencia', 'Referencia de pago', 'text', '{}'::jsonb)`
+  await admin`insert into entity_fields (entity_id, name, label, data_type, is_required, validation_rules) values (${entityId}, 'estado', 'Estado', 'select', true, ${admin.json({ options: [{ value: 'borrador', label: 'Borrador' }, { value: 'pagado', label: 'Pagado' }] } as never)}), (${entityId}, 'nota', 'Nota', 'text', false, '{}'::jsonb), (${entityId}, 'cliente', 'Cliente', 'text', false, '{}'::jsonb), (${entityId}, 'referencia', 'Referencia de pago', 'text', false, '{}'::jsonb)`
   const [lines] = await admin`insert into entities (tenant_id, name, slug, detail_layout) values (${TENANT}, 'Partidas', 'partidas', ${admin.json({ relations: [{ entitySlug: 'partidas', fieldName: 'pedido' }] })}) returning id`
   lineEntityId = lines!.id
   const [products] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT}, 'Productos', 'productos') returning id`
@@ -58,13 +59,27 @@ beforeAll(async () => {
   vi.stubGlobal('getRouterParam', (event: any, name: string) => event.context.params?.[name])
   vi.stubGlobal('createError', createError)
   vi.stubGlobal('readValidatedBody', async (event: any, parse: (body: unknown) => unknown) => parse(event.context.body))
+  vi.stubGlobal('setResponseStatus', () => {})
   deleteRecord = (await import('../../server/api/records/[entity]/[id].delete')).default
   patchRecord = (await import('../../server/api/records/[entity]/[id].patch')).default
+  createRecord = (await import('../../server/api/records/[entity]/index.post')).default
 }, 60_000)
 
 afterAll(async () => { await admin.end(); await testDb.stop() })
 
 describe('stateWorkflow (Postgres real)', () => {
+  it('crea con el estado inicial si falta o si el cliente intenta elegir otro estado', async () => {
+    const event = (customData: Record<string, unknown>) => ({
+      context: { auth: { tenantId: TENANT, roleId: adminRoleId, sub: userId }, params: { entity: 'pedidos' }, body: { customData } }
+    })
+
+    const withoutState = await createRecord(event({ cliente: 'Sin estado en body' }))
+    const attemptedOverride = await createRecord(event({ estado: 'pagado', cliente: 'Intenta cambiarlo' }))
+
+    expect(withoutState.customData.estado).toBe('borrador')
+    expect(attemptedOverride.customData.estado).toBe('borrador')
+  })
+
   it('valida el Select, opciones y roles configurados', async () => {
     const config = await withTenant(TENANT, tx => workflow.validateWorkflowConfig(tx, TENANT, entityId, configValue))
     expect(config?.enabled).toBe(true)

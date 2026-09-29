@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { validateFieldValue } from '../../utils/validateFieldValue'
 import type { EntityFieldMeta } from '../../composables/useEntityFields'
+import { resolveFieldValue } from '../../utils/fieldValue'
 
 // HU-ERD-23: validacion "espejo" en cliente (feedback inmediato en
 // DynamicForm.vue) - nunca reemplaza la revalidacion real del servidor
@@ -103,6 +104,21 @@ describe('validateFieldValue', () => {
     it('requerido y vacio (isEmpty generico) es invalido', () => {
       const result = validateFieldValue(field({ dataType: 'select', label: 'Prioridad', isRequired: true, validationRules: { options } }), '')
       expect(result.valid).toBe(false)
+    })
+
+    it('usa y muestra el valor fijo del flujo para un select requerido sin valor editado', () => {
+      const estado = field({ name: 'estado', label: 'Estado', dataType: 'select', isRequired: true, validationRules: { options } })
+      const values = {}
+      const fixedValues = { estado: 'alta' }
+      const effectiveValue = resolveFieldValue('estado', values, fixedValues)
+
+      expect(effectiveValue).toBe('alta')
+      expect(validateFieldValue(estado, effectiveValue).valid).toBe(true)
+      expect(validateFieldValue(estado, resolveFieldValue('prioridad', values, fixedValues)).valid).toBe(false)
+    })
+
+    it('prioriza el valor fijado aunque exista otro valor en el modelo', () => {
+      expect(resolveFieldValue('estado', { estado: 'baja' }, { estado: 'alta' })).toBe('alta')
     })
   })
 

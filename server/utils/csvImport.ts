@@ -165,9 +165,9 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
       const rawRow = rows[i]
       const rowNumber = i + 2 // fila 1 del CSV es el encabezado
       const resolvedRow: Record<string, unknown> = { ...rawRow }
-      // Un CSV es una vía de carga/migración masiva: respeta estados históricos
-      // explícitos que pasan el schema del Select; las filas sin estado usan el inicial.
-      if (workflow.success && workflow.data.enabled && !String(resolvedRow[workflow.data.field] ?? '').trim()) resolvedRow[workflow.data.field] = workflow.data.initial
+      // El flujo controla el estado en toda alta, también en importaciones:
+      // un valor de estado enviado por CSV no puede saltarse el estado inicial.
+      if (workflow.success && workflow.data.enabled) resolvedRow[workflow.data.field] = workflow.data.initial
       let rowFailed = false
 
       for (const field of relationFields) {

@@ -31,12 +31,14 @@ beforeAll(async () => {
   productoresId = productores.id as string
   await admin`insert into entity_fields (entity_id, name, label, data_type, is_required) values (${productoresId}, 'nombre', 'Nombre', 'text', true)`
 
-  const [recepciones] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Recepciones', 'recepciones') returning id`
+  const workflow = { enabled: true, field: 'estado', initial: 'borrador', states: { borrador: { locked: false, editableFields: [] }, cerrado: { locked: true, editableFields: [] } }, transitions: [{ from: 'borrador', to: 'cerrado', roles: 'all' }], rules: [] }
+  const [recepciones] = await admin`insert into entities (tenant_id, name, slug, workflow_config) values (${TENANT_A}, 'Recepciones', 'recepciones', ${admin.json(workflow as never)}) returning id`
   recepcionesId = recepciones.id as string
   await admin`
     insert into entity_fields (entity_id, name, label, data_type, is_required, validation_rules)
     values
       (${recepcionesId}, 'folio', 'Folio', 'text', true, '{}'),
+      (${recepcionesId}, 'estado', 'Estado', 'select', true, ${admin.json({ options: [{ value: 'borrador', label: 'Borrador' }, { value: 'cerrado', label: 'Cerrado' }] })}),
       (${recepcionesId}, 'productor', 'Productor', 'relation', true, ${admin.json({ relationEntity: 'productores' })}),
       (${recepcionesId}, 'kilos_recibidos', 'Kilos recibidos', 'number', false, '{}'),
       (${recepcionesId}, 'es_organico', 'Es organico', 'boolean', false, '{}'),
@@ -80,6 +82,18 @@ describe('csvImport (Postgres real)', () => {
     expect(row.custom_data.es_organico).toBe(true)
     expect(row.custom_data.etiquetas).toEqual(['a', 'b'])
     expect(typeof row.custom_data.productor).toBe('string')
+    expect(row.custom_data.estado).toBe('borrador')
+  })
+
+  it('ignora un estado explícito en CSV y aplica el estado inicial del flujo', async () => {
+    const result = await importRecords(TENANT_A, recepcionesId, [
+      { folio: 'R-ESTADO', estado: 'cerrado', productor: 'Rancho El Aguacate' }
+    ])
+
+    expect(result.errors).toEqual([])
+    expect(result.insertedCount).toBe(1)
+    const [row] = await admin`select custom_data from records where tenant_id = ${TENANT_A} and entity_id = ${recepcionesId} and custom_data->>'folio' = 'R-ESTADO'`
+    expect(row.custom_data.estado).toBe('borrador')
   })
 
   it('reporta error de fila cuando el texto de la relacion no existe, sin bloquear las demas filas (import parcial)', async () => {
