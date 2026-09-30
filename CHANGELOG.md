@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.117.0] - 2026-09-30
+#### [feature]
+- [ERD-129](https://dydasoftware.atlassian.net/browse/ERD-129) - Cada pestaña de la edición del módulo tiene su propio parámetro en la URL (`/modulos/<id>/editar?tab=info|fields|relations|menu|detail|list|flow|labels|api`) con enlace directo; base reactiva de contexto de pantalla para Chattito (sin sugerencia visible todavía).
+
 ### [0.116.1] - 2026-09-30
 #### [bug]
 - [ERD-128](https://dydasoftware.atlassian.net/browse/ERD-128) - La migración 0091 (actor ausente no concede acceso a records) no estaba registrada en el journal de Drizzle y el migrador la omitía; ahora se aplica en despliegues e instalaciones nuevas.

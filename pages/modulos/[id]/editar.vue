@@ -85,13 +85,12 @@ const TABS = [
   { key: 'etiquetas', label: 'Etiquetas' },
   { key: 'api', label: 'API' }
 ] as const
-type StepKey = (typeof TABS)[number]['key']
 
 const route = useRoute()
 const router = useRouter()
 const moduleId = route.params.id as string
 
-const step = ref<StepKey>('basica')
+const step = useModuleEditTab(route, router)
 
 // No existe GET /api/entities/:id puntual - se resuelve del listado ya
 // existente (GET /api/entities, HU-ERD-69) en vez de sumar otro endpoint
