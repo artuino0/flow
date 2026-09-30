@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.119.0] - 2026-09-30
+#### [feature]
+- [ERD-131](https://dydasoftware.atlassian.net/browse/ERD-131) - Cada pestaña de la edición del módulo tiene su propio recorrido guiado de Chattito (Información, Campos, Relaciones, Ubicación en menú, Diseño del detalle, Diseño del listado, Flujo de estados, Etiquetas y API), disponible desde el aviso de ayuda, desde «Explícame más» y desde un botón «?» junto al título de cada pestaña; además las pestañas comparten el mismo marco de card con encabezado y Guardar integrados, y Diseño del listado reúne su encabezado y las vistas Tabla/Kanban/Calendario en una sola card.
+
 ### [0.118.0] - 2026-09-30
 #### [feature]
 - [ERD-130](https://dydasoftware.atlassian.net/browse/ERD-130) - Chattito muestra una ayuda contextual discreta al entrar a cada pestaña de la edición del módulo (explicación corta de la pantalla, «Explícame más» que abre el panel con los detalles, «No mostrar más aquí» y «No me sugieras más ayuda»); aparece una vez por pestaña, organización y usuario, y no interrumpe recorridos ni conversaciones.

@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { chattitoSessionIdentity } from '../../utils/chattito'
+import { MODULE_EDIT_TOURS, MODULE_EDIT_TAB_ANCHORS } from '../../utils/onboardingTours'
 import { TOUR_SELECTORS, TOUR_POPOVER_CONTROLS, allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, isManualFieldModalStep, manualFieldExitIndex, manualResumeIndex, manualStepIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, shouldResetOnboarding, showDesignerAccess, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourNeedsAdministration, tourNeedsMobileMenu, tourProgressKey, tourStepDestination, tourStorageKey, visibleTourSteps, waitForTourTarget, writeManualWizardDraft, writeTourCompletion, writeTourProgress } from '../../utils/onboardingTours'
 
 describe('definiciones de recorridos', () => {
   it('tiene IDs únicos, textos útiles y selectores declarados', () => {
     const tours = Object.values(onboardingTours)
     expect(new Set(tours.map(tour => tour.id)).size).toBe(tours.length)
-    expect(tours.map(tour => tour.id)).toEqual(['bienvenida', 'primer-modulo', 'crear-modulo-manual'])
+    expect(tours.map(tour => tour.id)).toEqual([...Object.values(MODULE_EDIT_TOURS), 'bienvenida', 'primer-modulo', 'crear-modulo-manual'])
     for (const tour of tours) {
       expect(tour.steps.length).toBeGreaterThan(0)
       for (const step of tour.steps) {
@@ -166,12 +167,59 @@ describe('definiciones de recorridos', () => {
       manualFieldsContinue: 'components/ModuleWizard.vue',
       manualDetailSave: 'components/ModuleWizard.vue',
       manualListSave: 'components/ModuleWizard.vue',
+      editTabInfo: 'pages/modulos/[id]/editar.vue',
+      editTabFields: 'pages/modulos/[id]/editar.vue',
+      editTabRelations: 'pages/modulos/[id]/editar.vue',
+      editTabMenu: 'pages/modulos/[id]/editar.vue',
+      editTabDetail: 'pages/modulos/[id]/editar.vue',
+      editTabList: 'pages/modulos/[id]/editar.vue',
+      editTabFlow: 'pages/modulos/[id]/editar.vue',
+      editTabLabels: 'pages/modulos/[id]/editar.vue',
+      editTabApi: 'pages/modulos/[id]/editar.vue',
+      editInfoIdentity: 'pages/modulos/[id]/editar.vue',
+      editInfoActive: 'pages/modulos/[id]/editar.vue',
+      editInfoSave: 'pages/modulos/[id]/editar.vue',
+      editFieldsAdd: 'components/ModuleFieldsCard.vue',
+      editFieldsRows: 'components/ModuleFieldsCard.vue',
+      editFieldsPreview: 'pages/modulos/[id]/editar.vue',
+      editRelationsAdd: 'components/ModuleRelationsCard.vue',
+      editRelationsRows: 'components/ModuleRelationsCard.vue',
+      editMenuContext: 'pages/modulos/[id]/editar.vue',
+      editMenuGroup: 'components/ModuleNavigationEditor.vue',
+      editMenuSave: 'components/ModuleNavigationEditor.vue',
+      editDetailProperties: 'components/ModuleDetailLayoutCard.vue',
+      editDetailRelations: 'components/ModuleDetailLayoutCard.vue',
+      editDetailActivity: 'components/ModuleDetailLayoutCard.vue',
+      editDetailPreview: 'pages/modulos/[id]/editar.vue',
+      editDetailSave: 'pages/modulos/[id]/editar.vue',
+      editListViews: 'components/ModuleListLayoutCard.vue',
+      editListTable: 'components/ModuleListLayoutCard.vue',
+      editListPreview: 'components/ModuleListLayoutCard.vue',
+      editListSave: 'pages/modulos/[id]/editar.vue',
+      editFlowSetup: 'components/ModuleStateWorkflowCard.vue',
+      editFlowTransitions: 'components/ModuleStateWorkflowCard.vue',
+      editFlowMap: 'components/ModuleStateWorkflowCard.vue',
+      editFlowLock: 'components/ModuleStateWorkflowCard.vue',
+      editFlowSave: 'components/ModuleStateWorkflowCard.vue',
+      editLabelsToggle: 'components/ModuleLabelEditor.vue',
+      editLabelsFields: 'components/ModuleLabelEditor.vue',
+      editLabelsPreview: 'components/ModuleLabelEditor.vue',
+      editLabelsSave: 'pages/modulos/[id]/editar.vue',
+      editApiConnection: 'components/ModuleApiDocs.vue',
+      editApiOperations: 'components/ModuleApiDocs.vue',
+      editApiExample: 'components/ModuleApiDocs.vue',
+      editApiFields: 'components/ModuleApiDocs.vue',
+      editApiPermissions: 'components/ModuleApiDocs.vue',
     }
     for (const [name, selector] of Object.entries(TOUR_SELECTORS) as [keyof typeof TOUR_SELECTORS, string][]) {
       const file = new URL(`../../${sourceByName[name]}`, import.meta.url)
       const stableName = selector.match(/data-tour="([^"]+)"/)?.[1]
       expect(stableName).toBeTruthy()
-      expect(readFileSync(file, 'utf8')).toContain(stableName!)
+      const source = readFileSync(file, 'utf8')
+      if (name.startsWith('editTab')) {
+        expect(Object.values(MODULE_EDIT_TAB_ANCHORS)).toContain(stableName)
+        expect(source).toContain(':data-tour="MODULE_EDIT_TAB_ANCHORS[tab.key]"')
+      } else expect(source).toContain(stableName!)
     }
   })
 

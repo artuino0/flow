@@ -188,13 +188,13 @@ async function save() {
   <section class="flex min-w-0 flex-col gap-5">
     <header class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex flex-col gap-1">
-        <h2 class="text-lg font-bold text-brand-text">Flujo de estados</h2>
+        <div class="flex items-center gap-2"><h2 class="text-lg font-bold text-brand-text">Flujo de estados</h2><ModuleTourHelpButton tab="flow" /></div>
         <p class="text-xs text-brand-text-secondary">Controla transiciones y bloqueos usando {{ selectedField?.label ? `el campo ${selectedField.label}` : 'un campo Select' }}.</p>
       </div>
-      <button type="button" class="rounded bg-brand-orange px-3.5 py-[9px] text-[13px] font-bold text-white hover:bg-brand-orange-hover disabled:opacity-50" :disabled="saving || (enabled && (!fieldName || !initial))" @click="save">{{ saving ? 'Guardando…' : 'Guardar flujo' }}</button>
+      <button type="button" class="rounded bg-brand-orange px-3.5 py-[9px] text-[13px] font-bold text-white hover:bg-brand-orange-hover disabled:opacity-50" :disabled="saving || (enabled && (!fieldName || !initial))" data-tour="edit-flow-save" @click="save">{{ saving ? 'Guardando…' : 'Guardar flujo' }}</button>
     </header>
 
-    <div class="grid min-w-0 items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 lg:grid-cols-[minmax(180px,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+    <div data-tour="edit-flow-setup" class="grid min-w-0 items-center gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 lg:grid-cols-[minmax(180px,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <label class="flex cursor-pointer items-center justify-between gap-3 text-sm font-semibold text-brand-text">
           <span class="flex flex-col gap-1"><span>Activar flujo</span><span class="text-xs font-normal text-brand-text-secondary">Controla el recorrido de este módulo.</span></span>
           <input v-model="enabled" type="checkbox" role="switch" class="peer sr-only">
@@ -211,7 +211,7 @@ async function save() {
     </div>
 
     <div v-if="enabled" class="grid min-w-0 items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_572px]">
-      <div class="flex min-h-[568px] min-w-0 flex-col gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-[18px]">
+      <div data-tour="edit-flow-transitions" class="flex min-h-[568px] min-w-0 flex-col gap-3 rounded-lg border border-brand-border-light bg-brand-surface p-[18px]">
         <div class="flex items-center justify-between gap-3"><h3 class="text-base font-bold text-brand-text">Transiciones y roles</h3><span class="rounded-full bg-brand-blue-bg px-2.5 py-1 text-[11px] font-bold text-brand-blue">{{ transitions.length }} reglas</span></div>
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
           <label class="flex flex-col gap-1.5 text-xs font-bold text-brand-text">Desde<select v-model="from" class="h-[38px] min-w-0 rounded border border-brand-border px-3 text-sm font-normal"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
@@ -224,7 +224,7 @@ async function save() {
         </div>
       </div>
 
-      <div class="flex min-h-[568px] min-w-0 max-w-[572px] flex-col gap-3">
+      <div data-tour="edit-flow-map" class="flex min-h-[568px] min-w-0 max-w-[572px] flex-col gap-3">
         <div class="flex items-start justify-between gap-3"><div><h3 class="text-base font-bold text-brand-text">Mapa del recorrido</h3><p class="mt-1 text-xs text-brand-text-secondary">{{ transitions.length }} cambio{{ transitions.length === 1 ? '' : 's' }} permitido{{ transitions.length === 1 ? '' : 's' }}.</p></div><div class="flex gap-2"><button v-if="activeEdgeKey" type="button" class="rounded border border-brand-border px-2 py-1 text-xs font-semibold text-brand-error-text" @click="removeSelectedEdge">Quitar</button><button type="button" class="rounded border border-brand-border px-2 py-1 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="mapPositions = {}">Reacomodar</button></div></div>
         <div class="flex min-h-[460px] min-w-0 flex-1 flex-col rounded-lg border border-brand-border-light bg-brand-surface p-4">
           <h4 class="text-xs font-bold text-brand-text">Recorrido de estados</h4>
@@ -255,7 +255,7 @@ async function save() {
       </div>
     </div>
 
-    <div v-if="enabled && options.length" class="flex min-w-0 flex-col rounded-lg border border-brand-border-light bg-brand-surface p-5">
+    <div v-if="enabled && options.length" data-tour="edit-flow-lock" class="flex min-w-0 flex-col rounded-lg border border-brand-border-light bg-brand-surface p-5">
       <h3 class="text-sm font-bold text-brand-text">Bloqueo por estado</h3>
       <p class="mt-1 text-[11px] text-brand-text-secondary">Define si un registro se puede modificar después de cambiar de estado.</p>
       <div v-for="option in options" :key="option.value" class="grid gap-3 border-b border-brand-border-light py-3 last:border-b-0 lg:grid-cols-[220px_minmax(0,1fr)]">

@@ -3,13 +3,14 @@ import { driver } from 'driver.js'
 import { h, render } from 'vue'
 import ChattitoAvatar from '~/components/ChattitoAvatar.vue'
 import { lookAtElement } from '~/utils/chattito'
-import { allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, isManualFieldModalStep, MANUAL_TOUR_BACK_EVENT, manualFieldExitIndex, manualResumeIndex, manualStepIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, showDesignerAccess, TOUR_POPOVER_CONTROLS, TOUR_SELECTORS, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourProgressKey, tourStepDestination, tourStorageKey, waitForTourTarget, watchTourTargetRemoval, writeTourCompletion, writeTourProgress, type OnboardingStep, type TourBranch, type TourId, type TourProgress } from '~/utils/onboardingTours'
+import { allowsTourTargetClick, canRunTour, canStartOnboarding, canStartTourRequest, clearTourProgress, destroyTourDriver, isManualFieldModalStep, isModuleEditTour, moduleEditTourMatchesRoute, MODULE_EDIT_TOURS, MANUAL_TOUR_BACK_EVENT, manualFieldExitIndex, manualResumeIndex, manualStepIndex, manualTourBackStage, manualWizardStorageKey, nextTourIndex, onboardingSessionIdentity, onboardingTours, permittedTourSteps, previousTourIndex, readManualWizardDraft, readTourCompletion, readTourProgress, showDesignerAccess, TOUR_POPOVER_CONTROLS, TOUR_SELECTORS, TOUR_TARGET_FAILURE_MESSAGE, tourAdvance, tourChoiceDestination, tourDismissalKey, tourProgressKey, tourStepDestination, tourStorageKey, waitForTourTarget, watchTourTargetRemoval, writeTourCompletion, writeTourProgress, type OnboardingStep, type TourBranch, type TourId, type TourProgress } from '~/utils/onboardingTours'
 
 let activeDriver: Driver | undefined
 let avatarHost: HTMLElement | undefined
 let highlightedClickCleanup: (() => void) | undefined
 let keyboardCleanup: (() => void) | undefined
 let completionCleanup: (() => void) | undefined
+let targetRemovalCleanup: (() => void) | undefined
 let modalCleanup: (() => void) | undefined
 let expectedNavigation = false
 let tourGeneration = 0
@@ -72,7 +73,7 @@ export function useOnboarding() {
   const sessionIdentity = computed(() => onboardingSessionIdentity(user.value))
   const tourAccess = computed(() => ({ isAdmin: adminStatus.value === 'success' && isAdmin.value === true, designerAvailable: planStatus.value === 'success' && showDesignerAccess(planUsage.value?.code) }))
   const canLaunchTour = (id: TourId) => canRunTour(onboardingTours[id], tourAccess.value)
-  const activeSteps = ref<readonly OnboardingStep[]>([])
+  const activeSteps = useState<readonly OnboardingStep[]>('onboarding-active-steps', () => [])
   const activeIndex = useState<number>('onboarding-active-index', () => 0)
 
   function storageKey(id: TourId) {
@@ -111,7 +112,7 @@ export function useOnboarding() {
   }
   const pendingTour = computed(() => {
     progressRevision.value
-    for (const id of ['crear-modulo-manual', 'primer-modulo', 'bienvenida'] as const) {
+    for (const id of ['crear-modulo-manual', 'primer-modulo', 'bienvenida', ...Object.values(MODULE_EDIT_TOURS)] as const) {
       if (!canLaunchTour(id)) continue
       const progress = getProgress(id)
       if (progress) return progress
@@ -157,6 +158,8 @@ export function useOnboarding() {
     completionCleanup = undefined
     modalCleanup?.()
     modalCleanup = undefined
+    targetRemovalCleanup?.()
+    targetRemovalCleanup = undefined
     destroyTourDriver(activeDriver)
     activeDriver = undefined
     expectedNavigation = false
@@ -209,7 +212,7 @@ export function useOnboarding() {
 
     const backToAccount = navigateIfNeeded && id === 'primer-modulo' && index < 2
     const destination = navigateIfNeeded ? tourStepDestination(id, index, step, tourOriginPath) : step.path
-    if (destination && !pathMatches(destination, route.path) && navigateIfNeeded) {
+    if (destination && !(isModuleEditTour(id) ? destination === route.fullPath : pathMatches(destination, route.path)) && navigateIfNeeded) {
       expectedNavigation = true
       try {
         await navigateTo(destination)
@@ -247,10 +250,10 @@ export function useOnboarding() {
     const target = await waitForTourTarget(
       () => {
         if (modalStep && document.querySelector(TOUR_SELECTORS.manualFieldModal)) modalSeen = true
-        return pathMatches(destination && navigateIfNeeded ? destination : step.path, route.path) ? step.selector ? document.querySelector(step.selector) : document.body : null
+        return (isModuleEditTour(id) ? route.fullPath === tourOriginPath : pathMatches(destination && navigateIfNeeded ? destination : step.path, route.path)) ? step.selector ? document.querySelector(step.selector) : document.body : null
       },
       element => step.selector ? isElementVisible(element) : true,
-      { timeoutMs: step.optional ? 250 : 8_000, intervalMs: 50, abort: modalStep ? () => modalSeen && !document.querySelector(TOUR_SELECTORS.manualFieldModal) : undefined }
+      { timeoutMs: step.optional ? 250 : 8_000, intervalMs: 50, abort: () => !isCurrent() || (modalStep && modalSeen && !document.querySelector(TOUR_SELECTORS.manualFieldModal)) }
     )
     if (!isCurrent()) return false
     if (!target) {
@@ -273,6 +276,8 @@ export function useOnboarding() {
     completionCleanup = undefined
     modalCleanup?.()
     modalCleanup = undefined
+    targetRemovalCleanup?.()
+    targetRemovalCleanup = undefined
     destroyTourDriver(activeDriver)
     unmountAvatar()
 
@@ -291,7 +296,16 @@ export function useOnboarding() {
         void showStep(previous, true)
         return
       }
-      void showStep(previousTourIndex(id, index, activeBranch.value), true)
+      let previous = previousTourIndex(id, index, activeBranch.value)
+      if (isModuleEditTour(id)) {
+        while (previous > 0) {
+          const candidate = activeSteps.value[previous]
+          const element = candidate?.selector ? document.querySelector(candidate.selector) : null
+          if (!candidate?.optional || (element && isElementVisible(element))) break
+          previous--
+        }
+      }
+      void showStep(previous, true)
     }
     const clickTarget = () => {
       highlightedClickCleanup?.()
@@ -476,6 +490,11 @@ export function useOnboarding() {
     window.addEventListener('keydown', onKeyDown)
     keyboardCleanup = () => window.removeEventListener('keydown', onKeyDown)
     instance.drive()
+    if (isModuleEditTour(id) && element) {
+      targetRemovalCleanup = watchTourTargetRemoval(document.body, element, () => {
+        if (isCurrent()) pauseTour()
+      })
+    }
     if (isManualFieldModalStep(id, step)) {
       const modal = document.querySelector(TOUR_SELECTORS.manualFieldModal)
       if (modal) {
@@ -502,20 +521,22 @@ export function useOnboarding() {
 
   async function startTour(id: TourId) {
     if (!import.meta.client || !sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout, import.meta.dev)) return false
+    if (isModuleEditTour(id) && !moduleEditTourMatchesRoute(id, route.path, route.query.tab)) return false
     const identity = sessionIdentity.value
     if (adminStatus.value === 'pending') await adminRequest
-    if (id !== 'bienvenida' && isAdmin.value === true && (planStatus.value !== 'success' || !planUsage.value)) {
+    if (id !== 'bienvenida' && !isModuleEditTour(id) && isAdmin.value === true && (planStatus.value !== 'success' || !planUsage.value)) {
       try { await planRequest.refresh() } catch { if (id === 'primer-modulo') return false }
     }
     if (identity !== sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout, import.meta.dev)) return false
     if (!canStartTourRequest(id, user.value, route.path, route.meta.layout, tourAccess.value, import.meta.dev)) return false
+    if (isModuleEditTour(id) && !moduleEditTourMatchesRoute(id, route.path, route.query.tab)) return false
     attemptedIdentity.value = identity
     stopTour()
     discardProgress(id)
     activeId.value = id
     activeSteps.value = permittedTourSteps(onboardingTours[id], tourAccess.value)
     activeBranch.value = null
-    tourOriginPath = route.path === '/dev/chattito' ? '/' : route.path
+    tourOriginPath = isModuleEditTour(id) ? route.fullPath : route.path === '/dev/chattito' ? '/' : route.path
     if (route.path === '/dev/chattito') {
       expectedNavigation = true
       try {
@@ -543,7 +564,7 @@ export function useOnboarding() {
     }
     const identity = sessionIdentity.value
     if (adminStatus.value === 'pending') await adminRequest
-    if (progress.id !== 'bienvenida' && isAdmin.value === true && (planStatus.value !== 'success' || !planUsage.value)) {
+    if (progress.id !== 'bienvenida' && !isModuleEditTour(progress.id) && isAdmin.value === true && (planStatus.value !== 'success' || !planUsage.value)) {
       try { await planRequest.refresh() } catch { if (progress.id === 'primer-modulo') return false }
     }
     if (identity !== sessionIdentity.value || !canStartTourRequest(progress.id, user.value, route.path, route.meta.layout, tourAccess.value, import.meta.dev)) return false

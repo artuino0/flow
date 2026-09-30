@@ -32,6 +32,7 @@
 // relation_definitions, ver components/ModuleRelationsCard.vue para el
 // detalle de diseno - revisado en Pencil antes de construir, sin mock fiel
 // para esta version simple, decision explicita del usuario 2026-09-01).
+import { MODULE_EDIT_TAB_ANCHORS } from '~/utils/onboardingTours'
 import { ChevronRight, Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
@@ -335,6 +336,7 @@ async function onSaveListLayout() {
           <button
             v-for="tab in TABS"
             :key="tab.key"
+            :data-tour="MODULE_EDIT_TAB_ANCHORS[tab.key]"
             type="button"
             class="relative flex h-[50px] shrink-0 items-center whitespace-nowrap px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-brand-blue"
             :class="step === tab.key ? 'font-bold text-brand-orange' : 'font-medium text-brand-text-secondary hover:text-brand-text'"
@@ -360,10 +362,19 @@ async function onSaveListLayout() {
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <div class="flex flex-col gap-5">
             <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-              <div class="border-b border-brand-border-light p-5">
-                <h2 class="text-[15px] font-bold text-brand-text">Información del módulo</h2>
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
+                <div class="flex flex-col gap-1"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Información del módulo</h2><ModuleTourHelpButton tab="info" /></div><p class="text-sm text-brand-text-secondary">Ajusta el nombre, la descripción y la disponibilidad del módulo.</p></div>
+                <button
+                  type="button"
+                  :disabled="saving || !name || !!currentModule.deletedAt"
+                  class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  data-tour="edit-info-save"
+                  @click="onSave"
+                >
+                  {{ saving ? 'Guardando...' : 'Guardar cambios' }}
+                </button>
               </div>
-              <div class="flex flex-col gap-4 p-5">
+              <div data-tour="edit-info-identity" class="flex flex-col gap-4 p-5">
                 <div class="flex flex-col gap-1.5">
                   <label for="modulo-name" class="text-[13px] font-semibold text-brand-text">Nombre <span class="text-brand-error-text">*</span></label>
                   <input
@@ -429,7 +440,7 @@ async function onSaveListLayout() {
                      tarjeta via "Guardar cambios" (no es un toggle
                      inmediato); el bloqueo real para roles NO administrador
                      lo aplica requirePermission() (server/utils/rbac.ts). -->
-                <div class="flex items-center justify-between">
+                <div data-tour="edit-info-active" class="flex items-center justify-between">
                   <div class="flex flex-col gap-0.5">
                     <p class="text-sm font-semibold text-brand-text">Módulo activo</p>
                     <p class="text-xs text-brand-text-muted">Si está deshabilitado, sus registros siguen disponibles para consulta.</p>
@@ -450,14 +461,7 @@ async function onSaveListLayout() {
 
               <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
                 <NuxtLink :to="listBackTo" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
-                <button
-                  type="button"
-                  :disabled="saving || !name || !!currentModule.deletedAt"
-                  class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-                  @click="onSave"
-                >
-                  {{ saving ? 'Guardando...' : 'Guardar cambios' }}
-                </button>
+
               </div>
             </div>
 
@@ -496,7 +500,7 @@ async function onSaveListLayout() {
       <template v-else-if="step === 'campos'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
-          <ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" />
+          <div data-tour="edit-fields-preview" class="min-w-0"><ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" /></div>
         </div>
       </template>
 
@@ -509,18 +513,22 @@ async function onSaveListLayout() {
            vivo, el mismo componente que renderiza la ficha real). -->
       <template v-else-if="step === 'detalle'">
         <p v-if="detailLayoutError" class="text-sm text-brand-error-text">{{ detailLayoutError }}</p>
-        <div class="flex justify-end">
-          <button
-            type="button"
-            :disabled="savingDetailLayout"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-            @click="onSaveDetailLayout"
-          >
-            {{ savingDetailLayout ? 'Guardando...' : 'Guardar diseño' }}
-          </button>
-        </div>
+
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations" />
+          <ModuleDetailLayoutCard v-model="detailLayout" :fields="fields" :inverse-relations="inverseRelations">
+            <template #actions>
+              <button
+                type="button"
+                :disabled="savingDetailLayout"
+                class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                data-tour="edit-detail-save"
+                @click="onSaveDetailLayout"
+              >
+                {{ savingDetailLayout ? 'Guardando...' : 'Guardar diseño' }}
+              </button>
+            </template>
+          </ModuleDetailLayoutCard>
+          <div data-tour="edit-detail-preview" class="min-w-0">
           <RecordDetailView
             :entity-id="currentModule.id"
             :entity-slug="currentModule.slug"
@@ -530,6 +538,7 @@ async function onSaveListLayout() {
             :inverse-relations="inverseRelations"
             :record="null"
           />
+          </div>
         </div>
       </template>
 
@@ -544,6 +553,7 @@ async function onSaveListLayout() {
               type="button"
               :disabled="savingListLayout"
               class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              data-tour="edit-list-save"
               @click="onSaveListLayout"
             >
               {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
@@ -568,23 +578,30 @@ async function onSaveListLayout() {
       </template>
 
       <template v-else-if="step === 'etiquetas'">
-        <div class="mb-4 flex items-center justify-between gap-4">
-          <p class="max-w-2xl text-sm text-brand-text-secondary">Activa la impresión para este módulo y crea una etiqueta con sus propios campos. Los registros se imprimirán respetando el tamaño real seleccionado.</p>
-          <button
+
+        <ModuleLabelEditor v-model="labelConfig" :fields="fields" :module-name="currentModule.name">
+          <template #actions>
+            <button
             type="button"
             :disabled="savingLabelConfig"
             class="shrink-0 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            data-tour="edit-labels-save"
             @click="onSaveLabelConfig"
           >
             {{ savingLabelConfig ? 'Guardando...' : 'Guardar etiqueta' }}
           </button>
-        </div>
-        <ModuleLabelEditor v-model="labelConfig" :fields="fields" :module-name="currentModule.name" />
+          </template>
+        </ModuleLabelEditor>
       </template>
 
       <template v-else-if="step === 'navegacion'">
+        <div data-tour="edit-menu-context">
         <ModuleNavigationEditor v-if="currentModule.moduleKind === 'hecho'" :entity-id="currentModule.id" :entity-name="currentModule.name" />
-        <p v-else class="text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
+        <section v-else class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+          <div class="border-b border-brand-border-light p-5"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ubicación en el menú</h2><ModuleTourHelpButton tab="menu" /></div></div>
+          <p class="p-5 text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
+        </section>
+        </div>
       </template>
       <template v-else-if="step === 'api'">
         <ModuleApiDocs :entity-name="currentModule.name" :entity-slug="currentModule.slug" :fields="fields" :permissions="fieldsData?.permissions" />

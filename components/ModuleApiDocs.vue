@@ -57,13 +57,13 @@ async function copySnippet(key: keyof typeof snippets.value) {
   <section class="flex min-w-0 flex-col gap-[18px]">
     <header class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex flex-col gap-1">
-        <h2 class="text-[21px] font-bold text-brand-text">API del módulo</h2>
+        <div class="flex items-center gap-2"><h2 class="text-[21px] font-bold text-brand-text">API del módulo</h2><ModuleTourHelpButton tab="api" /></div>
         <p class="text-[13px] text-brand-text-secondary">Integra {{ entityName }} con los endpoints disponibles y sus campos actuales.</p>
       </div>
       <a :href="collectionUrl" target="_blank" rel="noreferrer" class="flex items-center gap-1.5 rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-xs font-bold text-brand-blue hover:bg-brand-bg">Abrir endpoint <ExternalLink class="h-3.5 w-3.5" /></a>
     </header>
 
-    <div class="grid min-w-0 gap-4 lg:grid-cols-2">
+    <div data-tour="edit-api-connection" class="grid min-w-0 gap-4 lg:grid-cols-2">
       <div class="min-w-0 rounded-lg border border-brand-border-light bg-brand-surface px-[18px] py-[15px]">
         <p class="text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Endpoint del módulo</p>
         <div class="mt-2 flex min-w-0 items-center justify-between gap-3">
@@ -78,7 +78,7 @@ async function copySnippet(key: keyof typeof snippets.value) {
     </div>
 
     <div class="grid min-w-0 gap-5 lg:grid-cols-[410px_minmax(0,1fr)]">
-      <section class="min-w-0 rounded-lg border border-brand-border-light bg-brand-surface p-4">
+      <section data-tour="edit-api-operations" class="min-w-0 rounded-lg border border-brand-border-light bg-brand-surface p-4">
         <h3 class="text-[15px] font-bold text-brand-text">Operaciones</h3>
         <p class="mb-3 mt-1 text-xs text-brand-text-secondary">Selecciona una ruta para ver su solicitud.</p>
         <div class="flex flex-col gap-2">
@@ -88,7 +88,7 @@ async function copySnippet(key: keyof typeof snippets.value) {
           </button>
         </div>
       </section>
-      <section class="min-w-0 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
+      <section data-tour="edit-api-example" class="min-w-0 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
         <div class="flex min-h-[55px] flex-wrap items-center justify-between gap-2 border-b border-brand-border-light px-[18px] py-2.5">
           <h3 class="text-sm font-bold text-brand-text">Ejemplo de solicitud</h3>
           <button type="button" class="flex items-center gap-1.5 rounded bg-brand-bg px-2.5 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-blue-bg" @click="copySnippet(activeExample)"><Check v-if="copied === activeExample" class="h-3.5 w-3.5 text-brand-success-text" /><Copy v-else class="h-3.5 w-3.5" />{{ copied === activeExample ? 'Copiado' : 'Copiar' }}</button>
@@ -101,7 +101,7 @@ async function copySnippet(key: keyof typeof snippets.value) {
       </section>
     </div>
 
-    <section class="min-w-0 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
+    <section data-tour="edit-api-fields" class="min-w-0 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light px-[18px] py-[15px]">
         <div><h3 class="text-[15px] font-bold text-brand-text">Campos disponibles</h3><p class="mt-1 text-xs text-brand-text-secondary">Los datos se envían en <code>customData</code>; Flow genera el id.</p></div>
         <span class="text-[11px] font-bold text-brand-blue">{{ fields.length }} campos</span>
@@ -112,7 +112,7 @@ async function copySnippet(key: keyof typeof snippets.value) {
       </table></div>
     </section>
 
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-border-light bg-brand-surface px-[18px] py-3.5">
+    <div data-tour="edit-api-permissions" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-border-light bg-brand-surface px-[18px] py-3.5">
       <div><p class="text-[13px] font-bold text-brand-text">Permisos de tu usuario</p><p class="mt-1 text-[11px] text-brand-text-secondary">Las operaciones disponibles dependen de los permisos asignados.</p></div>
       <div class="flex flex-wrap gap-2"><span v-for="permission in [{ key: 'canRead', label: 'Leer' }, { key: 'canCreate', label: 'Crear' }, { key: 'canUpdate', label: 'Actualizar' }, { key: 'canDelete', label: 'Eliminar' }]" :key="permission.key" class="rounded px-2.5 py-1 text-[11px] font-bold" :class="permissions?.[permission.key as keyof EntityPermissions] ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-bg text-brand-text-muted'">{{ permission.label }}{{ permissions?.[permission.key as keyof EntityPermissions] ? '' : ' · sin acceso' }}</span></div>
     </div>

@@ -56,7 +56,8 @@ export function useChattitoHelp() {
     if (!visible.value || !help.value) return
     // El panel existente y su conversación se conservan; en un chat nuevo la ayuda va primero.
     if (!panel.value.conversationStarted) panel.value.messages = []
-    addMessage({ role: 'assistant', text: chattitoHelpMessage(help.value) })
+    addMessage({ role: 'assistant', text: chattitoHelpMessage(help.value),
+      ...(tourId.value ? { action: { kind: 'start-tour' as const, tourId: tourId.value, originPath: route.fullPath } } : {}) })
     panel.value.conversationStarted = true
     panel.value.open = true
     dismiss()

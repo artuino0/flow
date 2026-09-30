@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { emotionForMessage, isAnimatedChattitoMessage } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
+import { helpForContext } from '~/utils/chattitoHelp'
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
 const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour } = useOnboarding()
 const { ready: helpPreferencesReady, disabled: helpDisabled, setDisabled: setHelpDisabled } = useChattitoHelpPreferences()
+const route = useRoute()
+const { context, recommendedTour } = useChattitoContext()
+const currentTourTitle = computed(() => context.value.page === 'module-edit' ? helpForContext(context.value)?.title : null)
 const draft = ref('')
 const list = ref<HTMLElement>()
 const pending = ref(false)
@@ -89,7 +93,7 @@ onBeforeUnmount(() => {
           <article v-for="(message, index) in visibleMessages" :key="message.id" class="chattito-message" :class="`chattito-message--${message.role}`">
             <ChattitoMessageAvatar v-if="message.role === 'assistant'" :animated="isAnimatedChattitoMessage(index + visibleOffset, lastChattitoIndex)" :state="message.emotion === 'typing' ? 'typing' : panel.avatarState" size="md" />
             <span v-if="message.emotion === 'typing'" class="sr-only">Chattito está escribiendo</span>
-            <p v-else>{{ message.text }}<button v-if="message.action?.kind === 'resume-tour' && message.id === lastResumeMessageId && !activeId && pendingTour?.id === message.action.tourId" type="button" class="chattito-message__resume" @click="resumeTour(message.action.tourId)">Retomar recorrido</button></p>
+            <p v-else>{{ message.text }}<button v-if="message.action?.kind === 'resume-tour' && message.id === lastResumeMessageId && !activeId && pendingTour?.id === message.action.tourId" type="button" class="chattito-message__resume" @click="resumeTour(message.action.tourId)">Retomar recorrido</button><button v-if="message.role === 'assistant' && message.action?.kind === 'start-tour' && !activeId && route.fullPath === message.action.originPath && recommendedTour === message.action.tourId && canLaunchTour(message.action.tourId)" type="button" class="chattito-message__resume" @click="startTour(message.action.tourId)">Ver recorrido</button></p>
           </article>
         </TransitionGroup>
       </div>
@@ -100,6 +104,7 @@ onBeforeUnmount(() => {
           <button type="button" @click="startTour('bienvenida')">Repetir bienvenida</button>
           <button v-if="canLaunchTour('primer-modulo')" type="button" @click="startTour('primer-modulo')">Cómo crear mi primer módulo</button>
           <button v-if="canLaunchTour('crear-modulo-manual')" type="button" @click="startTour('crear-modulo-manual')">Crear un módulo manualmente</button>
+          <button v-if="recommendedTour && canLaunchTour(recommendedTour)" type="button" @click="startTour(recommendedTour)">Recorrer {{ currentTourTitle }}</button>
           <button v-if="!activeId && pendingTour" type="button" @click="resumeTour()">Continuar recorrido</button>
           <button v-if="!activeId && pendingTour" type="button" @click="omitTour">Omitir</button>
         </div>

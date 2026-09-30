@@ -274,16 +274,16 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
 
 <template>
   <div class="flex min-w-0 flex-col gap-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
-        <h2 class="text-lg font-bold text-brand-text">Listado de registros</h2>
-        <p class="text-xs text-brand-text-secondary">Configura las columnas, filtros, orden y vistas disponibles.</p>
+        <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Listado de registros</h2><ModuleTourHelpButton tab="list" /></div>
+        <p class="text-sm text-brand-text-secondary">Configura las columnas, filtros, orden y vistas disponibles.</p>
       </div>
       <slot name="actions" />
     </div>
 
-    <div class="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <div role="tablist" aria-label="Vistas del listado" class="col-span-1 flex h-16 min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden rounded-lg border border-brand-border-light bg-brand-surface px-1.5 py-1 [scrollbar-width:thin] lg:col-span-2">
+        <div data-tour="edit-list-views" role="tablist" aria-label="Vistas del listado" class="flex h-16 min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden px-1.5 py-1 [scrollbar-width:thin]">
           <button
             id="list-view-tab-table"
             ref="tableTab"
@@ -336,8 +336,10 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
             <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" :class="calendarConfig?.enabled ? 'bg-brand-blue-bg text-brand-blue' : 'bg-brand-neutral-bg text-brand-neutral-text'">{{ calendarConfig?.enabled ? 'Activa' : 'Desactivada' }}</span>
           </button>
         </div>
+    </div>
 
-      <div v-if="activeViewTab === 'table'" id="list-view-panel-table" role="tabpanel" aria-labelledby="list-view-tab-table" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+    <div class="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div v-if="activeViewTab === 'table'" data-tour="edit-list-table" id="list-view-panel-table" role="tabpanel" aria-labelledby="list-view-tab-table" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
         <div class="flex flex-col gap-1.5">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Columnas visibles</p>
         <p v-if="modelValue.columns.length === 0" class="text-xs text-brand-text-muted">Este módulo todavía no tiene campos.</p>
@@ -540,7 +542,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         </template>
         <p v-else-if="calendarDateFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Fecha para usar el calendario.</p>
       </div>
-      <slot name="preview" :active-view="activeViewTab" />
+      <div v-if="$slots.preview" data-tour="edit-list-preview" class="min-w-0"><slot name="preview" :active-view="activeViewTab" /></div>
     </div>
   </div>
 </template>

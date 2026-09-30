@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MODULE_EDIT_TOURS } from '../../utils/onboardingTours'
 import { MODULE_EDIT_TABS } from '../../utils/moduleEditTabs'
 import { recommendedTourForContext, resolveChattitoContext } from '../../utils/chattitoContext'
 
@@ -6,7 +7,7 @@ describe('contexto de pantalla de Chattito', () => {
   it.each(Object.values(MODULE_EDIT_TABS))('reconoce la edición en %s sin recomendar un recorrido de creación', tab => {
     const context = resolveChattitoContext({ path: '/modulos/123/editar', params: { id: '123' }, query: { tab, source: 'test' } })
     expect(context).toEqual({ page: 'module-edit', moduleId: '123', tab })
-    expect(recommendedTourForContext(context)).toBeNull()
+    expect(recommendedTourForContext(context)).toBe(MODULE_EDIT_TOURS[tab])
   })
 
   it.each([undefined, null, 'invalid', ['fields']])('normaliza la pestaña %j', tab => {

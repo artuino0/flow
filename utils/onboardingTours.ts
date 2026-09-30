@@ -1,6 +1,62 @@
 import { chattitoSessionIdentity, type ChattitoEmotion } from '~/utils/chattito'
+import { MODULE_EDIT_TABS, normalizeModuleEditTab, type ModuleEditTab } from './moduleEditTabs'
+
+export const MODULE_EDIT_TOURS = {
+  info: 'editar-info', fields: 'editar-campos', relations: 'editar-relaciones',
+  menu: 'editar-menu', detail: 'editar-detalle', list: 'editar-listado',
+  flow: 'editar-flujo', labels: 'editar-etiquetas', api: 'editar-api'
+} as const satisfies Record<ModuleEditTab, string>
+
+export const MODULE_EDIT_TAB_ANCHORS = {
+  basica: 'edit-tab-info', campos: 'edit-tab-fields', relaciones: 'edit-tab-relations',
+  navegacion: 'edit-tab-menu', detalle: 'edit-tab-detail', listado: 'edit-tab-list',
+  flujo: 'edit-tab-flow', etiquetas: 'edit-tab-labels', api: 'edit-tab-api'
+} as const satisfies Record<keyof typeof MODULE_EDIT_TABS, string>
 
 export const TOUR_SELECTORS = {
+  editTabInfo: '[data-tour="edit-tab-info"]',
+  editTabFields: '[data-tour="edit-tab-fields"]',
+  editTabRelations: '[data-tour="edit-tab-relations"]',
+  editTabMenu: '[data-tour="edit-tab-menu"]',
+  editTabDetail: '[data-tour="edit-tab-detail"]',
+  editTabList: '[data-tour="edit-tab-list"]',
+  editTabFlow: '[data-tour="edit-tab-flow"]',
+  editTabLabels: '[data-tour="edit-tab-labels"]',
+  editTabApi: '[data-tour="edit-tab-api"]',
+  editInfoIdentity: '[data-tour="edit-info-identity"]',
+  editInfoActive: '[data-tour="edit-info-active"]',
+  editInfoSave: '[data-tour="edit-info-save"]',
+  editFieldsAdd: '[data-tour="edit-fields-add"]',
+  editFieldsRows: '[data-tour="edit-fields-rows"]',
+  editFieldsPreview: '[data-tour="edit-fields-preview"]',
+  editRelationsAdd: '[data-tour="edit-relations-add"]',
+  editRelationsRows: '[data-tour="edit-relations-rows"]',
+  editMenuContext: '[data-tour="edit-menu-context"]',
+  editMenuGroup: '[data-tour="edit-menu-group"]',
+  editMenuSave: '[data-tour="edit-menu-save"]',
+  editDetailProperties: '[data-tour="edit-detail-properties"]',
+  editDetailRelations: '[data-tour="edit-detail-relations"]',
+  editDetailActivity: '[data-tour="edit-detail-activity"]',
+  editDetailPreview: '[data-tour="edit-detail-preview"]',
+  editDetailSave: '[data-tour="edit-detail-save"]',
+  editListViews: '[data-tour="edit-list-views"]',
+  editListTable: '[data-tour="edit-list-table"]',
+  editListPreview: '[data-tour="edit-list-preview"]',
+  editListSave: '[data-tour="edit-list-save"]',
+  editFlowSetup: '[data-tour="edit-flow-setup"]',
+  editFlowTransitions: '[data-tour="edit-flow-transitions"]',
+  editFlowMap: '[data-tour="edit-flow-map"]',
+  editFlowLock: '[data-tour="edit-flow-lock"]',
+  editFlowSave: '[data-tour="edit-flow-save"]',
+  editLabelsToggle: '[data-tour="edit-labels-toggle"]',
+  editLabelsFields: '[data-tour="edit-labels-fields"]',
+  editLabelsPreview: '[data-tour="edit-labels-preview"]',
+  editLabelsSave: '[data-tour="edit-labels-save"]',
+  editApiConnection: '[data-tour="edit-api-connection"]',
+  editApiOperations: '[data-tour="edit-api-operations"]',
+  editApiExample: '[data-tour="edit-api-example"]',
+  editApiFields: '[data-tour="edit-api-fields"]',
+  editApiPermissions: '[data-tour="edit-api-permissions"]',
   dashboard: '[data-tour="dashboard"]',
   menu: '[data-tour="menu"]',
   notifications: '[data-tour="notifications"]',
@@ -31,7 +87,16 @@ export const TOUR_SELECTORS = {
   manualListSave: '[data-tour="manual-list-save"]',
 } as const
 
-export type TourId = 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual'
+export type ModuleEditTourId = typeof MODULE_EDIT_TOURS[ModuleEditTab]
+export type TourId = 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual' | ModuleEditTourId
+
+export function isModuleEditTour(id: TourId | null): id is ModuleEditTourId {
+  return Object.values(MODULE_EDIT_TOURS).some(tourId => tourId === id)
+}
+
+export function moduleEditTourMatchesRoute(id: ModuleEditTourId, path: string, tab: unknown) {
+  return /^\/modulos\/[^/]+\/editar\/?$/.test(path) && MODULE_EDIT_TOURS[normalizeModuleEditTab(tab)] === id
+}
 export type TourSide = 'top' | 'right' | 'bottom' | 'left'
 export type TourRequirement = 'settings.modules' | 'designer'
 export interface OnboardingStep {
@@ -142,10 +207,90 @@ export function previousTourIndex(id: TourId, index: number, branch: TourBranch)
 }
 
 export function tourStepDestination(id: TourId, index: number, step: OnboardingStep, originPath: string) {
+  if (isModuleEditTour(id)) return originPath
   return id === 'primer-modulo' && index < 2 ? originPath : step.path
 }
 
 export const onboardingTours: Record<TourId, OnboardingTour> = {
+  'editar-info': {
+    id: 'editar-info', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabInfo, title: 'Información general', text: 'Aquí ajustas la identidad y disponibilidad del módulo que tienes abierto. Vamos por partes.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editInfoIdentity, title: 'Así reconocerás tu módulo', text: 'Cambia el nombre y la descripción; el nombre en singular identifica cada registro. El icono se elige junto al título y la ruta se conserva.', side: 'right', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editInfoActive, title: '¿Está disponible?', text: 'Módulo activo controla su disponibilidad. Si está deshabilitado, sus registros siguen disponibles para consulta.', side: 'top', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editInfoSave, title: 'Guarda cuando estés a gusto', text: 'Guardar cambios aplica tus ajustes. Este recorrido solo te muestra dónde está cada cosa.', side: 'top', emotion: 'happy' },
+    ]
+  },
+  'editar-campos': {
+    id: 'editar-campos', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabFields, title: 'Los datos de tus registros', text: 'En Campos defines qué información guardará cada registro, como una fecha, un importe o una lista de opciones.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editFieldsAdd, title: 'Un dato nuevo', text: 'Agregar campo abre el formulario para elegir etiqueta, tipo de dato y si es obligatorio. No hace falta agregar nada para seguir conmigo.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editFieldsRows, title: 'Edita y ordena', text: 'Aquí están tus campos. Puedes editarlos o arrastrarlos para cambiar su orden; cada cambio se guarda desde esta pantalla.', side: 'right', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editFieldsPreview, title: 'Mira cómo va quedando', text: 'La vista previa muestra el módulo con sus campos actuales. ¡Ya tienes el mapa para empezar!', side: 'left', emotion: 'happy' },
+    ]
+  },
+  'editar-relaciones': {
+    id: 'editar-relaciones', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabRelations, title: 'Conecta tus módulos', text: 'Aquí configuras tipos de vínculo con otros módulos. Los registros se vinculan después, desde su ficha.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editRelationsAdd, title: 'Define un vínculo', text: 'Nueva relación permite darle nombre al vínculo y elegir el módulo relacionado. Está disponible cuando hay otro módulo activo para elegir.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editRelationsRows, title: 'Revisa los vínculos existentes', text: 'La lista muestra con qué módulos te vinculas y desde cuáles te vinculan. Aquí puedes renombrar o quitar un tipo de relación.', side: 'top', emotion: 'happy', optional: true },
+    ]
+  },
+  'editar-menu': {
+    id: 'editar-menu', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabMenu, title: 'Un lugar fácil de encontrar', text: 'Esta pestaña organiza la ubicación del módulo en el menú operativo.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editMenuContext, title: 'Módulos y catálogos', text: 'Los módulos pueden agruparse en el menú. Los catálogos se consultan desde los selectores y no aparecen en el menú operativo.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editMenuGroup, title: 'Elige o crea un grupo', text: 'Elige un grupo existente o usa Crear grupo para escribir su nombre y elegir un icono. Sin grupo deja el módulo fuera de esos grupos.', side: 'right', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editMenuSave, title: 'Aplica la ubicación', text: 'Guardar ubicación aplica el grupo elegido. El acceso a los datos y la visibilidad por rol se configuran en Roles y permisos.', side: 'top', emotion: 'happy', optional: true },
+    ]
+  },
+  'editar-detalle': {
+    id: 'editar-detalle', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabDetail, title: 'La ficha de un registro', text: 'En Diseño del detalle decides qué información aparece al abrir un registro.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editDetailProperties, title: 'Propiedades a la vista', text: 'Muestra u oculta propiedades y arrástralas para cambiar su orden. Si aún no hay campos, aquí verás el aviso.', side: 'right', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editDetailRelations, title: 'También las relaciones', text: 'Cuando otros módulos apuntan a este, aquí decides si aparecen sus tablas, su orden y si permiten edición.', side: 'right', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editDetailActivity, title: 'La historia del registro', text: 'Mostrar línea de tiempo de actividad incluye los cambios y notas en la ficha.', side: 'top', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editDetailPreview, title: 'Revisa la ficha', text: 'Esta vista previa usa tu diseño para que puedas comprobar cómo se verá la información.', side: 'left', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editDetailSave, title: 'Tu diseño, guardado', text: 'Guardar diseño aplica estos ajustes. Puedes revisarlos antes de guardar; recorrerlos no cambia datos.', side: 'bottom', emotion: 'happy' },
+    ]
+  },
+  'editar-listado': {
+    id: 'editar-listado', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabList, title: 'La lista de tus registros', text: 'Aquí configuras cómo se consulta el módulo: columnas, filtros, orden y vistas disponibles.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editListViews, title: 'Tabla, tablero y calendario', text: 'Tabla siempre está activa. En Kanban y Calendario puedes configurar sus campos y activar esas vistas cuando las necesites.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editListTable, title: 'Columnas, filtros y orden', text: 'En Tabla eliges las columnas visibles, las arrastras para ordenarlas y defines filtros y el orden inicial.', side: 'right', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editListPreview, title: 'Una mirada antes de guardar', text: 'La vista previa muestra el diseño de la vista seleccionada con los campos del módulo.', side: 'left', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editListSave, title: 'Aplica tu diseño', text: 'Guardar diseño conserva la configuración del listado, el tablero y el calendario.', side: 'bottom', emotion: 'happy' },
+    ]
+  },
+  'editar-flujo': {
+    id: 'editar-flujo', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabFlow, title: 'El recorrido de tus registros', text: 'Flujo de estados define qué cambios de estado se permiten y quién puede realizarlos.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editFlowSetup, title: 'Empieza por los estados', text: 'Activa el flujo, elige un campo Select y el estado inicial. Sus opciones serán los estados; si no tienes ese campo, agrégalo en Campos. Con el flujo desactivado seguimos directamente al guardado.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editFlowTransitions, title: 'Transiciones y roles', text: 'Elige origen, destino y rol para cada transición. La lista reúne las reglas que permitirán cambiar de estado.', side: 'right', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editFlowMap, title: 'Acomoda el mapa', text: 'Arrastra los estados para acomodarlos o el asa + para conectarlos. Reacomodar restablece su ubicación; las flechas muestran las transiciones configuradas. Sin estados, el mapa te pide elegir un campo.', side: 'left', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editFlowLock, title: 'Bloqueo por estado', text: 'Decide si el registro puede modificarse en cada estado y qué campos conservan edición cuando está bloqueado.', side: 'top', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.editFlowSave, title: 'Guarda el flujo', text: 'Guardar flujo aplica las reglas en el servidor o conserva su desactivación. ¡Listo, tú decides cuándo hacerlo!', side: 'bottom', emotion: 'happy' },
+    ]
+  },
+  'editar-etiquetas': {
+    id: 'editar-etiquetas', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabLabels, title: 'Una etiqueta para tus registros', text: 'Aquí preparas el diseño que se usará al imprimir etiquetas de este módulo.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editLabelsToggle, title: 'Activa la impresión', text: 'Activa o desactiva las etiquetas. Si tu organización tiene logo, también puedes incluirlo.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editLabelsFields, title: 'Tamaño y contenido', text: 'Elige formato, orientación, copias y los campos de título, texto secundario y código de barras. Debajo puedes incluir hasta cuatro datos adicionales.', side: 'right', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editLabelsPreview, title: 'Revisa la etiqueta', text: 'La vista previa muestra tu diseño. La impresión respeta las medidas reales en milímetros.', side: 'left', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editLabelsSave, title: 'Conserva el diseño', text: 'Guardar etiqueta aplica el diseño y si la impresión está activa o desactivada.', side: 'bottom', emotion: 'happy' },
+    ]
+  },
+  'editar-api': {
+    id: 'editar-api', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.editTabApi, title: 'Conecta otras herramientas', text: 'API reúne documentación y ejemplos para integrar los registros del módulo. Solo vamos a revisarlos.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.editApiConnection, title: 'Dirección y autenticación', text: 'Aquí está el endpoint del módulo y el encabezado Bearer que necesita una clave de acceso.', side: 'bottom', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editApiOperations, title: 'Elige una operación', text: 'Puedes consultar los ejemplos para listar, consultar, crear, actualizar o eliminar registros.', side: 'right', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editApiExample, title: 'Un ejemplo para compartir', text: 'Copiar lleva el ejemplo al portapapeles. Quien prepare la integración debe sustituir la clave de acceso y el identificador del registro antes de ejecutarlo.', side: 'left', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editApiFields, title: 'Los campos disponibles', text: 'Aquí consultas las claves, tipos y campos requeridos. Los datos viajan en customData y Flow genera el id.', side: 'top', emotion: 'idle' },
+      { selector: TOUR_SELECTORS.editApiPermissions, title: 'Los permisos también cuentan', text: 'Estas operaciones dependen de los permisos de tu usuario. ¡Ya sabes dónde consultar lo necesario para una integración!', side: 'top', emotion: 'happy' },
+    ]
+  },
   bienvenida: {
     id: 'bienvenida',
     requires: [],

@@ -175,13 +175,14 @@ function otherSide(relation: RelationDefinition) {
   <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
     <div class="flex items-center justify-between border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
-        <h2 class="text-[15px] font-bold text-brand-text">Relaciones</h2>
-        <p class="text-xs text-brand-text-muted">Tipos de vínculo entre {{ entityName }} y otros módulos.</p>
+        <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Relaciones</h2><ModuleTourHelpButton tab="relations" /></div>
+        <p class="text-sm text-brand-text-secondary">Tipos de vínculo entre {{ entityName }} y otros módulos.</p>
       </div>
       <button
         type="button"
         :disabled="otherEntities.length === 0"
         class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+        data-tour="edit-relations-add"
         @click="openForm"
       >
         <Plus class="h-4 w-4" :stroke-width="2" />
@@ -231,7 +232,7 @@ function otherSide(relation: RelationDefinition) {
       Este módulo todavía no tiene relaciones definidas con otros módulos.
     </p>
 
-    <div v-else class="flex flex-col divide-y divide-brand-border-light">
+    <div v-else data-tour="edit-relations-rows" class="flex flex-col divide-y divide-brand-border-light">
       <div v-for="relation in relations" :key="relation.id" class="flex items-center justify-between gap-3 p-4">
         <div class="flex items-center gap-3">
           <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-brand-blue-bg text-brand-blue">

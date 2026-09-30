@@ -14,9 +14,10 @@ describe('catálogo de ayuda de Chattito', () => {
       expect(help.summary.trim().length).toBeGreaterThan(0)
       expect(help.bullets?.length ?? 0).toBeLessThanOrEqual(4)
       for (const bullet of help.bullets ?? []) expect(bullet.trim().length).toBeGreaterThan(0)
-      if (help.tourId) expect(onboardingTours[help.tourId]).toBeDefined()
+      expect(help.tourId).toBeDefined()
+      expect(onboardingTours[help.tourId!]).toBeDefined()
       // Los recorridos existentes no enseñan a editar un módulo.
-      expect(help.tourId).toBeUndefined()
+      expect(help.tourId).toMatch(/^editar-/)
     }
   })
   it('no inventa ayuda para rutas desconocidas', () => {

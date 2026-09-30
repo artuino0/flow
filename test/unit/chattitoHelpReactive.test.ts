@@ -17,6 +17,8 @@ describe('ayuda reactiva sin refrescar', () => {
   let admin: Ref<boolean>
   let memory: Map<string, ReturnType<typeof ref>>
   let addMessage: ReturnType<typeof vi.fn>
+  let startTour: ReturnType<typeof vi.fn>
+  let tourAllowed: Ref<boolean>
 
   beforeEach(() => {
     scope = effectScope()
@@ -28,6 +30,8 @@ describe('ayuda reactiva sin refrescar', () => {
     admin = ref(true)
     memory = new Map()
     addMessage = vi.fn(message => panel.value.messages.push(message))
+    startTour = vi.fn()
+    tourAllowed = ref(true)
     harness.context = context
     harness.preferences = { ready: ref(true), disabled, setDisabled: (value: boolean) => { disabled.value = value } }
     vi.stubGlobal('ref', ref)
@@ -40,9 +44,9 @@ describe('ayuda reactiva sin refrescar', () => {
     vi.stubGlobal('useChattitoContext', () => ({ context }))
     vi.stubGlobal('useChattitoHelpPreferences', () => harness.preferences)
     vi.stubGlobal('useAuth', () => ({ user }))
-    vi.stubGlobal('useRoute', () => reactive({ path: '/modulos/1/editar', meta: { layout: 'default' } }))
+    vi.stubGlobal('useRoute', () => reactive({ path: '/modulos/1/editar', fullPath: '/modulos/1/editar?tab=fields', meta: { layout: 'default' } }))
     vi.stubGlobal('useIsAdmin', () => ({ data: admin, status: ref('success') }))
-    vi.stubGlobal('useOnboarding', () => ({ activeId, canLaunchTour: () => true, startTour: vi.fn() }))
+    vi.stubGlobal('useOnboarding', () => ({ activeId, canLaunchTour: () => tourAllowed.value, startTour }))
     vi.stubGlobal('useChattitoPanel', () => ({ panel, addMessage }))
   })
   afterEach(() => { scope.stop(); vi.unstubAllGlobals() })
@@ -70,6 +74,7 @@ describe('ayuda reactiva sin refrescar', () => {
     expect(panel.value.messages).toHaveLength(1)
     expect(panel.value.messages[0]?.text).toContain('Campos')
     expect(addMessage).toHaveBeenCalledOnce()
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ action: { kind: 'start-tour', tourId: 'editar-campos', originPath: '/modulos/1/editar?tab=fields' } }))
     expect(help.visible.value).toBe(false)
   })
   it('conserva los mensajes previos al explicar desde un panel cerrado', () => {
@@ -118,5 +123,27 @@ describe('ayuda reactiva sin refrescar', () => {
     panel.value.avatarState = 'idle'
     await nextTick()
     expect(help.visible.value).toBe(true)
+  })
+  it('lanza el recorrido del aviso y no lo repite al cerrar o terminar', async () => {
+    const help = scope.run(useChattitoHelp)!
+    expect(help.tourId.value).toBe('editar-campos')
+    help.runTour()
+    expect(startTour).toHaveBeenCalledExactlyOnceWith('editar-campos')
+    activeId.value = 'editar-campos'
+    await nextTick()
+    activeId.value = null
+    await nextTick()
+    expect(help.visible.value).toBe(false)
+    help.runTour()
+    expect(startTour).toHaveBeenCalledOnce()
+  })
+  it('omite la acción del mensaje y el lanzamiento si no puede ejecutar el recorrido', () => {
+    tourAllowed.value = false
+    const help = scope.run(useChattitoHelp)!
+    expect(help.tourId.value).toBeNull()
+    help.runTour()
+    expect(startTour).not.toHaveBeenCalled()
+    help.explain()
+    expect(addMessage).toHaveBeenCalledWith(expect.not.objectContaining({ action: expect.anything() }))
   })
 })

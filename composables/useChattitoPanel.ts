@@ -7,7 +7,7 @@ export interface ChattitoMessage {
   role: 'user' | 'assistant'
   text: string
   emotion?: ChattitoEmotion | 'typing'
-  action?: { kind: 'resume-tour'; tourId: TourId }
+  action?: { kind: 'resume-tour'; tourId: TourId } | { kind: 'start-tour'; tourId: TourId; originPath: string }
 }
 
 const initialMessages: ChattitoMessage[] = [

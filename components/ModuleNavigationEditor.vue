@@ -43,19 +43,19 @@ async function save() {
 }
 </script>
 <template>
-  <section class="max-w-2xl rounded-lg border border-brand-border-light bg-brand-surface">
-    <div class="border-b border-brand-border-light p-5"><h2 class="text-base font-bold text-brand-text">Ubicación en el menú</h2><p class="mt-1 text-sm text-brand-text-secondary">Agrupa {{ entityName }} dentro de un módulo funcional, por ejemplo Empaque y embarque.</p></div>
+  <section class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5"><div class="flex flex-col gap-1"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ubicación en el menú</h2><ModuleTourHelpButton tab="menu" /></div><p class="text-sm text-brand-text-secondary">Agrupa {{ entityName }} dentro de un módulo funcional, por ejemplo Empaque y embarque.</p></div><button v-if="data && !error" type="button" :disabled="saving" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" data-tour="edit-menu-save" @click="save">{{ saving ? 'Guardando…' : 'Guardar ubicación' }}</button></div>
     <div class="space-y-5 p-5">
       <p v-if="error" role="alert" class="text-sm text-brand-error-text">No se pudo cargar la configuración del menú.</p>
       <template v-else-if="data">
-        <fieldset :disabled="saving" class="space-y-4">
+        <fieldset :disabled="saving" data-tour="edit-menu-group" class="space-y-4">
           <ReportOptionSelect v-if="!creating" v-model="groupId" label="Grupo del menú" :options="options" />
           <div v-else class="flex items-end gap-3"><IconPicker v-model="newIcon" /><div class="flex-1"><label for="menu-group-name" class="mb-1.5 block text-xs font-semibold text-brand-text-secondary">Nombre del grupo</label><input id="menu-group-name" v-model="newName" maxlength="80" placeholder="Empaque y embarque" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text" /></div></div>
           <button type="button" class="text-sm font-semibold text-brand-blue" @click="creating = !creating">{{ creating ? 'Elegir un grupo existente' : '+ Crear grupo' }}</button>
         </fieldset>
         <p class="text-xs text-brand-text-muted">Los catálogos siguen en los selectores. El acceso a los datos y la visibilidad por rol se configuran en Roles y permisos.</p>
         <p v-if="message" role="alert" class="text-sm text-brand-error-text">{{ message }} <button type="button" class="underline" @click="refresh()">Recargar</button></p>
-        <div class="flex flex-wrap items-center gap-4"><button type="button" :disabled="saving" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" @click="save">{{ saving ? 'Guardando…' : 'Guardar ubicación' }}</button><NuxtLink to="/organizacion" class="text-sm text-brand-blue hover:underline">Ordenar y editar grupos →</NuxtLink></div>
+        <div class="flex flex-wrap items-center gap-4"><NuxtLink to="/organizacion" class="text-sm text-brand-blue hover:underline">Ordenar y editar grupos →</NuxtLink></div>
       </template>
     </div>
   </section>

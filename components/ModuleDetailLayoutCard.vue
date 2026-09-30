@@ -117,13 +117,16 @@ function toggleActivity() {
 
 <template>
   <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-    <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
-      <h2 class="text-[15px] font-bold text-brand-text">Ficha del registro</h2>
-      <p class="text-sm text-brand-text-secondary">Elige qué se muestra en la ficha y arrastra para cambiar el orden</p>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
+      <div class="flex flex-col gap-1">
+        <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ficha del registro</h2><ModuleTourHelpButton tab="detail" /></div>
+        <p class="text-sm text-brand-text-secondary">Elige qué se muestra en la ficha y arrastra para cambiar el orden</p>
+      </div>
+      <slot name="actions" />
     </div>
 
     <div class="flex flex-col gap-5 p-5">
-      <div class="flex flex-col gap-1.5">
+      <div data-tour="edit-detail-properties" class="flex flex-col gap-1.5">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Propiedades</p>
         <p v-if="modelValue.properties.length === 0" class="text-xs text-brand-text-muted">Este módulo todavía no tiene campos.</p>
         <div
@@ -148,7 +151,7 @@ function toggleActivity() {
         </div>
       </div>
 
-      <div class="flex flex-col gap-1.5 border-t border-brand-border-light pt-4">
+      <div data-tour="edit-detail-relations" class="flex flex-col gap-1.5 border-t border-brand-border-light pt-4">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Relaciones</p>
         <p v-if="modelValue.relations.length === 0" class="text-xs text-brand-text-muted">
           Ningún otro módulo tiene un campo de tipo Relación apuntando a este.
@@ -182,7 +185,7 @@ function toggleActivity() {
         </template>
       </div>
 
-      <div class="flex items-center justify-between border-t border-brand-border-light pt-4">
+      <div data-tour="edit-detail-activity" class="flex items-center justify-between border-t border-brand-border-light pt-4">
         <div class="flex flex-col gap-0.5">
           <p class="text-sm font-semibold text-brand-text">Mostrar línea de tiempo de actividad</p>
           <p class="text-xs text-brand-text-muted">Muestra los cambios y notas del registro en su ficha.</p>

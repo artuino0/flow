@@ -360,9 +360,9 @@ async function confirmImpactModal() {
 
 <template>
   <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-    <div class="flex items-center justify-between border-b border-brand-border-light p-5">
+    <div data-tour="edit-fields-add" class="flex items-center justify-between border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
-        <h2 class="text-[15px] font-bold text-brand-text">Campos del módulo</h2>
+        <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Campos del módulo</h2><ModuleTourHelpButton tab="fields" /></div>
         <p class="text-sm text-brand-text-secondary">{{ realFields.length }} campo{{ realFields.length === 1 ? '' : 's' }}</p>
       </div>
       <button type="button" data-tour="manual-field-add" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="openCreate">
@@ -398,6 +398,7 @@ async function confirmImpactModal() {
       <div
         v-for="(field, index) in realFields"
         :key="field.id"
+        data-tour="edit-fields-rows"
         class="relative flex items-center gap-3 px-5 py-3 transition-opacity"
         :class="draggingIndex === index ? 'opacity-40' : ''"
         :draggable="!reordering"
