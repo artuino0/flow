@@ -638,6 +638,13 @@
       "when": 1790607395935,
       "breakpoints": true,
       "tag": "0090_entity_calendar_config"
+    },
+    {
+      "version": "7",
+      "idx": 91,
+      "when": 1790607400000,
+      "breakpoints": true,
+      "tag": "0091_record_actor_fail_closed"
     }
   ]
 }

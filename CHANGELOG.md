@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.116.1] - 2026-09-30
+#### [bug]
+- [ERD-128](https://dydasoftware.atlassian.net/browse/ERD-128) - La migración 0091 (actor ausente no concede acceso a records) no estaba registrada en el journal de Drizzle y el migrador la omitía; ahora se aplica en despliegues e instalaciones nuevas.
+
 ### [0.116.0] - 2026-09-30
 #### [feature]
 - [ERD-127](https://dydasoftware.atlassian.net/browse/ERD-127) - Configuración de vistas del módulo (Tabla/Kanban/Calendario) y edición del módulo rediseñadas: encabezado a ancho completo con pestañas integradas y mapa dinámico del flujo de estados (arrastrar, conectar, reacomodar, teclado; posiciones en `workflowConfig.layout`).
