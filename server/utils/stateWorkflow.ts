@@ -10,6 +10,7 @@ export const stateWorkflowSchema = z.object({
   initial: z.string().min(1),
   states: z.record(z.object({ locked: z.boolean(), editableFields: z.array(z.string()).default([]) }).strict()),
   transitions: z.array(z.object({ from: z.string().min(1), to: z.string().min(1), roles: z.union([z.array(z.string()), z.literal('all')]), label: z.string().trim().min(1).optional() }).strict()),
+  layout: z.record(z.object({ x: z.number().finite(), y: z.number().finite() }).strict()).optional(),
   rules: z.array(z.discriminatedUnion('type', [
     z.object({ id: z.string().optional(), type: z.literal('required'), mode: z.enum(['block', 'warn']), when: z.object({ to: z.string().min(1), from: z.string().min(1).optional() }).strict(), fields: z.array(z.string().min(1)).min(1), message: z.string().trim().min(1) }).strict(),
     z.object({ id: z.string().optional(), type: z.literal('lineCompare'), mode: z.enum(['block', 'warn']), when: z.object({ to: z.string().min(1), from: z.string().min(1).optional() }).strict(), lineEntity: z.string().min(1), relationField: z.string().min(1), valueField: z.string().min(1), relatedField: z.string().min(1), compareField: z.string().min(1), operator: z.enum(['<=', '<', '>=', '>', '=']), message: z.string().trim().min(1) }).strict(),

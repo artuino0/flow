@@ -32,13 +32,13 @@
 // relation_definitions, ver components/ModuleRelationsCard.vue para el
 // detalle de diseno - revisado en Pencil antes de construir, sin mock fiel
 // para esta version simple, decision explicita del usuario 2026-09-01).
-import { Trash2 } from '@lucide/vue'
+import { ChevronRight, Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
 import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, EntityMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/utils/labelTemplates'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', fullBleed: true })
 
 interface ModuleDetail {
   id: string
@@ -307,14 +307,49 @@ async function onSaveListLayout() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
-    <div class="flex items-center justify-between">
-      <h1 class="text-[22px] font-bold text-brand-text">
-        Editar módulo{{ currentModule ? ` - ${currentModule.name}` : '' }}
-      </h1>
-      <NuxtLink :to="listBackTo" class="text-sm font-semibold text-brand-text-secondary hover:underline">Volver al listado</NuxtLink>
-    </div>
+  <div class="flex h-full min-w-0 flex-col overflow-y-auto bg-brand-bg">
+    <header v-if="currentModule" class="min-w-0 bg-brand-surface">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-brand-border-light px-7 py-5">
+      <div class="flex min-w-0 flex-col gap-1.5">
+        <nav class="flex items-center gap-1 text-[13px] font-medium text-brand-text-muted" aria-label="Migas de pan">
+          <NuxtLink :to="listBackTo" class="text-brand-text-secondary hover:text-brand-blue">{{ currentModule.moduleKind === 'dimension' ? 'Catálogos' : 'Módulos' }}</NuxtLink>
+          <ChevronRight class="h-[13px] w-[13px]" :stroke-width="1.75" aria-hidden="true" />
+          <span class="font-bold text-brand-text">{{ currentModule.name }}</span>
+        </nav>
+        <div class="flex min-w-0 flex-wrap items-center gap-2.5">
+          <IconPicker v-model="icon" />
+          <h1 class="min-w-0 truncate text-2xl font-bold text-brand-text">Editar módulo · {{ currentModule.name }}</h1>
+          <span
+            class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            :class="currentModule.deletedAt ? 'bg-brand-error-bg text-brand-error-text' : currentModule.isActive ? 'bg-brand-blue-bg text-brand-blue' : 'bg-brand-neutral-bg text-brand-neutral-text'"
+          >{{ currentModule.deletedAt ? 'Borrado' : currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
+        </div>
+        <p class="text-[13px] text-brand-text-secondary"><span class="font-mono">/{{ currentModule.slug }}</span> · {{ fields.length }} campo{{ fields.length === 1 ? '' : 's' }}</p>
+      </div>
+      <NuxtLink :to="listBackTo" class="flex shrink-0 items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
+        <ChevronRight class="h-3.5 w-3.5 rotate-180" :stroke-width="1.75" aria-hidden="true" />
+        Volver al listado
+      </NuxtLink>
+      </div>
+      <nav aria-label="Secciones del módulo" class="h-[50px] min-w-0 overflow-x-auto overflow-y-hidden border-b border-brand-border-light px-[18px] [scrollbar-width:thin]">
+        <div class="flex h-[49px] min-w-max flex-nowrap items-stretch">
+          <button
+            v-for="tab in TABS"
+            :key="tab.key"
+            type="button"
+            class="relative flex h-[50px] shrink-0 items-center whitespace-nowrap px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-brand-blue"
+            :class="step === tab.key ? 'font-bold text-brand-orange' : 'font-medium text-brand-text-secondary hover:text-brand-text'"
+            :aria-current="step === tab.key ? 'page' : undefined"
+            @click="step = tab.key"
+          >
+            {{ tab.label }}
+            <span v-if="step === tab.key" class="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-brand-orange" />
+          </button>
+        </div>
+      </nav>
+    </header>
 
+    <div class="flex min-w-0 flex-col gap-5 p-7 max-sm:p-4">
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudo cargar el módulo{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
@@ -322,52 +357,6 @@ async function onSaveListLayout() {
     <p v-else-if="!currentModule" class="text-sm text-brand-error-text">Este módulo no existe.</p>
 
     <template v-else>
-      <div class="flex items-center gap-3">
-        <!-- Pedido directo del usuario (2026-09-01): selector de icono
-             editable - ver comentario largo en components/IconPicker.vue.
-             Guarda junto con el resto de esta pestaña via "Guardar cambios",
-             no es un cambio inmediato. -->
-        <IconPicker v-model="icon" />
-        <div class="flex flex-col">
-          <div class="flex items-center gap-2">
-            <span class="text-[15px] font-bold text-brand-text">{{ currentModule.name }}</span>
-            <span
-              class="rounded-full px-2 py-0.5 text-xs font-semibold"
-              :class="currentModule.deletedAt ? 'bg-brand-error-bg text-brand-error-text' : currentModule.isActive ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-neutral-bg text-brand-neutral-text'"
-            >{{ currentModule.deletedAt ? 'Borrado' : currentModule.isActive ? 'Activo' : 'Inactivo' }}</span>
-          </div>
-          <span class="text-xs text-brand-text-secondary">
-            <span class="font-mono">/{{ currentModule.slug }}</span> · {{ fields.length }} campo{{ fields.length === 1 ? '' : 's' }}
-          </span>
-        </div>
-      </div>
-
-      <!-- Rediseno "Editar Módulo" (Tab/Active - Tab/Default del .pen,
-           revisado con las herramientas de Pencil): barra de pestañas en vez
-           del indicador de pasos con circulos anterior - todas siempre
-           clickeables (el modulo ya existe completo, no hay "paso
-           bloqueado"). Solo UNA pestaña se muestra por vez. -->
-      <div class="flex gap-8 overflow-x-auto whitespace-nowrap border-b border-brand-border-light">
-        <button
-          v-for="tab in TABS"
-          :key="tab.key"
-          type="button"
-          class="relative flex flex-col items-center gap-2.5 pb-2.5 pt-1"
-          @click="step = tab.key"
-        >
-          <span class="text-sm" :class="step === tab.key ? 'font-bold text-brand-orange' : 'font-semibold text-brand-text-secondary'">{{ tab.label }}</span>
-          <!-- Reportado por el usuario (2026-09-01): el acento naranja de la
-               pestaña activa quedaba "flotando" arriba del borde gris del
-               contenedor (`border-b` de arriba), con un hueco visible entre
-               los dos, porque el span vivia adentro del flujo normal del
-               boton (empujado por pb-2.5). Se saca del flujo (absolute) y se
-               ancla al mismo borde inferior del boton con `-bottom-px` (1px,
-               el mismo grosor de `border-b`), asi el acento queda pegado
-               justo sobre la linea gris, sin hueco. -->
-          <span class="absolute inset-x-0 -bottom-px h-0.5 rounded-full" :class="step === tab.key ? 'bg-brand-orange' : 'bg-transparent'" />
-        </button>
-      </div>
-
       <template v-if="step === 'basica'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <div class="flex flex-col gap-5">
@@ -550,25 +539,29 @@ async function onSaveListLayout() {
            reusa DynamicTable.vue, el mismo componente del listado real). -->
       <template v-else-if="step === 'listado'">
         <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
-        <div class="flex justify-end">
-          <button
-            type="button"
-            :disabled="savingListLayout"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-            @click="onSaveListLayout"
-          >
-            {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
-          </button>
-        </div>
-        <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields" />
-          <ModuleListPreviewCard
-            :entity-slug="currentModule.slug"
-            :entity-name="currentModule.name"
-            :fields="fields"
-            :list-layout="listLayout"
-          />
-        </div>
+        <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields">
+          <template #actions>
+            <button
+              type="button"
+              :disabled="savingListLayout"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              @click="onSaveListLayout"
+            >
+              {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
+            </button>
+          </template>
+          <template #preview="{ activeView }">
+            <ModuleListPreviewCard
+              :entity-slug="currentModule.slug"
+              :entity-name="currentModule.name"
+              :fields="fields"
+              :list-layout="listLayout"
+              :active-view="activeView"
+              :board-config="boardConfig"
+              :calendar-config="calendarConfig"
+            />
+          </template>
+        </ModuleListLayoutCard>
       </template>
 
       <template v-else-if="step === 'flujo'">
@@ -598,5 +591,6 @@ async function onSaveListLayout() {
         <ModuleApiDocs :entity-name="currentModule.name" :entity-slug="currentModule.slug" :fields="fields" :permissions="fieldsData?.permissions" />
       </template>
     </template>
+    </div>
   </div>
 </template>

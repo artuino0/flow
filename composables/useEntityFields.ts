@@ -36,6 +36,7 @@ export interface StateWorkflowConfig {
   initial: string
   states: Record<string, { locked: boolean; editableFields: string[] }>
   transitions: Array<{ from: string; to: string; roles: string[] | 'all'; label?: string }>
+  layout?: Record<string, { x: number; y: number }>
   rules?: unknown[]
 }
 

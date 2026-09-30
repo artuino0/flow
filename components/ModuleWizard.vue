@@ -27,6 +27,7 @@ const props = defineProps<{
   // Texto de ayuda bajo "Nombre" - donde va a aparecer este modulo una vez
   // creado (menu lateral para hechos, la pantalla de Catálogos para dimension).
   nameHelperText: string
+  edgeHeader?: boolean
 }>()
 
 const router = useRouter()
@@ -201,7 +202,8 @@ async function onContinue() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <div class="flex flex-col" :class="edgeHeader ? 'h-full min-w-0 overflow-y-auto bg-brand-bg' : 'gap-5'">
+    <header :class="edgeHeader ? 'border-b border-brand-border-light bg-brand-surface px-7 py-5 max-sm:px-4' : ''">
     <div class="flex items-center gap-1 text-[13px]">
       <span class="text-brand-text-secondary">Inicio</span>
       <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
@@ -211,6 +213,8 @@ async function onContinue() {
         {{ step === 'basica' ? `Nuevo ${noun}` : step === 'campos' ? 'Campos' : step === 'detalle' ? 'Diseño del detalle' : 'Diseño del listado' }}
       </span>
     </div>
+    </header>
+    <div class="flex min-w-0 flex-col gap-5" :class="edgeHeader ? 'p-7 max-sm:p-4' : ''">
 
     <template v-if="step === 'basica'">
       <div class="flex flex-col gap-1">
@@ -447,34 +451,6 @@ async function onContinue() {
     </template>
 
     <template v-else-if="step === 'listado' && entityId">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="flex h-[38px] w-[38px] items-center justify-center rounded bg-brand-blue-bg">
-            <Blocks class="h-[19px] w-[19px] text-brand-blue" :stroke-width="1.75" />
-          </div>
-          <div class="flex flex-col">
-            <div class="flex items-center gap-2">
-              <span class="text-[15px] font-bold text-brand-text">{{ name }}</span>
-              <span class="rounded-full bg-brand-neutral-bg px-2 py-0.5 font-mono text-xs text-brand-text-secondary">/{{ slug }}</span>
-            </div>
-            <p class="text-sm text-brand-text-secondary">Configura qué columnas se muestran en el listado, qué filtros están disponibles y el orden por defecto</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2.5">
-          <NuxtLink :to="basePath" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
-          <button
-            type="button"
-            :disabled="savingListLayout"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-            :data-tour="moduleKind === 'hecho' ? 'manual-list-save' : undefined"
-            @click="onSaveListLayout"
-          >
-            <Check class="h-4 w-4" :stroke-width="1.75" />
-            {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
-          </button>
-        </div>
-      </div>
-
       <p v-if="listLayoutError" class="text-sm text-brand-error-text">{{ listLayoutError }}</p>
 
       <div class="flex items-center gap-3">
@@ -505,10 +481,27 @@ async function onContinue() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields" />
-        <ModuleListPreviewCard :entity-slug="slug" :entity-name="name" :fields="fields" :list-layout="listLayout" />
-      </div>
+      <ModuleListLayoutCard v-model="listLayout" v-model:board-config="boardConfig" v-model:calendar-config="calendarConfig" :fields="fields">
+        <template #actions>
+          <div class="flex items-center gap-2.5">
+            <NuxtLink :to="basePath" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
+            <button
+              type="button"
+              :disabled="savingListLayout"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              :data-tour="moduleKind === 'hecho' ? 'manual-list-save' : undefined"
+              @click="onSaveListLayout"
+            >
+              <Check class="h-4 w-4" :stroke-width="1.75" />
+              {{ savingListLayout ? 'Guardando...' : 'Guardar diseño' }}
+            </button>
+          </div>
+        </template>
+        <template #preview="{ activeView }">
+          <ModuleListPreviewCard :entity-slug="slug" :entity-name="name" :fields="fields" :list-layout="listLayout" :active-view="activeView" :board-config="boardConfig" :calendar-config="calendarConfig" />
+        </template>
+      </ModuleListLayoutCard>
     </template>
+    </div>
   </div>
 </template>

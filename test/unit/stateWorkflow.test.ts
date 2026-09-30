@@ -21,6 +21,11 @@ describe('stateWorkflowSchema', () => {
     expect(stateWorkflowSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('conserva la compatibilidad sin layout y acepta posiciones opcionales', () => {
+    expect(stateWorkflowSchema.safeParse({ ...valid, layout: { borrador: { x: 12, y: 24 } } }).success).toBe(true)
+    expect(stateWorkflowSchema.safeParse({ ...valid, layout: { borrador: { x: '12', y: 24 } } }).success).toBe(false)
+  })
+
   it('rechaza un estado inicial inexistente', () => {
     expect(stateWorkflowSchema.safeParse({ ...valid, initial: 'desconocido' }).success).toBe(false)
   })

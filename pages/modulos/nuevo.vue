@@ -3,11 +3,12 @@
 // extrajo a components/ModuleWizard.vue (reusado tal cual por
 // pages/catalogos/nuevo.vue) - este archivo solo fija los parametros propios
 // de "Módulos" (basePath, moduleKind='hecho', textos).
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', fullBleed: true })
 </script>
 
 <template>
   <ModuleWizard
+    edge-header
     base-path="/modulos"
     module-kind="hecho"
     section-label="Módulos"

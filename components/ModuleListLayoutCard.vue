@@ -22,9 +22,10 @@
 // ella (entities.labelField, ver comentario largo en server/db/schema.ts) -
 // pedido explicito del usuario tras ver uuids crudos en Screen/Listado
 // Recepción ("necesitamos poder decidir que se muestra de la relacion").
-import { Check, ChevronDown, GripVertical } from '@lucide/vue'
+import { CalendarDays, Check, ChevronDown, Columns3, GripVertical, KanbanSquare } from '@lucide/vue'
 import type { BoardConfig, CalendarConfig, EntityFieldMeta, ListLayout } from '~/composables/useEntityFields'
 import { isListFilterable } from '~/utils/listFilters'
+import { nextModuleListingTab, type ModuleListingTab } from '~/utils/moduleListingTabs'
 
 const props = defineProps<{
   fields: EntityFieldMeta[]
@@ -33,10 +34,32 @@ const props = defineProps<{
   calendarConfig?: CalendarConfig
 }>()
 
+const activeViewTab = ref<ModuleListingTab>('table')
+const tableTab = ref<HTMLButtonElement | null>(null)
+const boardTab = ref<HTMLButtonElement | null>(null)
+const calendarTab = ref<HTMLButtonElement | null>(null)
+
+function selectViewTab(tab: ModuleListingTab) {
+  activeViewTab.value = tab
+}
+
+function handleViewTabKeydown(current: ModuleListingTab, event: KeyboardEvent) {
+  const nextTab = nextModuleListingTab(current, event.key)
+  if (!nextTab) return
+  event.preventDefault()
+  selectViewTab(nextTab)
+  nextTick(() => ({ table: tableTab, board: boardTab, calendar: calendarTab })[nextTab].value?.focus())
+}
+
 const emit = defineEmits<{
   'update:modelValue': [value: ListLayout]
   'update:boardConfig': [value: BoardConfig]
   'update:calendarConfig': [value: CalendarConfig]
+}>()
+
+defineSlots<{
+  actions?: () => unknown
+  preview?: (props: { activeView: ModuleListingTab }) => unknown
 }>()
 
 function fieldMeta(name: string): EntityFieldMeta | undefined {
@@ -250,14 +273,72 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-    <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
-      <h2 class="text-[15px] font-bold text-brand-text">Listado de registros</h2>
-      <p class="text-sm text-brand-text-secondary">Elige las columnas, filtros disponibles y el orden por defecto</p>
+  <div class="flex min-w-0 flex-col gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-col gap-1">
+        <h2 class="text-lg font-bold text-brand-text">Listado de registros</h2>
+        <p class="text-xs text-brand-text-secondary">Configura las columnas, filtros, orden y vistas disponibles.</p>
+      </div>
+      <slot name="actions" />
     </div>
 
-    <div class="flex flex-col gap-5 p-5">
-      <div class="flex flex-col gap-1.5">
+    <div class="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div role="tablist" aria-label="Vistas del listado" class="col-span-1 flex h-16 min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden rounded-lg border border-brand-border-light bg-brand-surface px-1.5 py-1 [scrollbar-width:thin] lg:col-span-2">
+          <button
+            id="list-view-tab-table"
+            ref="tableTab"
+            type="button"
+            role="tab"
+            aria-controls="list-view-panel-table"
+            :aria-selected="activeViewTab === 'table'"
+            :tabindex="activeViewTab === 'table' ? 0 : -1"
+            class="flex h-full min-w-[250px] flex-1 items-center gap-2.5 rounded-md px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+            :class="activeViewTab === 'table' ? 'bg-brand-blue-bg text-brand-text shadow-sm' : 'bg-brand-bg hover:bg-brand-surface'"
+            @click="selectViewTab('table')"
+            @keydown="handleViewTabKeydown('table', $event)"
+          >
+            <Columns3 class="h-[18px] w-[18px] shrink-0 text-brand-blue" aria-hidden="true" />
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5"><span class="text-sm font-bold">Tabla</span><span class="text-[11px] font-normal text-brand-text-muted">Columnas y filtros</span></span>
+            <span class="shrink-0 rounded-full bg-brand-blue-bg px-2 py-1 text-[10px] font-semibold text-brand-blue">Siempre activa</span>
+          </button>
+          <button
+            id="list-view-tab-board"
+            ref="boardTab"
+            type="button"
+            role="tab"
+            aria-controls="list-view-panel-board"
+            :aria-selected="activeViewTab === 'board'"
+            :tabindex="activeViewTab === 'board' ? 0 : -1"
+            class="flex h-full min-w-[250px] flex-1 items-center gap-2.5 rounded-md px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+            :class="activeViewTab === 'board' ? 'bg-brand-blue-bg text-brand-text shadow-sm' : 'bg-brand-bg hover:bg-brand-surface'"
+            @click="selectViewTab('board')"
+            @keydown="handleViewTabKeydown('board', $event)"
+          >
+            <KanbanSquare class="h-[18px] w-[18px] shrink-0" :class="boardConfig?.enabled ? 'text-brand-blue' : 'text-brand-text-muted'" aria-hidden="true" />
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5"><span class="text-sm font-bold">Kanban</span><span class="text-[11px] font-normal text-brand-text-muted">Organiza por estado</span></span>
+            <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" :class="boardConfig?.enabled ? 'bg-brand-blue-bg text-brand-blue' : 'bg-brand-neutral-bg text-brand-neutral-text'">{{ boardConfig?.enabled ? 'Activa' : 'Desactivada' }}</span>
+          </button>
+          <button
+            id="list-view-tab-calendar"
+            ref="calendarTab"
+            type="button"
+            role="tab"
+            aria-controls="list-view-panel-calendar"
+            :aria-selected="activeViewTab === 'calendar'"
+            :tabindex="activeViewTab === 'calendar' ? 0 : -1"
+            class="flex h-full min-w-[250px] flex-1 items-center gap-2.5 rounded-md px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+            :class="activeViewTab === 'calendar' ? 'bg-brand-blue-bg text-brand-text shadow-sm' : 'bg-brand-bg hover:bg-brand-surface'"
+            @click="selectViewTab('calendar')"
+            @keydown="handleViewTabKeydown('calendar', $event)"
+          >
+            <CalendarDays class="h-[18px] w-[18px] shrink-0" :class="calendarConfig?.enabled ? 'text-brand-blue' : 'text-brand-text-muted'" aria-hidden="true" />
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5"><span class="text-sm font-bold">Calendario</span><span class="text-[11px] font-normal text-brand-text-muted">Agenda por fecha</span></span>
+            <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" :class="calendarConfig?.enabled ? 'bg-brand-blue-bg text-brand-blue' : 'bg-brand-neutral-bg text-brand-neutral-text'">{{ calendarConfig?.enabled ? 'Activa' : 'Desactivada' }}</span>
+          </button>
+        </div>
+
+      <div v-if="activeViewTab === 'table'" id="list-view-panel-table" role="tabpanel" aria-labelledby="list-view-tab-table" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+        <div class="flex flex-col gap-1.5">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Columnas visibles</p>
         <p v-if="modelValue.columns.length === 0" class="text-xs text-brand-text-muted">Este módulo todavía no tiene campos.</p>
 
@@ -280,7 +361,9 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
 
           <button
             type="button"
-            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border"
+            :aria-label="`${col.visible ? 'Ocultar' : 'Mostrar'} ${fieldMeta(col.name)?.label ?? col.name} en la tabla`"
+            :aria-pressed="col.visible"
+            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             :class="col.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
             @click="toggleColumnVisible(col.name)"
           >
@@ -352,7 +435,9 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         >
           <button
             type="button"
-            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border"
+            :aria-label="`${modelValue.filterFields.includes(f.name) ? 'Quitar' : 'Agregar'} filtro ${f.label}`"
+            :aria-pressed="modelValue.filterFields.includes(f.name)"
+            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             :class="modelValue.filterFields.includes(f.name) ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
             @click="toggleFilterField(f.name)"
           >
@@ -363,10 +448,46 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         </label>
       </div>
 
-      <div v-if="boardConfig" class="flex flex-col gap-3 border-t border-brand-border-light pt-4">
-        <div class="flex items-start justify-between gap-4">
-          <div><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Modo de vista del módulo</p><p class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Tabla o Kanban para decidir cómo se consultan los registros.</p></div>
-          <button type="button" role="switch" :aria-checked="boardConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors" :class="boardConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateBoard({ enabled: !boardConfig.enabled })"><span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="boardConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+        <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">
+          <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Orden por defecto</p>
+          <select
+            :value="modelValue.defaultSort?.field ?? ''"
+            class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            @change="setDefaultSortField(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">Sin orden por defecto (fecha de creación, descendente)</option>
+            <option v-for="f in sortableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
+          </select>
+          <div v-if="modelValue.defaultSort" class="flex w-full max-w-[220px] gap-0.5 rounded-full bg-brand-bg p-[3px]">
+            <button
+              type="button"
+              class="flex-1 rounded px-2.5 py-1.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+              :class="modelValue.defaultSort.dir === 'asc' ? 'bg-brand-surface text-brand-text shadow' : 'text-brand-text-secondary'"
+              :aria-pressed="modelValue.defaultSort.dir === 'asc'"
+              @click="setDefaultSortDir('asc')"
+            >
+              Ascendente
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded px-2.5 py-1.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+              :class="modelValue.defaultSort.dir === 'desc' ? 'bg-brand-surface text-brand-text shadow' : 'text-brand-text-secondary'"
+              :aria-pressed="modelValue.defaultSort.dir === 'desc'"
+              @click="setDefaultSortDir('desc')"
+            >
+              Descendente
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="activeViewTab === 'board' && boardConfig" id="list-view-panel-board" role="tabpanel" aria-labelledby="list-view-tab-board" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+        <div class="flex items-start justify-between gap-4 rounded-lg border border-brand-border-light p-4">
+          <div>
+            <h3 id="kanban-view-title" class="text-sm font-bold text-brand-text">Vista Kanban</h3>
+            <p id="kanban-view-description" class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Kanban para agregar esta vista y organizar registros en columnas según su estado.</p>
+          </div>
+          <button type="button" role="switch" aria-labelledby="kanban-view-title" aria-describedby="kanban-view-description" :aria-checked="boardConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="boardConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateBoard({ enabled: !boardConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="boardConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
         </div>
         <template v-if="boardConfig.enabled">
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Campo de columnas
@@ -375,18 +496,21 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Título de la tarjeta
             <select :value="boardConfig.titleField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ titleField: ($event.target as HTMLSelectElement).value || null })"><option value="" disabled>Selecciona un campo</option><option v-for="field in boardDisplayFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
           </label>
-          <div class="flex flex-col gap-1.5"><p class="text-xs font-semibold text-brand-text">Datos secundarios <span class="font-normal text-brand-text-muted">(máximo 3)</span></p><label v-for="field in boardDisplayFields.filter(field => field.name !== boardConfig?.titleField)" :key="field.id" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"><button type="button" class="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border" :class="boardConfig.secondaryFields.includes(field.name) ? 'border-brand-blue bg-brand-blue' : 'border-brand-border'" @click="toggleBoardSecondary(field.name)"><Check v-if="boardConfig.secondaryFields.includes(field.name)" class="h-3 w-3 text-white" /></button><span class="truncate text-sm">{{ field.label }}</span></label></div>
-          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Vista inicial
+          <div class="flex flex-col gap-1.5"><p class="text-xs font-semibold text-brand-text">Datos secundarios <span class="font-normal text-brand-text-muted">(máximo 3)</span></p><label v-for="field in boardDisplayFields.filter(field => field.name !== boardConfig?.titleField)" :key="field.id" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"><button type="button" :aria-label="`${boardConfig.secondaryFields.includes(field.name) ? 'Quitar' : 'Agregar'} ${field.label} como dato secundario`" :aria-pressed="boardConfig.secondaryFields.includes(field.name)" class="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue" :class="boardConfig.secondaryFields.includes(field.name) ? 'border-brand-blue bg-brand-blue' : 'border-brand-border'" @click="toggleBoardSecondary(field.name)"><Check v-if="boardConfig.secondaryFields.includes(field.name)" class="h-3 w-3 text-white" /></button><span class="truncate text-sm">{{ field.label }}</span></label></div>
+          <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Vista inicial de Tabla o Kanban
             <select :value="boardConfig.defaultView" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ defaultView: ($event.target as HTMLSelectElement).value as 'table' | 'board' })"><option value="board">Tablero</option><option value="table">Tabla</option></select>
           </label>
         </template>
         <p v-else-if="boardStatusFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Selección para usarlo como columnas.</p>
       </div>
 
-      <div v-if="calendarConfig" class="flex flex-col gap-3 border-t border-brand-border-light pt-4">
-        <div class="flex items-start justify-between gap-4">
-          <div><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Vista Calendario</p><p class="mt-1 text-xs leading-5 text-brand-text-muted">Organiza citas, entregas y tareas por fecha y hora.</p></div>
-          <button type="button" role="switch" :aria-checked="calendarConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors" :class="calendarConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateCalendar({ enabled: !calendarConfig.enabled })"><span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="calendarConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+      <div v-if="activeViewTab === 'calendar' && calendarConfig" id="list-view-panel-calendar" role="tabpanel" aria-labelledby="list-view-tab-calendar" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+        <div class="flex items-start justify-between gap-4 rounded-lg border border-brand-border-light p-4">
+          <div>
+            <h3 id="calendar-view-title" class="text-sm font-bold text-brand-text">Vista Calendario</h3>
+            <p id="calendar-view-description" class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Calendario para agregar esta vista. Cuando está activo, el listado se abre en Calendario.</p>
+          </div>
+          <button type="button" role="switch" aria-labelledby="calendar-view-title" aria-describedby="calendar-view-description" :aria-checked="calendarConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="calendarConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateCalendar({ enabled: !calendarConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="calendarConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
         </div>
         <template v-if="calendarConfig.enabled">
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Fecha de inicio
@@ -416,36 +540,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         </template>
         <p v-else-if="calendarDateFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Fecha para usar el calendario.</p>
       </div>
-
-      <div class="flex flex-col gap-2 border-t border-brand-border-light pt-4">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Orden por defecto</p>
-        <select
-          :value="modelValue.defaultSort?.field ?? ''"
-          class="w-full rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          @change="setDefaultSortField(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">Sin orden por defecto (fecha de creación, descendente)</option>
-          <option v-for="f in sortableFields" :key="f.id" :value="f.name">{{ f.label }}</option>
-        </select>
-        <div v-if="modelValue.defaultSort" class="flex w-full max-w-[220px] gap-0.5 rounded-full bg-brand-bg p-[3px]">
-          <button
-            type="button"
-            class="flex-1 rounded px-2.5 py-1.5 text-xs font-semibold"
-            :class="modelValue.defaultSort.dir === 'asc' ? 'bg-brand-surface text-brand-text shadow' : 'text-brand-text-secondary'"
-            @click="setDefaultSortDir('asc')"
-          >
-            Ascendente
-          </button>
-          <button
-            type="button"
-            class="flex-1 rounded px-2.5 py-1.5 text-xs font-semibold"
-            :class="modelValue.defaultSort.dir === 'desc' ? 'bg-brand-surface text-brand-text shadow' : 'text-brand-text-secondary'"
-            @click="setDefaultSortDir('desc')"
-          >
-            Descendente
-          </button>
-        </div>
-      </div>
+      <slot name="preview" :active-view="activeViewTab" />
     </div>
   </div>
 </template>

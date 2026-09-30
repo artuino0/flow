@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.116.0] - 2026-09-30
+#### [feature]
+- [ERD-127](https://dydasoftware.atlassian.net/browse/ERD-127) - Configuración de vistas del módulo (Tabla/Kanban/Calendario) y edición del módulo rediseñadas: encabezado a ancho completo con pestañas integradas y mapa dinámico del flujo de estados (arrastrar, conectar, reacomodar, teclado; posiciones en `workflowConfig.layout`).
+
 ### [0.115.2] - 2026-09-29
 #### [bug]
 - [ERD-126](https://dydasoftware.atlassian.net/browse/ERD-126) - El recorrido Crear un módulo manualmente ahora explica el modal de alta de campo paso a paso (etiqueta, tipo de dato, obligatoriedad y reglas, opciones de Select, guardar o cancelar) y continúa sin trabarse si el modal se cierra a mitad.

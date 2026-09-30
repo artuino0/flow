@@ -34,6 +34,22 @@ describe('resolveBoardConfig', () => {
     }, fields)).toEqual({ ...EMPTY_BOARD_CONFIG, titleField: 'nombre' })
   })
 
+  it('desactivar Kanban conserva su configuración y deja la vista de Tabla como opción inicial', () => {
+    expect(resolveBoardConfig({
+      enabled: false,
+      statusField: 'estado',
+      titleField: 'nombre',
+      secondaryFields: ['correo'],
+      defaultView: 'table'
+    }, fields)).toEqual({
+      enabled: false,
+      statusField: 'estado',
+      titleField: 'nombre',
+      secondaryFields: ['correo'],
+      defaultView: 'table'
+    })
+  })
+
   it('falls back safely for legacy modules without configuration', () => {
     expect(resolveBoardConfig(null, fields)).toEqual(EMPTY_BOARD_CONFIG)
   })

@@ -22,6 +22,14 @@ describe('resolveCalendarConfig', () => {
     })
   })
 
+  it('desactivar Calendario conserva sus campos y la vista día/semana/mes elegida', () => {
+    const configured = {
+      enabled: true, startDateField: 'fecha', startTimeField: 'hora', durationField: 'duracion', endField: null,
+      titleField: 'asunto', colorField: 'estado', groupByField: 'personal', defaultView: 'month' as const
+    }
+    expect(resolveCalendarConfig({ ...configured, enabled: false }, fields)).toEqual({ ...configured, enabled: false })
+  })
+
   it('desactiva una configuración ausente o con un campo de inicio incompatible', () => {
     expect(resolveCalendarConfig(null, fields)).toEqual(EMPTY_CALENDAR_CONFIG)
     expect(resolveCalendarConfig({

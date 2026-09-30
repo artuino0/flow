@@ -29,6 +29,7 @@ const props = defineProps<{
   // server/db/schema.ts), asi que esta es la UNICA forma de llegar a sus
   // datos fuera del selector de relacion de un modulo de tipo hecho.
   showViewRecordsAction?: boolean
+  edgeHeader?: boolean
 }>()
 
 interface ModuleRow {
@@ -127,8 +128,9 @@ async function onRestore(module: ModuleRow) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex min-w-0 flex-col" :class="edgeHeader ? 'h-full overflow-y-auto bg-brand-bg' : 'gap-4'">
     <ListPageHeader
+      :style="edgeHeader ? { '--list-page-gutter-x': '0px', '--list-page-gutter-y': '0px' } : undefined"
       v-model:search="search"
       :title="sectionLabel"
       :description="subtitle"
@@ -148,6 +150,7 @@ async function onRestore(module: ModuleRow) {
       </template>
     </ListPageHeader>
 
+    <div class="flex min-w-0 flex-col gap-4" :class="edgeHeader ? 'p-7 max-sm:p-4' : ''">
     <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudo cargar el listado{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
@@ -265,5 +268,6 @@ async function onRestore(module: ModuleRow) {
         </table>
       </div>
     </template>
+    </div>
   </div>
 </template>
