@@ -10,9 +10,14 @@ export interface ChattitoHelp {
   requires: readonly TourRequirement[]
 }
 
-export type ChattitoHelpId = `module-edit:${ModuleEditTab}`
+export type ChattitoHelpId = `module-edit:${ModuleEditTab}` | 'settings:plan'
 
 export const chattitoHelpCatalog: Readonly<Record<ChattitoHelpId, ChattitoHelp>> = {
+  'settings:plan': {
+    tourId: 'ajustes-plan', title: 'Plan y consumo', requires: ['settings.modules'],
+    summary: 'Tu plan define los recursos disponibles para tu organización. Aquí puedes revisar su consumo, comparar planes y consultar la facturación registrada.',
+    bullets: ['Compara lo utilizado con los límites; las barras y porcentajes te ayudan a detectar cuándo te acercas al máximo.', 'Los límites del plan muestran el consumo del mes calendario; el almacenamiento indica el espacio utilizado y disponible.', 'Si necesitas más recursos, compara los planes disponibles y revisa cuáles permiten tu consumo actual.', 'Consulta las facturas en Historial de facturación y descárgalas cuando tengan un enlace disponible.']
+  },
   'module-edit:info': {
     tourId: MODULE_EDIT_TOURS.info,
     title: 'Información general', requires: ['settings.modules'],
@@ -70,6 +75,7 @@ export const chattitoHelpCatalog: Readonly<Record<ChattitoHelpId, ChattitoHelp>>
 }
 
 export function chattitoHelpId(context: ChattitoContext): ChattitoHelpId | null {
+  if (context.page === 'settings' && context.section === 'plan') return 'settings:plan'
   return context.page === 'module-edit' ? `module-edit:${context.tab}` : null
 }
 

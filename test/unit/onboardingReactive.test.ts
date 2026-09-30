@@ -76,8 +76,11 @@ describe('estado compartido y pausa de recorridos', () => {
     const edit = { id: 'editar-info', index: 1, branch: null, originPath: '/modulos/1/editar?tab=info' }
     states.get('onboarding-progress-memory')!.value = {
       [tourProgressKey('t', 'u', 'crear-modulo-manual')]: old,
-      [tourProgressKey('t', 'u', 'editar-info')]: edit
+      [tourProgressKey('t', 'u', 'editar-info')]: edit,
+      [tourProgressKey('t', 'u', 'ajustes-plan')]: { id: 'ajustes-plan', index: 1, branch: null, originPath: '/ajustes?section=plan' }
     }
     expect(onboarding.pendingTour.value).toEqual(old)
+    delete states.get('onboarding-progress-memory')!.value[tourProgressKey('t', 'u', 'crear-modulo-manual')]
+    expect(onboarding.pendingTour.value).toEqual(edit)
   })
 })

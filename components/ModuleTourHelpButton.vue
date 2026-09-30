@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { CircleHelp } from '@lucide/vue'
 import type { ModuleEditTab } from '~/utils/moduleEditTabs'
-import { chattitoHelpCatalog } from '~/utils/chattitoHelp'
+import { chattitoHelpCatalog, type ChattitoHelpId } from '~/utils/chattitoHelp'
 
-const props = defineProps<{ tab: ModuleEditTab }>()
-const { available, disabled, launch } = useModuleTourHelp(props.tab)
-const label = computed(() => `Ver recorrido de ${chattitoHelpCatalog[`module-edit:${props.tab}`].title}`)
+const props = defineProps<{ tab: ModuleEditTab; helpId?: never } | { tab?: never; helpId: ChattitoHelpId }>()
+const helpId = props.helpId ?? `module-edit:${props.tab}`
+const { available, disabled, launch } = useContextualTourHelp(helpId)
+const label = computed(() => `Ver recorrido de ${chattitoHelpCatalog[helpId].title}`)
 </script>
 
 <template>

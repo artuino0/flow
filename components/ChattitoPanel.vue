@@ -8,7 +8,7 @@ const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour } 
 const { ready: helpPreferencesReady, disabled: helpDisabled, setDisabled: setHelpDisabled } = useChattitoHelpPreferences()
 const route = useRoute()
 const { context, recommendedTour } = useChattitoContext()
-const currentTourTitle = computed(() => context.value.page === 'module-edit' ? helpForContext(context.value)?.title : null)
+const currentTourTitle = computed(() => helpForContext(context.value)?.title ?? null)
 const draft = ref('')
 const list = ref<HTMLElement>()
 const pending = ref(false)

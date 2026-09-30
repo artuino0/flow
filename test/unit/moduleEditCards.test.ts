@@ -54,7 +54,7 @@ describe('marco de edición y ayuda junto al título', () => {
 
   it('la ayuda es accesible y usa una sola lógica de lanzamiento', () => {
     const source = readFileSync('components/ModuleTourHelpButton.vue', 'utf8')
-    expect(source).toContain('useModuleTourHelp(props.tab)')
+    expect(source).toContain('useContextualTourHelp(helpId)')
     expect(source).toContain('type="button"')
     expect(source).toContain(':aria-label="label"')
     expect(source).toContain('Ver recorrido de')

@@ -13,7 +13,16 @@ export const MODULE_EDIT_TAB_ANCHORS = {
   flujo: 'edit-tab-flow', etiquetas: 'edit-tab-labels', api: 'edit-tab-api'
 } as const satisfies Record<keyof typeof MODULE_EDIT_TABS, string>
 
+export const SETTINGS_TOURS = { plan: 'ajustes-plan' } as const
+
 export const TOUR_SELECTORS = {
+  settingsPlanRefresh: '[data-tour="settings-plan-refresh"]',
+  settingsPlanCurrent: '[data-tour="settings-plan-current"]',
+  settingsPlanConsumption: '[data-tour="settings-plan-consumption"]',
+  settingsPlanLimits: '[data-tour="settings-plan-limits"]',
+  settingsPlanStorage: '[data-tour="settings-plan-storage"]',
+  settingsPlanAvailable: '[data-tour="settings-plan-available"]',
+  settingsPlanHistory: '[data-tour="settings-plan-history"]',
   editTabInfo: '[data-tour="edit-tab-info"]',
   editTabFields: '[data-tour="edit-tab-fields"]',
   editTabRelations: '[data-tour="edit-tab-relations"]',
@@ -88,7 +97,7 @@ export const TOUR_SELECTORS = {
 } as const
 
 export type ModuleEditTourId = typeof MODULE_EDIT_TOURS[ModuleEditTab]
-export type TourId = 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual' | ModuleEditTourId
+export type TourId = 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual' | ModuleEditTourId | typeof SETTINGS_TOURS[keyof typeof SETTINGS_TOURS]
 
 export function isModuleEditTour(id: TourId | null): id is ModuleEditTourId {
   return Object.values(MODULE_EDIT_TOURS).some(tourId => tourId === id)
@@ -97,6 +106,16 @@ export function isModuleEditTour(id: TourId | null): id is ModuleEditTourId {
 export function moduleEditTourMatchesRoute(id: ModuleEditTourId, path: string, tab: unknown) {
   return /^\/modulos\/[^/]+\/editar\/?$/.test(path) && MODULE_EDIT_TOURS[normalizeModuleEditTab(tab)] === id
 }
+// Recorridos informativos que permanecen en la URL donde se iniciaron.
+export function isContextualTour(id: TourId | null) {
+  return isModuleEditTour(id) || id === SETTINGS_TOURS.plan
+}
+
+export function contextualTourMatchesRoute(id: TourId, path: string, query: Record<string, unknown>) {
+  return isModuleEditTour(id) ? moduleEditTourMatchesRoute(id, path, query.tab)
+    : id === SETTINGS_TOURS.plan && /^\/ajustes\/?$/.test(path) && query.section === 'plan'
+}
+
 export type TourSide = 'top' | 'right' | 'bottom' | 'left'
 export type TourRequirement = 'settings.modules' | 'designer'
 export interface OnboardingStep {
@@ -207,11 +226,22 @@ export function previousTourIndex(id: TourId, index: number, branch: TourBranch)
 }
 
 export function tourStepDestination(id: TourId, index: number, step: OnboardingStep, originPath: string) {
-  if (isModuleEditTour(id)) return originPath
+  if (isContextualTour(id)) return originPath
   return id === 'primer-modulo' && index < 2 ? originPath : step.path
 }
 
 export const onboardingTours: Record<TourId, OnboardingTour> = {
+  'ajustes-plan': {
+    id: 'ajustes-plan', requires: ['settings.modules'], steps: [
+      { selector: TOUR_SELECTORS.settingsPlanRefresh, title: 'Tu plan, a la vista', text: 'Aquí revisas el plan y el consumo de tu organización. Actualizar vuelve a consultar los datos; este recorrido solo te los explica.', side: 'bottom', emotion: 'happy' },
+      { selector: TOUR_SELECTORS.settingsPlanCurrent, title: 'El plan actual', text: 'Aquí ves el plan, su estado y el precio mostrado. Cambiar plan te lleva a comparar opciones, sin elegir ninguna por ti.', side: 'bottom', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.settingsPlanConsumption, title: 'Consumo del periodo', text: 'Compara lo utilizado con lo incluido. Las barras y porcentajes te ayudan a reconocer los recursos que se acercan al límite.', side: 'bottom', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.settingsPlanLimits, title: 'Límites del plan', text: 'Este bloque muestra el consumo del mes calendario. Ilimitado indica que ese concepto no tiene un máximo en el plan.', side: 'bottom', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.settingsPlanStorage, title: 'Espacio para tus archivos', text: 'Revisa cuánto almacenamiento utilizas y cuánto queda disponible. Incluye archivos del chat, imágenes de sitios y documentos.', side: 'bottom', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.settingsPlanAvailable, title: 'Compara antes de cambiar', text: 'Aquí comparas precios y beneficios mensuales o anuales. Una opción puede estar bloqueada si tu consumo supera sus límites; tú decides si quieres iniciar un cambio.', side: 'top', emotion: 'idle', optional: true },
+      { selector: TOUR_SELECTORS.settingsPlanHistory, title: 'Facturas e historial', text: 'Aquí ves los cobros registrados y descargas las facturas que tengan enlace. Debajo, Historial de consumo reúne las últimas muestras disponibles. ¡Ya sabes dónde revisar!', side: 'top', emotion: 'happy', optional: true },
+    ]
+  },
   'editar-info': {
     id: 'editar-info', requires: ['settings.modules'], steps: [
       { selector: TOUR_SELECTORS.editTabInfo, title: 'Información general', text: 'Aquí ajustas la identidad y disponibilidad del módulo que tienes abierto. Vamos por partes.', side: 'bottom', emotion: 'happy' },

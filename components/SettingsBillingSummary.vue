@@ -147,7 +147,7 @@ async function openPortal() {
     <div v-else-if="error" class="billing-error">No se pudo cargar el plan ni el consumo. Actualiza la página e inténtalo de nuevo.</div>
 
     <template v-else-if="data">
-      <section class="panel plan-summary">
+      <section class="panel plan-summary" data-tour="settings-plan-current">
         <div class="summary-copy">
           <div class="summary-plan">
             <div class="summary-name-row">
@@ -170,7 +170,7 @@ async function openPortal() {
         </div>
       </section>
 
-      <section class="panel usage-card">
+      <section class="panel usage-card" data-tour="settings-plan-consumption">
         <header class="section-head compact"><div><h2>Consumo del periodo</h2><p>{{ periodLabel }}</p></div></header>
         <div class="usage-grid">
           <article v-for="item in usage" :key="item.resourceKey" class="usage-metric">
@@ -181,7 +181,7 @@ async function openPortal() {
         </div>
       </section>
 
-      <section v-if="planUsage" class="panel usage-card">
+      <section v-if="planUsage" class="panel usage-card" data-tour="settings-plan-limits">
         <header class="section-head compact"><div><h2>Límites del plan {{ planUsage.plan }}</h2><p>Consumo del mes calendario</p></div><div class="limit-actions"><p v-if="reachedLimits" class="limit-summary">Alcanzaste el límite de {{ reachedLimits }} {{ reachedLimits === 1 ? 'concepto' : 'conceptos' }}. Mejora tu plan para continuar.</p><button type="button" class="button primary" @click="scrollToPlans">Mejorar plan</button></div></header>
         <div class="usage-grid limits-grid">
           <article v-for="item in planUsage.usage" :key="item.concept" class="usage-metric">
@@ -192,7 +192,7 @@ async function openPortal() {
         </div>
       </section>
 
-      <section class="panel storage-card">
+      <section class="panel storage-card" data-tour="settings-plan-storage">
         <header class="section-head"><h2>Uso de almacenamiento</h2><button type="button" class="button outline small"><Archive :size="14" />Ver detalle de archivos</button></header>
         <div class="storage-body">
           <div class="storage-stats"><p><strong>{{ labels.storageBytes.compact(storage?.quantity || 0) }}</strong> de {{ labels.storageBytes.compact(storage?.limit || 0) }} contratados</p><b>{{ labels.storageBytes.compact(Math.max(0, (storage?.limit || 0) - (storage?.quantity || 0))) }} disponibles</b></div>
@@ -203,7 +203,7 @@ async function openPortal() {
         <footer class="storage-foot"><CalendarDays :size="13" />Consumo calculado con corte al {{ date(new Date().toISOString()) }}</footer>
       </section>
 
-      <section id="available-plans" class="panel plans-card">
+      <section id="available-plans" data-tour="settings-plan-available" class="panel plans-card">
         <header class="section-head plans-head">
           <div><h2>Planes disponibles</h2><p>Compara beneficios y cambia de plan cuando lo necesites.</p></div>
           <div class="billing-toggle"><button :class="{ active: billingInterval === 'month' }" @click="billingInterval = 'month'">Mensual</button><button :class="{ active: billingInterval === 'year' }" @click="billingInterval = 'year'">Anual <span>2 meses gratis</span></button></div>
@@ -223,7 +223,7 @@ async function openPortal() {
         </div>
       </section>
 
-      <section class="panel billing-history">
+      <section class="panel billing-history" data-tour="settings-plan-history">
         <header class="section-head"><h2>Historial de facturación</h2><button v-if="data.invoices.length > 4" type="button" class="text-action">Ver todas</button></header>
         <div v-if="!data.invoices.length" class="empty-history"><Clock3 :size="17" />Aún no hay cobros registrados para esta organización.</div>
         <div v-else class="table-scroll"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Periodo</th><th>Importe</th><th>Estado</th><th>Acción</th></tr></thead><tbody><tr v-for="invoice in data.invoices.slice(0, 4)" :key="invoice.id"><td>{{ shortDate(invoice.issuedAt) }}</td><td><strong>Suscripción Flow {{ subscription?.plan.name }} — {{ subscription?.billingInterval === 'year' ? 'anual' : 'mensual' }}</strong></td><td>{{ invoicePeriod(invoice) }}</td><td><strong>{{ money(invoice.totalCents, invoice.currency) }}</strong></td><td><span class="invoice-status" :class="invoice.status">{{ statusLabel(invoice.status) }}</span></td><td><a v-if="invoice.invoicePdfUrl || invoice.hostedInvoiceUrl" :href="invoice.invoicePdfUrl || invoice.hostedInvoiceUrl || undefined" target="_blank" rel="noopener"><Download :size="13" />Descargar</a><span v-else>—</span></td></tr></tbody></table></div>

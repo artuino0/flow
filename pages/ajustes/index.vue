@@ -396,8 +396,9 @@ async function testPac() {
       breadcrumb="Configuración"
       :show-toolbar="false"
     >
+      <template v-if="section === 'plan'" #title-help><ModuleTourHelpButton help-id="settings:plan" /></template>
       <template v-if="section === 'plan'" #actions>
-        <button type="button" class="settings-button inline-flex items-center gap-1.5" @click="refreshBilling">
+        <button data-tour="settings-plan-refresh" type="button" class="settings-button inline-flex items-center gap-1.5" @click="refreshBilling">
           <RefreshCw class="h-3.5 w-3.5" :stroke-width="1.75" />
           Actualizar
         </button>

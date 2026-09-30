@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, reactive, ref, type Ref } from 'vue'
 import { useOnboarding } from '../../composables/useOnboarding'
 import { useChattitoHelp } from '../../composables/useChattitoHelp'
-import { useModuleTourHelp } from '../../composables/useModuleTourHelp'
+import { useModuleTourHelp, useContextualTourHelp } from '../../composables/useModuleTourHelp'
 import { resolveChattitoContext } from '../../utils/chattitoContext'
 import { MODULE_EDIT_TOURS, onboardingTours, TOUR_SELECTORS } from '../../utils/onboardingTours'
 
@@ -16,7 +16,7 @@ vi.mock('driver.js', () => ({ driver: (config: unknown) => {
 describe('lanzamiento y reanudación en el cliente sin navegador', () => {
   let states: Map<string, Ref>
   let onboarding: ReturnType<typeof useOnboarding>
-  let route: { path: string; fullPath: string; params: { id: string }; query: { tab: string }; meta: { layout: string } }
+  let route: { path: string; fullPath: string; params: { id: string }; query: { tab: string; section?: string }; meta: { layout: string } }
   let planRefresh: ReturnType<typeof vi.fn>
   let navigate: ReturnType<typeof vi.fn>
   let addMessage: ReturnType<typeof vi.fn>
@@ -36,6 +36,7 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
       route.path = url.pathname
       route.fullPath = destination
       route.query.tab = url.searchParams.get('tab') ?? 'info'
+      route.query.section = url.searchParams.get('section') ?? undefined
       route.params.id = url.pathname.split('/')[2] ?? ''
     })
     const storage = new Map<string, string>()
@@ -62,6 +63,95 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
     onboarding = useOnboarding()
   })
   afterEach(() => { onboarding.stopTour(); vi.unstubAllGlobals() })
+
+  function goToPlan() {
+    route.path = '/ajustes'
+    route.query.section = 'plan'
+    route.fullPath = '/ajustes?section=plan&source=menu#consumo'
+  }
+
+  it('la pregunta de Plan inicia sin navegación ni consulta del Diseñador y persiste el descarte', async () => {
+    goToPlan()
+    vi.stubGlobal('useOnboarding', () => onboarding)
+    const help = useContextualTourHelp('settings:plan')
+    expect(help.available.value).toBe(true)
+    expect(await help.launch()).toBe(true)
+    expect(onboarding.activeId.value).toBe('ajustes-plan')
+    expect(harness.createDriver).toHaveBeenCalledWith(expect.objectContaining({ disableActiveInteraction: true }))
+    expect(navigate).not.toHaveBeenCalled()
+    expect(planRefresh).not.toHaveBeenCalled()
+    expect(localStorage.getItem('flow-chattito-help:t:u:settings:plan:dismissed')).toBe('1')
+    expect(help.disabled.value).toBe(true)
+    expect(await help.launch()).toBe(false)
+  })
+
+  it.each(['perfil', 'salir'])('pausa Plan al cambiar a %s y reanuda la URL original', async section => {
+    goToPlan()
+    const original = route.fullPath
+    expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+    route.query.section = section
+    route.path = section === 'salir' ? '/' : '/ajustes'
+    route.fullPath = section === 'salir' ? '/' : '/ajustes?section=perfil'
+    const watcher = useOnboarding()
+    watcher.handleRouteChange()
+    expect(onboarding.activeId.value).toBeNull()
+    expect(onboarding.pendingTour.value?.id).toBe('ajustes-plan')
+    expect(await watcher.resumeTour('ajustes-plan')).toBe(true)
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(original)
+    expect(planRefresh).not.toHaveBeenCalled()
+    watcher.stopTour()
+  })
+
+  it('Plan rechaza secciones ajenas y falta de permisos', async () => {
+    expect(await onboarding.startTour('ajustes-plan')).toBe(false)
+    goToPlan()
+    admin.value = false
+    expect(await onboarding.startTour('ajustes-plan')).toBe(false)
+    admin.value = true
+    route.query.section = 'perfil'
+    expect(await onboarding.startTour('ajustes-plan')).toBe(false)
+    expect(harness.drive).not.toHaveBeenCalled()
+  })
+
+  it.each(['aviso', 'explicación'])('lanza Plan desde %s sin navegación y conserva el descarte', async source => {
+    const { effectScope, watch } = await import('vue')
+    goToPlan()
+    const scope = effectScope()
+    vi.stubGlobal('watch', watch)
+    vi.stubGlobal('useChattitoContext', () => ({ context: computed(() => resolveChattitoContext(route, true)) }))
+    vi.stubGlobal('useChattitoHelpPreferences', () => ({ ready: ref(true), disabled: ref(false), setDisabled: vi.fn() }))
+    vi.stubGlobal('useOnboarding', () => onboarding)
+    try {
+      const help = scope.run(useChattitoHelp)!
+      expect(help.visible.value).toBe(true)
+      expect(help.tourId.value).toBe('ajustes-plan')
+      if (source === 'explicación') {
+        help.explain()
+        expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ action: { kind: 'start-tour', tourId: 'ajustes-plan', originPath: route.fullPath } }))
+        expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+      } else {
+        help.runTour()
+        await vi.waitFor(() => expect(harness.drive).toHaveBeenCalledOnce())
+      }
+      expect(onboarding.activeId.value).toBe('ajustes-plan')
+      expect(navigate).not.toHaveBeenCalled()
+      await nextTick()
+      expect(help.visible.value).toBe(false)
+    } finally { scope.stop() }
+  })
+
+  it('termina Plan cuando los bloques opcionales no se han cargado', async () => {
+    goToPlan()
+    const handlers: ((event: { key: string; target: null; preventDefault: () => void }) => void)[] = []
+    vi.stubGlobal('document', { body: {}, querySelector: (selector: string) => selector === TOUR_SELECTORS.settingsPlanRefresh ? { isConnected: true, getClientRects: () => [{}] } : null })
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: true }), addEventListener: (_name: string, callback: typeof handlers[number]) => handlers.push(callback), removeEventListener: vi.fn() })
+    expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+    handlers.at(-1)!({ key: 'ArrowRight', target: null, preventDefault: vi.fn() })
+    await vi.waitFor(() => expect(onboarding.activeId.value).toBeNull(), { timeout: 2500 })
+    expect(onboarding.isCompleted('ajustes-plan')).toBe(true)
+    expect(onboarding.pendingTour.value).toBeNull()
+    expect(navigate).not.toHaveBeenCalled()
+  })
 
   it.each(Object.entries(MODULE_EDIT_TOURS))('inicia %s en el módulo actual y presenta su pestaña', async (tab, id) => {
     route.query.tab = tab

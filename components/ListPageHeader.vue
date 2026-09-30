@@ -42,6 +42,7 @@ defineEmits<{ refresh: [] }>()
         <div class="list-title-copy">
           <div class="list-title-line">
             <h1>{{ title }}</h1>
+            <slot name="title-help" />
             <span v-if="count !== undefined" class="list-count">
               {{ count }} {{ count === 1 ? countNoun : (countNounPlural || countNoun + 's') }}
             </span>

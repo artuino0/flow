@@ -2,7 +2,8 @@ import { recommendedTourForContext, resolveChattitoContext } from '~/utils/chatt
 
 export function useChattitoContext() {
   const route = useRoute()
-  const context = computed(() => resolveChattitoContext(route))
+  const { data: isAdmin } = useIsAdmin()
+  const context = computed(() => resolveChattitoContext(route, isAdmin.value === true))
   const recommendedTour = computed(() => recommendedTourForContext(context.value))
   return { context, recommendedTour }
 }

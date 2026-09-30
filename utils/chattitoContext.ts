@@ -2,8 +2,12 @@ import { MODULE_EDIT_TABS, normalizeModuleEditTab, type ModuleEditTab } from './
 import { chattitoHelpCatalog, helpForContext } from './chattitoHelp'
 import type { TourId } from './onboardingTours'
 
+export const SETTINGS_SECTIONS = ['organizacion', 'perfil', 'seguridad', 'plan', 'identidad', 'regional', 'facturacion', 'integraciones', 'grupos'] as const
+export type SettingsSection = typeof SETTINGS_SECTIONS[number]
+
 export type ChattitoContext =
   | { page: 'module-edit'; tab: ModuleEditTab; moduleId: string }
+  | { page: 'settings'; section: SettingsSection }
   | { page: 'unknown' }
 
 export interface ChattitoRoute {
@@ -22,7 +26,13 @@ const contextResolvers: ((route: ChattitoRoute) => ChattitoContext | null)[] = [
   }
 ]
 
-export function resolveChattitoContext(route: ChattitoRoute): ChattitoContext {
+export function resolveChattitoContext(route: ChattitoRoute, isAdmin = false): ChattitoContext {
+  if (/^\/ajustes\/?$/.test(route.path)) {
+    const section = route.query.section === undefined || route.query.section === null || route.query.section === ''
+      ? isAdmin ? 'organizacion' : 'perfil' : route.query.section
+    return typeof section === 'string' && SETTINGS_SECTIONS.some(value => value === section)
+      ? { page: 'settings', section: section as SettingsSection } : { page: 'unknown' }
+  }
   for (const resolve of contextResolvers) {
     const context = resolve(route)
     if (context) return context

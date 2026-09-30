@@ -4,8 +4,8 @@ import { onboardingTours } from '../../utils/onboardingTours'
 import { canReadChattitoHelp, chattitoHelpCatalog, chattitoHelpId, chattitoHelpMessage, chattitoHelpPreferenceKey, chattitoHelpStorageKey, helpForContext, shouldShowChattitoHelp, type ChattitoHelpVisibility } from '../../utils/chattitoHelp'
 
 describe('catálogo de ayuda de Chattito', () => {
-  it('cubre exactamente las nueve pestañas con textos y recorridos válidos', () => {
-    expect(Object.keys(chattitoHelpCatalog)).toEqual(Object.values(MODULE_EDIT_TABS).map(tab => `module-edit:${tab}`))
+  it('cubre las nueve pestañas y Plan y consumo con textos y recorridos válidos', () => {
+    expect(Object.keys(chattitoHelpCatalog)).toEqual(['settings:plan', ...Object.values(MODULE_EDIT_TABS).map(tab => `module-edit:${tab}`)])
     for (const tab of Object.values(MODULE_EDIT_TABS)) {
       const context = { page: 'module-edit', tab, moduleId: '123' } as const
       const help = helpForContext(context)!

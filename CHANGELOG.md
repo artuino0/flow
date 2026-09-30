@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.120.0] - 2026-09-30
+#### [feature]
+- [ERD-132](https://dydasoftware.atlassian.net/browse/ERD-132) - Chattito reconoce la pantalla Ajustes → Plan y consumo y ofrece su ayuda contextual, un recorrido guiado (plan actual, consumo, límites, almacenamiento, planes disponibles e historiales) y un botón «?» junto al título; el recorrido es solo informativo y sigue funcionando aunque algunos bloques aún no hayan cargado.
+
 ### [0.119.0] - 2026-09-30
 #### [feature]
 - [ERD-131](https://dydasoftware.atlassian.net/browse/ERD-131) - Cada pestaña de la edición del módulo tiene su propio recorrido guiado de Chattito (Información, Campos, Relaciones, Ubicación en menú, Diseño del detalle, Diseño del listado, Flujo de estados, Etiquetas y API), disponible desde el aviso de ayuda, desde «Explícame más» y desde un botón «?» junto al título de cada pestaña; además las pestañas comparten el mismo marco de card con encabezado y Guardar integrados, y Diseño del listado reúne su encabezado y las vistas Tabla/Kanban/Calendario en una sola card.
