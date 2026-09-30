@@ -7,6 +7,8 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import { blueprintApplications } from '../../server/db/schema'
+import { withRecordActor } from '../../server/utils/recordActorContext'
+import { sql } from 'drizzle-orm'
 
 const tenantId = randomUUID()
 const otherTenant = randomUUID()
@@ -94,7 +96,8 @@ describe('blueprint (Postgres real con RLS)', () => {
   }, 60_000)
 
   it('permite crear registros reales y recalcula el rollup de la orden', async () => {
-    const create = (entity: string, customData: Record<string, unknown>) => createRecord({ context: { auth: { tenantId, roleId: adminRoleId, sub: userId }, params: { entity }, body: { customData } } })
+    // La invocación directa del handler no instala el contexto de petición de Nitro.
+    const create = (entity: string, customData: Record<string, unknown>) => withRecordActor({ userId, roleId: adminRoleId }, () => createRecord({ context: { auth: { tenantId, roleId: adminRoleId, sub: userId }, params: { entity }, body: { customData } } }))
     const client = await create('clientes', { nombre: 'Ana Pérez' })
     const vehicle = await create('vehiculos', { placas: 'ABC-123', cliente: client.id })
     const technician = await create('tecnicos', { nombre: 'Luis' })
@@ -104,6 +107,18 @@ describe('blueprint (Postgres real con RLS)', () => {
     expect(line.customData.importe).toBe('30.00')
     const [updated] = await admin`select custom_data from records where id = ${order.id}`
     expect(updated.custom_data.total_refacciones).toBe('30.00')
+  }, 60_000)
+
+  it('la aplicación interna de un plano marca registros existentes para revalidar', async () => {
+    const fresh = randomUUID()
+    await admin`insert into tenants (id, name, slug) values (${fresh}, 'Revalidación interna', ${`dirty-${fresh}`})`
+    await admin`insert into roles (tenant_id, name, is_system) values (${fresh}, 'Administrador', true)`
+    const [entity] = await admin`insert into entities (tenant_id, name, slug, module_kind) values (${fresh}, 'Datos', 'datos', 'hecho') returning id`
+    await admin`insert into records (tenant_id, entity_id, custom_data, is_dirty) values (${fresh}, ${entity.id}, '{}'::jsonb, false)`
+    await blueprint.applyBlueprint(fresh, null, { version: 1, summary: 'Campo nuevo', modules: [{ ref: 'datos', action: 'extend', kind: 'hecho', name: 'Datos', slug: 'datos', fields: [{ name: 'nota', label: 'Nota', dataType: 'text' }] }], associations: [] }, 'dirty')
+    expect(await admin`select is_dirty from records where tenant_id = ${fresh}`).toMatchObject([{ is_dirty: true }])
+    const mode = await withTenant(fresh, tx => tx.execute(sql`select current_setting('app.record_system', true) as mode`))
+    expect(mode[0]?.mode).toBe('off')
   }, 60_000)
 
   it('instala el mismo plano desde el CLI sin duplicar en una segunda ejecución', async () => {

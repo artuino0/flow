@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import postgres from 'postgres'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withRecordActor } from '../../server/utils/recordActorContext'
+import { sql } from 'drizzle-orm'
 
 let testDb: TestDb
 let admin: postgres.Sql
@@ -93,9 +95,42 @@ describe('deshacer planos (Postgres real y RLS)', () => {
     const application = await applicationId(id, 'con-registros')
     const clientes = applied.modules.find(module => module.slug === 'clientes')!
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${id}, ${clientes.id}, ${admin.json({ nombre: 'Ana' })})`
+    // 0091 oculta los datos al actor ausente: esta era la cuenta de HEAD.
+    const { withTenant } = await import('../../server/db')
+    await withRecordActor({ userId: null, roleId: null }, async () => {
+      const invisible = await withTenant(id, tx => tx.execute(sql`select count(*)::int as count from records where tenant_id = ${id}::uuid and entity_id = ${clientes.id}::uuid and deleted_at is null`))
+      expect(invisible[0]?.count).toBe(0)
+      expect((await list(id))[0]).toMatchObject({ canUndo: false, reason: expect.stringContaining('Clientes: 1 registros') })
+    })
     await expect(undo(id, application)).rejects.toMatchObject({ statusCode: 409, statusMessage: expect.stringContaining('Clientes: 1 registros') })
     expect(await admin`select id from entities where tenant_id = ${id} and deleted_at is null`).toHaveLength(6)
     expect(await admin`select undone_at from blueprint_applications where id = ${application}`).toMatchObject([{ undone_at: null }])
+  }, 60_000)
+
+  it('cuenta todos los planos sin actor y restaura el modo sistema antes de escribir', async () => {
+    const id = await tenant('Modo sistema acotado')
+    for (const slug of ['primero', 'segundo']) {
+      const plan = { version: 1, summary: slug, modules: [{ ref: slug, action: 'create', kind: 'hecho', name: slug, slug, fields: [] }], associations: [] }
+      const applied = await apply(id, null, plan, slug)
+      await admin`insert into records (tenant_id, entity_id, custom_data) values (${id}, ${applied.modules[0].id}, '{}'::jsonb)`
+    }
+    await withRecordActor({ userId: null, roleId: null }, async () => {
+      const listing = await list(id)
+      expect(listing).toHaveLength(2)
+      for (const row of listing) expect(row).toMatchObject({ canUndo: false, reason: expect.stringContaining('1 registros') })
+      await admin`update records set deleted_at = now() where tenant_id = ${id}`
+      // La escritura real de auditoría falla si assess deja elevado el GUC.
+      await admin.unsafe(`create function undo_test_system_scope() returns trigger language plpgsql as $$ begin if new.tenant_id = '${id}'::uuid and current_setting('app.record_system', true) <> 'off' then raise exception 'modo sistema fuera del conteo'; end if; return new; end $$`)
+      await admin.unsafe('create trigger undo_test_system_scope_trigger before update on blueprint_applications for each row execute function undo_test_system_scope()')
+      try {
+        for (const row of listing) await undo(id, row.id)
+      } finally {
+        await admin.unsafe('drop trigger undo_test_system_scope_trigger on blueprint_applications; drop function undo_test_system_scope()')
+      }
+      const { withTenant } = await import('../../server/db')
+      const mode = await withTenant(id, tx => tx.execute(sql`select current_setting('app.record_system', true) as mode`))
+      expect(mode[0]?.mode).toBe('off')
+    })
   }, 60_000)
 
   it('restaura exactamente la ficha y estados de módulo existente y elimina campos nuevos', async () => {

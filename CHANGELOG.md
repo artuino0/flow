@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.120.2] - 2026-09-30
+#### [bug]
+- [ERD-134](https://dydasoftware.atlassian.net/browse/ERD-134) - «Deshacer diseño» vuelve a bloquear el deshacer de módulos que tienen registros (desde la restricción de seguridad por actor ausente contaba 0 registros y no protegía los datos), y la aplicación interna de un plano (plantilla de Agenda e instalación por consola) vuelve a marcar los registros existentes para revalidación; los scripts de siembra locales siguen funcionando.
+
 ### [0.120.1] - 2026-09-30
 #### [bug]
 - [ERD-133](https://dydasoftware.atlassian.net/browse/ERD-133) - El Diseñador de estructura se recupera cuando «Deshacer diseño» deja una sesión abierta con un plano desactualizado (12 errores «El módulo que se desea extender no existe»): «Corregir con IA» la resincroniza con la estructura actual sin cobrar créditos, y si la sesión ya tiene trabajo propio se conserva intacta con un mensaje claro. Además, tras reparar o guardar ya no aparece el falso aviso «Guarda los cambios manuales…» y Guardar muestra confirmación.

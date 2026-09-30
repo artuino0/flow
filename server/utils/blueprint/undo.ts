@@ -66,17 +66,25 @@ async function assess(tx: Tx, tenantId: string, row: Application, laterApplicati
     const laterTouched = changes(later, tenantEntities, associations).touched
     if ([...change.touched].some(id => laterTouched.has(id))) blockers.push(`Deshaz primero el diseño posterior «${(later.appliedBlueprint as Blueprint).summary}»`)
   }
-  for (const module of change.result.modules ?? []) {
-    const [{ value }] = await tx.select({ value: count() }).from(records).where(and(eq(records.tenantId, tenantId), eq(records.entityId, module.id), isNull(records.deletedAt)))
-    if (value) blockers.push(`${names.get(module.id) ?? module.slug}: ${value} registros`)
-  }
-  for (const field of (change.result.fields ?? []).filter(item => !change.created.has(item.entityId))) {
-    const [{ value }] = await tx.select({ value: count() }).from(records).where(and(eq(records.tenantId, tenantId), eq(records.entityId, field.entityId), isNull(records.deletedAt), sql`${records.customData} ->> ${field.name} is not null`, sql`${records.customData} ->> ${field.name} <> ''`))
-    if (value) blockers.push(`${names.get(field.entityId) ?? field.entityId}.${field.name}: ${value} valores`)
-  }
-  for (const association of change.createdAssociations) {
-    const [{ value }] = await tx.select({ value: count() }).from(recordRelations).where(and(eq(recordRelations.tenantId, tenantId), eq(recordRelations.relationDefinitionId, association.id)))
-    if (value) blockers.push(`${association.name}: ${value} vínculos`)
+  // Estos conteos protegen datos de todo el tenant, incluso los que el actor
+  // no puede leer. Restaurar el GUC antes de cualquier escritura del deshacer.
+  const previous = await tx.execute(sql`select current_setting('app.record_system', true) as mode`)
+  await tx.execute(sql`select set_config('app.record_system', 'on', true)`)
+  try {
+    for (const module of change.result.modules ?? []) {
+      const [{ value }] = await tx.select({ value: count() }).from(records).where(and(eq(records.tenantId, tenantId), eq(records.entityId, module.id), isNull(records.deletedAt)))
+      if (value) blockers.push(`${names.get(module.id) ?? module.slug}: ${value} registros`)
+    }
+    for (const field of (change.result.fields ?? []).filter(item => !change.created.has(item.entityId))) {
+      const [{ value }] = await tx.select({ value: count() }).from(records).where(and(eq(records.tenantId, tenantId), eq(records.entityId, field.entityId), isNull(records.deletedAt), sql`${records.customData} ->> ${field.name} is not null`, sql`${records.customData} ->> ${field.name} <> ''`))
+      if (value) blockers.push(`${names.get(field.entityId) ?? field.entityId}.${field.name}: ${value} valores`)
+    }
+    for (const association of change.createdAssociations) {
+      const [{ value }] = await tx.select({ value: count() }).from(recordRelations).where(and(eq(recordRelations.tenantId, tenantId), eq(recordRelations.relationDefinitionId, association.id)))
+      if (value) blockers.push(`${association.name}: ${value} vínculos`)
+    }
+  } finally {
+    await tx.execute(sql`select set_config('app.record_system', ${String(previous[0]?.mode ?? 'off')}, true)`)
   }
   for (const roleId of change.result.createdRoles ?? []) {
     const [{ value }] = await tx.select({ value: count() }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.roleId, roleId)))
@@ -94,10 +102,13 @@ export async function listBlueprintApplications(tenantId: string) {
       tx.select({ id: users.id, name: people.fullName }).from(users).innerJoin(people, eq(users.personId, people.id)).where(eq(users.tenantId, tenantId))
     ])
     const userNames = new Map(tenantUsers.map(user => [user.id, user.name]))
-    return Promise.all(all.map(async (row, index) => {
+    const listing = []
+    // El modo de lectura es local a esta transacción: no intercalar assess.
+    for (const [index, row] of all.entries()) {
       const state = await assess(tx, tenantId, row, all.slice(0, index), tenantEntities, associations)
-      return { id: row.id, createdAt: row.createdAt, userId: row.userId, userName: row.userId ? userNames.get(row.userId) ?? null : null, summary: (row.appliedBlueprint as Blueprint).summary, modules: state.result.modules?.length ?? 0, fields: state.result.fields?.length ?? 0, associations: state.result.associations?.length ?? 0, undoneAt: row.undoneAt, canUndo: state.blockers.length === 0, reason: state.blockers.join('; ') || null, warnings: state.warnings }
-    }))
+      listing.push({ id: row.id, createdAt: row.createdAt, userId: row.userId, userName: row.userId ? userNames.get(row.userId) ?? null : null, summary: (row.appliedBlueprint as Blueprint).summary, modules: state.result.modules?.length ?? 0, fields: state.result.fields?.length ?? 0, associations: state.result.associations?.length ?? 0, undoneAt: row.undoneAt, canUndo: state.blockers.length === 0, reason: state.blockers.join('; ') || null, warnings: state.warnings })
+    }
+    return listing
   })
 }
 

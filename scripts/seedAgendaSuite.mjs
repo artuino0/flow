@@ -172,7 +172,7 @@ try {
   await db.begin(async tx => {
     const [tenant] = await tx`select id,name,slug,navigation_layout from tenants where id::text=${tenantRef} or slug=${tenantRef} for update`
     if (!tenant) throw new Error(`No existe el tenant "${tenantRef}"`)
-    await tx`select set_config('app.tenant_id',${tenant.id},true), set_config('app.person_id','00000000-0000-0000-0000-000000000000',true)`
+    await tx`select set_config('app.tenant_id',${tenant.id},true), set_config('app.person_id','00000000-0000-0000-0000-000000000000',true), set_config('app.record_system','on',true)`
     const [adminRole] = await tx`select id from roles where tenant_id=${tenant.id} and is_system=true order by created_at limit 1`
     const ids = {}
     for (const def of definitions) ids[def.slug] = await upsertEntity(tx, tenant.id, def, adminRole?.id)

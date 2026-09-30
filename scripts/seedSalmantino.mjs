@@ -578,7 +578,7 @@ try {
   const entityByslug = {}
 
   await sql.begin(async (tx) => {
-    await tx`select set_config('app.tenant_id', ${tenantId}, true)`
+    await tx`select set_config('app.tenant_id', ${tenantId}, true), set_config('app.record_system', 'on', true)`
 
     // ---- rol Administrador + persona + membresia (mismo patron que scripts/seed-dev-user.mjs) ----
     const [adminRole] = await tx`

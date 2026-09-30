@@ -16,6 +16,7 @@ import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 import type { Blueprint, BlueprintField } from './schema'
 import { validateBlueprint } from './validate'
 import { blueprintPlanImpact } from './plan'
+import { withSystemRecordAccess } from '~/server/utils/recordActorContext'
 
 export interface BlueprintApplyResult { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[]; calendarConfigs?: string[]; merges: Array<{ from: string; to: string; message: string; discardedFields: string[] }>; before?: Array<{ entityId: string; slug: string; detailLayout?: unknown; workflowConfig?: unknown; calendarConfig?: unknown }>; createdAssociations?: Array<{ id: string; name: string; sourceEntityId: string; targetEntityId: string }>; touchedModuleIds?: string[]; createdRoles?: string[]; previousRolePermissions?: Array<{ roleId: string; entityId: string; previous: typeof roleEntityPermissions.$inferSelect | null }> }
 
@@ -23,6 +24,13 @@ const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(sta
 const hashBlueprint = (blueprint: unknown) => createHash('sha256').update(JSON.stringify(stable(blueprint))).digest('hex')
 
 export async function applyBlueprint(tenantId: string, userId: string | null, input: unknown, idempotencyKey: string, templateKey?: 'agenda'): Promise<BlueprintApplyResult> {
+  // Plantillas y CLI no tienen actor humano. Sus cambios de campos disparan
+  // también la revalidación de todos los registros existentes del módulo.
+  if (userId === null) return withSystemRecordAccess(() => applyBlueprintWithActor(tenantId, userId, input, idempotencyKey, templateKey))
+  return applyBlueprintWithActor(tenantId, userId, input, idempotencyKey, templateKey)
+}
+
+async function applyBlueprintWithActor(tenantId: string, userId: string | null, input: unknown, idempotencyKey: string, templateKey?: 'agenda'): Promise<BlueprintApplyResult> {
   if (!idempotencyKey || idempotencyKey.length > 200) throw createError({ statusCode: 422, statusMessage: 'La clave de idempotencia es obligatoria y debe tener hasta 200 caracteres' })
   const blueprintHash = hashBlueprint(input)
   const previous = await withTenant(tenantId, tx => tx.select().from(blueprintApplications).where(and(eq(blueprintApplications.tenantId, tenantId), eq(blueprintApplications.idempotencyKey, idempotencyKey))).limit(1))
