@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.120.1] - 2026-09-30
+#### [bug]
+- [ERD-133](https://dydasoftware.atlassian.net/browse/ERD-133) - El Diseñador de estructura se recupera cuando «Deshacer diseño» deja una sesión abierta con un plano desactualizado (12 errores «El módulo que se desea extender no existe»): «Corregir con IA» la resincroniza con la estructura actual sin cobrar créditos, y si la sesión ya tiene trabajo propio se conserva intacta con un mensaje claro. Además, tras reparar o guardar ya no aparece el falso aviso «Guarda los cambios manuales…» y Guardar muestra confirmación.
+
 ### [0.120.0] - 2026-09-30
 #### [feature]
 - [ERD-132](https://dydasoftware.atlassian.net/browse/ERD-132) - Chattito reconoce la pantalla Ajustes → Plan y consumo y ofrece su ayuda contextual, un recorrido guiado (plan actual, consumo, límites, almacenamiento, planes disponibles e historiales) y un botón «?» junto al título; el recorrido es solo informativo y sigue funcionando aunque algunos bloques aún no hayan cargado.

@@ -11,6 +11,7 @@ import { blueprintSchema, type Blueprint, type BlueprintField } from './schema'
 import { dedupeBlueprint, type BlueprintMerge } from './dedupe'
 import { loadBlueprintTenant, type BlueprintTx } from './export'
 import { blueprintPlanImpact } from './plan'
+import { STALE_DESIGN_MESSAGE } from '~/server/utils/moduleDesigner/resync'
 
 export interface BlueprintValidationError { path: string; message: string; code?: string }
 export interface BlueprintValidationResult { normalized: Blueprint | null; errors: BlueprintValidationError[]; merges: BlueprintMerge[]; current: Awaited<ReturnType<typeof loadBlueprintTenant>> | null; newFields: Map<string, BlueprintField[]> }
@@ -61,8 +62,9 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
       proposedSlugs.add(module.slug)
     } else {
       const existing = bySlug.get(module.slug)
-      if (!existing) add(`${base}.slug`, 'El módulo que se desea extender no existe en este tenant')
-      else if (existing.moduleKind !== module.kind) add(`${base}.kind`, 'El tipo del módulo existente no coincide')
+      if (!existing) {
+        if (!errors.some(error => error.code === 'stale_blueprint')) add('modules', STALE_DESIGN_MESSAGE, 'stale_blueprint')
+      } else if (existing.moduleKind !== module.kind) add(`${base}.kind`, 'El tipo del módulo existente no coincide')
       if (module.workflow && existing?.workflowConfig && !(module.snapshot && same(module.workflow, existing.workflowConfig))) add(`${base}.workflow`, 'El módulo ya tiene un flujo de estados y no se puede reemplazar')
       if (module.snapshot && existing && (module.name !== existing.name || (module.singularName ?? null) !== existing.singularName || (module.description ?? null) !== existing.description || (module.icon ?? null) !== existing.icon)) add(base, 'La instantánea cambia propiedades existentes del módulo')
       if (module.detailLayout && !module.snapshot) add(`${base}.detailLayout`, 'El diseño de detalle solo se incluye en una instantánea; usa lines para agregar partidas')

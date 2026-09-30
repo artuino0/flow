@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
 import { moduleDesignSessions } from '~/server/db/schema'
@@ -15,6 +15,7 @@ import { normalizeDesignerAssociations } from './normalizeAssociations'
 import { limitDesignerExplanation } from './explanation'
 import { applyDesignerPatch, compactDesignerBlueprint, designerPatchSchema } from './patch'
 import { DESIGNER_ICON_SUGGESTIONS } from '~/utils/designerIconSuggestions'
+import { DESIGNER_REPAIR_PREFIX, resyncDesignerBase, STALE_DESIGN_MESSAGE } from './resync'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
 
 export const WORKFLOW_EXAMPLE = `Ejemplo válido de encabezado, partidas y flujo (dentro de modules; agrega version, summary y associations al plano): [{"ref":"pedidos","action":"create","kind":"hecho","name":"Pedidos","slug":"pedidos","fields":[{"name":"folio","label":"Folio","dataType":"text"},{"name":"cliente","label":"Cliente","dataType":"text"},{"name":"estado","label":"Estado","dataType":"select","validationRules":{"options":[{"value":"recibido","label":"Recibido"},{"value":"confirmado","label":"Confirmado"}]}},{"name":"total","label":"Total","dataType":"currency","validationRules":{"calculation":{"kind":"rollup","aggregate":"sum","sourceEntity":"partidas-pedido","relationField":"pedido","valueField":"importe"}}}],"lines":[{"childRef":"partidas-pedido","relationField":"pedido","totals":["importe"]}],"workflow":{"enabled":true,"field":"estado","initial":"recibido","states":{"recibido":{"locked":false,"editableFields":[]},"confirmado":{"locked":true,"editableFields":[]}},"transitions":[{"from":"recibido","to":"confirmado","label":"Confirmar","roles":"all"}],"rules":[{"type":"required","mode":"block","when":{"to":"confirmado"},"fields":["cliente"],"message":"Captura el cliente"},{"type":"aggregate","mode":"block","when":{"to":"confirmado"},"lineEntity":"partidas-pedido","relationField":"pedido","aggregate":"count","operator":">=","value":1,"message":"Agrega al menos una partida"}]}},{"ref":"partidas-pedido","action":"create","kind":"hecho","name":"Partidas de pedido","slug":"partidas-pedido","fields":[{"name":"pedido","label":"Pedido","dataType":"relation","validationRules":{"relationEntity":"pedidos"}},{"name":"cantidad","label":"Cantidad","dataType":"number"},{"name":"precio","label":"Precio","dataType":"currency"},{"name":"importe","label":"Importe","dataType":"currency","validationRules":{"calculation":{"kind":"formula","operator":"multiply","leftField":"cantidad","rightField":"precio"}}}]}].`
@@ -140,15 +141,34 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
   await recoverOrphanedAiReservations(tenantId)
   const [previous] = await withTenant(tenantId, tx => tx.select().from(moduleDesignSessions).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId))).limit(1))
   if (!previous) throw createError({ statusCode: 404, statusMessage: 'Sesión no encontrada' })
-  const first = !(previous.messages ?? []).some(message => message.role === 'assistant')
+  if (previous.status !== 'draft' && previous.status !== 'error') throw createError({ statusCode: 409, statusMessage: 'La sesión ya está cerrada' })
+  if (previous.processingAt) throw createError({ statusCode: 409, statusMessage: 'La sesión ya está procesando un mensaje' })
+  const current = await exportBlueprint(tenantId)
+  const base = resyncDesignerBase(previous, current)
+  if (base.stale && !base.resynced) throw createError({ statusCode: 422, message: STALE_DESIGN_MESSAGE, data: { errors: [{ path: 'modules', message: STALE_DESIGN_MESSAGE, code: 'stale_blueprint' }] } })
+  if (base.resynced && instruction.startsWith(DESIGNER_REPAIR_PREFIX)) {
+    const checked = await validateBlueprint(tenantId, base.blueprint)
+    if (!checked.normalized || checked.errors.some(error => error.code !== 'plan_limit')) throw createError({ statusCode: 422, message: 'La estructura actual contiene errores; revisa los módulos antes de continuar.', data: { errors: checked.errors } })
+    const message = 'Actualicé el plano con los módulos actuales. El diseño anterior fue eliminado o deshecho. No se cobraron créditos.'
+    const explanation = `${message}\n### ¿Por qué?\n- **Estructura actual:** la sesión todavía no tenía propuestas ni ediciones; reemplacé únicamente su base desactualizada.`
+    const diff = await diffBlueprint(tenantId, checked)
+    const credits = await aiCreditBalance(tenantId)
+    const messages = [...previous.messages, { role: 'user' as const, content: instruction, createdAt: new Date().toISOString() }, { role: 'assistant' as const, content: message, explanation, createdAt: new Date().toISOString(), mode: 'full' as const, blueprintVersion: previous.version + 1, blueprint: checked.normalized }]
+    const [updated] = await withTenant(tenantId, tx => tx.update(moduleDesignSessions).set({ blueprint: checked.normalized!, messages, version: previous.version + 1, status: 'draft', updatedAt: new Date() }).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId), eq(moduleDesignSessions.version, previous.version), inArray(moduleDesignSessions.status, ['draft', 'error']), isNull(moduleDesignSessions.processingAt))).returning())
+    if (!updated) throw createError({ statusCode: 409, statusMessage: 'La sesión cambió; vuelve a cargarla' })
+    return { message, explanation, blueprint: checked.normalized, patch: null, diff, merges: checked.merges, credits, session: updated }
+  }
+  const first = previous.creditsConsumed === 0 || !(previous.messages ?? []).some(message => message.role === 'assistant')
   const allocations = await reserveAiCredits(tenantId, sessionId, first ? 2 : 1, first ? 'generate' : 'iterate')
   const usage = { inputTokens: 0, outputTokens: 0, model: '' }
   try {
     const [session] = await withTenant(tenantId, tx => tx.select().from(moduleDesignSessions).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId))).limit(1))
     if (!session) throw createError({ statusCode: 404, statusMessage: 'Sesión no encontrada' })
     const current = await exportBlueprint(tenantId)
+    const base = resyncDesignerBase(session, current)
+    if (base.stale && !base.resynced) throw createError({ statusCode: 422, message: STALE_DESIGN_MESSAGE, data: { errors: [{ path: 'modules', message: STALE_DESIGN_MESSAGE, code: 'stale_blueprint' }] } })
     const conversation = [...session.messages, { role: 'user' as const, content: instruction, createdAt: new Date().toISOString() }]
-    const generated = await runDesignerGeneration({ current, blueprint: session.blueprint, conversation, instruction, validate: proposal => validateBlueprint(tenantId, proposal) })
+    const generated = await runDesignerGeneration({ current, blueprint: base.blueprint, conversation, instruction, validate: proposal => validateBlueprint(tenantId, proposal) })
     Object.assign(usage, generated.usage)
     const { result, message, errors } = generated
     if (!generated.valid || !result?.normalized) throw createError({ statusCode: 422, statusMessage: 'La IA no produjo un plano válido', data: { errors } })

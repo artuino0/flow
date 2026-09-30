@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import { buildDesignerRepairMessage, readableDesignerValidationErrors } from '../../utils/designerValidationErrors'
+import { acceptDesignerSession, designerBlueprintsEqual } from '../../utils/designerBlueprintState'
 
 const tenantId = randomUUID()
 const otherTenant = randomUUID()
@@ -76,6 +77,60 @@ beforeEach(() => fetchMock.mockReset())
 afterAll(async () => { await admin.end(); await testDb.stop(); vi.unstubAllGlobals() })
 
 describe('diseñador de módulos (Postgres real, IA simulada)', () => {
+  it('recupera la base de una sesión anterior a Deshacer sin proveedor ni créditos, incluso sin saldo', async () => {
+    const { applyBlueprint } = await import('../../server/utils/blueprint/apply')
+    const { undoBlueprintApplication } = await import('../../server/utils/blueprint/undo')
+    const { validateBlueprint } = await import('../../server/utils/blueprint/validate')
+    const { generateDesign } = await import('../../server/utils/moduleDesigner/generate')
+    const design = await exporter.exportBlueprint(patchTenant)
+    design.modules.push({ ref: 'antiguos', slug: 'antiguos', action: 'create', kind: 'dimension', name: 'Antiguos', fields: [{ name: 'nombre', label: 'Nombre', dataType: 'text' }] })
+    const key = randomUUID()
+    await applyBlueprint(patchTenant, patchUserId, design, key)
+    const session = await sessions.createModuleDesignSession(patchTenant, patchUserId) as { id: string; blueprint: unknown }
+    const [application] = await admin`SELECT id FROM blueprint_applications WHERE tenant_id = ${patchTenant} AND idempotency_key = ${key}`
+    await undoBlueprintApplication(patchTenant, application.id, patchUserId)
+    const invalid = await validateBlueprint(patchTenant, session.blueprint)
+    expect(invalid.errors).toEqual([expect.objectContaining({ code: 'stale_blueprint' })])
+    const instruction = buildDesignerRepairMessage(readableDesignerValidationErrors(invalid.errors, session.blueprint as Awaited<ReturnType<typeof proposal>>))
+    const balance = await credits.aiCreditBalance(patchTenant)
+    const result = await generateDesign(patchTenant, session.id, instruction)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.blueprint).toEqual(await exporter.exportBlueprint(patchTenant))
+    expect((await validateBlueprint(patchTenant, result.blueprint)).errors).toEqual([])
+    const recovered = await sessions.findSession(patchTenant, session.id)
+    expect(recovered).toMatchObject({ status: 'draft', version: 2, creditsConsumed: 0, processingAt: null })
+    // Prueba el síntoma con el orden real de claves de PostgreSQL JSONB.
+    expect(JSON.stringify(recovered.blueprint)).not.toBe(JSON.stringify(result.blueprint))
+    expect(designerBlueprintsEqual(recovered.blueprint, result.blueprint)).toBe(true)
+    const accepted = acceptDesignerSession({ ...recovered, blueprint: recovered.blueprint as Awaited<ReturnType<typeof proposal>> })
+    expect(designerBlueprintsEqual(accepted.working, accepted.session.blueprint)).toBe(true)
+    expect(await admin`SELECT id FROM ai_credit_ledger WHERE session_id = ${session.id}`).toHaveLength(0)
+    expect(await credits.aiCreditBalance(patchTenant)).toEqual(balance)
+    // La primera propuesta real sigue costando dos créditos tras una reparación gratuita.
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${patchTenant}, 2, 2, 'manual')`
+    aiReply({ message: 'Preparé la propuesta.', blueprint: await exporter.exportBlueprint(patchTenant) })
+    await generateDesign(patchTenant, session.id, 'Genera la propuesta')
+    expect((await sessions.findSession(patchTenant, session.id)).creditsConsumed).toBe(2)
+    accepted.working.modules.push({ ref: 'manuales', slug: 'manuales', action: 'create', kind: 'dimension', name: 'Manuales', fields: [{ name: 'nota', label: 'Nota', dataType: 'text' }] })
+    expect(designerBlueprintsEqual(accepted.working, accepted.session.blueprint)).toBe(false)
+    const saved = await sessions.editSessionBlueprint(patchTenant, session.id, accepted.working)
+    const savedState = acceptDesignerSession({ ...saved.session, blueprint: saved.session.blueprint as Awaited<ReturnType<typeof proposal>> })
+    expect(designerBlueprintsEqual(savedState.working, savedState.session.blueprint)).toBe(true)
+    expect(savedState.session.creditsConsumed).toBe(2)
+  })
+
+  it('conserva una propuesta desactualizada y devuelve una explicación sin cobrar ni llamar a IA', async () => {
+    const { generateDesign } = await import('../../server/utils/moduleDesigner/generate')
+    const session = await sessions.createModuleDesignSession(patchTenant, patchUserId) as { id: string }
+    const blueprint = await exporter.exportBlueprint(patchTenant)
+    blueprint.modules.push({ ref: 'inexistente', slug: 'inexistente', action: 'extend', snapshot: true, kind: 'dimension', name: 'Inexistente', fields: [{ name: 'nota', label: 'Nota propuesta', dataType: 'text' }] })
+    await admin`UPDATE module_design_sessions SET blueprint = ${JSON.stringify(blueprint)}::jsonb, version = 2 WHERE id = ${session.id}`
+    await expect(generateDesign(patchTenant, session.id, 'Corrige el plano')).rejects.toMatchObject({ statusCode: 422, data: { errors: [expect.objectContaining({ code: 'stale_blueprint' })] } })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect((await sessions.findSession(patchTenant, session.id)).blueprint).toEqual(blueprint)
+    expect(await admin`SELECT id FROM ai_credit_ledger WHERE session_id = ${session.id}`).toHaveLength(0)
+  })
+
   it('crea una sesión con la estructura actual y la edición manual no cobra', async () => {
     const session = await sessions.createModuleDesignSession(tenantId, userId)
     expect((session as { blueprint: { modules: Array<{ slug: string }> } }).blueprint.modules.some(module => module.slug === 'clientes')).toBe(true)

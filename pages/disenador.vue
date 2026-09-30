@@ -7,6 +7,7 @@ import { designerProposalChanges } from '~/utils/designerMotion'
 import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
 import { beginDesignerChat, canSendDesignerChat, designerChatEntries, designerExplanationBody, designerExplanationSummary, failDesignerChat, toggleDesignerFocus, type DesignerChatDraft } from '~/utils/designerChat'
 import { buildDesignerRepairMessage, readableDesignerValidationErrors } from '~/utils/designerValidationErrors'
+import { acceptDesignerSession, designerBlueprintsEqual } from '~/utils/designerBlueprintState'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
 useHead({ title: 'Diseñador de estructura | Flow' })
@@ -35,6 +36,7 @@ const chatScroll = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const busy = ref<'generate' | 'save' | 'apply' | 'undo' | ''>('')
 const errorText = ref('')
+const saveFeedback = ref('')
 const fieldErrors = ref<Array<{ path: string; message: string; code?: string }>>([])
 const repairingErrors = ref(false)
 const reviewOpen = ref(false)
@@ -73,15 +75,17 @@ const graph = computed(() => current.value && working.value ? buildDesignerGraph
 const selected = computed(() => working.value?.modules.find(module => module.slug === selectedId.value) ?? null)
 const selectedGraph = computed(() => graph.value?.modules.find(module => module.id === selectedId.value))
 const relatedEdges = computed(() => graph.value?.edges.filter(edge => edge.source === selectedId.value || edge.target === selectedId.value) ?? [])
-const hasProposal = computed(() => Boolean(working.value && current.value && JSON.stringify({ modules: working.value.modules, associations: working.value.associations, roles: working.value.roles ?? [] }) !== JSON.stringify({ modules: current.value.modules, associations: current.value.associations, roles: current.value.roles ?? [] })))
-const dirty = computed(() => Boolean(working.value && session.value && JSON.stringify(working.value) !== JSON.stringify(session.value.blueprint)))
-const firstGeneration = computed(() => !(session.value?.messages ?? []).some(message => message.role === 'assistant'))
+const hasProposal = computed(() => Boolean(working.value && current.value && !designerBlueprintsEqual({ modules: working.value.modules, associations: working.value.associations, roles: working.value.roles ?? [] }, { modules: current.value.modules, associations: current.value.associations, roles: current.value.roles ?? [] })))
+const dirty = computed(() => Boolean(working.value && session.value && !designerBlueprintsEqual(working.value, session.value.blueprint)))
+watch(dirty, changed => { if (changed) saveFeedback.value = '' })
+const firstGeneration = computed(() => session.value?.creditsConsumed === 0 || !(session.value?.messages ?? []).some(message => message.role === 'assistant'))
 const messageCost = computed(() => firstGeneration.value ? 2 : 1)
 const balance = computed(() => credits.value?.includedRemaining === null ? Infinity : (credits.value?.includedRemaining ?? 0) + (credits.value?.packages ?? 0))
 const noCredits = computed(() => balance.value < messageCost.value)
 const chatCanSend = computed(() => canSendDesignerChat({ busy: Boolean(busy.value), noCredits: noCredits.value, dirty: dirty.value, applied: session.value?.status === 'applied' }))
 const chatEntries = computed(() => designerChatEntries(session.value?.messages ?? [], chatDrafts.value))
 const readableErrors = computed(() => working.value ? readableDesignerValidationErrors(fieldErrors.value, working.value) : [])
+const repairCanSend = computed(() => canSendDesignerChat({ busy: Boolean(busy.value), noCredits: noCredits.value && !(fieldErrors.value.some(error => error.code === 'stale_blueprint') && session.value?.version === 1 && session.value.messages.length === 0), dirty: dirty.value, applied: session.value?.status === 'applied' }))
 const lastAssistantId = computed(() => [...chatEntries.value].reverse().find(message => message.role === 'assistant')?.id)
 watch(chatEntries, async () => { await nextTick(); if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight })
 const canApprove = computed(() => Boolean(session.value && session.value.status === 'draft' && hasProposal.value && !dirty.value && !fieldErrors.value.length && diff.value?.plan.allowed && !busy.value))
@@ -95,19 +99,24 @@ const changes = computed(() => [
 const fieldTypes = ['text', 'number', 'currency', 'boolean', 'date', 'select', 'multiselect', 'relation', 'user', 'incremental', 'file', 'tabla', 'json'] as const
 
 function cloneBlueprint(value: Blueprint): Blueprint { return JSON.parse(JSON.stringify(value)) as Blueprint }
+function syncSessionBlueprint(updated: DesignerSession) {
+  const accepted = acceptDesignerSession(updated)
+  session.value = accepted.session
+  working.value = accepted.working
+}
 function apiError(error: unknown) {
-  const e = error as { statusMessage?: string; message?: string; data?: { statusMessage?: string; data?: { code?: string; errors?: Array<{ path: string; message: string; code?: string }> } } }
-  return { message: e.data?.statusMessage || e.statusMessage || e.message || 'Ocurrió un error.', code: e.data?.data?.code, status: (e as { statusCode?: number }).statusCode ?? (e.data as { statusCode?: number } | undefined)?.statusCode, errors: e.data?.data?.errors ?? [] }
+  const e = error as { statusMessage?: string; message?: string; data?: { message?: string; statusMessage?: string; data?: { code?: string; errors?: Array<{ path: string; message: string; code?: string }> } } }
+  return { message: e.data?.message || e.data?.statusMessage || e.statusMessage || e.message || 'Ocurrió un error.', code: e.data?.data?.code, status: (e as { statusCode?: number }).statusCode ?? (e.data as { statusCode?: number } | undefined)?.statusCode, errors: e.data?.data?.errors ?? [] }
 }
 async function refreshCredits() { credits.value = await api.getCredits() }
 async function loadSession(id: string) {
   loading.value = true
   errorText.value = ''
+  saveFeedback.value = ''
   try {
     const selectedSession = await api.getSession(id)
-    session.value = selectedSession
+    syncSessionBlueprint(selectedSession)
     chatDrafts.value = []
-    working.value = cloneBlueprint(selectedSession.blueprint)
     const validated = await api.validate(selectedSession.blueprint)
     diff.value = validated.diff
     fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
@@ -153,17 +162,18 @@ onMounted(async () => {
 async function sendPrompt(value = prompt.value, retryId?: string, repair = false) {
   const retry = retryId ? chatDrafts.value.find(draft => draft.id === retryId && draft.status === 'failed') : undefined
   const instruction = (retry ? retry.content : value).trim()
-  if (!instruction || !session.value || !chatCanSend.value) return
+  if (!instruction || !session.value || !(repair ? repairCanSend.value : chatCanSend.value)) return
   if (retryId && !retry) return
   const draftId = retry?.id ?? crypto.randomUUID()
   chatDrafts.value = beginDesignerChat(chatDrafts.value, instruction, draftId, new Date().toISOString(), retryId)
   if (!retryId) prompt.value = ''
-  busy.value = 'generate'; errorText.value = ''
+  busy.value = 'generate'; errorText.value = ''; saveFeedback.value = ''
   let response: Awaited<ReturnType<typeof api.generate>>
   try {
     response = await api.generate(session.value.id, instruction)
   } catch (error) {
     const info = apiError(error)
+    if (info.errors.some(error => error.code === 'stale_blueprint')) errorText.value = info.message
     chatDrafts.value = failDesignerChat(chatDrafts.value, draftId, info.code, info.status)
     await Promise.allSettled([refreshCredits(), api.getSession(session.value.id).then(value => { session.value = value })])
     busy.value = ''
@@ -173,11 +183,10 @@ async function sendPrompt(value = prompt.value, retryId?: string, repair = false
   const motion = current.value && graph.value
     ? designerProposalChanges(graph.value, buildDesignerGraph(current.value, response.blueprint, response.diff, navigation.value))
     : { nodeIds: [], edgeIds: [], fieldKeys: [] }
-  const refreshed: DesignerSession = { ...session.value, status: 'draft', blueprint: response.blueprint, version: session.value.version + 1, creditsConsumed: session.value.creditsConsumed + messageCost.value, messages: [...session.value.messages, { role: 'user', content: instruction, createdAt: chatDrafts.value.find(draft => draft.id === draftId)?.createdAt ?? new Date().toISOString() }, { role: 'assistant', content: response.message, createdAt: new Date().toISOString() }] }
+  const refreshed: DesignerSession = response.session ?? { ...session.value, status: 'draft', blueprint: response.blueprint, version: session.value.version + 1, creditsConsumed: session.value.creditsConsumed + messageCost.value, messages: [...session.value.messages, { role: 'user', content: instruction, createdAt: chatDrafts.value.find(draft => draft.id === draftId)?.createdAt ?? new Date().toISOString() }, { role: 'assistant', content: response.message, createdAt: new Date().toISOString() }] }
   refreshed.messages[refreshed.messages.length - 1]!.explanation = response.explanation
-  session.value = refreshed
+  syncSessionBlueprint(refreshed)
   chatDrafts.value = chatDrafts.value.filter(draft => draft.id !== draftId)
-  working.value = cloneBlueprint(response.blueprint)
   diff.value = response.diff
   credits.value = response.credits
   changedIds.value = []
@@ -203,7 +212,7 @@ async function sendPrompt(value = prompt.value, retryId?: string, repair = false
 }
 
 async function repairBlueprintErrors() {
-  if (!readableErrors.value.length || !chatCanSend.value) return
+  if (!readableErrors.value.length || !repairCanSend.value) return
   repairingErrors.value = true
   await sendPrompt(buildDesignerRepairMessage(readableErrors.value), undefined, true)
 }
@@ -223,15 +232,17 @@ async function selectValidationError(error: { target: string | null }) {
 }
 
 async function saveBlueprint() {
-  if (!session.value || !working.value || !dirty.value || busy.value) return
-  busy.value = 'save'; errorText.value = ''; fieldErrors.value = []
+  if (!session.value || !working.value) { errorText.value = 'Abre una sesión del diseñador antes de guardar.'; return }
+  if (busy.value) { errorText.value = 'Espera a que termine la operación en curso antes de guardar.'; return }
+  if (!dirty.value) { saveFeedback.value = 'No hay cambios manuales pendientes.'; return }
+  busy.value = 'save'; errorText.value = ''; saveFeedback.value = ''; fieldErrors.value = []
   try {
     const response = await api.save(session.value.id, working.value)
-    session.value = response.session
-    working.value = cloneBlueprint(response.normalized ?? response.session.blueprint)
+    syncSessionBlueprint(response.session)
     diff.value = response.diff
     fieldErrors.value = response.errors.filter(error => error.code !== 'plan_limit')
     sessions.value = [response.session, ...sessions.value.filter(item => item.id !== response.session.id)]
+    saveFeedback.value = 'Cambios guardados. Puedes continuar con la IA.'
   } catch (error) { const info = apiError(error); errorText.value = info.message; fieldErrors.value = info.errors } finally { busy.value = '' }
 }
 
@@ -390,8 +401,9 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
     </div>
 
     <div v-if="errorText" role="alert" class="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800"><AlertCircle class="h-4 w-4 shrink-0" /><span class="flex-1">{{ errorText }}</span><button type="button" aria-label="Cerrar aviso" @click="errorText = ''"><X class="h-4 w-4" /></button></div>
+    <div v-if="saveFeedback" role="status" class="flex shrink-0 items-center gap-2 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"><CheckCircle2 class="h-4 w-4 shrink-0" /><span>{{ saveFeedback }}</span></div>
     <section v-if="readableErrors.length" aria-label="Errores del plano" class="max-h-40 shrink-0 overflow-y-auto border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-950">
-      <div class="flex flex-wrap items-center justify-between gap-2"><strong>El plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación</strong><button v-if="hasProposal" type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="!chatCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
+      <div class="flex flex-wrap items-center justify-between gap-2"><strong>El plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación</strong><button v-if="hasProposal" type="button" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="!repairCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
       <ul class="mt-1.5 space-y-1"> <li v-for="(error, index) in readableErrors" :key="`${error.path}-${index}`" class="flex flex-wrap items-baseline gap-x-1"><button v-if="error.target" type="button" class="font-semibold underline decoration-amber-700/40 underline-offset-2 hover:text-brand-blue" @click="selectValidationError(error)">{{ error.label }}</button><strong v-else>{{ error.label }}</strong><span>: {{ error.message }}</span></li></ul>
     </section>
     <div v-if="result" role="status" class="flex shrink-0 items-center gap-3 border-b border-green-200 bg-green-50 px-4 py-2 text-xs text-green-800"><CheckCircle2 class="h-4 w-4" /><span>Diseño creado. {{ result.modules.length }} módulos o catálogos nuevos.</span><NuxtLink v-for="module in result.modules.slice(0, 4)" :key="module.id" :to="`/modulos/${module.id}/editar`" class="font-semibold underline">{{ module.slug }} <ExternalLink class="inline h-3 w-3" /></NuxtLink></div>
@@ -401,7 +413,7 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
       <aside class="designer-chat min-h-0 shrink-0 flex-col border-r border-brand-border-light bg-brand-surface" :style="{ '--designer-chat-width': `${chatWidth}px` }" :class="chatOpen ? 'is-open' : ''">
         <div class="flex items-center justify-between border-b border-brand-border-light px-4 py-3"><div class="flex items-center gap-2"><Sparkles class="h-4 w-4 text-brand-orange" /><strong class="text-sm">Asistente de estructura</strong></div><div class="flex items-center gap-1"><button type="button" class="rounded p-1.5 text-brand-text-muted hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :aria-label="chatFocused ? 'Contraer chat' : 'Expandir chat'" :title="chatFocused ? 'Contraer' : 'Expandir'" @click="toggleFocus"><Minimize2 v-if="chatFocused" class="h-4 w-4" /><Maximize2 v-else class="h-4 w-4" /></button><button v-if="!chatFocused" type="button" class="rounded p-1 text-brand-text-muted hover:bg-brand-bg designer-mobile-control" aria-label="Cerrar chat" @click="chatOpen = false"><PanelLeftClose class="h-4 w-4" /></button></div></div>
         <div ref="chatScroll" class="designer-chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 text-xs" aria-live="polite">
-          <div v-if="readableErrors.length" role="status" class="rounded-lg border border-amber-200 bg-amber-50 p-3 leading-5 text-amber-950"><p>Este plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación.</p><button v-if="hasProposal" type="button" class="mt-2 inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white disabled:opacity-50" :disabled="!chatCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
+          <div v-if="readableErrors.length" role="status" class="rounded-lg border border-amber-200 bg-amber-50 p-3 leading-5 text-amber-950"><p>Este plano tiene {{ readableErrors.length }} {{ readableErrors.length === 1 ? 'problema' : 'problemas' }} de validación.</p><button v-if="hasProposal" type="button" class="mt-2 inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-1.5 font-semibold text-white disabled:opacity-50" :disabled="!repairCanSend" @click="repairBlueprintErrors"><LoaderCircle v-if="repairingErrors" class="h-3.5 w-3.5 animate-spin" /><Sparkles v-else class="h-3.5 w-3.5" />{{ repairingErrors ? 'Corrigiendo…' : 'Corregir con IA' }}</button></div>
           <div v-if="!chatEntries.length" class="space-y-4"><div class="rounded-lg bg-brand-blue-bg p-4 leading-5 text-brand-text-secondary">Describe tu negocio o el cambio que necesitas. Verás la propuesta sobre {{ current?.modules.length ? 'tu estructura actual' : 'un lienzo vacío' }} antes de crearla.</div><div><p class="mb-2 font-bold text-brand-text-muted">PRUEBA CON UNA IDEA</p><button v-for="suggestion in ['Agrega un módulo de garantías', 'Relaciona órdenes con clientes', 'Crea un catálogo de tipos de servicio']" :key="suggestion" type="button" class="mb-2 block w-full rounded-md border border-brand-border-light px-3 py-2 text-left hover:border-brand-blue hover:bg-brand-bg" @click="prompt = suggestion">{{ suggestion }}</button></div></div>
           <div v-for="message in chatEntries" :key="message.id" class="space-y-2">
             <div class="rounded-lg px-3 py-2.5 leading-5" :class="message.role === 'user' ? 'ml-6 bg-brand-blue-bg text-brand-text' : 'mr-4 border border-brand-border-light bg-brand-surface text-brand-text-secondary'"><span class="mb-1 block text-[10px] font-bold uppercase tracking-wide" :class="message.role === 'user' ? 'text-brand-blue' : 'text-brand-orange'">{{ message.role === 'user' ? 'Tú' : 'Diseñador' }}</span><span class="whitespace-pre-line">{{ message.explanation ? designerExplanationSummary(message.explanation) : message.content }}</span><template v-if="message.role === 'assistant' && message.explanation"><details class="mt-2 border-t border-brand-border-light pt-2" :open="message.explanation.length <= 280"><summary class="cursor-pointer font-semibold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue">¿Por qué?</summary><MarkdownView class="mt-2" :source="designerExplanationBody(message.explanation)" /></details><button type="button" class="mt-2 rounded text-[11px] font-semibold text-brand-blue hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" @click="explanationText = message.explanation">Ver explicación completa</button></template><div v-if="message.id === lastAssistantId && diff && hasProposal" class="mt-3 flex flex-wrap gap-1.5 border-t border-brand-border-light pt-2"><span v-for="item in changes.filter(value => value.count)" :key="item.label" class="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-semibold">{{ item.label }} · {{ item.count }}</span></div></div>
