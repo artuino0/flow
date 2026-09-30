@@ -1,4 +1,5 @@
-import { normalizeModuleEditTab, type ModuleEditTab } from './moduleEditTabs'
+import { MODULE_EDIT_TABS, normalizeModuleEditTab, type ModuleEditTab } from './moduleEditTabs'
+import { chattitoHelpCatalog, helpForContext } from './chattitoHelp'
 import type { TourId } from './onboardingTours'
 
 export type ChattitoContext =
@@ -31,18 +32,10 @@ export function resolveChattitoContext(route: ChattitoRoute): ChattitoContext {
 
 // Los recorridos actuales crean módulos en /modulos/nuevo; no enseñan a editar
 // el módulo abierto. Agregar una recomendación futura requiere una sola entrada.
-export const MODULE_EDIT_TOUR_RECOMMENDATIONS: Readonly<Record<ModuleEditTab, TourId | null>> = {
-  info: null,
-  fields: null,
-  relations: null,
-  menu: null,
-  detail: null,
-  list: null,
-  flow: null,
-  labels: null,
-  api: null
-}
+export const MODULE_EDIT_TOUR_RECOMMENDATIONS = Object.fromEntries(
+  Object.values(MODULE_EDIT_TABS).map(tab => [tab, chattitoHelpCatalog[`module-edit:${tab}`].tourId ?? null])
+) as Readonly<Record<ModuleEditTab, TourId | null>>
 
 export function recommendedTourForContext(context: ChattitoContext): TourId | null {
-  return context.page === 'module-edit' ? MODULE_EDIT_TOUR_RECOMMENDATIONS[context.tab] : null
+  return helpForContext(context)?.tourId ?? null
 }

@@ -45,6 +45,7 @@ onBeforeUnmount(stopNavigationFeedback)
 <template>
   <ChattitoSymbolRegistry v-if="sessionIdentity" />
   <OnboardingTour v-if="showChattito" />
+  <ChattitoHelp v-if="showChattito" />
   <NuxtLoadingIndicator color="#0091AE" :height="3" :throttle="0" :duration="1600" />
   <Transition name="navigation-feedback">
     <div v-if="showNavigationFeedback" class="navigation-feedback" role="status" aria-live="polite">

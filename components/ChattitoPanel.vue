@@ -4,6 +4,7 @@ import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattit
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
 const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour } = useOnboarding()
+const { ready: helpPreferencesReady, disabled: helpDisabled, setDisabled: setHelpDisabled } = useChattitoHelpPreferences()
 const draft = ref('')
 const list = ref<HTMLElement>()
 const pending = ref(false)
@@ -93,6 +94,7 @@ onBeforeUnmount(() => {
         </TransitionGroup>
       </div>
       <section class="chattito-panel__tours" aria-label="Recorridos">
+        <label v-if="helpPreferencesReady" class="chattito-panel__help-preference"><input type="checkbox" :checked="helpDisabled" @change="setHelpDisabled(($event.target as HTMLInputElement).checked)"> No me sugieras más ayuda</label>
         <strong>Recorridos</strong>
         <div>
           <button type="button" @click="startTour('bienvenida')">Repetir bienvenida</button>
@@ -118,6 +120,7 @@ onBeforeUnmount(() => {
 .chattito-panel__avatar{width:42px;height:42px}.chattito-message{contain-intrinsic-size:auto 78px}
 .chattito-panel__tours{border-top:1px solid #e5eaf0;padding:13px 16px 0}.chattito-panel__tours strong{display:block;margin-bottom:8px;color:#33475b;font-size:11px;letter-spacing:.06em;text-transform:uppercase}.chattito-panel__tours div{display:flex;flex-wrap:wrap;gap:7px}.chattito-panel__tours button{border:1px solid #b9dce4;border-radius:8px;background:#eaf7f9;padding:7px 9px;color:#006e84;font-size:11px;font-weight:700}.chattito-panel__tours button:hover{border-color:#0091ae;background:#d9f0f4}.chattito-panel__tours button:focus-visible{outline:2px solid #0091ae;outline-offset:2px}
 .chattito-panel__tour-help{margin:8px 0 0;color:#516f90;font-size:11px;line-height:1.45}
+.chattito-panel__help-preference{display:flex;align-items:center;gap:7px;margin-bottom:12px;color:#516f90;font-size:12px}.chattito-panel__help-preference input:focus-visible{outline:2px solid #0091ae;outline-offset:2px}.chattito-message p{white-space:pre-line}
 .chattito-message__resume{display:block;margin-top:9px;border:1px solid #0091ae;border-radius:7px;background:#eaf7f9;padding:6px 9px;color:#006e84;font-size:11px;font-weight:700}.chattito-message__resume:hover{background:#d9f0f4}.chattito-message__resume:focus-visible{outline:2px solid #0091ae;outline-offset:2px}
 @media(max-width:1023px){.chattito-panel{width:100vw}.chattito-panel__resize{display:none}}
 @media(prefers-reduced-motion:reduce){.chattito-panel-enter-active,.chattito-panel-leave-active,.chattito-message-move,.chattito-message-enter-active,.chattito-message-leave-active{transition:none}}

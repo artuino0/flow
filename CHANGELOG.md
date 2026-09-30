@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.118.0] - 2026-09-30
+#### [feature]
+- [ERD-130](https://dydasoftware.atlassian.net/browse/ERD-130) - Chattito muestra una ayuda contextual discreta al entrar a cada pestaña de la edición del módulo (explicación corta de la pantalla, «Explícame más» que abre el panel con los detalles, «No mostrar más aquí» y «No me sugieras más ayuda»); aparece una vez por pestaña, organización y usuario, y no interrumpe recorridos ni conversaciones.
+
 ### [0.117.0] - 2026-09-30
 #### [feature]
 - [ERD-129](https://dydasoftware.atlassian.net/browse/ERD-129) - Cada pestaña de la edición del módulo tiene su propio parámetro en la URL (`/modulos/<id>/editar?tab=info|fields|relations|menu|detail|list|flow|labels|api`) con enlace directo; base reactiva de contexto de pantalla para Chattito (sin sugerencia visible todavía).

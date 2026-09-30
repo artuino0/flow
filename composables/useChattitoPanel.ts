@@ -27,6 +27,7 @@ export function normalizeChattitoWidth(width: number) {
 function initialPanel() {
   return {
     open: false,
+    conversationStarted: false,
     nextId: 4,
     messages: initialMessages.map(message => ({ ...message })),
     avatarState: 'idle' as ChattitoEmotion | 'typing',
@@ -91,6 +92,7 @@ export function useChattitoPanel() {
     }
   }
   function addMessage(message: Omit<ChattitoMessage, 'id'>) {
+    panel.value.conversationStarted = true
     const next = { ...message, id: panel.value.nextId++ }
     panel.value.messages.push(next)
     if (panel.value.messages.length > 60) panel.value.messages.splice(0, panel.value.messages.length - 60)
