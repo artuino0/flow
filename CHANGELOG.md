@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.127.0] - 2026-10-01
+#### [feature]
+- [ERD-142](https://dydasoftware.atlassian.net/browse/ERD-142) - Chattito responde más rápido y barato: usa por defecto un modelo ligero (`gpt-5.4-mini`, con respaldo `gpt-5.4-nano`) y reserva el modelo alto (`gpt-6-luna`) para preguntas complejas; si un modelo se descontinúa o deja de existir, cambia solo al siguiente sin romper el agente y lo avisa en el log. Incluye una batería de evaluación (`scripts/evalAgent.mjs`) con Luna como juez.
+
 ### [0.126.3] - 2026-10-01
 #### [bug]
 - [ERD-145](https://dydasoftware.atlassian.net/browse/ERD-145) - Chattito ya no te deja con un «Señálame» sin destino ni pierde de qué hablaban: si la guía apunta a algo de la configuración del módulo (por ejemplo Campos) desde otra pantalla, ofrece «Llévame a Campos de…» y espera a que la pantalla cargue antes de señalar; y respuestas cortas como «llévame», «vamos», «dale» o «sí» ejecutan la última opción ofrecida (o preguntan cuál si hay varias) en lugar de volver a un tema anterior.

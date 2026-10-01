@@ -14,6 +14,7 @@ import { agentMaxOutputTokens, agentResilience } from '../../server/utils/agent/
 import { agentFallbacks, courtesyReply } from '../../utils/agentConversation'
 import { recordAgentMetric, withAgentQuota } from '../../server/utils/agent/usage'
 import { readTenantCatalog } from '../../server/utils/agent/tenantCatalog'
+import { agentModelPool } from '../../server/utils/agent/models'
 
 const auth = { sub: 'test-user', tenantId: 'test-tenant', roleId: 'test-role', sid: 'test-session' }
 const input = { message: '¿Cómo organizo el trabajo de mi equipo en Flow?', context: { page: 'home', path: '/' } }
@@ -22,6 +23,7 @@ const tenantModule = { id: 'service-id', name: 'Servicios', slug: 'servicios', s
 const response = (content = output) => new Response(JSON.stringify({ choices: [{ finish_reason: content ? 'stop' : 'length', message: { content } }], usage: { prompt_tokens: 20, completion_tokens: 45 } }))
 let logs: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
+ agentModelPool.reset()
  vi.clearAllMocks()
  vi.stubEnv('AI_PROVIDER','openai'); vi.stubEnv('OPENAI_API_KEY','simulated'); vi.stubEnv('OPENAI_MODEL','gpt-6-luna'); vi.stubEnv('AGENT_AI_MAX_OUTPUT_TOKENS',''); vi.stubEnv('AGENT_AI_TIMEOUT_MS','12000')
  agentResilience.active = 0; agentResilience.failures = 0; agentResilience.failureStart = 0; agentResilience.openUntil = 0; agentResilience.probing = false
@@ -32,6 +34,29 @@ beforeEach(() => {
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 describe('ERD-144 servicio con catálogo y proveedor simulado', () => {
+ it('ERD-142: ligero por defecto, alto por complejidad y OPENAI_MODEL independiente', async () => {
+  const fetch = vi.fn(async (_url: unknown, _init: RequestInit) => response()); vi.stubGlobal('fetch', fetch)
+  await resolveAgentMessage(auth, input)
+  expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body)).model).toBe('gpt-5.4-mini')
+  expect(log()).toMatchObject({ model: 'gpt-5.4-mini', fallbackCount: 0 })
+  await resolveAgentMessage(auth, { ...input, message: 'Analiza las ventajas de organizar el trabajo en Flow' })
+  expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({ model: 'gpt-6-luna', max_completion_tokens: 3000 })
+  expect(log()).toMatchObject({ model: 'gpt-6-luna', fallbackCount: 0 })
+ })
+ it('ERD-142: respaldo se cuenta sin texto y conserva una única cuota', async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'model_not_found', message: input.message } }), { status: 404 })).mockResolvedValue(response())
+  vi.stubGlobal('fetch', fetch)
+  expect((await resolveAgentMessage(auth, input)).layer).toBe('ai')
+  expect(log()).toMatchObject({ model: 'gpt-5.4-nano', fallbackCount: 1, tokensIn: 20, tokensOut: 45 })
+  expect(withAgentQuota).toHaveBeenCalledOnce(); expect(agentResilience.active).toBe(0)
+ })
+ it('ERD-142: todos ausentes degradan al mensaje genérico sin excepción ni 500', async () => {
+  const fetch = vi.fn(async () => new Response('{}', { status: 404 })); vi.stubGlobal('fetch', fetch)
+  const result = await resolveAgentMessage(auth, input)
+  expect(result.layer).toBe('unavailable'); expect(agentFallbacks.unavailable).toContain(result.reply)
+  expect(fetch).toHaveBeenCalledTimes(3); expect(log()).toMatchObject({ reason: 'provider_http_404', model: 'gpt-6-luna', fallbackCount: 2 })
+  expect(recordAgentMetric).toHaveBeenCalledOnce(); expect(agentResilience.active).toBe(0)
+ })
  it('ERD-147: conversación y destinos con guion bajo nunca llaman IA ni cuota', async () => {
   let history: { role: 'assistant'; text: string }[] = []
   for (const [message, expected] of [['que modulos tengo', '4 módulos'], ['y catalagos', '7 catálogos'], ['abre cuentas por cobrar', '/registros/cuentas_por_cobrar'], ['abre el catálogo de métodos de pago', '/registros/metodos_pago'], ['cobros de clientes', '/registros/cobros_cliente']]) {
@@ -126,7 +151,7 @@ describe('BUG-ERD-140: servicio y transporte simulados, sin BD ni red', () => {
  it.each(['bad','0','-1','Infinity'])('presupuesto inválido %s usa 1500', configured => {
   vi.stubEnv('AGENT_AI_MAX_OUTPUT_TOKENS',configured); expect(agentMaxOutputTokens()).toBe(1500)
  })
- it.each([400,401,403,404,422])('HTTP %s no se reintenta ni abre el circuito', async status => {
+ it.each([400,401,403,422])('HTTP %s sin fallo de modelo no se reintenta ni abre el circuito', async status => {
   const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { code: 'unsupported_value', message: input.message } }),{ status })); vi.stubGlobal('fetch',fetch)
   for (let attempt = 0; attempt < 4; attempt++) {
    expect((await resolveAgentMessage(auth,input)).layer).toBe('unavailable')
@@ -158,11 +183,12 @@ describe('BUG-ERD-140: servicio y transporte simulados, sin BD ni red', () => {
   vi.stubGlobal('fetch',vi.fn(async () => response(content)))
   expect((await resolveAgentMessage(auth,input)).layer).toBe('unavailable'); expect(log().reason).toBe('invalid_json'); expect(agentResilience.failures).toBe(0)
  })
- it.each([408,429,503])('HTTP %s reintenta una vez y abre el circuito tras tres fallos', async status => {
+ it.each([408,429,503])('HTTP %s abre el circuito del modelo tras tres fallos y permite respaldo', async status => {
   const fetch = vi.fn(async () => new Response('{}',{ status })); vi.stubGlobal('fetch',fetch)
   for (let i = 0; i < 3; i++) { await resolveAgentMessage(auth,input); expect(log().reason).toBe(`provider_http_${status}`) }
-  expect(fetch).toHaveBeenCalledTimes(6); expect(agentResilience.openUntil).toBeGreaterThan(Date.now())
-  await resolveAgentMessage(auth,input); expect(log().reason).toBe('circuit_open'); expect(fetch).toHaveBeenCalledTimes(6)
+  expect(fetch).toHaveBeenCalledTimes(8); expect(agentResilience.openUntil).toBe(0)
+  expect(log()).toMatchObject({ model: 'gpt-5.4-nano', fallbackCount: 1 })
+  await resolveAgentMessage(auth,input); expect(log().reason).toBe(`provider_http_${status}`); expect(fetch).toHaveBeenCalledTimes(10)
  })
  it('un transitorio recuperado responde y reinicia fallos', async () => {
   const fetch = vi.fn().mockResolvedValueOnce(new Response('{}',{ status: 503 })).mockResolvedValueOnce(response()); vi.stubGlobal('fetch',fetch)
@@ -172,11 +198,11 @@ describe('BUG-ERD-140: servicio y transporte simulados, sin BD ni red', () => {
  it('timeout registra motivo seguro y cuenta para circuito', async () => {
   vi.stubEnv('AGENT_AI_TIMEOUT_MS','10')
   vi.stubGlobal('fetch',vi.fn((_url: unknown,init: RequestInit) => new Promise((_resolve,reject) => init.signal!.addEventListener('abort',() => reject(new Error(input.message)),{ once: true }))))
-  await resolveAgentMessage(auth,input); expect(log().reason).toBe('timeout'); expect(agentResilience.failures).toBe(1); expect(agentResilience.active).toBe(0)
+  await resolveAgentMessage(auth,input); expect(log().reason).toBe('timeout'); expect(agentResilience.failures).toBe(0); expect(agentResilience.active).toBe(0)
  })
  it('fallo de red transitorio se reintenta sin registrar el mensaje del error', async () => {
   const fetch = vi.fn().mockRejectedValue(new TypeError(input.message)); vi.stubGlobal('fetch',fetch)
-  await resolveAgentMessage(auth,input); expect(log().reason).toBe('network_error'); expect(fetch).toHaveBeenCalledTimes(2); expect(agentResilience.failures).toBe(1)
+  await resolveAgentMessage(auth,input); expect(log().reason).toBe('network_error'); expect(fetch).toHaveBeenCalledTimes(2); expect(agentResilience.failures).toBe(0)
  })
  it('sin proveedor y concurrencia agotada registran no_provider y busy', async () => {
   vi.stubEnv('AI_PROVIDER',''); await resolveAgentMessage(auth,input); expect(log().reason).toBe('no_provider')

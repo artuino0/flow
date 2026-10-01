@@ -18,7 +18,7 @@ export class AiProviderNotConfiguredError extends Error {}
 
 /** Diagnóstico seguro: nunca conserva el cuerpo ni el mensaje del proveedor. */
 export class AiCompletionError extends Error {
-  constructor(public reason: string, public transient = false, public code?: string) {
+  constructor(public reason: string, public transient = false, public code?: string, public modelUnavailable = false) {
     super(reason)
     this.name = 'AiCompletionError'
   }
@@ -26,13 +26,17 @@ export class AiCompletionError extends Error {
 
 async function completionHttpError(response: Response) {
   let code: string | undefined
+  let modelUnavailable = false
   try {
-    const data = await response.json() as { error?: { code?: unknown } }
+    const data = await response.json() as { error?: { code?: unknown; param?: unknown; message?: unknown } }
     const value = data.error?.code
     // Solo identificadores de error acotados; no texto libre del proveedor.
     if (typeof value === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(value)) code = value
+    modelUnavailable = response.status === 400 && (code === 'unsupported_model' || code === 'model_not_supported' ||
+      (data.error?.param === 'model' && (code === 'unsupported_value' || code === 'invalid_model')) ||
+      (typeof data.error?.message === 'string' && /model.{0,120}(not supported|unsupported|does not exist|not found)|(?:unsupported|not supported).{0,40}model/i.test(data.error.message)))
   } catch { /* Un cuerpo no JSON no aporta un código seguro. */ }
-  return new AiCompletionError(`provider_http_${response.status}`, response.status === 408 || response.status === 429 || response.status >= 500, code)
+  return new AiCompletionError(`provider_http_${response.status}`, response.status === 408 || response.status === 429 || response.status >= 500, code, modelUnavailable)
 }
 
 /**
