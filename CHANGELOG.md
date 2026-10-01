@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.123.0] - 2026-10-01
+#### [feature]
+- [ERD-137](https://dydasoftware.atlassian.net/browse/ERD-137) - Chattito aparece como personaje en el chat del Diseñador de estructura: los mensajes del asistente llevan su avatar (solo el último, animado) y cambia de gesto según el momento (escribiendo mientras la IA genera, contento al llegar una propuesta, «rebosante de felicidad» al aplicar el diseño), con su propia instancia separada del panel global.
+
 ### [0.122.0] - 2026-09-30
 #### [feature]
 - [ERD-136](https://dydasoftware.atlassian.net/browse/ERD-136) - El administrador ve su consumo de plan en la parte inferior del menú lateral, con una versión para el menú abierto (plan, almacenamiento, barra de consumo y botón para mejorar el plan) y otra para el menú cerrado (indicador con tooltip y detalle de seis recursos); cambia de estado con el consumo (normal, aviso desde 80 %, crítico desde 90 % y límite al 100 %) y aparece con una transición suave.
