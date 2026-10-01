@@ -314,20 +314,26 @@ async function onCreateRole() {
 
 <template>
   <div class="flex flex-col gap-5">
-    <div class="flex items-center justify-between">
-      <div class="flex flex-col gap-1">
-        <h1 class="text-[22px] font-bold text-brand-text">Roles y Permisos</h1>
-        <p class="text-sm text-brand-text-secondary">Define los permisos de cada rol y qué módulos aparecen en su menú.</p>
-        <p class="text-xs text-brand-text-muted">Ocultar del menú conserva el permiso Ver, el acceso directo y los selectores relacionados. Sin Ver, el módulo no aparece.</p>
-      </div>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
-        @click="openCreateModal"
-      >
-        <Plus class="h-4 w-4" :stroke-width="1.75" />
-        Crear rol
-      </button>
+    <ListPageHeader
+      title="Roles y Permisos"
+      description="Define los permisos de cada rol y qué módulos aparecen en su menú."
+      :show-search="false"
+      :show-toolbar="false"
+    >
+      <template #actions>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          @click="openCreateModal"
+        >
+          <Plus class="h-4 w-4" :stroke-width="1.75" />
+          Crear rol
+        </button>
+      </template>
+    </ListPageHeader>
+
+    <div role="note" class="rounded border border-brand-border-light bg-brand-surface px-4 py-3 text-xs text-brand-text-muted">
+      <p>Ocultar del menú conserva el permiso Ver, el acceso directo y los selectores relacionados. Sin Ver, el módulo no aparece.</p>
     </div>
 
     <p v-if="rolesPending" class="text-sm text-brand-text-muted">Cargando...</p>

@@ -84,10 +84,16 @@ async function reload() { await refresh(); if (data.value) { accept(data.value);
 
 <template>
   <div class="flex flex-col gap-5">
-    <header class="flex flex-wrap items-start justify-between gap-4">
-      <div><h1 class="text-[22px] font-bold text-brand-text">Organización del menú</h1><p class="mt-1 text-sm text-brand-text-secondary">Organiza los módulos según el trabajo de cada equipo.</p></div>
-      <button v-if="data" type="button" :disabled="saving || !dirty" class="rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50" @click="save">{{ saving ? 'Guardando…' : 'Guardar organización' }}</button>
-    </header>
+    <ListPageHeader
+      title="Organización del menú"
+      description="Organiza los módulos según el trabajo de cada equipo."
+      :show-search="false"
+      :show-toolbar="false"
+    >
+      <template #actions>
+        <button v-if="data" type="button" :disabled="saving || !dirty" class="rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50" @click="save">{{ saving ? 'Guardando…' : 'Guardar organización' }}</button>
+      </template>
+    </ListPageHeader>
     <p v-if="error" role="alert" class="text-sm text-brand-error-text">{{ error.statusCode === 403 ? 'Solo un administrador puede organizar los módulos.' : 'No se pudo cargar la organización del menú.' }}</p>
     <template v-else-if="data">
       <div class="flex flex-wrap items-center justify-between gap-3 rounded border border-brand-border-light bg-brand-surface px-4 py-3 text-xs text-brand-text-secondary">

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.121.0] - 2026-09-30
+#### [feature]
+- [ERD-135](https://dydasoftware.atlassian.net/browse/ERD-135) - Roles y Permisos y Organización del menú adoptan el encabezado nuevo (migas de pan, título y descripción, con «Crear rol» y «Guardar organización» en las acciones del encabezado); la nota sobre «Ocultar del menú» queda en un aviso informativo bajo el encabezado en lugar de texto suelto.
+
 ### [0.120.2] - 2026-09-30
 #### [bug]
 - [ERD-134](https://dydasoftware.atlassian.net/browse/ERD-134) - «Deshacer diseño» vuelve a bloquear el deshacer de módulos que tienen registros (desde la restricción de seguridad por actor ausente contaba 0 registros y no protegía los datos), y la aplicación interna de un plano (plantilla de Agenda e instalación por consola) vuelve a marcar los registros existentes para revalidación; los scripts de siembra locales siguen funcionando.
