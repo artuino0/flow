@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { createError, getCookie, getHeader, getRequestURL, setHeader, type H3Event } from 'h3'
+import { createError, getCookie, getHeader, setHeader, type H3Event } from 'h3'
 import { AUTH_COOKIE_NAME, verifyAuthToken, type AuthTokenPayload } from '~/server/utils/auth'
 import { requireAuth } from '~/server/utils/rbac'
+import { allowedRequestOrigins } from '~/server/utils/requestOrigin'
 const attempts = new Map<string, { count: number; start: number; blockedUntil: number }>()
 export function sessionKey(secret: string, jwtSecret: string) { return secret || createHmac('sha256', jwtSecret).update('AGENT_SESSION_KEY_V1').digest('hex') }
 export function signAgentToken(auth: AuthTokenPayload, secret: string, now = Date.now()) {
@@ -20,11 +21,14 @@ export function validAgentToken(token: string, auth: AuthTokenPayload, secret: s
   return data.context === 'agent-v1' && data.exp > now && data.exp <= now + 600_000 && data.userId === auth.sub && data.tenantId === auth.tenantId && Boolean(auth.sid) && data.sessionId === auth.sid
  } catch { return false }
 }
-export function sameAgentOrigin(origin: string | undefined, referer: string | undefined, site: string | undefined, expected: string, method: string) {
+export function sameAgentOrigin(origin: string | undefined, referer: string | undefined, site: string | undefined, allowed: ReadonlySet<string>, method: string) {
  if (site && site !== 'same-origin') return false
  // GET del navegador no lleva Origin; exige Referer del mismo origen.
  if (!origin && method !== 'GET') return false
- try { return new URL(origin || referer || '').origin === expected && (!referer || new URL(referer).origin === expected) } catch { return false }
+ try {
+  const source = new URL(origin || referer || '').origin
+  return allowed.has(source) && (!referer || new URL(referer).origin === source)
+ } catch { return false }
 }
 export function agentBlocked(event: H3Event, auth: AuthTokenPayload, reason: string): never {
  const key = `${auth.tenantId}:${auth.sub}`; const now = Date.now()
@@ -47,8 +51,8 @@ export function requireAgentSession(event: H3Event, requireToken = true) {
  let interactive: AuthTokenPayload
  try { interactive = verifyAuthToken(cookie, String(config.jwtSecret)) } catch { return agentBlocked(event, auth, 'auth_type') }
  if (interactive.sub !== auth.sub || interactive.tenantId !== auth.tenantId || interactive.sid !== auth.sid) return agentBlocked(event, auth, 'auth_type')
- const expected = process.env.APP_BASE_URL ? new URL(process.env.APP_BASE_URL).origin : getRequestURL(event).origin
- if (!sameAgentOrigin(getHeader(event, 'origin'), getHeader(event, 'referer'), getHeader(event, 'sec-fetch-site'), expected, event.method)) return agentBlocked(event, auth, 'origin')
+ const allowed = allowedRequestOrigins(event)
+ if (!sameAgentOrigin(getHeader(event, 'origin'), getHeader(event, 'referer'), getHeader(event, 'sec-fetch-site'), allowed, event.method)) return agentBlocked(event, auth, 'origin')
  const secret = sessionKey(process.env.AGENT_SESSION_SECRET || '', String(config.jwtSecret))
  if (requireToken && !validAgentToken(getHeader(event, 'x-agent-token') || '', auth, secret)) return agentBlocked(event, auth, 'token')
  return { auth, secret }

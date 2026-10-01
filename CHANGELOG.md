@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.126.1] - 2026-10-01
+#### [bug]
+- [ERD-146](https://dydasoftware.atlassian.net/browse/ERD-146) - Chattito ya no responde «Acceso no permitido» cuando entras por otro de los dominios legítimos del mismo servicio (por ejemplo el que Railway asigna además del configurado en `APP_BASE_URL`): el origen permitido es ahora un conjunto (el origen real de la petición, `APP_BASE_URL`, el dominio de Railway y la lista opcional `AGENT_ALLOWED_ORIGINS`), manteniendo el bloqueo a otros sitios, a peticiones sin origen, a claves de API y a tokens inválidos, y aceptando solo `https` en producción.
+
 ### [0.126.0] - 2026-10-01
 #### [feature]
 - [ERD-144](https://dydasoftware.atlassian.net/browse/ERD-144) - Chattito conoce los módulos y catálogos de tu organización: «¿dónde registro mis servicios?» te lleva al módulo que ya tienes («Llévame a Servicios» y «Nuevo registro») en lugar de sugerir crear uno; «¿qué módulos tengo?» y «¿y catálogos?» enumeran los reales por separado (módulo = operativo en el menú principal, catálogo = dato de referencia que se consulta desde selectores), «llévame a catálogos» abre directamente la pantalla de Catálogos, y todo se filtra por los permisos de tu rol sin leer registros.
