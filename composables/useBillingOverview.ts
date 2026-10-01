@@ -1,15 +1,15 @@
 import type { Ref } from 'vue'
-import type { SidebarPlanSnapshot } from '~/utils/sidebarPlanUsage'
+import type { BillingOverview } from '~/utils/billingOverview'
 
-export function useDesignerPlanUsage(isAdmin: Ref<boolean | null>) {
+export function useBillingOverview(isAdmin: Ref<boolean | null>) {
   const { user } = useAuth()
   const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
   const scope = () => [user.value?.id, user.value?.tenantId, user.value?.roleId, user.value?.sessionId].join(':')
-  return useAsyncData('appnav-plan-usage', async () => {
+  return useAsyncData('billing-overview', async () => {
     if (isAdmin.value !== true) return null
     const requestScope = scope()
-    const snapshot = await $fetch<Omit<SidebarPlanSnapshot, 'scope'>>('/api/billing/plan-usage', { headers })
-    return { ...snapshot, scope: requestScope }
+    const overview = await $fetch<BillingOverview>('/api/billing/overview', { headers })
+    return { ...overview, scope: requestScope }
   }, {
     dedupe: 'defer',
     watch: [isAdmin, scope],

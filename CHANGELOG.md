@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.122.0] - 2026-09-30
+#### [feature]
+- [ERD-136](https://dydasoftware.atlassian.net/browse/ERD-136) - El administrador ve su consumo de plan en la parte inferior del menú lateral, con una versión para el menú abierto (plan, almacenamiento, barra de consumo y botón para mejorar el plan) y otra para el menú cerrado (indicador con tooltip y detalle de seis recursos); cambia de estado con el consumo (normal, aviso desde 80 %, crítico desde 90 % y límite al 100 %) y aparece con una transición suave.
+
 ### [0.121.0] - 2026-09-30
 #### [feature]
 - [ERD-135](https://dydasoftware.atlassian.net/browse/ERD-135) - Roles y Permisos y Organización del menú adoptan el encabezado nuevo (migas de pan, título y descripción, con «Crear rol» y «Guardar organización» en las acciones del encabezado); la nota sobre «Ocultar del menú» queda en un aviso informativo bajo el encabezado en lugar de texto suelto.

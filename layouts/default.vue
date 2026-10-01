@@ -185,7 +185,7 @@ async function onLogout(reason?: 'inactividad') {
         :class="[sidebarCollapsed ? 'w-16' : activeKey === 'sites' ? 'w-60' : 'w-80', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
         @keydown.esc="mobileMenuOpen = false"
       >
-        <div class="flex items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
+        <div class="flex shrink-0 items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
           <span v-if="!sidebarCollapsed" class="text-xs font-bold tracking-wide text-brand-text-muted">MENÚ</span>
           <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = false"><X class="h-4 w-4" /></button>
           <button
@@ -198,7 +198,7 @@ async function onLogout(reason?: 'inactividad') {
             <PanelLeftClose v-else class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
-        <div class="sidebar-scroll flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overflow-x-hidden p-2.5">
+        <div class="flex min-h-0 flex-1 flex-col gap-px">
           <AppNav :compact="sidebarCollapsed" />
         </div>
       </aside>
@@ -224,10 +224,10 @@ async function onLogout(reason?: 'inactividad') {
 </template>
 
 <style scoped>
-.sidebar-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
-.sidebar-scroll::-webkit-scrollbar { width: 4px; }
-.sidebar-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-.sidebar-scroll::-webkit-scrollbar-button { display: none; }
+:deep(.sidebar-scroll) { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+:deep(.sidebar-scroll)::-webkit-scrollbar { width: 4px; }
+:deep(.sidebar-scroll)::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+:deep(.sidebar-scroll)::-webkit-scrollbar-button { display: none; }
 </style>
 
 

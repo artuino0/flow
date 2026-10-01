@@ -18,36 +18,17 @@ import {
   Workflow
 } from '@lucide/vue'
 
-type UsageResource = 'storageBytes' | 'users' | 'sites' | 'automationExecutions' | 'emails'
-interface UsageItem { resourceKey: UsageResource; quantity: number; limit: number | null; percentUsed: number | null; isOverLimit: boolean }
-interface Plan { id: string; code: string; name: string; description: string; monthlyPriceCents: number; annualPriceCents: number; currency: string; limits: Record<string, number | null>; blockedBy: Array<{ concept: string; label: string; used: number; limit: number }> }
-interface Invoice {
-  id: string
-  status: string
-  totalCents: number
-  amountPaidCents: number
-  currency: string
-  issuedAt: string | null
-  periodStart?: string | null
-  periodEnd?: string | null
-  hostedInvoiceUrl: string | null
-  invoicePdfUrl: string | null
-}
-interface Overview {
-  stripeConfigured: boolean
-  subscription: { id: string; status: string; billingInterval: string; stripeCustomerId: string | null; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; plan: Plan } | null
-  usage: UsageItem[]
-  invoices: Invoice[]
-  usageHistory: Array<{ resourceKey: UsageResource; quantity: number; limitValue: number | null; capturedOn: string }>
-}
+import type { Invoice, Plan, UsageItem, UsageResource } from '~/utils/billingOverview'
 
 const toast = useToast()
 const busyPlan = ref<string | null>(null)
 const billingInterval = ref<'month' | 'year'>('month')
 const openingPortal = ref(false)
-const { data, pending, error, refresh } = await useFetch<Overview>('/api/billing/overview', { key: 'billing-overview', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
+const { data: isAdmin } = await useIsAdmin()
+const { data, pending, error, refresh: refreshOverview } = await useBillingOverview(isAdmin)
 const { data: plansResponse } = await useFetch<{ plans: Plan[] }>('/api/billing/plans', { key: 'billing-plans', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
-const { data: planUsage } = await useFetch<{ plan: string; usage: Array<{ concept: string; label: string; used: number; limit: number | null; percent: number | null }> }>('/api/billing/plan-usage', { key: 'plan-limits', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
+const { data: planUsage, refresh: refreshPlanUsage } = await useDesignerPlanUsage(isAdmin)
+async function refresh() { await Promise.all([refreshOverview(), refreshPlanUsage()]) }
 
 const labels: Record<UsageResource, { label: string; short: string; icon: typeof HardDrive; compact: (value: number) => string }> = {
   users: { label: 'Usuarios activos', short: 'Usuarios', icon: Users, compact: value => String(value) },
@@ -171,7 +152,7 @@ async function openPortal() {
       </section>
 
       <section class="panel usage-card" data-tour="settings-plan-consumption">
-        <header class="section-head compact"><div><h2>Consumo del periodo</h2><p>{{ periodLabel }}</p></div></header>
+        <header class="section-head compact"><div><h2>Consumo del periodo</h2><p>{{ periodLabel }}</p></div><button type="button" class="button outline small" :disabled="pending" @click="refresh"><RefreshCw :size="13" />Actualizar consumo</button></header>
         <div class="usage-grid">
           <article v-for="item in usage" :key="item.resourceKey" class="usage-metric">
             <div class="metric-title"><component :is="labels[item.resourceKey].icon" :size="14" /><strong>{{ labels[item.resourceKey].label }}</strong></div>

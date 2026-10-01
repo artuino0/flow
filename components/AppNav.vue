@@ -94,7 +94,8 @@ function active(to: string) {
 </script>
 
 <template>
-  <AppNavTooltip :enabled="compact">
+  <div class="flex min-h-0 flex-1 flex-col">
+  <AppNavTooltip :enabled="compact" class="sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2.5">
     <nav aria-label="Menú de la aplicación" class="flex flex-col gap-4">
       <div class="flex flex-col gap-px">
         <span v-if="!compact" class="px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-text-muted">GENERAL</span>
@@ -136,5 +137,7 @@ function active(to: string) {
       <div v-if="globalItems.length === 0 && sections.every(section => section.items.length === 0)" class="px-3 py-8 text-center"><BookOpen class="mx-auto h-5 w-5 text-brand-text-muted" /><p v-if="!compact" class="mt-2 text-xs leading-5 text-brand-text-muted">No tienes opciones disponibles en esta aplicación.</p></div>
     </nav>
   </AppNavTooltip>
+  <SidebarPlanUsage :compact="compact" />
+  </div>
 </template>
 
