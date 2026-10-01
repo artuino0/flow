@@ -7,7 +7,7 @@ import { showDesignerAccess, tourNeedsAdministration } from '~/utils/onboardingT
 
 defineProps<{ compact?: boolean }>()
 const { activeKey } = useFlowApps()
-const { activeId: activeTourId } = useOnboarding()
+const { navigationTourId: activeTourId } = useOnboarding()
 const route = useRoute()
 const chat = useChat()
 const { data: nav } = await useFetch<{ groups: NavigationNode[]; unassigned: NavigationEntity[] }>('/api/nav/entities', { key: 'appnav-modules', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })

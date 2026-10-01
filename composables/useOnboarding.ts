@@ -16,6 +16,7 @@ let expectedNavigation = false
 let tourGeneration = 0
 let stepRequest = 0
 let tourOriginPath = '/'
+let activeRoutePath = '/'
 
 function unmountAvatar() {
   if (avatarHost) render(null, avatarHost)
@@ -65,6 +66,9 @@ export function useOnboarding() {
   const { panel: chattitoPanel, addMessage } = useChattitoPanel()
   const toast = useToast()
   const activeId = useState<TourId | null>('onboarding-active-id', () => null)
+  const agentActionPending = useState<boolean>('onboarding-agent-action-pending', () => false)
+  const agentPreparingTour = useState<TourId | null>('onboarding-agent-preparing-tour', () => null)
+  const navigationTourId = computed(() => agentPreparingTour.value ?? activeId.value)
   const attemptedIdentity = useState<string | null>('onboarding-attempted-identity', () => null)
   const completedInMemory = useState<string[]>('onboarding-completed-memory', () => [])
   const progressInMemory = useState<Record<string, TourProgress>>('onboarding-progress-memory', () => ({}))
@@ -75,6 +79,7 @@ export function useOnboarding() {
   const canLaunchTour = (id: TourId) => canRunTour(onboardingTours[id], tourAccess.value)
   const activeSteps = useState<readonly OnboardingStep[]>('onboarding-active-steps', () => [])
   const activeIndex = useState<number>('onboarding-active-index', () => 0)
+  const navigationTourIndex = computed(() => agentPreparingTour.value ? 0 : activeIndex.value)
 
   function storageKey(id: TourId) {
     const current = user.value
@@ -268,6 +273,7 @@ export function useOnboarding() {
     }
     const element = step.selector ? target : undefined
     expectedNavigation = false
+    activeRoutePath = route.fullPath
     highlightedClickCleanup?.()
     highlightedClickCleanup = undefined
     keyboardCleanup?.()
@@ -519,7 +525,7 @@ export function useOnboarding() {
     return true
   }
 
-  async function startTour(id: TourId) {
+  async function prepareTour(id: TourId) {
     if (!import.meta.client || !sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout, import.meta.dev)) return false
     if (isContextualTour(id) && !contextualTourMatchesRoute(id, route.path, route.query)) return false
     const identity = sessionIdentity.value
@@ -530,10 +536,23 @@ export function useOnboarding() {
     if (identity !== sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout, import.meta.dev)) return false
     if (!canStartTourRequest(id, user.value, route.path, route.meta.layout, tourAccess.value, import.meta.dev)) return false
     if (isContextualTour(id) && !contextualTourMatchesRoute(id, route.path, route.query)) return false
+    return true
+  }
+
+  function firstTourSelector(id: TourId) {
+    return permittedTourSteps(onboardingTours[id], tourAccess.value)[0]?.selector
+  }
+
+  async function startTour(id: TourId) {
+    const identity = sessionIdentity.value
+    if (!await prepareTour(id) || identity !== sessionIdentity.value) return false
+    if (!canStartTourRequest(id, user.value, route.path, route.meta.layout, tourAccess.value, import.meta.dev)) return false
+    if (isContextualTour(id) && !contextualTourMatchesRoute(id, route.path, route.query)) return false
     attemptedIdentity.value = identity
     stopTour()
     discardProgress(id)
     activeId.value = id
+    activeRoutePath = route.fullPath
     activeSteps.value = permittedTourSteps(onboardingTours[id], tourAccess.value)
     activeBranch.value = null
     tourOriginPath = isContextualTour(id) ? route.fullPath : route.path === '/dev/chattito' ? '/' : route.path
@@ -570,6 +589,7 @@ export function useOnboarding() {
     if (identity !== sessionIdentity.value || !canStartTourRequest(progress.id, user.value, route.path, route.meta.layout, tourAccess.value, import.meta.dev)) return false
     stopTour()
     activeId.value = progress.id
+    activeRoutePath = route.fullPath
     activeSteps.value = permittedTourSteps(onboardingTours[progress.id], tourAccess.value)
     activeBranch.value = progress.branch
     tourOriginPath = progress.originPath
@@ -583,24 +603,29 @@ export function useOnboarding() {
   }
 
   async function startWelcomeOnce() {
+    if (agentActionPending.value || activeId.value) return false
     if (!import.meta.client || !sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout)) return false
     const identity = sessionIdentity.value
     if (adminStatus.value === 'pending') await adminRequest
     if (identity !== sessionIdentity.value || !canStartOnboarding(user.value, route.path, route.meta.layout)) return false
+    if (agentActionPending.value || activeId.value) return false
     if (!canLaunchTour('bienvenida')) return false
     if (attemptedIdentity.value === sessionIdentity.value || isCompleted('bienvenida') || isDismissed('bienvenida') || getProgress('bienvenida')) return false
     attemptedIdentity.value = sessionIdentity.value
     activeId.value = 'bienvenida'
+    activeRoutePath = route.fullPath
     activeSteps.value = permittedTourSteps(onboardingTours.bienvenida, tourAccess.value)
     return showStep(0)
   }
 
   function handleRouteChange() {
     if (!activeId.value || expectedNavigation) return
+    // Un observador pendiente de la navegación anterior no representa otra salida.
+    if (route.fullPath === activeRoutePath) return
     const step = activeSteps.value[activeIndex.value]
     if (step?.completeWhen && 'path' in step.completeWhen && route.path === step.completeWhen.path) return
     pauseTour('¡Va! Veo que ya andas explorando por tu cuenta. Guardé tu lugar; aquí está el botón para retomarlo cuando quieras.')
   }
 
-  return { activeId, activeIndex, pendingTour, sessionIdentity, canLaunchTour, isCompleted, markCompleted, startTour, resumeTour, startWelcomeOnce, stopTour, omitTour, reset, handleRouteChange }
+  return { activeId, activeIndex, pendingTour, sessionIdentity, agentActionPending, agentPreparingTour, navigationTourId, navigationTourIndex, canLaunchTour, firstTourSelector, prepareTour, isCompleted, markCompleted, startTour, resumeTour, startWelcomeOnce, stopTour, omitTour, reset, handleRouteChange }
 }

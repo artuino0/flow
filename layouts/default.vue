@@ -34,7 +34,7 @@ const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const profileMenuOpen = ref(false)
 const navRoute = useRoute()
-const { activeId: activeTourId, activeIndex: activeTourIndex } = useOnboarding()
+const { navigationTourId: activeTourId, navigationTourIndex: activeTourIndex } = useOnboarding()
 const { activeKey } = useFlowApps()
 const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
 // El chat es una superficie de trabajo de borde a borde. A diferencia de

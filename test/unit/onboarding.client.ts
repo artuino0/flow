@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, nextTick, reactive, ref, type Ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch, type Ref } from 'vue'
 import { useOnboarding } from '../../composables/useOnboarding'
 import { useChattitoHelp } from '../../composables/useChattitoHelp'
 import { useModuleTourHelp, useContextualTourHelp } from '../../composables/useModuleTourHelp'
 import { resolveChattitoContext } from '../../utils/chattitoContext'
-import { MODULE_EDIT_TOURS, onboardingTours, TOUR_SELECTORS } from '../../utils/onboardingTours'
+import { MODULE_EDIT_TOURS, onboardingTours, TOUR_SELECTORS, waitForTourTarget, tourNeedsAdministration, tourNeedsMobileMenu } from '../../utils/onboardingTours'
+import { runAgentAction, AGENT_TOUR_FAILURE, AGENT_MODULE_TOUR_HELP, type AgentActionDependencies } from '../../utils/agentActions'
 
 const harness = vi.hoisted(() => ({ drive: vi.fn(), destroy: vi.fn(), createDriver: vi.fn() }))
 vi.mock('../../components/ChattitoAvatar.vue', () => ({ default: {} }))
@@ -18,8 +19,8 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
   let onboarding: ReturnType<typeof useOnboarding>
   let route: { path: string; fullPath: string; params: { id: string }; query: { tab: string; section?: string }; meta: { layout: string } }
   let planRefresh: ReturnType<typeof vi.fn>
-  let navigate: ReturnType<typeof vi.fn>
-  let addMessage: ReturnType<typeof vi.fn>
+  let navigate: ReturnType<typeof vi.fn<(destination: string) => Promise<void>>>
+  let addMessage: ReturnType<typeof vi.fn<(message: unknown) => number>>
   let panel: Ref<{ open: boolean; conversationStarted: boolean; avatarState: string; messages: unknown[] }>
   let admin: Ref<boolean>
 
@@ -69,6 +70,171 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
     route.query.section = 'plan'
     route.fullPath = '/ajustes?section=plan&source=menu#consumo'
   }
+
+  it('reproduce el rechazo silencioso anterior cuando push termina antes de actualizar useRoute', async () => {
+    const routerPush = vi.fn(async () => undefined)
+    await routerPush()
+    expect(onboarding.canLaunchTour('ajustes-plan')).toBe(true)
+    expect(await onboarding.startTour('ajustes-plan')).toBe(false)
+    expect(addMessage).not.toHaveBeenCalled()
+    goToPlan()
+    await nextTick()
+    expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+  })
+
+  it('conserva el recorrido ante el observador tardío y lo pausa si el usuario sale después', async () => {
+    goToPlan()
+    expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+    onboarding.handleRouteChange()
+    expect(onboarding.activeId.value).toBe('ajustes-plan')
+    route.fullPath = '/ajustes?section=perfil'
+    route.query.section = 'perfil'
+    onboarding.handleRouteChange()
+    expect(onboarding.activeId.value).toBeNull()
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ action: { kind: 'resume-tour', tourId: 'ajustes-plan' } }))
+  })
+
+  function actionDependencies(): AgentActionDependencies {
+    return {
+      route: () => route,
+      routerPath: () => route.fullPath,
+      push: async path => { await navigate(path); return true },
+      nextTick: async () => { await nextTick() },
+      isCurrent: () => true,
+      prepareTour: onboarding.prepareTour,
+      firstSelector: onboarding.firstTourSelector,
+      waitTarget: (selector, ready, abort, timeoutMs) => waitForTourTarget(() => ready() ? selector ? document.querySelector(selector) : document.body : null, () => true, { timeoutMs, intervalMs: 10, abort }),
+      startTour: onboarding.startTour,
+      point: vi.fn(),
+      message: text => addMessage({ role: 'assistant', text, emotion: 'idle' }),
+      beforeTour: () => { panel.value.open = false }
+    }
+  }
+
+  it('navega, espera useRoute diferido y el anclaje, procesa el watch y después inicia Plan', async () => {
+    const deps = actionDependencies()
+    let routerPath = route.fullPath
+    let targetReady = false
+    const target = { isConnected: true, getClientRects: () => [{}] }
+    vi.stubGlobal('document', { body: {}, querySelector: () => targetReady ? target : null })
+    deps.routerPath = () => routerPath
+    deps.push = async path => {
+      routerPath = path
+      setTimeout(() => { void navigate(path); targetReady = true }, 20)
+      return true
+    }
+    const events: string[] = []
+    const stopWatching = watch(() => route.fullPath, () => { events.push('watch'); onboarding.handleRouteChange(); void nextTick().then(onboarding.startWelcomeOnce) })
+    onboarding.agentActionPending.value = true
+    deps.startTour = async id => { events.push('start'); return onboarding.startTour(id) }
+    try {
+      panel.value.open = true
+      expect(await runAgentAction({ kind: 'start-tour', tourId: 'ajustes-plan' }, deps)).toBe(true)
+      expect(events).toEqual(['watch', 'start'])
+      expect(harness.drive).toHaveBeenCalledOnce()
+      expect(onboarding.activeId.value).toBe('ajustes-plan')
+      expect(panel.value.open).toBe(false)
+      onboarding.handleRouteChange()
+      expect(onboarding.activeId.value).toBe('ajustes-plan')
+      await navigate('/')
+      await nextTick()
+      expect(onboarding.activeId.value).toBeNull()
+    } finally { stopWatching(); onboarding.agentActionPending.value = false }
+  })
+
+  it('un flush Vue normal tras push ocurre antes del inicio y no reproduce la carrera tardía', async () => {
+    const events: string[] = []
+    const stopWatching = watch(() => route.fullPath, () => { events.push('watch'); onboarding.handleRouteChange() })
+    try {
+      await navigate('/ajustes?section=plan')
+      events.push('start')
+      expect(await onboarding.startTour('ajustes-plan')).toBe(true)
+      await nextTick()
+      expect(events).toEqual(['watch', 'start'])
+      expect(onboarding.activeId.value).toBe('ajustes-plan')
+    } finally { stopWatching() }
+  })
+
+  it('muestra el rechazo por permiso y no deja un recorrido activo', async () => {
+    admin.value = false
+    expect(await runAgentAction({ kind: 'start-tour', tourId: 'ajustes-plan' }, actionDependencies())).toBe(false)
+    expect(addMessage).toHaveBeenCalledWith({ role: 'assistant', text: AGENT_TOUR_FAILURE, emotion: 'idle' })
+    expect(onboarding.activeId.value).toBeNull()
+  })
+
+  it('espera permisos reales pendientes sin descartar el botón por canLaunchTour=false', async () => {
+    const status = ref('pending')
+    admin.value = false
+    const request = new Promise<void>(resolve => setTimeout(() => { admin.value = true; status.value = 'success'; resolve() }, 20))
+    vi.stubGlobal('useIsAdmin', () => Object.assign(request, { data: admin, status }))
+    onboarding = useOnboarding()
+    expect(onboarding.canLaunchTour('ajustes-plan')).toBe(false)
+    expect(await runAgentAction({ kind: 'start-tour', tourId: 'ajustes-plan' }, actionDependencies())).toBe(true)
+    expect(onboarding.activeId.value).toBe('ajustes-plan')
+    expect(addMessage).not.toHaveBeenCalled()
+  })
+
+  it('el primer elemento ausente produce un mensaje sin activar ni guardar un recorrido huérfano', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { body: {}, querySelector: () => null })
+    try {
+      const result = runAgentAction({ kind: 'start-tour', tourId: 'ajustes-plan' }, actionDependencies())
+      await vi.advanceTimersByTimeAsync(8_000)
+      expect(await result).toBe(false)
+      expect(onboarding.activeId.value).toBeNull()
+      expect(onboarding.pendingTour.value).toBeNull()
+      expect(harness.drive).not.toHaveBeenCalled()
+      expect(addMessage).toHaveBeenCalledWith({ role: 'assistant', text: AGENT_TOUR_FAILURE, emotion: 'idle' })
+    } finally { vi.useRealTimers() }
+  })
+
+  it('prepara el menú manual cerrado antes del inicio sin activar el recorrido', async () => {
+    const deps = actionDependencies()
+    deps.prepareTour = async id => {
+      const permitted = await onboarding.prepareTour(id)
+      if (permitted) onboarding.agentPreparingTour.value = id
+      return permitted
+    }
+    const target = { isConnected: true, getClientRects: () => [{}], addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal('watch', watch)
+    vi.stubGlobal('document', { body: {}, querySelector: () => tourNeedsAdministration(onboarding.navigationTourId.value, 'administration') ? target : null })
+    deps.startTour = async id => {
+      expect(onboarding.activeId.value).toBeNull()
+      expect(onboarding.navigationTourIndex.value).toBe(0)
+      expect(tourNeedsMobileMenu(route.path, onboarding.navigationTourId.value, onboarding.navigationTourIndex.value, true)).toBe(true)
+      return onboarding.startTour(id)
+    }
+    try {
+      expect(await runAgentAction({ kind: 'start-tour', tourId: 'crear-modulo-manual' }, deps)).toBe(true)
+      expect(onboarding.activeId.value).toBe('crear-modulo-manual')
+    } finally { onboarding.agentPreparingTour.value = null }
+  })
+
+  it.each(Object.entries(MODULE_EDIT_TOURS))('el agente inicia %s solo desde su edición concreta', async (tab, tourId) => {
+    route.query.tab = tab
+    route.fullPath = `/modulos/actual/editar?tab=${tab}`
+    expect(await runAgentAction({ kind: 'start-tour', tourId }, actionDependencies())).toBe(true)
+    expect(onboarding.activeId.value).toBe(tourId)
+    expect(navigate).not.toHaveBeenCalled()
+    onboarding.stopTour()
+    route.path = '/modulos'
+    route.fullPath = '/modulos'
+    expect(await runAgentAction({ kind: 'start-tour', tourId }, actionDependencies())).toBe(false)
+    expect(addMessage).toHaveBeenLastCalledWith({ role: 'assistant', text: AGENT_MODULE_TOUR_HELP, emotion: 'idle' })
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it.each(['bienvenida', 'primer-modulo', 'crear-modulo-manual'] as const)('el agente inicia el recorrido no contextual %s', async tourId => {
+    vi.stubGlobal('useDesignerPlanUsage', () => ({ data: ref({ code: 'starter' }), status: ref('success'), refresh: planRefresh }))
+    const target = { isConnected: true, getClientRects: () => [{}], addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal('document', { body: {}, querySelector: () => target })
+    vi.stubGlobal('watch', watch)
+    onboarding = useOnboarding()
+    expect(await runAgentAction({ kind: 'start-tour', tourId }, actionDependencies())).toBe(true)
+    expect(onboarding.activeId.value).toBe(tourId)
+    expect(harness.drive).toHaveBeenCalledOnce()
+    if (tourId === 'crear-modulo-manual') expect(navigate).toHaveBeenCalledExactlyOnceWith('/ajustes')
+  })
 
   it('la pregunta de Plan inicia sin navegación ni consulta del Diseñador y persiste el descarte', async () => {
     goToPlan()
@@ -186,7 +352,12 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
     expect(help.disabled.value).toBe(true)
     expect(await help.launch()).toBe(false)
     expect(harness.drive).toHaveBeenCalledOnce()
+    const original = route.fullPath
+    route.fullPath = '/modulos'
+    route.path = '/modulos'
     onboarding.handleRouteChange()
+    route.fullPath = original
+    route.path = '/modulos/actual/editar'
     expect(help.available.value).toBe(true)
     expect(help.disabled.value).toBe(false)
     expect(localStorage.getItem(`flow-chattito-help:t:u:module-edit:${tab}:dismissed`)).toBe('1')
@@ -290,9 +461,11 @@ describe('lanzamiento y reanudación en el cliente sin navegador', () => {
       expect(help.visible.value).toBe(true)
       expect(help.tourId.value).toBe('editar-flujo')
       help.runTour()
-      await nextTick()
+      await vi.waitFor(() => expect(harness.drive).toHaveBeenCalledOnce())
       expect(harness.drive).toHaveBeenCalledOnce()
       expect(onboarding.activeId.value).toBe('editar-flujo')
+      route.path = '/modulos'
+      route.fullPath = '/modulos'
       onboarding.handleRouteChange()
       await nextTick()
       expect(help.visible.value).toBe(false)

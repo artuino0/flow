@@ -1,6 +1,8 @@
 # Changelog
 
-### [0.125.0] - 2026-10-01
+### [0.125.1] - 2026-10-01
+#### [bug]
+- [ERD-143](https://dydasoftware.atlassian.net/browse/ERD-143) - Los botones «Ver recorrido», «Llévame» y «Señálame» de Chattito ahora esperan a que la pantalla de destino esté lista (ruta publicada, permisos y elemento visibles) antes de iniciar el recorrido o resaltar el elemento, en lugar de navegar y no hacer nada; si no pueden iniciar, Chattito lo explica con un mensaje en lugar de fallar en silencio. Además, las respuestas a estados de ánimo difíciles («mal», «triste», «cansado») ya no muestran al avatar sonriente. - 2026-10-01
 #### [feature]
 - [ERD-141](https://dydasoftware.atlassian.net/browse/ERD-141) - Chattito conversa con calidez: reconoce saludos, «¿cómo estás?», estados de ánimo, agradecimientos, despedidas, halagos, «¿quién eres?» y chistes sin llamar a la IA, con varias respuestas para no sonar repetitivo; cuando algo está fuera de su alcance lo dice con simpatía y ofrece lo que sí puede hacer, y los mensajes de «no disponible», límite alcanzado, servicio ocupado o sin conexión suenan igual de cercanos y siguen siendo honestos sobre la causa.
 

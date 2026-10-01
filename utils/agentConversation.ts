@@ -30,11 +30,11 @@ export const courtesyFamilies = [
   '¡Me alegra saberlo! ¿En qué te puedo ayudar con Flow hoy?',
   '¡Qué bueno! Aquí estoy para acompañarte. ¿Qué quieres explorar en Flow?'
  ] },
- { pattern: /^(mal|muy mal|triste)$/, emotion: 'happy', replies: [
+ { pattern: /^(mal|muy mal|triste)$/, emotion: 'idle', replies: [
   'Siento que estés pasando un mal rato. Vamos a tu ritmo; ¿te ayudo con algo de Flow?',
   'Gracias por contármelo. Aquí estoy para acompañarte; ¿hay algo de Flow que pueda hacerte más fácil el día?'
  ] },
- { pattern: /^(cansado|cansada|agotado|agotada)$/, emotion: 'happy', replies: [
+ { pattern: /^(cansado|cansada|agotado|agotada)$/, emotion: 'idle', replies: [
   'Suena a un día pesado. Vamos paso a paso; ¿te ayudo a encontrar algo en Flow?',
   'Un poco de calma viene bien. Te acompaño con algo sencillo; ¿qué necesitas en Flow?'
  ] },

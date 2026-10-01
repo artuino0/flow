@@ -2,12 +2,13 @@
 import { lookAtElement, isAnimatedChattitoMessage, type ChattitoLookAt } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
 import { agentFallbackReply, agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
-import { chattitoCatalog } from '~/utils/chattitoCatalog'
-import { TOUR_SELECTORS, type TourId } from '~/utils/onboardingTours'
+import { runAgentAction } from '~/utils/agentActions'
+import { waitForTourTarget } from '~/utils/onboardingTours'
+import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { helpForContext } from '~/utils/chattitoHelp'
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
-const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour } = useOnboarding()
+const { activeId, pendingTour, startTour, resumeTour, omitTour, canLaunchTour, agentActionPending, agentPreparingTour, prepareTour, firstTourSelector } = useOnboarding()
 const { ready: helpPreferencesReady, disabled: helpDisabled, setDisabled: setHelpDisabled } = useChattitoHelpPreferences()
 const route = useRoute()
 const { context, recommendedTour } = useChattitoContext()
@@ -59,28 +60,45 @@ async function send() {
 }
 function actionLabel(action: AgentAction) { return action.kind === 'navigate' ? 'Llévame' : action.kind === 'point' ? 'Señálame' : 'Ver recorrido' }
 async function runAction(action: AgentAction) {
+ if (agentActionPending.value) return
+ const owner = sessionIdentity()
+ let actionCurrent = true
+ agentActionPending.value = true
  try {
-  if (action.kind === 'navigate') await router.push(action.path)
-  else if (action.kind === 'start-tour') {
-   const screen = chattitoCatalog.find(screen => screen.tourId === action.tourId)
-   if (screen?.path) await router.push(screen.path)
-   if (canLaunchTour(action.tourId as TourId)) await startTour(action.tourId as TourId)
-  } else {
-   const screen = chattitoCatalog.find(screen => screen.anchor === action.anchor)
-   if (screen?.path && route.fullPath !== screen.path) await router.push(screen.path)
-   await nextTick()
-   const selector = TOUR_SELECTORS[action.anchor as keyof typeof TOUR_SELECTORS]
-   const element = selector ? document.querySelector<HTMLElement>(selector) : null
-   if (!element || !element.getClientRects().length) { addMessage({ role: 'assistant', text: 'Ese elemento no está visible aquí. Abre la pantalla correspondiente y vuelve a pedirme que lo señale.' }); return }
-   lookAt.value = lookAtElement(element)
-   const { driver } = await import('driver.js')
-   highlight?.destroy()
-   highlight = driver({ animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, onDestroyed: () => { lookAt.value = 'center'; document.getElementById('chattito-message')?.focus() } })
-   highlight.highlight({ element, popover: { title: screen?.name || 'Aquí', description: screen?.summary || 'Este es el elemento que buscas.' } })
-   return
-  }
-  await nextTick(); document.querySelector<HTMLElement>('main h1')?.focus()
- } catch { addMessage({ role: 'assistant', text: 'No pude abrir esa ayuda ahora. Puedes intentarlo otra vez.' }) }
+  const succeeded = await runAgentAction(action, {
+   route: () => route,
+   routerPath: () => router.currentRoute.value.fullPath,
+   push: async path => {
+    const failure = await router.push(path)
+    return !isNavigationFailure(failure) || isNavigationFailure(failure, NavigationFailureType.duplicated)
+   },
+   nextTick: async () => { await nextTick() },
+   isCurrent: () => actionCurrent && owner === sessionIdentity(),
+   prepareTour: async id => {
+    const permitted = await prepareTour(id)
+    if (permitted && actionCurrent && owner === sessionIdentity()) agentPreparingTour.value = id
+    return permitted
+   },
+   firstSelector: firstTourSelector,
+   waitTarget: (selector, ready, abort, timeoutMs) => waitForTourTarget(
+    () => ready() ? selector ? document.querySelector(selector) : document.body : null,
+    element => !selector || (element.getClientRects().length > 0 && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden'),
+    { timeoutMs, intervalMs: 50, abort }
+   ),
+   startTour,
+   beforeTour: () => { highlight?.destroy(); close() },
+   message: text => { addMessage({ role: 'assistant', text, emotion: 'idle' }); setAvatarState('idle') },
+   point: async (element, title, description) => {
+    lookAt.value = lookAtElement(element)
+    const { driver } = await import('driver.js')
+    highlight?.destroy()
+    highlight = driver({ animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, onDestroyed: () => { lookAt.value = 'center'; document.getElementById('chattito-message')?.focus() } })
+    highlight.highlight({ element, popover: { title, description } })
+   }
+  })
+  if (!succeeded && action.kind === 'start-tour' && owner === sessionIdentity()) panel.value.open = true
+  if (succeeded && action.kind === 'navigate') document.querySelector<HTMLElement>('main h1')?.focus()
+ } finally { actionCurrent = false; agentPreparingTour.value = null; agentActionPending.value = false }
 }
 
 function startResize(event: PointerEvent) {

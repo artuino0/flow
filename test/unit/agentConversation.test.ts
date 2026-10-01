@@ -18,6 +18,10 @@ const families = [
  ['cuéntame un chiste', 'dime un chiste', 'cuéntame una curiosidad', 'dime una curiosidad']
 ]
 describe('ERD-141: cortesías compartidas', () => {
+ it.each(['mal', 'muy mal', 'triste', 'cansado', 'cansada', 'agotado', 'agotada'])('acompaña %s con una expresión tranquila', message => {
+  expect(courtesyReply(message)).toMatchObject({ emotion: 'idle', layer: 'catalog', actions: [] })
+  expect(cheapAgentReply({ message, context }, access)?.emotion).toBe('idle')
+ })
  it('normaliza acentos, mayúsculas, puntuación y espacios', () => {
   expect(normalizeAgentMessage(' ¿CÓMO\t ESTÁS? ¡Bien!.,; ')).toBe('como estas bien')
   for (const text of ['¿CÓMO ESTÁS, Chattito?', '¡Chattito! ¿Cómo estás?', ' Chattito; cómo estás; Chattito ']) {
