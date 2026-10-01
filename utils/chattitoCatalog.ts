@@ -1,7 +1,7 @@
 import { chattitoHelpCatalog } from './chattitoHelp'
-import { canRunTour, onboardingTours, TOUR_SELECTORS, type TourAccess, type TourId } from './onboardingTours'
-import type { AgentAction } from './agentConversation'
-import type { AgentTenantModule } from './agentTenantCatalog'
+import { canRunTour, meetsTourRequirement, onboardingTours, TOUR_SELECTORS, type TourAccess, type TourId } from './onboardingTours'
+import type { AgentReplyContext, AgentAction } from './agentConversation'
+import { matchTenantModules, type AgentTenantModule } from './agentTenantCatalog'
 import { AGENT_MODULE_PATH } from './agentRouteSlug'
 export interface AgentScreen { id: string; name: string; path?: string; synonyms: string[]; admin?: boolean; designer?: boolean; anchor?: keyof typeof TOUR_SELECTORS; tourId?: TourId; summary: string }
 export const chattitoCatalog: AgentScreen[] = [
@@ -19,14 +19,68 @@ export const chattitoCatalog: AgentScreen[] = [
 ]
 export function permittedAgentCatalog(access: TourAccess) { return chattitoCatalog.filter(screen => (!screen.admin || access.isAdmin) && (!screen.designer || access.designerAvailable)) }
 export function screenActions(screen: AgentScreen): AgentAction[] { return [...(screen.path ? [{ kind: 'navigate' as const, path: screen.path }] : []), ...(screen.anchor ? [{ kind: 'point' as const, anchor: screen.anchor }] : []), ...(screen.tourId ? [{ kind: 'start-tour' as const, tourId: screen.tourId }] : [])] }
-export function validateAgentActions(actions: AgentAction[], access: TourAccess, modules: readonly AgentTenantModule[] = []) {
+/** Catálogo de anclas existentes: incluye los elementos internos de cada recorrido. */
+export function agentAnchorScreen(anchor: string) {
+ const selector = TOUR_SELECTORS[anchor as keyof typeof TOUR_SELECTORS]
+ if (!selector) return undefined
+ return chattitoCatalog.find(screen => screen.anchor === anchor) || chattitoCatalog.find(screen => screen.tourId && onboardingTours[screen.tourId].steps.some(step => step.selector === selector))
+}
+export const AGENT_EDIT_PATH = /^\/modulos\/([a-zA-Z0-9_-]{1,100})\/editar\?tab=(info|fields|relations|menu|detail|list|flow|labels|api)$/
+export function validateAgentActions(actions: AgentAction[], access: TourAccess, modules: readonly AgentTenantModule[] = [], reference: AgentReplyContext = {}) {
  const catalog = permittedAgentCatalog(access)
- return actions.flatMap((action): AgentAction[] => {
+ const current = reference.context
+ const currentModule = /^\/modulos\/([^/]+)\/editar\/?$/.exec(current?.path || '')
+ const recentActions = [...(reference.history || [])].reverse().find(turn => turn.role === 'assistant')?.actions
+ const summary = (recentActions?.find(action => action.kind === 'navigate') || recentActions?.[0])?.label
+ const message = /\b(eso|ah[ií]|all[aá])\b/i.test(reference.message || '') && summary ? summary : reference.message || ''
+ const named = matchTenantModules(message.replace(/\b(m[oó]dulos?|cat[aá]logos?)\b/gi, ''), modules)
+ const target = named.length === 1 ? named[0] : !named.length ? modules.find(module => module.id === currentModule?.[1]) : undefined
+ const result = actions.flatMap((action): AgentAction[] => {
+  const explicit = action.path
+  const edit = explicit && AGENT_EDIT_PATH.exec(explicit)
+  if (edit && (!access.isAdmin || !modules.some(module => module.id === edit[1]) || (action.moduleId && action.moduleId !== edit[1]))) return []
+  if (action.moduleId && !modules.some(module => module.id === action.moduleId)) return []
   if (action.kind === 'navigate') {
+   if (edit) {
+    const module = modules.find(module => module.id === edit[1])!
+    const screen = catalog.find(screen => screen.id === `module-edit:${edit[2]}`)!
+    return [{ kind: 'navigate', path: action.path, moduleId: module.id, label: `Llévame a ${screen.name} de ${module.name}`.slice(0, 65) }]
+   }
    const match = AGENT_MODULE_PATH.exec(action.path)
    const module = match && modules.find(module => module.slug === match[1])
    if (module && (!match[2] || module.canCreate)) return [{ kind: 'navigate', path: action.path, label: match[2] ? 'Nuevo registro' : `Llévame a ${module.name}`.slice(0, 65) }]
+   return catalog.some(screen => screen.path === action.path) ? [action] : []
   }
-  return catalog.some(screen => action.kind === 'navigate' ? screen.path === action.path : action.kind === 'point' ? screen.anchor === action.anchor : screen.tourId === action.tourId && canRunTour(onboardingTours[screen.tourId], access)) ? [action] : []
- }).slice(0, 3)
+  const screen = action.kind === 'point' ? agentAnchorScreen(action.anchor) : catalog.find(screen => screen.tourId === action.tourId)
+  if (!screen || !catalog.includes(screen)) return []
+  if (action.kind === 'point' && screen.tourId) {
+   const selector = TOUR_SELECTORS[action.anchor as keyof typeof TOUR_SELECTORS]
+   const step = onboardingTours[screen.tourId].steps.find(step => step.selector === selector)
+   if (step?.requires && !meetsTourRequirement(step.requires, access)) return []
+  }
+  if (action.kind === 'start-tour' && !canRunTour(onboardingTours[action.tourId as TourId], access)) return []
+  if (screen.id.startsWith('module-edit:')) {
+   const tab = screen.id.split(':')[1]!
+   if (edit && edit[2] !== tab) return []
+   const module = edit ? modules.find(module => module.id === edit[1]) : action.moduleId ? modules.find(module => module.id === action.moduleId) : target
+   if (named.length === 1 && module && named[0]!.id !== module.id) return []
+   const here = current?.page === 'module-edit' && current.tab === tab && currentModule && (!module || currentModule[1] === module.id)
+   const path = module ? `/modulos/${module.id}/editar?tab=${tab}` : undefined
+   if (action.kind === 'point') {
+    if (here) return [{ ...action, ...(path ? { path, moduleId: module!.id } : {}), label: `Señálame ${screen.name}${module ? ` de ${module.name}` : ''}`.slice(0, 65) }, ...(actions.some(item => item.kind === 'start-tour' && item.tourId === screen.tourId) ? [] : [{ kind: 'start-tour' as const, tourId: screen.tourId!, ...(path ? { path, moduleId: module!.id } : {}) }])]
+    if (!path) return []
+    return [...(actions.some(item => item.kind === 'navigate' && item.path === path) ? [] : [{ kind: 'navigate' as const, path, moduleId: module!.id, label: `Llévame a ${screen.name} de ${module!.name}`.slice(0, 65) }]), ...(actions.some(item => item.kind === 'start-tour' && item.tourId === screen.tourId) ? [] : [{ kind: 'start-tour' as const, tourId: screen.tourId!, path, moduleId: module!.id }])]
+   }
+   return path ? [{ ...action, path, moduleId: module!.id }] : here ? [action] : []
+  }
+  if (explicit && explicit !== screen.path) return []
+  if (action.kind === 'point') {
+   if (!screen.path) return []
+   const url = new URL(screen.path, 'https://local.test')
+   const here = current?.path === url.pathname && (!url.searchParams.has('section') || current.section === url.searchParams.get('section'))
+   return here ? [{ ...action, path: screen.path, label: `Señálame ${screen.name}` }] : actions.some(item => item.kind === 'navigate' && item.path === screen.path) ? [] : [{ kind: 'navigate', path: screen.path, label: `Llévame a ${screen.name}` }]
+  }
+  return [action]
+ })
+ return result.slice(0, 3)
 }

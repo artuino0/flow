@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.126.3] - 2026-10-01
+#### [bug]
+- [ERD-145](https://dydasoftware.atlassian.net/browse/ERD-145) - Chattito ya no te deja con un «Señálame» sin destino ni pierde de qué hablaban: si la guía apunta a algo de la configuración del módulo (por ejemplo Campos) desde otra pantalla, ofrece «Llévame a Campos de…» y espera a que la pantalla cargue antes de señalar; y respuestas cortas como «llévame», «vamos», «dale» o «sí» ejecutan la última opción ofrecida (o preguntan cuál si hay varias) en lugar de volver a un tema anterior.
+
 ### [0.126.2] - 2026-10-01
 #### [bug]
 - [ERD-147](https://dydasoftware.atlassian.net/browse/ERD-147) - Chattito ahora lista todos tus módulos y catálogos: antes omitía en silencio los que llevan guion bajo en su identificador (por ejemplo «Cuentas por cobrar» o «Métodos de pago») porque aplicaba la regla de creación de módulos como filtro; ahora usa una regla de navegación propia y segura para rutas, registra cuántos elementos se descartan (sin nombres) y dice «…y N más» cuando recorta una lista. - 2026-10-01

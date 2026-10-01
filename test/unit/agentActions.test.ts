@@ -10,6 +10,7 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   const router = createRouter({ history: createMemoryHistory(), routes: [
    { path: '/registros/:entity()', component },
    { path: '/registros/:entity()/nuevo', component },
+   { path: '/modulos/:id()/editar', component },
    { path: '/:pathMatch(.*)*', component }
   ] })
   const resolve = (path: string) => router.resolve(path)
@@ -19,6 +20,8 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   expect(agentModuleRouteExists('/registros/metodos_pago/nuevo', resolve)).toBe(true)
   for (const slug of ['../x', 'a/b', 'a?b', 'A B', 'javascript:', 'a'.repeat(101)]) expect(agentModuleRouteExists(`/registros/${slug}`, resolve)).toBe(false)
   expect(agentModuleRouteExists('/registros/servicios/editar', resolve)).toBe(false)
+  expect(agentModuleRouteExists('/modulos/servicios/editar?tab=fields', resolve)).toBe(true)
+  expect(agentModuleRouteExists('/modulos/servicios/editar?tab=inventado', resolve)).toBe(false)
   const missing = createRouter({ history: createMemoryHistory(), routes: [{ path: '/registros/:entity', component, children: [{ path: ':pathMatch(.*)*', component }] }] })
   expect(agentModuleRouteExists('/registros/servicios/nuevo', path => missing.resolve(path))).toBe(false)
  })
@@ -180,4 +183,43 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   expect(deps.message).toHaveBeenCalledTimes(2)
   expect(deps.startTour).not.toHaveBeenCalled()
  })
+ it.each(['point', 'start-tour', 'navigate'] as const)('ERD-145 %s resuelve edición, espera ruta y actúa', async kind => {
+  const path = '/modulos/servicios/editar?tab=fields'
+  deps.routeExists = vi.fn(() => true)
+  deps.prepareEdit = vi.fn(async () => true)
+  deps.firstSelector = () => TOUR_SELECTORS.editTabFields
+  target = null; setTimeout(() => { target = element }, 400)
+  const action = kind === 'point' ? { kind, anchor: 'editFieldsAdd', path, moduleId: 'servicios' } : kind === 'start-tour' ? { kind, tourId: 'editar-campos', path, moduleId: 'servicios' } : { kind, path, moduleId: 'servicios' }
+  const result = runAgentAction(action, deps)
+  await vi.advanceTimersByTimeAsync(300)
+  expect(deps.point).not.toHaveBeenCalled(); expect(deps.startTour).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(200)
+  expect(await result).toBe(true)
+  expect(deps.prepareEdit).toHaveBeenCalledWith('servicios')
+  expect(deps.push).toHaveBeenCalledWith(path)
+  if (kind === 'point') expect(deps.point).toHaveBeenCalledWith(element, 'Campos', expect.any(String))
+  if (kind === 'start-tour') expect(deps.startTour).toHaveBeenCalledWith('editar-campos')
+ })
+ it('ERD-145 ancla ausente indica pantalla y ofrece botón con ruta concreta', async () => {
+  const path = '/modulos/servicios/editar?tab=fields'
+  deps.routeExists = () => true; deps.prepareEdit = async () => true; target = null
+  const result = runAgentAction({ kind: 'point', anchor: 'editFieldsAdd', path, moduleId: 'servicios' }, deps)
+  await vi.advanceTimersByTimeAsync(8000)
+  expect(await result).toBe(false)
+  expect(deps.message).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Campos'), [{ kind: 'navigate', path, label: 'Llévame', moduleId: 'servicios' }])
+  expect(deps.point).not.toHaveBeenCalled()
+ })
+ it('ERD-145 permiso de edición denegado impide navegar', async () => {
+  deps.routeExists = () => true; deps.prepareEdit = vi.fn(async () => false)
+  expect(await runAgentAction({ kind: 'point', anchor: 'editFieldsAdd', path: '/modulos/servicios/editar?tab=fields' }, deps)).toBe(false)
+  expect(deps.push).not.toHaveBeenCalled()
+  expect(deps.message).toHaveBeenCalledWith(expect.stringContaining('administrador'))
+ })
+ it('ERD-145 preparación tardía no navega fuera del presupuesto', async () => {
+  deps.routeExists = () => true; deps.prepareEdit = vi.fn(() => new Promise<boolean>(resolve => setTimeout(() => resolve(true), 9000)))
+  const result = runAgentAction({ kind: 'point', anchor: 'editFieldsAdd', path: '/modulos/servicios/editar?tab=fields' }, deps)
+  await vi.advanceTimersByTimeAsync(9500)
+  expect(await result).toBe(false); expect(deps.push).not.toHaveBeenCalled()
+ })
+
 })

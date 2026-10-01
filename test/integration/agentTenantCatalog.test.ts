@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type { AuthTokenPayload } from '../../server/utils/auth'
-import { agentPrompt, cheapAgentReply } from '../../server/utils/agent/layers'
+import { agentPrompt, cheapAgentReply, parseAgentOutput } from '../../server/utils/agent/layers'
 import { travelCatalog } from '../fixtures/agentTravelCatalog'
 import { validateAgentActions } from '../../utils/chattitoCatalog'
 let fixture: TestDb
@@ -168,4 +168,23 @@ describe('ERD-144 PostgreSQL embebido, RLS y permisos reales', () => {
   expect(JSON.stringify(first)).not.toContain('\\u0001')
   expect(Object.keys(first).sort()).toEqual(['canCreate', 'description', 'fieldLabels', 'id', 'moduleKind', 'name', 'singularName', 'slug'])
  })
+})
+
+it('ERD-145 point usa el ID legible del tenant y descarta IDs de otra organización', async () => {
+ const user = await actor(undefined, true), member = await actor(user.tenantId), other = await actor(undefined, true)
+ const serviceId = await entity(user, 'Servicios', 'servicios', true, true, true, false, 'dimension')
+ const otherId = await entity(other, 'Servicios', 'servicios', true, true, true, false, 'dimension')
+ await admin`insert into role_entity_permissions(role_id,entity_id,can_read,can_create) values (${member.roleId!},${serviceId},true,false)`
+ const available = await read(user), memberModules = await read(member)
+ const input = { message: 'campos del módulo Servicios', context: { page: 'home', path: '/' } }
+ const access = { isAdmin: true, designerAvailable: true }
+ const raw = JSON.stringify({ intent: 'guide', reply: 'Un cupo como dato no limita automáticamente las citas.', emotion: 'happy', actions: [{ kind: 'point', anchor: 'editFieldsAdd' }] })
+ const reply = parseAgentOutput(raw, access, input, available)
+ expect(reply.actions).toEqual([
+  { kind: 'navigate', path: `/modulos/${serviceId}/editar?tab=fields`, moduleId: serviceId, label: 'Llévame a Campos de Servicios' },
+  { kind: 'start-tour', tourId: 'editar-campos', path: `/modulos/${serviceId}/editar?tab=fields`, moduleId: serviceId }
+ ])
+ expect(parseAgentOutput(raw, { isAdmin: false, designerAvailable: false }, input, memberModules)).toMatchObject({ actions: [], reply: expect.stringContaining('administrador') })
+ expect(validateAgentActions([{ kind: 'point', anchor: 'editFieldsAdd', moduleId: otherId, path: `/modulos/${otherId}/editar?tab=fields` }], access, available, input)).toEqual([])
+ expect(parseAgentOutput(raw, access, { ...input, context: { page: 'module-edit', path: `/modulos/${serviceId}/editar`, tab: 'fields' } }, available).actions[0]?.kind).toBe('point')
 })

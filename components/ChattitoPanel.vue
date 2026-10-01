@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { lookAtElement, isAnimatedChattitoMessage, type ChattitoLookAt } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
-import { agentFallbackReply, agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
+import { agentFallbackReply, agentHistory, courtesyReply, resolveAgentFollowup, type AgentAction, type AgentReply } from '~/utils/agentConversation'
 import { runAgentAction, agentModuleRouteExists } from '~/utils/agentActions'
 import { waitForTourTarget } from '~/utils/onboardingTours'
 import { isNavigationFailure, NavigationFailureType } from 'vue-router'
+import { permittedAgentCatalog, screenActions } from '~/utils/chattitoCatalog'
 import { helpForContext } from '~/utils/chattitoHelp'
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
@@ -40,17 +41,19 @@ async function send() {
  if (!text || text.length > 600 || pending.value) return
  const owner = sessionIdentity()
  const history = agentHistory(panel.value.messages)
+ const followup = resolveAgentFollowup(text, panel.value.messages, permittedAgentCatalog({ isAdmin: canLaunchTour('editar-campos'), designerAvailable: canLaunchTour('primer-modulo') }).filter(screen => ['settings:plan', 'modules', 'roles', 'home', 'settings', 'chat'].includes(screen.id)).slice(0, 3).flatMap(screen => screenActions(screen).filter(action => action.kind === 'navigate')))
  addMessage({ role: 'user', text })
  const placeholder = addMessage({ role: 'assistant', text: '', emotion: 'typing' })
  setAvatarState('typing'); pending.value = true; draft.value = ''
  try {
-  const reply = courtesyReply(text, history) || await $fetch<AgentReply>('/api/agent/messages', { method: 'POST', headers: await agentHeaders(), body: { message: text, context: { ...context.value, path: route.path }, history } })
+  const reply = followup?.reply || courtesyReply(text, history) || await $fetch<AgentReply>('/api/agent/messages', { method: 'POST', headers: await agentHeaders(), body: { message: text, context: { ...context.value, path: route.path }, history } })
   if (owner !== sessionIdentity()) return
   Object.assign(placeholder, { text: reply.reply, emotion: reply.emotion, actions: reply.actions })
   // addMessage devuelve la referencia original, Vue puede envolverla: actualizar por id.
   const index = panel.value.messages.findIndex(message => message.id === placeholder.id)
   if (index >= 0) panel.value.messages[index] = { ...placeholder }
   setAvatarState(reply.emotion)
+  if (followup?.action) await runAction(followup.action)
  } catch {
   if (owner !== sessionIdentity()) return
   const index = panel.value.messages.findIndex(message => message.id === placeholder.id)
@@ -69,6 +72,10 @@ async function runAction(action: AgentAction) {
    route: () => route,
    routerPath: () => router.currentRoute.value.fullPath,
    routeExists: path => agentModuleRouteExists(path, destination => router.resolve(destination)),
+   prepareEdit: async id => {
+    const metadata = await $fetch<{ entities: { id: string; isActive: boolean; deletedAt?: string | null }[] }>('/api/entities', { timeout: 8_000 })
+    return metadata.entities.some(entity => entity.id === id && entity.isActive && !entity.deletedAt)
+   },
    prepareModule: async (slug, create) => {
     const metadata = await $fetch<{ entity: { isActive: boolean; deletedAt?: string | null }; permissions: { canRead: boolean; canCreate: boolean } }>(`/api/entities/${slug}/fields`, { timeout: 8_000 })
     return metadata.entity.isActive && !metadata.entity.deletedAt && metadata.permissions.canRead && (!create || metadata.permissions.canCreate)
@@ -92,7 +99,7 @@ async function runAction(action: AgentAction) {
    ),
    startTour,
    beforeTour: () => { highlight?.destroy(); close() },
-   message: text => { addMessage({ role: 'assistant', text, emotion: 'idle' }); setAvatarState('idle') },
+   message: (text, actions) => { addMessage({ role: 'assistant', text, actions, emotion: 'idle' }); setAvatarState('idle') },
    point: async (element, title, description) => {
     lookAt.value = lookAtElement(element)
     const { driver } = await import('driver.js')

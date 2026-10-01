@@ -1,8 +1,9 @@
-export type AgentAction = { kind: 'navigate'; path: string; label?: string } | { kind: 'point'; anchor: string } | { kind: 'start-tour'; tourId: string }
+import { chattitoCatalog, agentAnchorScreen, AGENT_EDIT_PATH } from './chattitoCatalog'
+export type AgentAction = ({ kind: 'navigate'; path: string } | { kind: 'point'; anchor: string; path?: string } | { kind: 'start-tour'; tourId: string; path?: string }) & { label?: string; moduleId?: string }
 import type { ChattitoEmotion } from './chattito'
 export interface AgentReply { reply: string; emotion: ChattitoEmotion; actions: AgentAction[]; layer: 'catalog' | 'ai' | 'offtopic' | 'limited' | 'unavailable'; retryAfterSec?: number | null }
-export type AgentTurn = { role: 'user' | 'assistant'; text: string }
-export interface AgentReplyContext { message?: string; history?: readonly AgentTurn[] }
+export type AgentTurn = { role: 'user' | 'assistant'; text: string; actions?: { kind: AgentAction['kind']; label: string }[] }
+export interface AgentReplyContext { message?: string; history?: readonly AgentTurn[]; context?: { page: string; path: string; tab?: string; section?: string } }
 export function normalizeAgentMessage(text: string) { return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[¡!¿?.,;]/g, ' ').replace(/\s+/g, ' ').trim() }
 
 /** Pura y determinista; el último turno evita repetir una respuesta consecutiva. */
@@ -101,6 +102,54 @@ export const agentFallbacks = {
 export function agentFallbackReply(kind: keyof typeof agentFallbacks, context: AgentReplyContext = {}): AgentReply {
  return { reply: chooseAgentVariant(agentFallbacks[kind], context), emotion: 'idle', actions: [], layer: kind === 'offtopic' ? 'offtopic' : kind === 'quota' || kind === 'rate' ? 'limited' : 'unavailable' }
 }
-export function agentHistory(messages: readonly { role: 'user' | 'assistant'; text: string }[]) {
- return messages.filter(message => message.text.trim()).slice(-8).map(message => ({ role: message.role, text: message.text.slice(0, 700) }))
+export interface AgentMessageReference {
+ role: 'user' | 'assistant'; text: string; actions?: AgentAction[]
+ action?: { kind: 'start-tour' | 'resume-tour'; tourId: string }
+}
+export function messageAgentActions(message?: AgentMessageReference): AgentAction[] {
+ return message?.actions?.length ? message.actions : message?.action?.kind === 'start-tour' ? [{ kind: 'start-tour', tourId: message.action.tourId }] : []
+}
+export function agentActionLabel(action: AgentAction) {
+ return action.label?.slice(0, 65) || (action.kind === 'navigate' ? 'Llévame' : action.kind === 'point' ? 'Señálame' : 'Ver recorrido')
+}
+/** Solo frases completas de seguimiento, nunca una pregunta compuesta. */
+export function agentFollowupKind(text: string): AgentAction['kind'] | 'auto' | null {
+ const normalized = normalizeAgentMessage(text).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+ const withoutPrefix = normalized.replace(/^(por favor|porfa|gracias) /, '')
+ const command = withoutPrefix !== normalized ? withoutPrefix : normalized.replace(/ (por favor|porfa|gracias)$/, '')
+ if (/^(senalamelo)$/.test(command)) return 'point'
+ if (/^(ensename|recorrido|ver recorrido)$/.test(command)) return 'start-tour'
+ if (/^(llevame(?: ahi| alla)?|ok llevame|abrelo)$/.test(command)) return 'navigate'
+ if (/^(vamos(?: ahi| alla)?|dale|si|a eso|ahi|muestramelo)$/.test(command)) return 'auto'
+ return null
+}
+export function resolveAgentFollowup(text: string, messages: readonly AgentMessageReference[], shortcuts: AgentAction[] = []): { reply: AgentReply; action?: AgentAction } | null {
+ const kind = agentFollowupKind(text)
+ if (!kind) return null
+ const assistants = messages.filter(message => message.role === 'assistant')
+ const latest = messageAgentActions(assistants.at(-1))
+ const preferred = kind === 'auto' ? ['navigate', 'start-tour', 'point'].find(kind => latest.some(action => action.kind === kind)) : kind
+ let candidates = latest.filter(action => action.kind === preferred)
+ if (kind === 'navigate' && !candidates.length) {
+  const destinations = latest.filter(action => action.path).map(action => ({ kind: 'navigate' as const, path: action.path!, ...(action.moduleId ? { moduleId: action.moduleId } : {}) }))
+  candidates = [...new Map(destinations.map(action => [action.path, action])).values()]
+ }
+ if (candidates.length === 1) return { reply: { reply: '¡Vamos!', emotion: 'happy', actions: latest, layer: 'catalog' }, action: candidates[0] }
+ const choices = latest.length ? latest : assistants.slice(-8).reverse().flatMap(messageAgentActions)
+ const actions = [...new Map((choices.length ? choices : shortcuts).map(action => [JSON.stringify(action), action])).values()].slice(0, 3)
+ return { reply: { reply: choices.length ? '¿Cuál quieres abrir? Elige y te acompaño.' : '¿A dónde quieres que te lleve?', emotion: 'happy', actions, layer: 'catalog' } }
+}
+export function agentHistory(messages: readonly AgentMessageReference[]): AgentTurn[] {
+ const turns = messages.filter(message => message.text.trim()).slice(-8)
+ const last = turns.findLastIndex(message => message.role === 'assistant')
+ return turns.map((message, index) => ({ role: message.role, text: message.text.slice(0, 700), ...(index === last && messageAgentActions(message).length ? { actions: messageAgentActions(message).slice(0, 3).map(action => ({ kind: action.kind, label: agentReferenceLabel(action) })) } : {}) }))
+}
+
+function agentReferenceLabel(action: AgentAction) {
+ if (action.label && !['Llévame', 'Señálame', 'Ver recorrido', 'Nuevo registro'].includes(action.label)) return action.label.slice(0, 65)
+ const edit = action.path && AGENT_EDIT_PATH.exec(action.path)
+ const screen = edit ? chattitoCatalog.find(screen => screen.id === `module-edit:${edit[2]}`) : action.kind === 'point' ? agentAnchorScreen(action.anchor) : chattitoCatalog.find(screen => action.kind === 'navigate' ? screen.path === action.path : screen.tourId === action.tourId)
+ if (screen) return `${agentActionLabel(action)} a ${screen.name}`.slice(0, 65)
+ const records = action.kind === 'navigate' && /^\/registros\/([a-z0-9_-]+)(?:\/nuevo)?$/.exec(action.path)
+ return records ? `${agentActionLabel(action)} en ${records[1]!.replace(/[_-]/g, ' ')}`.slice(0, 65) : agentActionLabel(action)
 }

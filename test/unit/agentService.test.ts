@@ -184,3 +184,37 @@ describe('BUG-ERD-140: servicio y transporte simulados, sin BD ni red', () => {
   await resolveAgentMessage(auth,input); expect(log().reason).toBe('busy'); expect(fetch).not.toHaveBeenCalled()
  })
 })
+
+describe('ERD-145 servicio con referente y privacidad', () => {
+ it('seguimiento largo usa las acciones recientes y no llama proveedor ni cuota', async () => {
+  vi.mocked(readTenantCatalog).mockResolvedValueOnce([tenantModule])
+  const message = 'llévame al lugar donde configuro eso'
+  const history = [
+   { role: 'user' as const, text: 'crear servicio' },
+   { role: 'assistant' as const, text: 'Respuesta privada anterior', actions: [{ kind: 'navigate' as const, label: 'Llévame a Campos de Servicios' }] }
+  ]
+  const reply = await resolveAgentMessage(auth, { ...input, message, history })
+  expect(reply.actions[0]).toMatchObject({ path: '/modulos/service-id/editar?tab=fields', moduleId: 'service-id' })
+  expect(fetch).not.toHaveBeenCalled(); expect(withAgentQuota).not.toHaveBeenCalled()
+  const serialized = logs.mock.calls.flat().join('')
+  expect(serialized).not.toContain(message)
+  expect(serialized).not.toContain('Respuesta privada anterior')
+  expect(serialized).not.toContain('Llévame a Campos de Servicios')
+ })
+ it('proveedor simulado recibe resumen y conserva honestidad; ancla ajena se vuelve alcanzable', async () => {
+  vi.mocked(readTenantCatalog).mockResolvedValueOnce([tenantModule])
+  const message = 'una duda, puedo poner un límite de cupos por servicio para una promoción'
+  const reply = 'Puedes guardar un cupo como dato; no puedo confirmar límites automáticos de citas.'
+  const history = [{ role: 'assistant' as const, text: 'Respuesta privada Campos', actions: [{ kind: 'navigate' as const, label: 'Llévame a Campos de Servicios' }] }]
+  const simulated = vi.fn(async (_url: unknown, _init: RequestInit) => response(JSON.stringify({ intent: 'guide', reply, emotion: 'happy', actions: [{ kind: 'point', anchor: 'editFieldsAdd' }] })))
+  vi.stubGlobal('fetch', simulated)
+  const result = await resolveAgentMessage(auth, { ...input, message, history })
+  expect(result.reply).toBe(reply)
+  expect(result.actions[0]).toMatchObject({ path: '/modulos/service-id/editar?tab=fields' })
+  const body = JSON.parse(String(simulated.mock.calls[0]?.[1]?.body))
+  expect(JSON.parse(body.messages[1].content).untrusted_user_data.history[0].actions).toEqual(history[0]!.actions)
+  expect(simulated).toHaveBeenCalledOnce()
+  const serialized = logs.mock.calls.flat().join('')
+  for (const text of [message, reply, history[0]!.text, history[0]!.actions[0]!.label]) expect(serialized).not.toContain(text)
+ })
+})
