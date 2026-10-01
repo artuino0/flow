@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.125.0] - 2026-10-01
+#### [feature]
+- [ERD-141](https://dydasoftware.atlassian.net/browse/ERD-141) - Chattito conversa con calidez: reconoce saludos, «¿cómo estás?», estados de ánimo, agradecimientos, despedidas, halagos, «¿quién eres?» y chistes sin llamar a la IA, con varias respuestas para no sonar repetitivo; cuando algo está fuera de su alcance lo dice con simpatía y ofrece lo que sí puede hacer, y los mensajes de «no disponible», límite alcanzado, servicio ocupado o sin conexión suenan igual de cercanos y siguen siendo honestos sobre la causa.
+
 ### [0.124.1] - 2026-10-01
 #### [bug]
 - [ERD-140](https://dydasoftware.atlassian.net/browse/ERD-140) - Chattito vuelve a responder con IA: la petición al modelo enviaba una temperatura que `gpt-6-luna` rechaza (error 400) y el presupuesto de tokens era demasiado corto para un modelo que razona; ahora el presupuesto es configurable (`AGENT_AI_MAX_OUTPUT_TOKENS`, 1500 por defecto), un error de configuración ya no abre el circuito de corte, y el registro del servidor indica el motivo de un fallo (sin guardar contenido).

@@ -4,7 +4,7 @@ import { tenantSubscriptions } from '~/server/db/schema'
 import { getEffectivePlanLimits, getPlanByKey } from '~/server/utils/plans'
 import { withRecordActor } from '~/server/utils/recordActorContext'
 import type { AuthTokenPayload } from '~/server/utils/auth'
-import type { AgentReply } from '~/utils/agentConversation'
+import { agentFallbackReply, type AgentReply, type AgentReplyContext } from '~/utils/agentConversation'
 type Tx = typeof db
 export async function readAgentPlan(tenantId: string) {
  const [subscription] = await withTenant(tenantId, tx => tx.select({ planId: tenantSubscriptions.planId }).from(tenantSubscriptions).where(eq(tenantSubscriptions.tenantId,tenantId)).limit(1))
@@ -40,7 +40,7 @@ export async function recordAgentMetric(auth: AuthTokenPayload, reply: AgentRepl
  catch { console.warn(JSON.stringify({ event: 'agent_metrics_failed', userId: auth.sub, tenantId: auth.tenantId })) }
 }
 /** Bloqueo hasta confirmar: sin reservas pendientes que recuperar. */
-export async function withAgentQuota(auth: AuthTokenPayload, complete: () => Promise<{ reply: AgentReply; inputTokens: number; outputTokens: number }>, at = new Date()): Promise<AgentReply> {
+export async function withAgentQuota(auth: AuthTokenPayload, complete: () => Promise<{ reply: AgentReply; inputTokens: number; outputTokens: number }>, at = new Date(), context: AgentReplyContext = {}): Promise<AgentReply> {
  const plan = await readAgentPlan(auth.tenantId)
  const limits = plan.limits
  return withRecordActor({ userId: auth.sub, roleId: auth.roleId }, () => withTenant(auth.tenantId, async tx => {
@@ -51,7 +51,7 @@ export async function withAgentQuota(auth: AuthTokenPayload, complete: () => Pro
   const usage = rows[0]!
   const monthly = limits.agentQueries !== null && usage.monthly >= limits.agentQueries
   const daily = limits.agentUserDaily !== null && usage.daily >= limits.agentUserDaily
-  if (monthly || daily) return { reply: 'Llegamos al límite de consultas con IA. Puedo seguir guiándote con las pantallas y recorridos de Flow.', emotion: 'idle', actions: [], layer: 'limited', retryAfterSec: monthly ? calendar.monthly_retry : calendar.daily_retry }
+  if (monthly || daily) return { ...agentFallbackReply('quota', context), retryAfterSec: monthly ? calendar.monthly_retry : calendar.daily_retry }
   const result = await complete()
   // La cuota se confirma en esta transacción; un fallo revierte el conteo.
   try {

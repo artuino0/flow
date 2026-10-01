@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { lookAtElement, isAnimatedChattitoMessage, type ChattitoLookAt } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
-import { agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
+import { agentFallbackReply, agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
 import { chattitoCatalog } from '~/utils/chattitoCatalog'
 import { TOUR_SELECTORS, type TourId } from '~/utils/onboardingTours'
 import { helpForContext } from '~/utils/chattitoHelp'
@@ -43,7 +43,7 @@ async function send() {
  const placeholder = addMessage({ role: 'assistant', text: '', emotion: 'typing' })
  setAvatarState('typing'); pending.value = true; draft.value = ''
  try {
-  const reply = courtesyReply(text) || await $fetch<AgentReply>('/api/agent/messages', { method: 'POST', headers: await agentHeaders(), body: { message: text, context: { ...context.value, path: route.path }, history } })
+  const reply = courtesyReply(text, history) || await $fetch<AgentReply>('/api/agent/messages', { method: 'POST', headers: await agentHeaders(), body: { message: text, context: { ...context.value, path: route.path }, history } })
   if (owner !== sessionIdentity()) return
   Object.assign(placeholder, { text: reply.reply, emotion: reply.emotion, actions: reply.actions })
   // addMessage devuelve la referencia original, Vue puede envolverla: actualizar por id.
@@ -53,7 +53,7 @@ async function send() {
  } catch {
   if (owner !== sessionIdentity()) return
   const index = panel.value.messages.findIndex(message => message.id === placeholder.id)
-  if (index >= 0) panel.value.messages[index] = { ...placeholder, text: 'Ahora no puedo responder. Intenta de nuevo en un momento; sigo aquí para acompañarte.', emotion: 'idle' }
+  if (index >= 0) panel.value.messages[index] = { ...placeholder, text: agentFallbackReply('network', { message: text, history }).reply, emotion: 'idle' }
   setAvatarState('idle')
  } finally { pending.value = false; await nextTick(); document.getElementById('chattito-message')?.focus() }
 }

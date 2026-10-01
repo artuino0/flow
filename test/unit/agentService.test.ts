@@ -9,6 +9,8 @@ vi.mock('../../server/utils/agent/usage', () => ({
 }))
 import { resolveAgentMessage } from '../../server/utils/agent/service'
 import { agentMaxOutputTokens, agentResilience } from '../../server/utils/agent/resilience'
+import { agentFallbacks, courtesyReply } from '../../utils/agentConversation'
+import { recordAgentMetric, withAgentQuota } from '../../server/utils/agent/usage'
 
 const auth = { sub: 'test-user', tenantId: 'test-tenant', roleId: 'test-role', sid: 'test-session' }
 const input = { message: '¿Cómo organizo el trabajo de mi equipo en Flow?', context: { page: 'home', path: '/' } }
@@ -32,6 +34,34 @@ function log() {
  return JSON.parse(String(logs.mock.calls.at(-1)?.[0]))
 }
 describe('BUG-ERD-140: servicio y transporte simulados, sin BD ni red', () => {
+ it('ERD-141: todas las cortesías evitan proveedor, ráfaga y cuota en servidor', async () => {
+  vi.mocked(withAgentQuota).mockClear(); vi.mocked(recordAgentMetric).mockClear()
+  const history = [{ role: 'assistant' as const, text: courtesyReply('como estas')!.reply }]
+  for (const message of ['como estas', 'hola chattito', 'bien', 'mal', 'cansado', 'mil gracias', 'adiós', 'quién eres', 'eres genial', 'cuéntame un chiste']) {
+   expect(await resolveAgentMessage(auth, { ...input, message, history })).toEqual(courtesyReply(message, history))
+  }
+  expect(fetch).not.toHaveBeenCalled(); expect(agentResilience.rate).not.toHaveBeenCalled(); expect(withAgentQuota).not.toHaveBeenCalled()
+  expect(recordAgentMetric).toHaveBeenCalledTimes(10)
+ })
+ it('ERD-141: charla breve que llega a capa 3 conserva personaje y contrato con proveedor simulado', async () => {
+  const reply = '¡Muy bien, gracias por preguntar! ¿Y tú? Con gusto te acompaño en Flow.'
+  const fetch = vi.fn(async (_url: unknown, _init: RequestInit) => response(JSON.stringify({ intent: 'guide', reply, emotion: 'happy', actions: [] }))); vi.stubGlobal('fetch', fetch)
+  expect(await resolveAgentMessage(auth, { ...input, message: '¿Cómo estás? ¿Me acompañas hoy en Flow?' })).toMatchObject({ layer: 'ai', reply, emotion: 'happy', actions: [] })
+  const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))
+  expect(body.messages[0].content).toContain('usa intent guide')
+  expect(body.messages[0].content).toContain('sin emojis')
+  expect(fetch).toHaveBeenCalledOnce()
+ })
+ it('ERD-141: respaldo honesto diferencia configuración, ocupación y ráfaga', async () => {
+  vi.stubEnv('AI_PROVIDER', '')
+  expect(agentFallbacks.no_provider).toContain((await resolveAgentMessage(auth, input)).reply)
+  vi.stubEnv('AI_PROVIDER', 'openai'); agentResilience.active = agentResilience.maxConcurrency
+  expect(agentFallbacks.busy).toContain((await resolveAgentMessage(auth, input)).reply)
+  vi.mocked(agentResilience.rate).mockReturnValue(30)
+  expect(await resolveAgentMessage(auth, input)).toMatchObject({ layer: 'limited', retryAfterSec: 30 })
+  expect(agentFallbacks.rate).toContain((await resolveAgentMessage(auth, input)).reply)
+  expect(fetch).not.toHaveBeenCalled()
+ })
  it.each(['','2200','99999'])('envía presupuesto configurable %s sin temperature', async configured => {
   vi.stubEnv('AGENT_AI_MAX_OUTPUT_TOKENS',configured)
   const fetch = vi.fn(async (_url: unknown,_init: RequestInit) => response()); vi.stubGlobal('fetch',fetch)
