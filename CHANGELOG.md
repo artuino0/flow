@@ -1,6 +1,8 @@
 # Changelog
 
-### [0.126.1] - 2026-10-01
+### [0.126.2] - 2026-10-01
+#### [bug]
+- [ERD-147](https://dydasoftware.atlassian.net/browse/ERD-147) - Chattito ahora lista todos tus módulos y catálogos: antes omitía en silencio los que llevan guion bajo en su identificador (por ejemplo «Cuentas por cobrar» o «Métodos de pago») porque aplicaba la regla de creación de módulos como filtro; ahora usa una regla de navegación propia y segura para rutas, registra cuántos elementos se descartan (sin nombres) y dice «…y N más» cuando recorta una lista. - 2026-10-01
 #### [bug]
 - [ERD-146](https://dydasoftware.atlassian.net/browse/ERD-146) - Chattito ya no responde «Acceso no permitido» cuando entras por otro de los dominios legítimos del mismo servicio (por ejemplo el que Railway asigna además del configurado en `APP_BASE_URL`): el origen permitido es ahora un conjunto (el origen real de la petición, `APP_BASE_URL`, el dominio de Railway y la lista opcional `AGENT_ALLOWED_ORIGINS`), manteniendo el bloqueo a otros sitios, a peticiones sin origen, a claves de API y a tokens inválidos, y aceptando solo `https` en producción.
 

@@ -1,7 +1,8 @@
 import { chattitoHelpCatalog } from './chattitoHelp'
 import { canRunTour, onboardingTours, TOUR_SELECTORS, type TourAccess, type TourId } from './onboardingTours'
 import type { AgentAction } from './agentConversation'
-import { AGENT_MODULE_PATH, type AgentTenantModule } from './agentTenantCatalog'
+import type { AgentTenantModule } from './agentTenantCatalog'
+import { AGENT_MODULE_PATH } from './agentRouteSlug'
 export interface AgentScreen { id: string; name: string; path?: string; synonyms: string[]; admin?: boolean; designer?: boolean; anchor?: keyof typeof TOUR_SELECTORS; tourId?: TourId; summary: string }
 export const chattitoCatalog: AgentScreen[] = [
  { id: 'home', name: 'Inicio', path: '/', synonyms: ['inicio', 'tablero', 'bienvenida'], anchor: 'dashboard', tourId: 'bienvenida', summary: 'En Inicio encuentras tu tablero de trabajo.' },

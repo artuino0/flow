@@ -3,11 +3,59 @@ import { matchTenantModules, sanitizeCatalogText, tenantPromptSummary, type Agen
 import { cheapAgentReply, agentPrompt, parseAgentOutput } from '../../server/utils/agent/layers'
 import { validateAgentActions } from '../../utils/chattitoCatalog'
 import type { AgentTurn } from '../../utils/agentConversation'
+import { travelCatalog } from '../fixtures/agentTravelCatalog'
+import { AGENT_MODULE_PATH, agentModulePath, isAgentRouteSlug } from '../../utils/agentRouteSlug'
+import { SLUG_PATTERN } from '../../server/utils/moduleEntities'
 
 const access = { isAdmin: true, designerAvailable: true }
 const input = { message: '', context: { page: 'home', path: '/' } }
 const module = (name: string, slug = name.toLowerCase(), canCreate = true): AgentTenantModule => ({ id: slug, slug, name, singularName: '', description: '', moduleKind: 'hecho', fieldLabels: [], canCreate })
 const modules = [module('Servicios'), module('Clientes'), module('Citas')]
+describe('ERD-147 slugs existentes seguros', () => {
+ it('reproduce el filtro anterior y enumera los 4 módulos y 7 catálogos reales', () => {
+  expect(travelCatalog.filter(item => SLUG_PATTERN.test(item.slug) && item.moduleKind === 'hecho').map(item => item.name)).toEqual(['Citas'])
+  expect(travelCatalog.filter(item => SLUG_PATTERN.test(item.slug) && item.moduleKind === 'dimension')).toHaveLength(4)
+  for (const [message, kind, count] of [['que modulos tengo', 'hecho', '4 módulos'], ['y catalagos', 'dimension', '7 catálogos']]) {
+   const reply = cheapAgentReply({ ...input, message: message! }, access, travelCatalog)!
+   expect(reply.layer).toBe('catalog'); expect(reply.reply).toContain(count)
+   for (const entry of travelCatalog.filter(item => item.moduleKind === kind)) expect(reply.reply).toContain(entry.name)
+   expect(reply.reply.length).toBeLessThanOrEqual(700)
+  }
+ })
+ it.each([['abre cuentas por cobrar', 'cuentas_por_cobrar'], ['abre el catálogo de métodos de pago', 'metodos_pago'], ['cobros de clientes', 'cobros_cliente']])('%s empareja %s', (message, slug) => {
+  // El emparejado también conserva consultas sin verbo.
+  expect(matchTenantModules(message, travelCatalog).map(item => item.slug)).toEqual([slug])
+  expect(cheapAgentReply({ ...input, message }, access, travelCatalog)?.actions[0]).toMatchObject({ path: `/registros/${slug}` })
+ })
+ it('valida acciones del proveedor, etiquetas y permisos de nuevo con guion bajo', () => {
+  const allowed = travelCatalog.map(item => ({ ...item, canCreate: item.slug !== 'metodos_pago' }))
+  const paths = ['/registros/cuentas_por_cobrar', '/registros/cuentas_por_cobrar/nuevo', '/registros/metodos_pago/nuevo', '/registros/otro_tenant']
+  const actions = paths.map(path => ({ kind: 'navigate' as const, path }))
+  const raw = JSON.stringify({ intent: 'guide', reply: 'Vamos.', emotion: 'happy', actions })
+  expect(parseAgentOutput(raw, access, input, allowed).actions).toEqual([
+   { kind: 'navigate', path: paths[0], label: 'Llévame a Cuentas por cobrar' },
+   { kind: 'navigate', path: paths[1], label: 'Nuevo registro' }
+  ])
+  expect(validateAgentActions(actions, access, allowed)).toHaveLength(2)
+ })
+ it.each(['../x', 'a/b', 'a?b', 'a#b', 'A B', 'javascript:', 'A', 'a__b', 'a-_b', '%2e%2e', 'a\n', 'a'.repeat(101)])('rechaza slug peligroso %s aun dentro del catálogo', slug => {
+  expect(isAgentRouteSlug(slug)).toBe(false)
+  expect(agentModulePath.bind(null, slug)).toThrow()
+  for (const suffix of ['', '/nuevo']) {
+   const path = `/registros/${slug}${suffix}`
+   expect(AGENT_MODULE_PATH.test(path)).toBe(false)
+   expect(validateAgentActions([{ kind: 'navigate', path }], access, [module('Peligroso', slug)])).toEqual([])
+  }
+  expect(matchTenantModules('abre Peligroso', [module('Peligroso', slug)])).toEqual([])
+ })
+ it('permite guiones mixtos y límite de 100, conserva el máximo de 12 nombres', () => {
+  for (const slug of ['a_b-c', 'a'.repeat(100)]) for (const create of [false, true]) expect(AGENT_MODULE_PATH.test(agentModulePath(slug, create))).toBe(true)
+  const many = Array.from({ length: 15 }, (_, i) => module(`Entidad${i}`, `entidad_${i}`))
+  const reply = cheapAgentReply({ ...input, message: 'que modulos tengo' }, access, many)!
+  expect(reply.reply).toContain('15 módulos'); expect(reply.reply).toContain('y 3 más')
+  expect(reply.reply.match(/Entidad\d+/g)).toHaveLength(12)
+ })
+})
 describe('ERD-144 catálogo vivo sin IA', () => {
  it.each([
   ['tengo una lista de servicios para mis clientes, ¿dónde los registro?', 'servicios'],

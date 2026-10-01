@@ -1,6 +1,6 @@
 import type { AgentAction } from './agentConversation'
 import { chattitoCatalog } from './chattitoCatalog'
-import { AGENT_MODULE_PATH } from './agentTenantCatalog'
+import { AGENT_MODULE_PATH } from './agentRouteSlug'
 import { contextualTourMatchesRoute, isModuleEditTour, onboardingTours, TOUR_SELECTORS, type TourId } from './onboardingTours'
 
 export const AGENT_TOUR_FAILURE = 'No pude iniciar el recorrido aquí. Abre esa pantalla y pídemelo de nuevo; aquí sigo para acompañarte.'

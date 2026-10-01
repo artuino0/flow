@@ -15,6 +15,9 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   const resolve = (path: string) => router.resolve(path)
   expect(agentModuleRouteExists('/registros/servicios', resolve)).toBe(true)
   expect(agentModuleRouteExists('/registros/servicios/nuevo', resolve)).toBe(true)
+  expect(agentModuleRouteExists('/registros/cuentas_por_cobrar', resolve)).toBe(true)
+  expect(agentModuleRouteExists('/registros/metodos_pago/nuevo', resolve)).toBe(true)
+  for (const slug of ['../x', 'a/b', 'a?b', 'A B', 'javascript:', 'a'.repeat(101)]) expect(agentModuleRouteExists(`/registros/${slug}`, resolve)).toBe(false)
   expect(agentModuleRouteExists('/registros/servicios/editar', resolve)).toBe(false)
   const missing = createRouter({ history: createMemoryHistory(), routes: [{ path: '/registros/:entity', component, children: [{ path: ':pathMatch(.*)*', component }] }] })
   expect(agentModuleRouteExists('/registros/servicios/nuevo', path => missing.resolve(path))).toBe(false)
@@ -66,7 +69,7 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   expect(deps.push).not.toHaveBeenCalled()
   expect(deps.message).toHaveBeenCalledWith(expect.stringContaining('te ayudo'))
  })
- it.each(['/registros/servicios', '/registros/servicios/nuevo'])('ruta dinámica %s espera publicación y elemento', async path => {
+ it.each(['/registros/servicios', '/registros/servicios/nuevo', '/registros/cuentas_por_cobrar', '/registros/cuentas_por_cobrar/nuevo'])('ruta dinámica %s espera publicación y elemento', async path => {
   deps.routeExists = vi.fn(() => true)
   target = null; setTimeout(() => { target = element }, 400)
   const result = runAgentAction({ kind: 'navigate', path }, deps)
@@ -74,7 +77,7 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   expect(deps.waitTarget).toHaveBeenCalledWith('main', expect.any(Function), expect.any(Function), expect.any(Number))
   await vi.advanceTimersByTimeAsync(200)
   expect(await result).toBe(true); expect(deps.routeExists).toHaveBeenCalledWith(path)
-  expect(deps.prepareModule).toHaveBeenCalledWith('servicios', path.endsWith('/nuevo'))
+  expect(deps.prepareModule).toHaveBeenCalledWith(path.split('/')[2], path.endsWith('/nuevo'))
  })
  it('permisos de módulo denegados no navegan y explican cómo continuar', async () => {
   deps.routeExists = () => true

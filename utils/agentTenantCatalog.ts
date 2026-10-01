@@ -1,12 +1,13 @@
 import { chooseAgentVariant, normalizeAgentMessage, type AgentAction, type AgentReply, type AgentReplyContext } from './agentConversation'
 import { chattitoCatalog, screenActions, validateAgentActions } from './chattitoCatalog'
 import type { TourAccess } from './onboardingTours'
+import { agentModulePath, isAgentRouteSlug } from './agentRouteSlug'
 
 export interface AgentTenantModule {
  id: string; slug: string; name: string; singularName: string; description: string
  moduleKind: string; fieldLabels: string[]; canCreate: boolean
 }
-export const AGENT_MODULE_PATH = /^\/registros\/([a-z0-9]+(?:-[a-z0-9]+)*)(\/nuevo)?$/
+export type AgentTenantCatalog = AgentTenantModule[] & { totalsByKind?: Record<string, number> }
 export function sanitizeCatalogText(value: string | null | undefined, max: number) {
  return (value || '').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 }
@@ -50,23 +51,25 @@ export function tenantOverviewReply(input: AgentReplyContext & { message: string
  const navigate = /\b(llevame|llevarme|abre|abrir|quiero ver)\b/.test(text)
  const enumeration = /\b(que|cuales|tenemos|tengo|hay|estan|disponibles|lista|listame|muestrame|dime|mis)\b/.test(text) || /^(y |e )?(modulos|catalogos|dimensiones)$/.test(text)
  if (!navigate && !enumeration) return null
- const available = modules.filter(module => kinds.includes(module.moduleKind))
+ const available = modules.filter(module => isAgentRouteSlug(module.slug) && kinds.includes(module.moduleKind))
+ const totals = (modules as AgentTenantCatalog).totalsByKind
  if (navigate && access.isAdmin) return { reply: chooseAgentVariant(['Claro, te llevo a la pantalla de administración que buscas.', 'Vamos a esa pantalla; te acompaño desde ahí.'], input), emotion: 'happy', layer: 'catalog', actions: kinds.map(directoryAction).slice(0, 3) }
  if (navigate) return { reply: chooseAgentVariant(available.length ? ['Esa pantalla es de administración, pero sí puedes abrir estos registros directamente. Elige y te acompaño.', 'Tu administrador gestiona esa pantalla. Te dejo acceso directo a los que puedes consultar.'] : ['Esa pantalla es de administración. Puedes pedirle a tu administrador que te habilite los accesos que necesitas; aquí sigo contigo.', 'Tu administrador puede ayudarte con esa pantalla. Por ahora no veo módulos o catálogos de ese tipo a los que tengas acceso.'], input), emotion: 'happy', layer: 'catalog', actions: available.slice(0, 3).map(module => moduleAction(module, true)) }
  let budget = 12
  const sections = kinds.map((kind, index) => {
   const entries = available.filter(module => module.moduleKind === kind)
+  const total = totals?.[kind] ?? entries.length
   const noun = kind === 'dimension' ? 'catálogos' : 'módulos'
   const reserved = kinds.slice(index + 1).reduce((count, nextKind) => count + Math.min(6, available.filter(module => module.moduleKind === nextKind).length), 0)
   const shown = entries.slice(0, Math.max(0, budget - reserved))
   budget -= shown.length
-  const countNoun = entries.length === 1 ? kind === 'dimension' ? 'catálogo' : 'módulo' : noun
-  return entries.length ? `${entries.length} ${countNoun}: ${namesList(shown.map(module => sanitizeCatalogText(module.name, 32)))}${entries.length > shown.length ? `, y ${entries.length - shown.length} más` : ''}` : `todavía no tienes ${noun} disponibles`
+  const countNoun = total === 1 ? kind === 'dimension' ? 'catálogo' : 'módulo' : noun
+  return total ? `${total} ${countNoun}: ${namesList(shown.map(module => sanitizeCatalogText(module.name, 32)))}${total > shown.length ? `${shown.length ? ', y ' : ''}${total - shown.length} más disponibles` : ''}` : `todavía no tienes ${noun} disponibles`
  })
- const actions: AgentAction[] = access.isAdmin ? kinds.map(kind => available.some(module => module.moduleKind === kind) ? directoryAction(kind) : createAction(kind)) : []
+ const actions: AgentAction[] = access.isAdmin ? kinds.map(kind => (totals?.[kind] ?? available.filter(module => module.moduleKind === kind).length) > 0 ? directoryAction(kind) : createAction(kind)) : []
  if (available.length > 0 && available.length <= 3) actions.push(...available.map(module => moduleAction(module)))
  const list = sections.join('; ')
- const empty = available.length === 0
+ const empty = kinds.every(kind => (totals?.[kind] ?? available.filter(module => module.moduleKind === kind).length) === 0)
  const tail = empty ? access.isAdmin ? ' Si quieres, creamos uno juntos.' : ' Puedes pedirle a tu administrador que los habilite.' : ''
  return { reply: chooseAgentVariant([`Claro, ${list}.`, `Te cuento: ${list}.`, `Estos son los que puedes abrir: ${list}.`], input) + tail, emotion: 'happy', layer: 'catalog', actions: actions.slice(0, 3) }
 }
@@ -80,7 +83,7 @@ export function matchTenantModules(message: string, modules: readonly AgentTenan
  const primary = text.split(/\b(?:para|de) (?:mis|los|las|sus|mi)\b/)[0] || text
  const primaryTokens = tokens(primary)
  const query = new Set(primaryTokens.length ? primaryTokens : tokens(text))
- const ranked = modules.filter(module => kinds.length !== 1 || module.moduleKind === kinds[0]).map(module => {
+ const ranked = modules.filter(module => isAgentRouteSlug(module.slug) && (kinds.length !== 1 || module.moduleKind === kinds[0])).map(module => {
   const names = new Set(tokens(`${module.name} ${module.singularName} ${module.slug}`))
   const description = new Set(tokens(module.description))
   const fields = new Set(tokens(module.fieldLabels.join(' ')))
@@ -92,13 +95,14 @@ export function matchTenantModules(message: string, modules: readonly AgentTenan
  return ranked.filter(hit => hit.score >= ranked[0]!.score * 0.75).slice(0, 3).map(hit => hit.module)
 }
 function moduleAction(module: AgentTenantModule, typed = false): AgentAction {
- return { kind: 'navigate', path: `/registros/${module.slug}`, label: (typed ? `Llévame al ${tenantModuleNoun(module)} ${module.name}` : `Llévame a ${module.name}`).slice(0, 65) }
+ return { kind: 'navigate', path: agentModulePath(module.slug), label: (typed ? `Llévame al ${tenantModuleNoun(module)} ${module.name}` : `Llévame a ${module.name}`).slice(0, 65) }
 }
 export function tenantCatalogReply(input: AgentReplyContext & { message: string }, access: TourAccess, modules: readonly AgentTenantModule[]): AgentReply | null {
  const text = normalizeTenantQuestion(input.message)
  const kinds = requestedKinds(text)
  const intent = /\b(registr(?:o|ar)|veo|ver|captur(?:o|ar)|agreg(?:o|ar)|consult(?:o|ar)|anot(?:o|ar)|llev(?:o|ar)|llevame|abre|abrir|mis|lista de)\b/.test(text)
- if (!intent) return null
+ // Un nombre completo también puede ser una respuesta breve a «¿cuál quieres abrir?».
+ if (!intent && (!text || !modules.some(module => isAgentRouteSlug(module.slug) && [module.name, module.singularName, module.slug].some(name => normalizeTenantQuestion(name) === text)))) return null
  const matches = matchTenantModules(input.message, modules)
  if (matches.length === 1) {
   const module = matches[0]!
@@ -107,7 +111,7 @@ export function tenantCatalogReply(input: AgentReplyContext & { message: string 
    `Lo encuentras en el ${tenantModuleNoun(module)} «${module.name}». Te llevo ahí para consultar${module.canCreate ? ' o agregar registros' : ' tus registros'}.`,
    `Claro, ya cuentas con el ${tenantModuleNoun(module)} «${module.name}». Vamos ahí para ver${module.canCreate ? ' o registrar' : ''} lo que necesitas.`
   ], input)
-  return { reply, emotion: 'happy', layer: 'catalog', actions: [moduleAction(module), ...(module.canCreate ? [{ kind: 'navigate' as const, path: `/registros/${module.slug}/nuevo`, label: 'Nuevo registro' }] : [])] }
+  return { reply, emotion: 'happy', layer: 'catalog', actions: [moduleAction(module), ...(module.canCreate ? [{ kind: 'navigate' as const, path: agentModulePath(module.slug, true), label: 'Nuevo registro' }] : [])] }
  }
  if (matches.length > 1) return { reply: chooseAgentVariant([`Veo varias opciones: ${matches.map(module => `${tenantModuleNoun(module)} «${module.name}»`).join(', ')}. ¿Cuál quieres abrir?`, `Podría ser ${matches.map(module => `${tenantModuleNoun(module)} «${module.name}»`).join(' o ')}. Elige y te acompaño.`], input), emotion: 'happy', layer: 'catalog', actions: matches.map(module => moduleAction(module, true)) }
  if (kinds.length === 1 && kinds[0] === 'dimension') return { reply: chooseAgentVariant(access.isAdmin ? ['No veo un catálogo para eso todavía. ¿Quieres crear uno? Te acompaño.', 'Todavía no encuentro ese catálogo. Podemos crear uno juntos.'] : ['No veo un catálogo disponible para eso. Tu administrador puede ayudarte a habilitarlo.', 'Todavía no encuentro ese catálogo entre tus accesos. Pide ayuda a tu administrador; aquí sigo contigo.'], input), emotion: 'happy', layer: 'catalog', actions: access.isAdmin ? [createAction('dimension')] : [] }
@@ -120,6 +124,7 @@ export function tenantCatalogReply(input: AgentReplyContext & { message: string 
 export function tenantPromptSummary(modules: readonly AgentTenantModule[]) {
  const summary: { name: string; slug: string; description: string; canCreate: boolean; moduleKind: string; type: string }[] = []
  for (const module of modules.slice(0, 60)) {
+  if (!isAgentRouteSlug(module.slug)) continue
   const item = { name: sanitizeCatalogText(module.name, 80), slug: module.slug, description: sanitizeCatalogText(module.description, 80), canCreate: module.canCreate, moduleKind: module.moduleKind, type: tenantModuleNoun(module) }
   if (JSON.stringify([...summary, item]).length > 2000) break
   summary.push(item)

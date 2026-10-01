@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentReply } from '../../utils/agentConversation'
+import { travelCatalog } from '../fixtures/agentTravelCatalog'
 
 vi.mock('../../server/db', () => ({ withTenant: vi.fn(async () => [{ admin: true }]) }))
 vi.mock('../../server/utils/agent/tenantCatalog', () => ({ readTenantCatalog: vi.fn(async () => []) }))
@@ -31,6 +32,19 @@ beforeEach(() => {
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 describe('ERD-144 servicio con catálogo y proveedor simulado', () => {
+ it('ERD-147: conversación y destinos con guion bajo nunca llaman IA ni cuota', async () => {
+  let history: { role: 'assistant'; text: string }[] = []
+  for (const [message, expected] of [['que modulos tengo', '4 módulos'], ['y catalagos', '7 catálogos'], ['abre cuentas por cobrar', '/registros/cuentas_por_cobrar'], ['abre el catálogo de métodos de pago', '/registros/metodos_pago'], ['cobros de clientes', '/registros/cobros_cliente']]) {
+   vi.mocked(readTenantCatalog).mockResolvedValueOnce(travelCatalog)
+   const reply = await resolveAgentMessage(auth, { ...input, message: message!, history })
+   expect(reply.layer).toBe('catalog')
+   if (expected!.startsWith('/')) expect(reply.actions[0]).toMatchObject({ path: expected })
+   else expect(reply.reply).toContain(expected)
+   history = [{ role: 'assistant', text: reply.reply }]
+  }
+  expect(fetch).not.toHaveBeenCalled(); expect(withAgentQuota).not.toHaveBeenCalled()
+  expect(recordAgentMetric).toHaveBeenCalledTimes(5)
+ })
  it('adenda: enumerar módulos, catálogos y navegar por tipo no llama IA ni cuota', async () => {
   const typed = [tenantModule, { ...tenantModule, id: 'ref-id', slug: 'servicios-ref', name: 'Referencia', moduleKind: 'dimension' }]
   for (const message of ['que modulos tenemos disponibles', 'y actalagos', 'no los veo llevame a catalagos']) {

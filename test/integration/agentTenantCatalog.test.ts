@@ -5,6 +5,8 @@ import { sql } from 'drizzle-orm'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import type { AuthTokenPayload } from '../../server/utils/auth'
 import { agentPrompt, cheapAgentReply } from '../../server/utils/agent/layers'
+import { travelCatalog } from '../fixtures/agentTravelCatalog'
+import { validateAgentActions } from '../../utils/chattitoCatalog'
 let fixture: TestDb
 let admin: postgres.Sql
 let db: typeof import('../../server/db')
@@ -42,6 +44,52 @@ afterAll(async () => {
  vi.unstubAllGlobals(); vi.unstubAllEnvs()
 }, 120000)
 describe('ERD-144 PostgreSQL embebido, RLS y permisos reales', () => {
+ it('ERD-147: datos de dyda-travel, administrador y recepcionista con RLS', async () => {
+  const user = await actor(undefined, true), receptionist = await actor(user.tenantId), other = await actor()
+  for (const item of travelCatalog) {
+   const id = await entity(user, item.name, item.slug, true, true, true, false, item.moduleKind)
+   if (item.slug === 'citas') await admin`insert into role_entity_permissions(role_id,entity_id,can_read,can_create) values (${receptionist.roleId!},${id},true,false)`
+  }
+  await entity(other, 'Entidad ajena', 'otro_tenant')
+  const available = await read(user)
+  expect(available).toHaveLength(11)
+  const rights = { isAdmin: true, designerAvailable: true }
+  const query = { message: 'que modulos tengo', context: { page: 'home', path: '/' } }
+  const first = cheapAgentReply(query, rights, available)!
+  expect(first.reply).toContain('4 módulos')
+  for (const item of travelCatalog.filter(item => item.moduleKind === 'hecho')) expect(first.reply).toContain(item.name)
+  const second = cheapAgentReply({ ...query, message: 'y catalagos', history: [{ role: 'assistant', text: first.reply }] }, rights, available)!
+  expect(second.reply).toContain('7 catálogos')
+  for (const item of travelCatalog.filter(item => item.moduleKind === 'dimension')) expect(second.reply).toContain(item.name)
+  for (const [message, slug] of [['abre cuentas por cobrar', 'cuentas_por_cobrar'], ['abre el catálogo de métodos de pago', 'metodos_pago'], ['cobros de clientes', 'cobros_cliente']]) {
+   expect(cheapAgentReply({ ...query, message: message! }, rights, available)?.actions[0]).toMatchObject({ path: `/registros/${slug}` })
+  }
+  const restricted = await read(receptionist)
+  expect(restricted.map(item => item.slug)).toEqual(['citas'])
+  expect(cheapAgentReply(query, { isAdmin: false, designerAvailable: false }, restricted)?.reply).toContain('1 módulo: Citas')
+  expect(validateAgentActions([{ kind: 'navigate', path: '/registros/citas/nuevo' }, { kind: 'navigate', path: '/registros/cuentas_por_cobrar' }], rights, restricted)).toEqual([])
+  expect(validateAgentActions([{ kind: 'navigate', path: '/registros/otro_tenant' }], rights, available)).toEqual([])
+ })
+ it('ERD-147: omitidos por patrón/longitud/límite, conteo real y log sin nombres ni slugs', async () => {
+  const user = await actor()
+  for (const slug of ['a?b', 'A B', 'a'.repeat(101)]) await entity(user, 'Nombre sensible', slug)
+  for (let i = 0; i < 82; i++) await entity(user, `Entidad${i}`, `entidad_${i}`)
+  const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+  try {
+   const available = await read(user)
+   expect(available).toHaveLength(80)
+   expect(available.totalsByKind).toEqual({ hecho: 85 })
+   expect(info).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'agent_catalog', catalogSkipped: 5, catalogSkippedReasons: { slug: 3, limit: 2 } }))
+   expect(info.mock.calls.flat().join(' ')).not.toMatch(/Nombre sensible|entidad_|a\?b|A B/)
+   const reply = cheapAgentReply({ message: 'que modulos tengo', context: { page: 'home', path: '/' } }, { isAdmin: true, designerAvailable: true }, available)!
+   expect(reply.reply).toContain('85 módulos'); expect(reply.reply).toContain('y 73 más')
+   expect(reply.reply.match(/Entidad\d+/g)).toHaveLength(12)
+   const cached = await read(user)
+   expect(cached.totalsByKind).toEqual({ hecho: 85 })
+   cached.totalsByKind!.hecho = 0
+   expect((await read(user)).totalsByKind).toEqual({ hecho: 85 })
+  } finally { info.mockRestore() }
+ })
  it('adenda: enumera por module_kind y permisos reales sin confundir dimensiones y hechos', async () => {
   const user = await actor(undefined, true), member = await actor(user.tenantId), other = await actor()
   await entity(user, 'Citas', 'citas')
