@@ -9,7 +9,7 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 import type { AuthTokenPayload } from '../../server/utils/auth'
 import type { AgentReply } from '../../utils/agentConversation'
 const provider = vi.hoisted(() => vi.fn())
-vi.mock('../../server/utils/aiProvider', () => ({ completeJson: provider }))
+vi.mock('../../server/utils/aiProvider', async importOriginal => ({ ...await importOriginal<typeof import('../../server/utils/aiProvider')>(), completeJson: provider }))
 let testDb: TestDb, admin: postgres.Sql
 let quota: typeof import('../../server/utils/agent/usage').withAgentQuota
 let metric: typeof import('../../server/utils/agent/usage').recordAgentMetric

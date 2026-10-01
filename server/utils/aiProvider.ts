@@ -16,6 +16,25 @@
 // de esos SDKs.
 export class AiProviderNotConfiguredError extends Error {}
 
+/** Diagnóstico seguro: nunca conserva el cuerpo ni el mensaje del proveedor. */
+export class AiCompletionError extends Error {
+  constructor(public reason: string, public transient = false, public code?: string) {
+    super(reason)
+    this.name = 'AiCompletionError'
+  }
+}
+
+async function completionHttpError(response: Response) {
+  let code: string | undefined
+  try {
+    const data = await response.json() as { error?: { code?: unknown } }
+    const value = data.error?.code
+    // Solo identificadores de error acotados; no texto libre del proveedor.
+    if (typeof value === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(value)) code = value
+  } catch { /* Un cuerpo no JSON no aporta un código seguro. */ }
+  return new AiCompletionError(`provider_http_${response.status}`, response.status === 408 || response.status === 429 || response.status >= 500, code)
+}
+
 /**
  * Fallo del proveedor de IA tras agotar los reintentos (5xx sostenido, cuota
  * 429, red caída o timeout). Quien llama la traduce a un HTTP 503 recuperable
@@ -92,14 +111,21 @@ async function completeWithAnthropic(params: AiCompletionParams): Promise<string
       signal: controller.signal
     })
     if (!response.ok) {
+      if (params.structured) throw await completionHttpError(response)
       const bodyText = await response.text().catch(() => '')
       throw new Error(`Anthropic respondió HTTP ${response.status}${bodyText ? `: ${bodyText.slice(0, 300)}` : ''}`)
     }
     const data = (await response.json()) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } }
     params.onUsage?.(data.usage?.input_tokens ?? 0, data.usage?.output_tokens ?? 0)
     const text = data.content?.find((block) => block.type === 'text')?.text
+    if (!text?.trim() && params.structured) throw new AiCompletionError('empty_output')
     if (!text) throw new Error('La respuesta de Anthropic no incluyó texto')
     return text
+  } catch (error) {
+    if (params.structured && controller.signal.aborted) throw new AiCompletionError('timeout', true)
+    if (params.structured && error instanceof TypeError) throw new AiCompletionError('network_error', true)
+    if (params.structured && error instanceof SyntaxError) throw new AiCompletionError('invalid_json')
+    throw error
   } finally {
     clearTimeout(timeout)
   }
@@ -123,7 +149,7 @@ async function completeWithOpenAi(params: AiCompletionParams): Promise<string> {
       },
       body: JSON.stringify({
         model,
-        ...(params.structured ? { response_format: { type: 'json_object' }, max_completion_tokens: params.maxTokens ?? 400, temperature: 0.2 } : {}),
+        ...(params.structured ? { response_format: { type: 'json_object' }, max_completion_tokens: params.maxTokens ?? 1500 } : {}),
         messages: [
           { role: 'system', content: params.system },
           { role: 'user', content: params.prompt }
@@ -132,14 +158,21 @@ async function completeWithOpenAi(params: AiCompletionParams): Promise<string> {
       signal: controller.signal
     })
     if (!response.ok) {
+      if (params.structured) throw await completionHttpError(response)
       const bodyText = await response.text().catch(() => '')
       throw new Error(`OpenAI respondió HTTP ${response.status}${bodyText ? `: ${bodyText.slice(0, 300)}` : ''}`)
     }
     const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
     params.onUsage?.(data.usage?.prompt_tokens ?? 0, data.usage?.completion_tokens ?? 0)
     const text = data.choices?.[0]?.message?.content
+    if (!text?.trim() && params.structured) throw new AiCompletionError('empty_output')
     if (!text) throw new Error('La respuesta de OpenAI no incluyó texto')
     return text
+  } catch (error) {
+    if (params.structured && controller.signal.aborted) throw new AiCompletionError('timeout', true)
+    if (params.structured && error instanceof TypeError) throw new AiCompletionError('network_error', true)
+    if (params.structured && error instanceof SyntaxError) throw new AiCompletionError('invalid_json')
+    throw error
   } finally {
     clearTimeout(timeout)
   }

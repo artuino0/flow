@@ -18,6 +18,9 @@ export class AgentResilience {
   if (this.openUntil) this.probing = true
   this.active++; return true
  }
+ unavailableReason(now = Date.now()) {
+  return this.openUntil > now || (this.openUntil && this.probing) ? 'circuit_open' : 'busy'
+ }
  leave(success: boolean | null, now = Date.now()) {
   this.active--; this.probing = false
   if (success === null) return
@@ -29,3 +32,4 @@ export class AgentResilience {
 const positive = (key: string, fallback: number) => { const value = Number(process.env[key]); return Number.isFinite(value) && value > 0 ? value : fallback }
 export const agentResilience = new AgentResilience(positive('AGENT_AI_MAX_CONCURRENCY',4),positive('AGENT_AI_PER_MINUTE',12),positive('AGENT_AI_CIRCUIT_FAILURES',3),positive('AGENT_AI_CIRCUIT_WINDOW_MS',60_000),positive('AGENT_AI_CIRCUIT_OPEN_MS',60_000))
 export const agentTimeoutMs = () => positive('AGENT_AI_TIMEOUT_MS',12_000)
+export const agentMaxOutputTokens = () => Math.min(4096, Math.max(1, Math.floor(positive('AGENT_AI_MAX_OUTPUT_TOKENS',1500))))
