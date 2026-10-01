@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { ChattitoState } from '~/utils/chattito'
+import type { ChattitoLookAt, ChattitoState } from '~/utils/chattito'
 
-withDefaults(defineProps<{ animated: boolean; state?: ChattitoState; size?: 'sm' | 'md' | 'lg' }>(), { state: 'idle', size: 'md' })
+withDefaults(defineProps<{ animated: boolean; lookAt?: ChattitoLookAt; state?: ChattitoState; size?: 'sm' | 'md' | 'lg' }>(), { state: 'idle', size: 'md' })
 </script>
 
 <template>
-  <ChattitoAvatar v-if="animated" :state="state" :size="size" auto-idle />
+  <ChattitoAvatar v-if="animated" :state="state" :look-at="lookAt" :size="size" auto-idle />
   <svg v-else :class="['chattito-message-avatar', `chattito-message-avatar--${size}`]" viewBox="0 0 200 200" aria-hidden="true" focusable="false"><use href="#chattito-symbol" /></svg>
 </template>
 

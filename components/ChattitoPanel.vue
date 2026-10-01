@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { emotionForMessage, isAnimatedChattitoMessage } from '~/utils/chattito'
+import { lookAtElement, isAnimatedChattitoMessage, type ChattitoLookAt } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
+import { agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
+import { chattitoCatalog } from '~/utils/chattitoCatalog'
+import { TOUR_SELECTORS, type TourId } from '~/utils/onboardingTours'
 import { helpForContext } from '~/utils/chattitoHelp'
 
 const { panel, close, addMessage, setAvatarState, disposeAvatarStateTimer, setWidth, restoreWidth, saveWidth } = useChattitoPanel()
@@ -9,10 +12,15 @@ const { ready: helpPreferencesReady, disabled: helpDisabled, setDisabled: setHel
 const route = useRoute()
 const { context, recommendedTour } = useChattitoContext()
 const currentTourTitle = computed(() => helpForContext(context.value)?.title ?? null)
+const router = useRouter()
+const { headers: agentHeaders } = useAgentSession()
+const { user: agentUser } = useAuth()
+const sessionIdentity = () => `${agentUser.value?.tenantId}:${agentUser.value?.id}:${agentUser.value?.sessionId}`
+const lookAt = ref<ChattitoLookAt>('center')
 const draft = ref('')
 const list = ref<HTMLElement>()
 const pending = ref(false)
-let responseTimer: ReturnType<typeof setTimeout> | undefined
+let highlight: import('driver.js').Driver | undefined
 let resizeStartX = 0
 let resizeStartWidth = CHATTITO_MIN_WIDTH
 
@@ -26,23 +34,53 @@ watch(() => [panel.value.open, panel.value.messages.length], async () => {
   if (list.value) list.value.scrollTop = list.value.scrollHeight
 })
 
-function send() {
-  const text = draft.value.trim()
-  if (!text || pending.value) return
-  const isFirst = !panel.value.messages.some(message => message.role === 'user')
-  const emotion = emotionForMessage(text, isFirst)
-  addMessage({ role: 'user', text })
-  addMessage({ role: 'assistant', text: '', emotion: 'typing' })
-  setAvatarState('typing')
-  pending.value = true
-  draft.value = ''
-  responseTimer = setTimeout(() => {
-    panel.value.messages.pop()
-    const response = '¡Listo! Esta respuesta local simula la conversación y sus animaciones.'
-    addMessage({ role: 'assistant', text: response, emotion })
-    setAvatarState(emotion)
-    pending.value = false
-  }, 1400)
+async function send() {
+ const text = draft.value.trim()
+ if (!text || text.length > 600 || pending.value) return
+ const owner = sessionIdentity()
+ const history = agentHistory(panel.value.messages)
+ addMessage({ role: 'user', text })
+ const placeholder = addMessage({ role: 'assistant', text: '', emotion: 'typing' })
+ setAvatarState('typing'); pending.value = true; draft.value = ''
+ try {
+  const reply = courtesyReply(text) || await $fetch<AgentReply>('/api/agent/messages', { method: 'POST', headers: await agentHeaders(), body: { message: text, context: { ...context.value, path: route.path }, history } })
+  if (owner !== sessionIdentity()) return
+  Object.assign(placeholder, { text: reply.reply, emotion: reply.emotion, actions: reply.actions })
+  // addMessage devuelve la referencia original, Vue puede envolverla: actualizar por id.
+  const index = panel.value.messages.findIndex(message => message.id === placeholder.id)
+  if (index >= 0) panel.value.messages[index] = { ...placeholder }
+  setAvatarState(reply.emotion)
+ } catch {
+  if (owner !== sessionIdentity()) return
+  const index = panel.value.messages.findIndex(message => message.id === placeholder.id)
+  if (index >= 0) panel.value.messages[index] = { ...placeholder, text: 'Ahora no puedo responder. Intenta de nuevo en un momento; sigo aquí para acompañarte.', emotion: 'idle' }
+  setAvatarState('idle')
+ } finally { pending.value = false; await nextTick(); document.getElementById('chattito-message')?.focus() }
+}
+function actionLabel(action: AgentAction) { return action.kind === 'navigate' ? 'Llévame' : action.kind === 'point' ? 'Señálame' : 'Ver recorrido' }
+async function runAction(action: AgentAction) {
+ try {
+  if (action.kind === 'navigate') await router.push(action.path)
+  else if (action.kind === 'start-tour') {
+   const screen = chattitoCatalog.find(screen => screen.tourId === action.tourId)
+   if (screen?.path) await router.push(screen.path)
+   if (canLaunchTour(action.tourId as TourId)) await startTour(action.tourId as TourId)
+  } else {
+   const screen = chattitoCatalog.find(screen => screen.anchor === action.anchor)
+   if (screen?.path && route.fullPath !== screen.path) await router.push(screen.path)
+   await nextTick()
+   const selector = TOUR_SELECTORS[action.anchor as keyof typeof TOUR_SELECTORS]
+   const element = selector ? document.querySelector<HTMLElement>(selector) : null
+   if (!element || !element.getClientRects().length) { addMessage({ role: 'assistant', text: 'Ese elemento no está visible aquí. Abre la pantalla correspondiente y vuelve a pedirme que lo señale.' }); return }
+   lookAt.value = lookAtElement(element)
+   const { driver } = await import('driver.js')
+   highlight?.destroy()
+   highlight = driver({ animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, onDestroyed: () => { lookAt.value = 'center'; document.getElementById('chattito-message')?.focus() } })
+   highlight.highlight({ element, popover: { title: screen?.name || 'Aquí', description: screen?.summary || 'Este es el elemento que buscas.' } })
+   return
+  }
+  await nextTick(); document.querySelector<HTMLElement>('main h1')?.focus()
+ } catch { addMessage({ role: 'assistant', text: 'No pude abrir esa ayuda ahora. Puedes intentarlo otra vez.' }) }
 }
 
 function startResize(event: PointerEvent) {
@@ -74,7 +112,7 @@ function resizeWithKeyboard(event: KeyboardEvent) {
 
 onMounted(restoreWidth)
 onBeforeUnmount(() => {
-  if (responseTimer) clearTimeout(responseTimer)
+  highlight?.destroy()
   disposeAvatarStateTimer()
   panel.value.resizing = false
 })
@@ -91,9 +129,9 @@ onBeforeUnmount(() => {
       <div ref="list" class="chattito-panel__messages" aria-live="polite">
         <TransitionGroup name="chattito-message">
           <article v-for="(message, index) in visibleMessages" :key="message.id" class="chattito-message" :class="`chattito-message--${message.role}`">
-            <ChattitoMessageAvatar v-if="message.role === 'assistant'" :animated="isAnimatedChattitoMessage(index + visibleOffset, lastChattitoIndex)" :state="message.emotion === 'typing' ? 'typing' : panel.avatarState" size="md" />
+            <ChattitoMessageAvatar v-if="message.role === 'assistant'" :animated="isAnimatedChattitoMessage(index + visibleOffset, lastChattitoIndex)" :look-at="lookAt" :state="message.emotion === 'typing' ? 'typing' : panel.avatarState" size="md" />
             <span v-if="message.emotion === 'typing'" class="sr-only">Chattito está escribiendo</span>
-            <p v-else>{{ message.text }}<button v-if="message.action?.kind === 'resume-tour' && message.id === lastResumeMessageId && !activeId && pendingTour?.id === message.action.tourId" type="button" class="chattito-message__resume" @click="resumeTour(message.action.tourId)">Retomar recorrido</button><button v-if="message.role === 'assistant' && message.action?.kind === 'start-tour' && !activeId && route.fullPath === message.action.originPath && recommendedTour === message.action.tourId && canLaunchTour(message.action.tourId)" type="button" class="chattito-message__resume" @click="startTour(message.action.tourId)">Ver recorrido</button></p>
+            <p v-else>{{ message.text }}<button v-if="message.action?.kind === 'resume-tour' && message.id === lastResumeMessageId && !activeId && pendingTour?.id === message.action.tourId" type="button" class="chattito-message__resume" @click="resumeTour(message.action.tourId)">Retomar recorrido</button><button v-if="message.role === 'assistant' && message.action?.kind === 'start-tour' && !activeId && route.fullPath === message.action.originPath && recommendedTour === message.action.tourId && canLaunchTour(message.action.tourId)" type="button" class="chattito-message__resume" @click="startTour(message.action.tourId)">Ver recorrido</button><button v-for="(action, actionIndex) in message.actions" :key="actionIndex" type="button" class="chattito-message__resume" @click="runAction(action)">{{ actionLabel(action) }}</button></p>
           </article>
         </TransitionGroup>
       </div>
@@ -112,10 +150,10 @@ onBeforeUnmount(() => {
       </section>
       <form class="chattito-panel__composer" @submit.prevent="send">
         <label class="sr-only" for="chattito-message">Escribe a Chattito</label>
-        <input id="chattito-message" v-model="draft" autocomplete="off" placeholder="Escribe un mensaje…" :disabled="pending">
+        <input id="chattito-message" v-model="draft" autocomplete="off" maxlength="600" placeholder="Escribe un mensaje…" :disabled="pending">
         <button type="submit" :disabled="!draft.trim() || pending" aria-label="Enviar mensaje">↑</button>
       </form>
-      <p class="chattito-panel__footnote">Conversación local de prueba · Sin IA</p>
+      <p class="chattito-panel__footnote">Te guío en Flow · No consulto tus registros</p>
     </aside>
   </Transition>
 </template>

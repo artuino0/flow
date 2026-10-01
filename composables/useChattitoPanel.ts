@@ -1,4 +1,5 @@
 import type { ChattitoEmotion, ChattitoState } from '~/utils/chattito'
+import type { AgentAction } from '~/utils/agentConversation'
 import type { TourId } from '~/utils/onboardingTours'
 import { chattitoTransientDuration, transitionChattito } from '~/utils/chattito'
 
@@ -7,13 +8,12 @@ export interface ChattitoMessage {
   role: 'user' | 'assistant'
   text: string
   emotion?: ChattitoEmotion | 'typing'
+  actions?: AgentAction[]
   action?: { kind: 'resume-tour'; tourId: TourId } | { kind: 'start-tour'; tourId: TourId; originPath: string }
 }
 
 const initialMessages: ChattitoMessage[] = [
-  { id: 1, role: 'assistant', text: '¡Hola! Soy Chattito. Este espacio conservará nuestra conversación mientras navegas por Flow.' },
-  { id: 2, role: 'user', text: '¿Me acompañas mientras reviso mis pendientes?' },
-  { id: 3, role: 'assistant', text: 'Claro. Escribe algo para probar mis gestos y el indicador de escritura.' },
+  { id: 1, role: 'assistant', text: '¡Hola! Soy Chattito. Puedo guiarte por las pantallas y recorridos de Flow. ¿Por dónde comenzamos?' },
 ]
 
 export const CHATTITO_MIN_WIDTH = 400
@@ -28,7 +28,7 @@ function initialPanel() {
   return {
     open: false,
     conversationStarted: false,
-    nextId: 4,
+    nextId: 2,
     messages: initialMessages.map(message => ({ ...message })),
     avatarState: 'idle' as ChattitoEmotion | 'typing',
     avatarRevision: 0,

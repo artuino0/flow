@@ -645,6 +645,13 @@
       "when": 1790607400000,
       "breakpoints": true,
       "tag": "0091_record_actor_fail_closed"
+    },
+    {
+      "version": "7",
+      "idx": 92,
+      "when": 1790607401000,
+      "breakpoints": true,
+      "tag": "0092_agent_usage"
     }
   ]
 }

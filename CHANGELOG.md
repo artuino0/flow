@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.124.0] - 2026-10-01
+#### [feature]
+- [ERD-138](https://dydasoftware.atlassian.net/browse/ERD-138) - Chattito responde y guía con IA real detrás de un filtro por capas: los saludos y la ayuda se resuelven sin IA, y solo las preguntas abiertas sobre Flow llegan al modelo; puede llevarte a una pantalla, señalarte un elemento o mostrarte un recorrido. Cada plan incluye una bolsa mensual de consultas con IA y un tope diario por usuario (editables en la plataforma), el administrador ve el consumo por usuario en Ajustes → Plan y la plataforma lo ve por organización. El acceso está cerrado a la propia aplicación (sesión, mismo origen y token firmado de vida corta) y no se guarda el texto de las conversaciones. Requiere la migración 0092.
+
 ### [0.123.0] - 2026-10-01
 #### [feature]
 - [ERD-137](https://dydasoftware.atlassian.net/browse/ERD-137) - Chattito aparece como personaje en el chat del Diseñador de estructura: los mensajes del asistente llevan su avatar (solo el último, animado) y cambia de gesto según el momento (escribiendo mientras la IA genera, contento al llegar una propuesta, «rebosante de felicidad» al aplicar el diseño), con su propia instancia separada del panel global.

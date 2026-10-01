@@ -1581,3 +1581,13 @@ export const olapEtlState = pgTable('olap_etl_state', {
   lastRecordId: uuid('last_record_id').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })
+
+// ERD-138: metadatos de uso, sin contenido conversacional.
+export const agentUsage = pgTable('agent_usage', {
+ id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+ userId: uuid('user_id').notNull().references(() => users.id), day: date('day').notNull(),
+ aiCalls: integer('ai_calls').notNull().default(0), tokensIn: bigint('tokens_in', { mode: 'number' }).notNull().default(0), tokensOut: bigint('tokens_out', { mode: 'number' }).notNull().default(0),
+ catalogCalls: integer('catalog_calls').notNull().default(0), offtopicCalls: integer('offtopic_calls').notNull().default(0), limitedCalls: integer('limited_calls').notNull().default(0), unavailableCalls: integer('unavailable_calls').notNull().default(0),
+ messagesTotal: integer('messages_total').notNull().default(0), actions: jsonb('actions').notNull().default({ navigate: 0, point: 0, 'start-tour': 0 }),
+ lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, table => [uniqueIndex('agent_usage_tenant_user_day').on(table.tenantId, table.userId, table.day)])

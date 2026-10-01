@@ -210,6 +210,7 @@ async function openPortal() {
         <div v-else class="table-scroll"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Periodo</th><th>Importe</th><th>Estado</th><th>Acción</th></tr></thead><tbody><tr v-for="invoice in data.invoices.slice(0, 4)" :key="invoice.id"><td>{{ shortDate(invoice.issuedAt) }}</td><td><strong>Suscripción Flow {{ subscription?.plan.name }} — {{ subscription?.billingInterval === 'year' ? 'anual' : 'mensual' }}</strong></td><td>{{ invoicePeriod(invoice) }}</td><td><strong>{{ money(invoice.totalCents, invoice.currency) }}</strong></td><td><span class="invoice-status" :class="invoice.status">{{ statusLabel(invoice.status) }}</span></td><td><a v-if="invoice.invoicePdfUrl || invoice.hostedInvoiceUrl" :href="invoice.invoicePdfUrl || invoice.hostedInvoiceUrl || undefined" target="_blank" rel="noopener"><Download :size="13" />Descargar</a><span v-else>—</span></td></tr></tbody></table></div>
       </section>
 
+      <AgentUsageTable :allowed="isAdmin === true" />
       <section class="panel usage-history">
         <header class="section-head"><div><h2>Historial de consumo</h2><p>Últimos 6 periodos</p></div></header>
         <div class="history-body">

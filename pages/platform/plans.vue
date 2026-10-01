@@ -13,14 +13,14 @@ type Draft = Omit<Plan, 'id' | 'limits'> & { limits: Record<string, number | str
 const conceptGroups = [
   { name: 'Core', concepts: ['users', 'usersIncluded', 'modules'], icon: Database },
   { name: 'Automatización', concepts: ['activeFlows', 'executions'], icon: Zap },
-  { name: 'IA', concepts: ['aiCredits'], icon: Sparkles },
+  { name: 'IA', concepts: ['aiCredits', 'agentQueries', 'agentUserDaily'], icon: Sparkles },
   { name: 'Comunicaciones', concepts: ['emails'], icon: MessageCircle },
   { name: 'Facturación', concepts: ['stamps'], icon: FileText },
   { name: 'Sites', concepts: ['sites', 'pages', 'forms', 'formSubmissions'], icon: Globe },
   { name: 'Almacenamiento', concepts: ['storageBytes'], icon: HardDrive }
 ]
-const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', aiCredits: 'Créditos de IA al mes', emails: 'Correos al mes', storageBytes: 'Almacenamiento (GB)', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
-const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', aiCredits: 'créditos', emails: 'correos', storageBytes: 'GB', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
+const labels: Record<string, string> = { users: 'Usuarios máximos', usersIncluded: 'Usuarios incluidos', modules: 'Módulos personalizados', activeFlows: 'Flujos activos', executions: 'Ejecuciones al mes', aiCredits: 'Créditos de IA al mes', agentQueries: 'Consultas de Chattito al mes', agentUserDaily: 'Consultas de IA por usuario al día', emails: 'Correos al mes', storageBytes: 'Almacenamiento (GB)', stamps: 'Timbres al mes', sites: 'Sitios', pages: 'Páginas', forms: 'Formularios', formSubmissions: 'Envíos de formulario al mes' }
+const units: Record<string, string> = { users: 'usuarios', usersIncluded: 'usuarios', modules: 'módulos', activeFlows: 'flujos', executions: 'ejecuciones', aiCredits: 'créditos', agentQueries: 'consultas', agentUserDaily: 'consultas', emails: 'correos', storageBytes: 'GB', stamps: 'timbres', sites: 'sitios', pages: 'páginas', forms: 'formularios', formSubmissions: 'envíos' }
 const { data, error, status, refresh } = await useFetch<{ plans: Plan[]; organizations: Organization[]; overrides: Override[] }>('/api/platform/plans')
 const { confirm: confirmAction } = useConfirm()
 const planRows = computed(() => data.value?.plans ?? [])
@@ -306,6 +306,7 @@ function formatDate(value: string | null) {
         <div class="text-xs"><p :class="isDirty ? 'font-semibold text-brand-warning-text' : 'font-semibold text-brand-success-text'">{{ isDirty ? 'Tienes cambios sin guardar' : 'Todos los cambios están guardados' }}</p><p v-if="actionError" role="alert" class="mt-1 text-brand-error-text">{{ actionError }}</p></div>
         <div class="flex items-center gap-2"><button type="button" :disabled="!isDirty || saving" class="inline-flex items-center gap-1.5 rounded border border-brand-border px-3 py-2 text-xs font-semibold hover:bg-brand-bg disabled:opacity-50" @click="loadPlan(selectedKey)"><Undo2 class="h-4 w-4" />Descartar cambios</button><button type="button" :disabled="!isDirty || saving" class="inline-flex items-center gap-1.5 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50" @click="savePlan"><Save class="h-4 w-4" />{{ saving ? 'Guardando…' : 'Guardar cambios' }}</button></div>
       </div>
+      <AgentUsageTable platform allowed class="mx-5 my-6 sm:mx-7" />
     </template>
   </main>
 </template>

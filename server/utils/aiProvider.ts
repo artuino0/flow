@@ -36,6 +36,12 @@ export interface AiCompletionParams {
   system: string
   /** El pedido puntual (incluye la descripcion del usuario + el catalogo disponible). */
   prompt: string
+  /** Opciones por consumidor; los valores previos se conservan al omitirlas. */
+  timeoutMs?: number
+  maxTokens?: number
+  model?: string
+  structured?: boolean
+  onUsage?: (input: number, output: number) => void
 }
 
 type AiProviderName = 'anthropic' | 'openai'
@@ -68,7 +74,7 @@ async function completeWithAnthropic(params: AiCompletionParams): Promise<string
   const model = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5'
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), params.timeoutMs ?? REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -79,7 +85,7 @@ async function completeWithAnthropic(params: AiCompletionParams): Promise<string
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: params.maxTokens ?? 1024,
         system: params.system,
         messages: [{ role: 'user', content: params.prompt }]
       }),
@@ -89,7 +95,8 @@ async function completeWithAnthropic(params: AiCompletionParams): Promise<string
       const bodyText = await response.text().catch(() => '')
       throw new Error(`Anthropic respondió HTTP ${response.status}${bodyText ? `: ${bodyText.slice(0, 300)}` : ''}`)
     }
-    const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> }
+    const data = (await response.json()) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } }
+    params.onUsage?.(data.usage?.input_tokens ?? 0, data.usage?.output_tokens ?? 0)
     const text = data.content?.find((block) => block.type === 'text')?.text
     if (!text) throw new Error('La respuesta de Anthropic no incluyó texto')
     return text
@@ -103,10 +110,10 @@ async function completeWithOpenAi(params: AiCompletionParams): Promise<string> {
   if (!apiKey) {
     throw new AiProviderNotConfiguredError('AI_PROVIDER=openai requiere OPENAI_API_KEY en el archivo .env.')
   }
-  const model = process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+  const model = params.model || process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), params.timeoutMs ?? REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch(openAiChatUrl(), {
       method: 'POST',
@@ -116,6 +123,7 @@ async function completeWithOpenAi(params: AiCompletionParams): Promise<string> {
       },
       body: JSON.stringify({
         model,
+        ...(params.structured ? { response_format: { type: 'json_object' }, max_completion_tokens: params.maxTokens ?? 400, temperature: 0.2 } : {}),
         messages: [
           { role: 'system', content: params.system },
           { role: 'user', content: params.prompt }
@@ -127,7 +135,8 @@ async function completeWithOpenAi(params: AiCompletionParams): Promise<string> {
       const bodyText = await response.text().catch(() => '')
       throw new Error(`OpenAI respondió HTTP ${response.status}${bodyText ? `: ${bodyText.slice(0, 300)}` : ''}`)
     }
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
+    params.onUsage?.(data.usage?.prompt_tokens ?? 0, data.usage?.completion_tokens ?? 0)
     const text = data.choices?.[0]?.message?.content
     if (!text) throw new Error('La respuesta de OpenAI no incluyó texto')
     return text

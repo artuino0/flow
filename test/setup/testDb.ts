@@ -28,7 +28,8 @@ export interface TestDb {
   stop(): Promise<void>
 }
 
-export async function createTestDb(): Promise<TestDb> {
+export async function createTestDb(options: { preserveFiles?: boolean; throughMigration?: string } = {}): Promise<TestDb> {
+  if (options.preserveFiles && process.env.TEST_POSTGRES_ADMIN_URL) throw new Error('Esta prueba requiere PostgreSQL embebido')
   if (process.env.TEST_POSTGRES_ADMIN_URL) return createExternalTestDb(process.env.TEST_POSTGRES_ADMIN_URL)
   const { default: EmbeddedPostgres } = await import('embedded-postgres')
   const port = 40000 + Math.floor(Math.random() * 10000)
@@ -39,7 +40,7 @@ export async function createTestDb(): Promise<TestDb> {
     user: 'erp_admin',
     password: 'changeme',
     port,
-    persistent: false
+    persistent: options.preserveFiles === true
   })
 
   await pg.initialise()
@@ -70,7 +71,7 @@ export async function createTestDb(): Promise<TestDb> {
     await admin.unsafe('ALTER DEFAULT PRIVILEGES FOR ROLE erp_admin IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO erp_app')
 
     // ---- migraciones reales del proyecto, en orden ----
-    const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()
+    const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && (!options.throughMigration || f <= options.throughMigration)).sort()
     for (const file of files) {
       const sqlText = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8')
       await admin.unsafe(sqlText)
@@ -84,7 +85,7 @@ export async function createTestDb(): Promise<TestDb> {
     appUrl,
     async stop() {
       await pg.stop()
-      fs.rmSync(databaseDir, { recursive: true, force: true })
+      if (!options.preserveFiles) fs.rmSync(databaseDir, { recursive: true, force: true })
     }
   }
 }

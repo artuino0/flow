@@ -49,6 +49,8 @@ const PUBLIC_PATHS = new Set([
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
 
+  if (path === '/api/agent/messages' && event.method !== 'POST') throw createError({ statusCode: 405, statusMessage: 'Método no permitido' })
+
   if (!path.startsWith('/api/') || PUBLIC_PATHS.has(path)) {
     return
   }
@@ -57,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const token = resolveAuthToken(getHeader(event, 'authorization'), getCookie(event, AUTH_COOKIE_NAME))
 
   if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'No autenticado (falta token)' })
+    throw createError({ statusCode: 401, statusMessage: path.startsWith('/api/agent/') ? 'No autenticado' : 'No autenticado (falta token)' })
   }
 
   try {
@@ -80,7 +82,7 @@ export default defineEventHandler(async (event) => {
     event.context.auth = payload
   } catch {
     const apiAuth = await resolveApiKeyAuth(token).catch(() => null)
-    if (!apiAuth) throw createError({ statusCode: 401, statusMessage: 'Token invalido o expirado' })
+    if (!apiAuth) throw createError({ statusCode: 401, statusMessage: path.startsWith('/api/agent/') ? 'No autenticado' : 'Token invalido o expirado' })
     if (path.startsWith('/api/auth/')) throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar cuentas o sesiones' })
     event.context.auth = apiAuth.auth
     event.context.apiKeyId = apiAuth.apiKeyId
