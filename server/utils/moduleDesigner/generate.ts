@@ -17,6 +17,12 @@ import { applyDesignerPatch, compactDesignerBlueprint, designerPatchSchema } fro
 import { DESIGNER_ICON_SUGGESTIONS } from '~/utils/designerIconSuggestions'
 import { DESIGNER_REPAIR_PREFIX, resyncDesignerBase, STALE_DESIGN_MESSAGE } from './resync'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
+import type { BlueprintValidationError } from '~/server/utils/blueprint/validate'
+import { degradeDesignerFields } from './degrade'
+import { logger } from '~/server/utils/logger'
+import { designerCapabilityWarnings } from './capabilities'
+import { degradeDesignerPatchFields, designerPatchFieldErrors } from './patchFields'
+import { designerValidationLog } from './validationLog'
 
 export const WORKFLOW_EXAMPLE = `Ejemplo válido de encabezado, partidas y flujo (dentro de modules; agrega version, summary y associations al plano): [{"ref":"pedidos","action":"create","kind":"hecho","name":"Pedidos","slug":"pedidos","fields":[{"name":"folio","label":"Folio","dataType":"text"},{"name":"cliente","label":"Cliente","dataType":"text"},{"name":"estado","label":"Estado","dataType":"select","validationRules":{"options":[{"value":"recibido","label":"Recibido"},{"value":"confirmado","label":"Confirmado"}]}},{"name":"total","label":"Total","dataType":"currency","validationRules":{"calculation":{"kind":"rollup","aggregate":"sum","sourceEntity":"partidas-pedido","relationField":"pedido","valueField":"importe"}}}],"lines":[{"childRef":"partidas-pedido","relationField":"pedido","totals":["importe"]}],"workflow":{"enabled":true,"field":"estado","initial":"recibido","states":{"recibido":{"locked":false,"editableFields":[]},"confirmado":{"locked":true,"editableFields":[]}},"transitions":[{"from":"recibido","to":"confirmado","label":"Confirmar","roles":"all"}],"rules":[{"type":"required","mode":"block","when":{"to":"confirmado"},"fields":["cliente"],"message":"Captura el cliente"},{"type":"aggregate","mode":"block","when":{"to":"confirmado"},"lineEntity":"partidas-pedido","relationField":"pedido","aggregate":"count","operator":">=","value":1,"message":"Agrega al menos una partida"}]}},{"ref":"partidas-pedido","action":"create","kind":"hecho","name":"Partidas de pedido","slug":"partidas-pedido","fields":[{"name":"pedido","label":"Pedido","dataType":"relation","validationRules":{"relationEntity":"pedidos"}},{"name":"cantidad","label":"Cantidad","dataType":"number"},{"name":"precio","label":"Precio","dataType":"currency"},{"name":"importe","label":"Importe","dataType":"currency","validationRules":{"calculation":{"kind":"formula","operator":"multiply","leftField":"cantidad","rightField":"precio"}}}]}].`
 
@@ -33,7 +39,8 @@ Cada campo user ya representa un vínculo con Usuarios del Sistema. Un perfil de
 
 ${WORKFLOW_EXAMPLE}
 En ese ejemplo, Pedidos lleva "icon":"ShoppingCart" y Partidas de pedido lleva "icon":"ListOrdered".
-Si existe Clientes y piden órdenes, conserva Clientes como extend con su instantánea intacta. Si piden placas para Vehículos, agrega el campo al módulo existente.`
+Si existe Clientes y piden órdenes, conserva Clientes como extend con su instantánea intacta. Si piden placas para Vehículos, agrega el campo al módulo existente.
+El plano admite estados, transiciones y reglas de validación del flujo. No admite triggers, vistas, dashboards ni notificaciones por tiempo: cuando los pidan, explica explícitamente en message y explanation que no puedes crearlos desde aquí. Automatizaciones admite acciones al crear, actualizar o borrar registros; no prometas avisos programados por tiempo. Las expresiones admiten aritmética, comparaciones, SI/IF, Y/AND, O/OR, NO/NOT, MIN, MAX, REDONDEAR/ROUND y ABS; no hay HOY/NOW ni diferencias de fechas. Solo number y currency admiten calculation; date y text no la admiten. unique solo está disponible en campos user. El campo del workflow debe ser select con las opciones de todos los estados, nunca relation a un catálogo. Las transiciones nuevas usan roles:"all"; no inventes identificadores ni uses nombres de roles en sus restricciones. Si piden restringir transiciones por rol, explica que deben configurar esa restricción posteriormente en Estados. blueprint.roles configura permisos de módulos, no restricciones de transiciones. Nunca inventes reglas o funciones.`
 
 const answerSchema = z.object({ message: z.string().trim().min(1).max(1000), explanation: z.string().trim().max(10000).optional(), mode: z.literal('full').optional(), blueprint: z.unknown() })
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -68,30 +75,59 @@ export async function runDesignerGeneration(options: {
   let message = ''
   let explanation = ''
   let previousBlueprintJson = ''
-  let errors: Array<{ path: string; message: string }> = []
+  let errors: BlueprintValidationError[] = []
   let proposal: unknown
   let firstValid = false
   let repairs = 0
   let warnings: string[] = []
+  const capabilityWarnings = designerCapabilityWarnings(instruction)
   let appliedPatch: ReturnType<typeof designerPatchSchema.parse> | null = null
   let completionValue: unknown
   let requestedMode: 'patch' | 'full' = 'full'
+  let recordedAttempt = 0
+  const logFailure = (attempt: number) => {
+    if (errors.length && recordedAttempt !== attempt) {
+      logger.warn('designer_validation', designerValidationLog(errors, attempt))
+      recordedAttempt = attempt
+    }
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt) repairs++
     const workflowError = errors.some(error => error.path.includes('.workflow'))
     const system = `${DESIGNER_SYSTEM_PROMPT}${options.mode ? `\nPara esta evaluación responde obligatoriamente en modo ${options.mode}.` : ''}`
-    const completion: DesignerCompletion = await complete({ system, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, currentBlueprint, proposedAnswer: completionValue, previousExplanation: explanation, errors, instruction: `Corrige TODOS los errores y duplicados. Devuelve un ${options.mode ?? requestedMode} corregido. Conserva la explicación si las decisiones no cambian; si cambian, actualízala.`, ...(workflowError ? { workflowExample: WORKFLOW_EXAMPLE } : {}) }) })
+    const completion: DesignerCompletion = await complete({ system, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, currentBlueprint, proposedAnswer: completionValue, previousExplanation: explanation, errors, instruction: `Corrige únicamente las piezas identificadas por path, módulo, campo y regla en errors. Conserva todos los demás módulos, campos, reglas y relaciones exactamente. Devuelve un ${options.mode ?? requestedMode} corregido. Conserva la explicación si las decisiones no cambian; si cambian, actualízala.`, ...(workflowError ? { workflowExample: WORKFLOW_EXAMPLE } : {}) }) })
     usage.inputTokens += completion.inputTokens
     usage.outputTokens += completion.outputTokens
     usage.model = completion.model
     completionValue = completion.value
-    const isPatch = typeof completion.value === 'object' && completion.value !== null && 'mode' in completion.value && completion.value.mode === 'patch'
+    let isPatch = typeof completion.value === 'object' && completion.value !== null && 'mode' in completion.value && completion.value.mode === 'patch'
     requestedMode = isPatch ? 'patch' : 'full'
-    const parsed = isPatch ? designerPatchSchema.safeParse(completion.value) : answerSchema.safeParse(completion.value)
+    let answerValue = completion.value
+    let parsed = isPatch ? designerPatchSchema.safeParse(answerValue) : answerSchema.safeParse(answerValue)
+    let patchWarnings: string[] = []
+    if (!parsed.success && isPatch && attempt === 1) {
+      if (containsUnsafeBlueprintText(answerValue, trusted)) {
+        result = null
+        errors = [{ path: 'blueprint', code: 'unsafe_text', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]
+        logFailure(attempt + 1)
+        continue
+      }
+      errors = designerPatchFieldErrors(answerValue, parsed.error.issues, currentBlueprint)
+      logFailure(attempt + 1)
+      const degraded = degradeDesignerPatchFields(answerValue, parsed.error.issues, currentBlueprint, current)
+      answerValue = degraded.patch
+      patchWarnings = degraded.warnings
+      if (patchWarnings.length && answerValue && typeof answerValue === 'object' && 'operations' in answerValue && Array.isArray(answerValue.operations) && !answerValue.operations.length) {
+        answerValue = { ...answerValue, mode: 'full', blueprint: currentBlueprint }
+        isPatch = false
+        parsed = answerSchema.safeParse(answerValue)
+      } else parsed = designerPatchSchema.safeParse(answerValue)
+    }
     if (!parsed.success) {
       result = null
-      errors = parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message }))
+      errors = isPatch ? designerPatchFieldErrors(answerValue, parsed.error.issues, currentBlueprint) : parsed.error.issues.map(issue => ({ path: issue.path.join('.'), code: issue.code, message: 'La respuesta debe incluir el mensaje y las propiedades permitidas del plano o parche' }))
       proposal = completion.value
+      logFailure(attempt + 1)
       continue
     }
     message = parsed.data.message
@@ -101,12 +137,13 @@ export async function runDesignerGeneration(options: {
     if (!attempt || changed) explanation = parsed.data.explanation || (attempt ? `Ajusté el plano propuesto.\n### ¿Por qué?\n- **Validación:** corregí la estructura para que puedas revisarla antes de aprobar.` : `${message}\n### ¿Por qué?\n- **Propuesta:** organicé el plano para que puedas revisarlo antes de aprobar.`)
     else if (parsed.data.explanation && !explanation) explanation = parsed.data.explanation
     if (isPatch) {
-      const applied = applyDesignerPatch(currentBlueprint, completion.value, current)
+      const applied = applyDesignerPatch(currentBlueprint, answerValue, current)
       appliedPatch = applied.patch
       if (applied.errors.length || !applied.blueprint) {
         result = null
         errors = applied.errors
         proposal = completion.value
+        logFailure(attempt + 1)
         continue
       }
       proposal = applied.blueprint
@@ -117,9 +154,9 @@ export async function runDesignerGeneration(options: {
     const normalizedIcons = normalizeDesignerIcons(proposal, current)
     const normalizedWorkflow = normalizeDesignerWorkflows(normalizedIcons.blueprint)
     const normalizedAssociations = normalizeDesignerAssociations(normalizedWorkflow.blueprint)
-    warnings = [...normalizedIcons.warnings, ...normalizedWorkflow.warnings, ...normalizedAssociations.warnings]
+    warnings = [...patchWarnings, ...normalizedIcons.warnings, ...normalizedWorkflow.warnings, ...normalizedAssociations.warnings]
     proposal = normalizedAssociations.blueprint
-    if (containsUnsafeBlueprintText(proposal, trusted)) { errors = [{ path: 'blueprint', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]; continue }
+    if (containsUnsafeBlueprintText(proposal, trusted)) { result = null; errors = [{ path: 'blueprint', code: 'unsafe_text', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]; logFailure(attempt + 1); continue }
     const fieldDedupe = mergeDesignerFields(proposal, current)
     result = await validate(attempt === 1 ? fieldDedupe.blueprint : proposal)
     if (attempt === 1) result.merges.push(...fieldDedupe.merges)
@@ -132,8 +169,33 @@ export async function runDesignerGeneration(options: {
     if (attempt === 0) firstValid = errors.length === 0 && result.merges.length === 0
     if (!errors.length && (!result.merges.length || attempt === 1)) break
     if (result.merges.length) errors.push(...result.merges.map(merge => ({ path: 'modules', message: `Duplicado de ${merge.to}: usa extend y conserva campos existentes` })))
+    logFailure(attempt + 1)
+  }
+  // Sin llamadas adicionales: rescata piezas individuales y exige validación completa.
+  if (result && errors.length) {
+    let candidate = result.normalized ?? proposal
+    const adjustments: string[] = []
+    let remaining = errors
+    for (let pass = 0; pass < 3; pass++) {
+      const degraded = degradeDesignerFields(candidate, remaining, current)
+      if (!degraded.warnings.length) break
+      adjustments.push(...degraded.warnings)
+      candidate = degraded.blueprint
+      const checked = await validate(candidate)
+      remaining = checked.errors.filter(error => error.code !== 'plan_limit')
+      if (checked.normalized && !remaining.length && current.modules.every(existing => checked.normalized!.modules.filter(module => module.slug === existing.slug && module.snapshot).length === 1)) {
+        checked.merges.push(...result.merges)
+        result = checked
+        proposal = candidate
+        errors = []
+        appliedPatch = null
+        warnings.push(...adjustments)
+        break
+      }
+    }
   }
   const valid = Boolean(result?.normalized && errors.every(error => error.message.startsWith('Duplicado de')))
+  warnings.push(...capabilityWarnings)
   return { valid, result, message, explanation: limitDesignerExplanation(explanation || message, warnings), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings }
 }
 
@@ -156,7 +218,7 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     const messages = [...previous.messages, { role: 'user' as const, content: instruction, createdAt: new Date().toISOString() }, { role: 'assistant' as const, content: message, explanation, createdAt: new Date().toISOString(), mode: 'full' as const, blueprintVersion: previous.version + 1, blueprint: checked.normalized }]
     const [updated] = await withTenant(tenantId, tx => tx.update(moduleDesignSessions).set({ blueprint: checked.normalized!, messages, version: previous.version + 1, status: 'draft', updatedAt: new Date() }).where(and(eq(moduleDesignSessions.id, sessionId), eq(moduleDesignSessions.tenantId, tenantId), eq(moduleDesignSessions.version, previous.version), inArray(moduleDesignSessions.status, ['draft', 'error']), isNull(moduleDesignSessions.processingAt))).returning())
     if (!updated) throw createError({ statusCode: 409, statusMessage: 'La sesión cambió; vuelve a cargarla' })
-    return { message, explanation, blueprint: checked.normalized, patch: null, diff, merges: checked.merges, credits, session: updated }
+    return { message, explanation, blueprint: checked.normalized, patch: null, warnings: [], diff, merges: checked.merges, credits, session: updated }
   }
   const first = previous.creditsConsumed === 0 || !(previous.messages ?? []).some(message => message.role === 'assistant')
   const allocations = await reserveAiCredits(tenantId, sessionId, first ? 2 : 1, first ? 'generate' : 'iterate')
@@ -177,11 +239,11 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     const merges = result.merges
     const chatMessage = [message, ...merges.map(merge => merge.message), ...generated.warnings].join('\n')
     const finalExplanation = limitDesignerExplanation(generated.explanation, merges.map(merge => merge.message))
-    const messages = [...conversation, { role: 'assistant' as const, content: chatMessage, explanation: finalExplanation, createdAt: new Date().toISOString(), mode: generated.patch ? 'patch' as const : 'full' as const, ...(generated.patch ? { patch: generated.patch } : {}), blueprintVersion: session.version + 1, blueprint: normalized }]
+    const messages = [...conversation, { role: 'assistant' as const, content: chatMessage, explanation: finalExplanation, warnings: generated.warnings, createdAt: new Date().toISOString(), mode: generated.patch ? 'patch' as const : 'full' as const, ...(generated.patch ? { patch: generated.patch } : {}), blueprintVersion: session.version + 1, blueprint: normalized }]
     const credits = await aiCreditBalance(tenantId)
     const finalized = await finishAiCredits(tenantId, sessionId, allocations, usage, true, { blueprint: normalized, messages, version: session.version + 1 })
     if (!finalized) throw createError({ statusCode: 409, statusMessage: 'La generación venció y sus créditos ya fueron devueltos. Puedes volver a intentarlo.' })
-    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, diff, merges, credits }
+    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, warnings: generated.warnings, diff, merges, credits }
   } catch (error) {
     await finishAiCredits(tenantId, sessionId, allocations, usage, false)
     // Proveedor saturado/caído tras los reintentos: 503 recuperable en vez de 500 genérico (HU-ERD-109b).

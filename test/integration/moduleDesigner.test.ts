@@ -441,4 +441,36 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     expect(result.blueprint.associations).toEqual([])
     expect(result.explanation).toContain('Omití la asociación «Orden cliente»')
   })
+  it('ERD-148: cobra el éxito degradado y entrega avisos al cliente y al historial', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal('Prospectos', 'prospectos')
+    design.modules.at(-1)!.fields.push({ name: 'dias', label: 'Días sin contacto', dataType: 'date', validationRules: { calculation: { kind: 'expression', expression: 'HOY()' } } })
+    aiReply({ message: 'CRM', blueprint: design })
+    aiReply({ message: 'CRM reparado', blueprint: design })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'CRM')
+    expect(result.warnings.join(' ')).toContain('Días sin contacto')
+    expect(result.message).toContain('campo simple')
+    expect(result.explanation).toContain('campo simple')
+    expect(result.blueprint.modules.at(-1)!.fields.at(-1)).toMatchObject({ dataType: 'date', validationRules: {} })
+    const saved = await sessions.findSession(tenantId, session.id)
+    expect(saved.messages.at(-1)?.content).toContain('campo simple')
+    expect(saved.messages.at(-1)?.warnings).toEqual(result.warnings)
+    expect(saved.creditsConsumed).toBe(2)
+    expect(await admin`SELECT kind, credits FROM ai_credit_ledger WHERE session_id = ${session.id}`).toMatchObject([{ kind: 'generate', credits: 2 }])
+  })
+
+  it('ERD-148: devuelve los créditos ante fallo estructural y envía errores claros en el 422', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal()
+    design.modules.at(-1)!.name = ''
+    aiReply({ message: 'CRM', blueprint: design })
+    aiReply({ message: 'CRM', blueprint: design })
+    await expect((await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'CRM')).rejects.toMatchObject({ statusCode: 422, data: { errors: [expect.objectContaining({ path: `modules[${design.modules.length - 1}].name`, message: expect.stringContaining('obligatorio') })] } })
+    expect((await sessions.findSession(tenantId, session.id)).creditsConsumed).toBe(0)
+    const ledger = await admin`SELECT kind, credits FROM ai_credit_ledger WHERE session_id = ${session.id}`
+    expect(ledger).toHaveLength(2)
+    expect(ledger).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'generate', credits: 2 }), expect.objectContaining({ kind: 'refund', credits: 2 })]))
+  })
 })

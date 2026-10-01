@@ -1,4 +1,4 @@
-export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; explanation?: string; createdAt: string }
+export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; createdAt: string }
 export type DesignerChatDraft = { id: string; content: string; createdAt: string; status: 'pending' | 'failed'; error: string; action: 'retry' | 'plan' }
 export type DesignerChatEntry = DesignerChatMessage & { id: string; draft?: DesignerChatDraft }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.128.0] - 2026-10-01
+#### [feature]
+- [ERD-148](https://dydasoftware.atlassian.net/browse/ERD-148) - El diseñador de módulos con IA aguanta peticiones grandes: si un campo del plano queda mal armado (por ejemplo una fórmula en un campo de fecha) ya no se cae todo con «La IA no produjo un plano válido»; el diseñador reintenta corrigiendo solo esa pieza y, si no puede, entrega el plano con ese campo simplificado u omitido y un aviso visible. Los errores dicen en qué módulo y campo ocurrieron, y el diseñador declara lo que Flow no puede crear desde ahí (vistas, tableros, avisos por tiempo).
+
 ### [0.127.0] - 2026-10-01
 #### [feature]
 - [ERD-142](https://dydasoftware.atlassian.net/browse/ERD-142) - Chattito responde más rápido y barato: usa por defecto un modelo ligero (`gpt-5.4-mini`, con respaldo `gpt-5.4-nano`) y reserva el modelo alto (`gpt-6-luna`) para preguntas complejas; si un modelo se descontinúa o deja de existir, cambia solo al siguiente sin romper el agente y lo avisa en el log. Incluye una batería de evaluación (`scripts/evalAgent.mjs`) con Luna como juez.

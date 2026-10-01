@@ -167,7 +167,7 @@ describe('blueprint (Postgres real con RLS)', () => {
     const slug = await validator.validateBlueprint(otherTenant, duplicate)
     expect(slug.errors.map(error => error.path)).toContain('modules[1].slug')
     const malformed = await validator.validateBlueprint(otherTenant, { version: 2, summary: 'Error', modules: [], associations: [] })
-    expect(malformed.errors).toContainEqual({ path: 'version', message: 'El valor no está permitido' })
+    expect(malformed.errors).toContainEqual({ path: 'version', message: 'El valor no está permitido', code: 'invalid_literal' })
   })
 
   it('rechaza cambios silenciosos a asociaciones y diseños exportados', async () => {

@@ -16,7 +16,7 @@ export const blueprintFieldSchema = z.object({
   const result = getValidationRulesSchema(field.dataType)?.safeParse(field.validationRules ?? {})
   if (field.isOwnerField && field.dataType !== 'user') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['isOwnerField'], message: 'Responsable requiere tipo Usuario' })
   if (result && !result.success) for (const issue of result.error.issues) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['validationRules', ...issue.path], message: issue.message })
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['validationRules', ...issue.path], message: issue.message, params: { ruleCode: issue.code, ruleKeys: issue.code === 'unrecognized_keys' ? issue.keys : undefined } })
   }
 })
 

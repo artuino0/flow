@@ -12,8 +12,9 @@ import { dedupeBlueprint, type BlueprintMerge } from './dedupe'
 import { loadBlueprintTenant, type BlueprintTx } from './export'
 import { blueprintPlanImpact } from './plan'
 import { STALE_DESIGN_MESSAGE } from '~/server/utils/moduleDesigner/resync'
+import { locateBlueprintError } from './validationErrors'
 
-export interface BlueprintValidationError { path: string; message: string; code?: string }
+export interface BlueprintValidationError { path: string; message: string; code?: string; dataType?: string; ruleKey?: string; moduleName?: string; fieldName?: string }
 export interface BlueprintValidationResult { normalized: Blueprint | null; errors: BlueprintValidationError[]; merges: BlueprintMerge[]; current: Awaited<ReturnType<typeof loadBlueprintTenant>> | null; newFields: Map<string, BlueprintField[]> }
 
 const FIELD_PATTERN = /^[a-z][a-z0-9_]*$/
@@ -23,23 +24,32 @@ const canon = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]
 const pathOf = (parts: Array<string | number>) => parts.reduce<string>((path, part) => typeof part === 'number' ? `${path}[${part}]` : path ? `${path}.${part}` : part, '')
 const issueMessage = (issue: ZodIssue): string => {
   if (issue.code === 'invalid_type') return issue.received === 'undefined' ? 'Este valor es obligatorio' : 'El tipo de dato no es válido'
-  if (issue.code === 'unrecognized_keys') return `Propiedad no permitida: ${issue.keys.join(', ')}`
+  if (issue.code === 'unrecognized_keys') return 'La regla contiene propiedades que este tipo de campo no admite'
   if (issue.code === 'invalid_enum_value' || issue.code === 'invalid_literal' || issue.code === 'invalid_union' || issue.code === 'invalid_union_discriminator') return 'El valor no está permitido'
-  if (issue.code === 'too_small') return 'El valor es menor al mínimo permitido'
+  if (issue.code === 'too_small') return issue.type === 'string' && issue.minimum === 1 ? 'Este texto es obligatorio y no puede estar vacío' : 'El valor es menor al mínimo permitido'
   if (issue.code === 'too_big') return 'El valor supera el máximo permitido'
-  return /^(Required|Expected|Invalid|String|Array|Number|Unrecognized|Too|Received)/i.test(issue.message) ? 'El valor no cumple el formato permitido' : issue.message
+  if (issue.code === 'custom' && issue.params?.ruleCode && issue.params.ruleCode !== 'custom') return issue.params.ruleCode === 'unrecognized_keys' ? 'Este tipo de campo no admite esa regla' : 'La regla debe usar el tipo, las opciones y los valores permitidos para este campo'
+  if (issue.code === 'invalid_string') return 'El formato del texto no es válido'
+  return issue.message
 }
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)])) : value
 const same = (a: unknown, b: unknown) => JSON.stringify(stable(a)) === JSON.stringify(stable(b))
 
-function invalidBlueprintShape(issues: ZodIssue[]): BlueprintValidationResult {
-  return { normalized: null, errors: issues.map(issue => ({ path: pathOf(issue.path), message: issueMessage(issue) })), merges: [], current: null, newFields: new Map() }
+function invalidBlueprintShape(issues: ZodIssue[], input: unknown): BlueprintValidationResult {
+  return { normalized: null, errors: issues.flatMap(issue => {
+    const keys: string[] = issue.code === 'custom' ? issue.params?.ruleKeys ?? [] : []
+    return (keys.length ? keys : [undefined]).map(ruleKey => locateBlueprintError(input, { path: pathOf([...issue.path, ...(ruleKey ? [ruleKey] : [])]), code: issue.code === 'custom' ? issue.params?.ruleCode ?? issue.code : issue.code, message: issueMessage(issue), ...(ruleKey ? { ruleKey } : {}) }))
+  }), merges: [], current: null, newFields: new Map() }
+}
+
+export function blueprintShapeErrors(input: unknown, issues: ZodIssue[]) {
+  return invalidBlueprintShape(issues, input).errors
 }
 
 async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaited<ReturnType<typeof loadBlueprintTenant>>, knownRoles: Set<string>): Promise<BlueprintValidationResult> {
   const { normalized, merges } = dedupeBlueprint(input, current)
   const errors: BlueprintValidationError[] = []
-  const add = (path: string, message: string, code?: string) => errors.push({ path, message, ...(code ? { code } : {}) })
+  const add = (path: string, message: string, code = 'reference') => errors.push(locateBlueprintError(normalized, { path, message, code }))
   const bySlug = new Map(current.modules.map(module => [module.slug, module]))
   const refs = new Map<string, Blueprint['modules'][number]>()
   const proposedSlugs = new Set<string>()
@@ -169,7 +179,7 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
             const source = fieldFor(module.slug, ref)
             if (!source || ['tabla', 'file', 'json', 'multiselect'].includes(source.dataType) || ref === field.name) add(`${at}.validationRules.calculation.expression`, `El campo "${ref}" no se puede usar en esta expresión`)
           }
-        } catch (error) { add(`${at}.validationRules.calculation.expression`, `Expresión inválida: ${(error as Error).message}`) }
+        } catch { add(`${at}.validationRules.calculation.expression`, 'La expresión usa una función, operador o sintaxis que Flow no admite') }
       }
       if (calc.kind === 'rollup') {
         const childSlug = typeof calc.sourceEntity === 'string' ? target(calc.sourceEntity) : null
@@ -207,7 +217,7 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
         visited.add(name)
         return false
       }
-      if (visit(field.name)) add(`${base}.fields[${fieldIndex}].validationRules.calculation`, 'El cálculo crea una dependencia circular')
+      if (visit(field.name)) add(`${base}.fields[${fieldIndex}].validationRules.calculation`, 'El cálculo crea una dependencia circular', 'cycle')
     }
     for (const [lineIndex, line] of (module.lines ?? []).entries()) {
       const at = `${base}.lines[${lineIndex}]`
@@ -275,7 +285,7 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
 
 export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, input: unknown): Promise<BlueprintValidationResult> {
   const shape = blueprintSchema.safeParse(input)
-  if (!shape.success) return invalidBlueprintShape(shape.error.issues)
+  if (!shape.success) return invalidBlueprintShape(shape.error.issues, input)
   const current = await loadBlueprintTenant(tx, tenantId)
   const knownRoles = new Set((await tx.select({ id: roles.id, name: roles.name }).from(roles).where(eq(roles.tenantId, tenantId))).flatMap(role => [role.id, role.name]))
   return validateBlueprintAgainstCurrent(shape.data, current, knownRoles)
@@ -284,7 +294,7 @@ export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, i
 /** Evaluación sin base de datos: materializa la misma forma que exportBlueprint carga del tenant. */
 export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot: Blueprint): Promise<BlueprintValidationResult> {
   const shape = blueprintSchema.safeParse(input)
-  if (!shape.success) return invalidBlueprintShape(shape.error.issues)
+  if (!shape.success) return invalidBlueprintShape(shape.error.issues, input)
   const fieldsById = new Map(snapshot.modules.map(module => [module.slug, module.fields.map(field => ({
     name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), isOwnerField: Boolean(field.isOwnerField), validationRules: field.validationRules ?? {}
   }))]))
