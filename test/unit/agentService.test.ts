@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentReply } from '../../utils/agentConversation'
 
 vi.mock('../../server/db', () => ({ withTenant: vi.fn(async () => [{ admin: true }]) }))
+vi.mock('../../server/utils/agent/tenantCatalog', () => ({ readTenantCatalog: vi.fn(async () => []) }))
 vi.mock('../../server/utils/agent/usage', () => ({
  readAgentPlan: vi.fn(async () => ({ code: 'escala' })),
  recordAgentMetric: vi.fn(),
@@ -11,13 +12,16 @@ import { resolveAgentMessage } from '../../server/utils/agent/service'
 import { agentMaxOutputTokens, agentResilience } from '../../server/utils/agent/resilience'
 import { agentFallbacks, courtesyReply } from '../../utils/agentConversation'
 import { recordAgentMetric, withAgentQuota } from '../../server/utils/agent/usage'
+import { readTenantCatalog } from '../../server/utils/agent/tenantCatalog'
 
 const auth = { sub: 'test-user', tenantId: 'test-tenant', roleId: 'test-role', sid: 'test-session' }
 const input = { message: '¿Cómo organizo el trabajo de mi equipo en Flow?', context: { page: 'home', path: '/' } }
 const output = JSON.stringify({ intent: 'guide', reply: 'Organiza el trabajo en Flow.', emotion: 'happy', actions: [] })
+const tenantModule = { id: 'service-id', name: 'Servicios', slug: 'servicios', singularName: 'Servicio', description: 'Catálogo del equipo', moduleKind: 'hecho', fieldLabels: ['Cliente'], canCreate: true }
 const response = (content = output) => new Response(JSON.stringify({ choices: [{ finish_reason: content ? 'stop' : 'length', message: { content } }], usage: { prompt_tokens: 20, completion_tokens: 45 } }))
 let logs: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
+ vi.clearAllMocks()
  vi.stubEnv('AI_PROVIDER','openai'); vi.stubEnv('OPENAI_API_KEY','simulated'); vi.stubEnv('OPENAI_MODEL','gpt-6-luna'); vi.stubEnv('AGENT_AI_MAX_OUTPUT_TOKENS',''); vi.stubEnv('AGENT_AI_TIMEOUT_MS','12000')
  agentResilience.active = 0; agentResilience.failures = 0; agentResilience.failureStart = 0; agentResilience.openUntil = 0; agentResilience.probing = false
  vi.spyOn(agentResilience,'rate').mockReturnValue(0)
@@ -26,6 +30,41 @@ beforeEach(() => {
  vi.stubGlobal('fetch',vi.fn(() => { throw new Error('Red prohibida') }))
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+describe('ERD-144 servicio con catálogo y proveedor simulado', () => {
+ it('adenda: enumerar módulos, catálogos y navegar por tipo no llama IA ni cuota', async () => {
+  const typed = [tenantModule, { ...tenantModule, id: 'ref-id', slug: 'servicios-ref', name: 'Referencia', moduleKind: 'dimension' }]
+  for (const message of ['que modulos tenemos disponibles', 'y actalagos', 'no los veo llevame a catalagos']) {
+   vi.mocked(readTenantCatalog).mockResolvedValueOnce(typed)
+   expect((await resolveAgentMessage(auth, { ...input, message })).layer).toBe('catalog')
+  }
+  expect(fetch).not.toHaveBeenCalled(); expect(withAgentQuota).not.toHaveBeenCalled()
+  expect(recordAgentMetric).toHaveBeenCalledTimes(3)
+ })
+ it('pregunta original y ausencia de módulo se resuelven sin proveedor ni cuota', async () => {
+  vi.mocked(readTenantCatalog).mockResolvedValueOnce([tenantModule])
+  const result = await resolveAgentMessage(auth, { ...input, message: 'tengo una lista de servicios para mis clientes, ¿dónde los registro?' })
+  expect(result.layer).toBe('catalog'); expect(result.actions[0]).toMatchObject({ path: '/registros/servicios' })
+  expect((await resolveAgentMessage(auth, { ...input, message: 'quiero registrar maquinaria' })).layer).toBe('catalog')
+  expect(fetch).not.toHaveBeenCalled(); expect(withAgentQuota).not.toHaveBeenCalled()
+  expect(recordAgentMetric).toHaveBeenCalledTimes(2)
+  expect(log().layer).toBe('catalog')
+ })
+ it('proveedor simulado recibe datos delimitados y sus acciones pasan por permisos del catálogo', async () => {
+  vi.mocked(readTenantCatalog).mockResolvedValueOnce([{ ...tenantModule, canCreate: false }])
+  const dynamicOutput = JSON.stringify({ intent: 'guide', reply: 'Te acompaño.', emotion: 'happy', actions: [
+   { kind: 'navigate', path: '/registros/servicios' }, { kind: 'navigate', path: '/registros/servicios/nuevo' }, { kind: 'navigate', path: '/registros/ajeno' }
+  ] })
+  const simulated = vi.fn(async (_url: unknown, _init: RequestInit) => response(dynamicOutput))
+  vi.stubGlobal('fetch', simulated)
+  const result = await resolveAgentMessage(auth, input)
+  expect(result.actions).toEqual([{ kind: 'navigate', path: '/registros/servicios', label: 'Llévame a Servicios' }])
+  const body = JSON.parse(String(simulated.mock.calls[0]?.[1]?.body))
+  const prompt = JSON.parse(body.messages.find((message: { role: string }) => message.role === 'user').content)
+  expect(prompt.untrusted_tenant_catalog).toEqual([{ name: 'Servicios', slug: 'servicios', description: 'Catálogo del equipo', canCreate: false, moduleKind: 'hecho', type: 'módulo' }])
+  expect(withAgentQuota).toHaveBeenCalledOnce(); expect(simulated).toHaveBeenCalledOnce()
+  log()
+ })
+})
 function log() {
  const serialized = logs.mock.calls.flat().join('')
  expect(serialized).not.toContain(input.message)

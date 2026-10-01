@@ -1,4 +1,4 @@
-export type AgentAction = { kind: 'navigate'; path: string } | { kind: 'point'; anchor: string } | { kind: 'start-tour'; tourId: string }
+export type AgentAction = { kind: 'navigate'; path: string; label?: string } | { kind: 'point'; anchor: string } | { kind: 'start-tour'; tourId: string }
 import type { ChattitoEmotion } from './chattito'
 export interface AgentReply { reply: string; emotion: ChattitoEmotion; actions: AgentAction[]; layer: 'catalog' | 'ai' | 'offtopic' | 'limited' | 'unavailable'; retryAfterSec?: number | null }
 export type AgentTurn = { role: 'user' | 'assistant'; text: string }

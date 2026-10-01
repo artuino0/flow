@@ -1,14 +1,24 @@
 import type { AgentAction } from './agentConversation'
 import { chattitoCatalog } from './chattitoCatalog'
+import { AGENT_MODULE_PATH } from './agentTenantCatalog'
 import { contextualTourMatchesRoute, isModuleEditTour, onboardingTours, TOUR_SELECTORS, type TourId } from './onboardingTours'
 
 export const AGENT_TOUR_FAILURE = 'No pude iniciar el recorrido aquí. Abre esa pantalla y pídemelo de nuevo; aquí sigo para acompañarte.'
 export const AGENT_MODULE_TOUR_HELP = 'Abre un módulo y pídemelo desde su edición, en la pestaña que quieres recorrer. Te acompaño desde ahí.'
+/** El último registro debe ser la página concreta, nunca un catch-all ni solo su padre. */
+export function agentModuleRouteExists(path: string, resolve: (path: string) => { matched: readonly { path: string }[] }) {
+ const match = AGENT_MODULE_PATH.exec(path)
+ if (!match) return false
+ const expected = `/registros/:entity${match[2] || ''}`
+ return resolve(path).matched.at(-1)?.path.replace(':entity()', ':entity') === expected
+}
 interface ActionRoute { path: string; fullPath: string; query: Record<string, unknown> }
 export interface AgentActionDependencies {
  route: () => ActionRoute
  routerPath: () => string
  push: (path: string) => Promise<boolean>
+ routeExists?: (path: string) => boolean
+ prepareModule?: (slug: string, create: boolean) => Promise<boolean>
  nextTick: () => Promise<void>
  isCurrent: () => boolean
  prepareTour: (id: TourId) => Promise<boolean>
@@ -31,9 +41,21 @@ export async function runAgentAction(action: AgentAction, deps: AgentActionDepen
   const id = action.kind === 'start-tour' && Object.hasOwn(onboardingTours, action.tourId) ? action.tourId as TourId : null
   if (action.kind === 'start-tour' && !id) return fail(failure)
   if (id && isModuleEditTour(id) && !contextualTourMatchesRoute(id, deps.route().path, deps.route().query)) return fail(AGENT_MODULE_TOUR_HELP)
-  if (action.kind === 'navigate' && !screen?.path) return fail(failure)
+  const dynamicPath = action.kind === 'navigate' && AGENT_MODULE_PATH.test(action.path) ? action.path : undefined
+  if (dynamicPath && !deps.routeExists?.(dynamicPath)) return fail('No encuentro esa pantalla ahora. Pídeme de nuevo el módulo y te ayudo a abrirlo.')
+  if (action.kind === 'navigate' && !screen?.path && !dynamicPath) return fail(failure)
+  if (dynamicPath) {
+   const match = AGENT_MODULE_PATH.exec(dynamicPath)!
+   const origin = deps.routerPath()
+   let timer: ReturnType<typeof setTimeout> | undefined
+   const permitted = await Promise.race([
+    deps.prepareModule?.(match[1]!, Boolean(match[2])) ?? Promise.resolve(false),
+    new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), remaining()) })
+   ]).finally(() => { if (timer) clearTimeout(timer) })
+   if (!permitted || !deps.isCurrent() || deps.routerPath() !== origin) return fail('No pude abrir ese módulo con tus permisos actuales. Pídemelo de nuevo y revisamos juntos dónde continuar.')
+  }
   // El recorrido manual comienza en Ajustes, antes de abrir el asistente de creación.
-  const destination = id === 'crear-modulo-manual' ? onboardingTours[id].steps[0]?.path : screen?.path
+  const destination = id === 'crear-modulo-manual' ? onboardingTours[id].steps[0]?.path : dynamicPath || screen?.path
   if (destination && deps.routerPath() !== destination && !await deps.push(destination)) return fail(failure)
   if (destination && deps.routerPath() !== destination) return fail(failure)
   const expectedPath = deps.routerPath()

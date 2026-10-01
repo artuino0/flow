@@ -1,9 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive, watch } from 'vue'
-import { runAgentAction, AGENT_TOUR_FAILURE, type AgentActionDependencies } from '../../utils/agentActions'
+import { runAgentAction, agentModuleRouteExists, AGENT_TOUR_FAILURE, type AgentActionDependencies } from '../../utils/agentActions'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { TOUR_SELECTORS, waitForTourTarget } from '../../utils/onboardingTours'
 
 describe('acciones del agente tras navegación, sin navegador ni red', () => {
+ it('router real reconoce páginas dinámicas y rechaza catch-all o solo padre de nuevo', () => {
+  const component = { render: () => null }
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+   { path: '/registros/:entity()', component },
+   { path: '/registros/:entity()/nuevo', component },
+   { path: '/:pathMatch(.*)*', component }
+  ] })
+  const resolve = (path: string) => router.resolve(path)
+  expect(agentModuleRouteExists('/registros/servicios', resolve)).toBe(true)
+  expect(agentModuleRouteExists('/registros/servicios/nuevo', resolve)).toBe(true)
+  expect(agentModuleRouteExists('/registros/servicios/editar', resolve)).toBe(false)
+  const missing = createRouter({ history: createMemoryHistory(), routes: [{ path: '/registros/:entity', component, children: [{ path: ':pathMatch(.*)*', component }] }] })
+  expect(agentModuleRouteExists('/registros/servicios/nuevo', path => missing.resolve(path))).toBe(false)
+ })
  let deps: AgentActionDependencies
  let route: { path: string; fullPath: string; query: Record<string, unknown> }
  let routerPath: string
@@ -19,6 +34,7 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   current = true
   events = []
   deps = {
+   prepareModule: vi.fn(async () => true),
    route: () => route,
    routerPath: () => routerPath,
    push: vi.fn(async path => {
@@ -43,6 +59,38 @@ describe('acciones del agente tras navegación, sin navegador ni red', () => {
   }
  })
  afterEach(() => vi.useRealTimers())
+
+ it('ruta de módulo inexistente da mensaje cálido sin navegar', async () => {
+  deps.routeExists = vi.fn(() => false)
+  expect(await runAgentAction({ kind: 'navigate', path: '/registros/servicios' }, deps)).toBe(false)
+  expect(deps.push).not.toHaveBeenCalled()
+  expect(deps.message).toHaveBeenCalledWith(expect.stringContaining('te ayudo'))
+ })
+ it.each(['/registros/servicios', '/registros/servicios/nuevo'])('ruta dinámica %s espera publicación y elemento', async path => {
+  deps.routeExists = vi.fn(() => true)
+  target = null; setTimeout(() => { target = element }, 400)
+  const result = runAgentAction({ kind: 'navigate', path }, deps)
+  await vi.advanceTimersByTimeAsync(300)
+  expect(deps.waitTarget).toHaveBeenCalledWith('main', expect.any(Function), expect.any(Function), expect.any(Number))
+  await vi.advanceTimersByTimeAsync(200)
+  expect(await result).toBe(true); expect(deps.routeExists).toHaveBeenCalledWith(path)
+  expect(deps.prepareModule).toHaveBeenCalledWith('servicios', path.endsWith('/nuevo'))
+ })
+ it('permisos de módulo denegados no navegan y explican cómo continuar', async () => {
+  deps.routeExists = () => true
+  deps.prepareModule = vi.fn(async () => false)
+  expect(await runAgentAction({ kind: 'navigate', path: '/registros/servicios/nuevo' }, deps)).toBe(false)
+  expect(deps.push).not.toHaveBeenCalled(); expect(deps.message).toHaveBeenCalledWith(expect.stringContaining('permisos actuales'))
+ })
+ it('permisos de módulo pendientes respetan presupuesto y sesión; respuesta tardía no navega', async () => {
+  deps.routeExists = () => true
+  deps.prepareModule = vi.fn(() => new Promise<boolean>(resolve => setTimeout(() => resolve(true), 9000)))
+  const result = runAgentAction({ kind: 'navigate', path: '/registros/servicios' }, deps)
+  await vi.advanceTimersByTimeAsync(8000)
+  expect(await result).toBe(false)
+  await vi.advanceTimersByTimeAsync(1500)
+  expect(deps.push).not.toHaveBeenCalled()
+ })
 
  it('procesa el observador de ruta, permisos pendientes y elemento antes de iniciar', async () => {
   target = null

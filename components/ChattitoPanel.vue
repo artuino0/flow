@@ -2,7 +2,7 @@
 import { lookAtElement, isAnimatedChattitoMessage, type ChattitoLookAt } from '~/utils/chattito'
 import { CHATTITO_MAX_WIDTH, CHATTITO_MIN_WIDTH } from '~/composables/useChattitoPanel'
 import { agentFallbackReply, agentHistory, courtesyReply, type AgentAction, type AgentReply } from '~/utils/agentConversation'
-import { runAgentAction } from '~/utils/agentActions'
+import { runAgentAction, agentModuleRouteExists } from '~/utils/agentActions'
 import { waitForTourTarget } from '~/utils/onboardingTours'
 import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { helpForContext } from '~/utils/chattitoHelp'
@@ -58,7 +58,7 @@ async function send() {
   setAvatarState('idle')
  } finally { pending.value = false; await nextTick(); document.getElementById('chattito-message')?.focus() }
 }
-function actionLabel(action: AgentAction) { return action.kind === 'navigate' ? 'Llévame' : action.kind === 'point' ? 'Señálame' : 'Ver recorrido' }
+function actionLabel(action: AgentAction) { return action.kind === 'navigate' ? action.label?.slice(0, 65) || 'Llévame' : action.kind === 'point' ? 'Señálame' : 'Ver recorrido' }
 async function runAction(action: AgentAction) {
  if (agentActionPending.value) return
  const owner = sessionIdentity()
@@ -68,6 +68,11 @@ async function runAction(action: AgentAction) {
   const succeeded = await runAgentAction(action, {
    route: () => route,
    routerPath: () => router.currentRoute.value.fullPath,
+   routeExists: path => agentModuleRouteExists(path, destination => router.resolve(destination)),
+   prepareModule: async (slug, create) => {
+    const metadata = await $fetch<{ entity: { isActive: boolean; deletedAt?: string | null }; permissions: { canRead: boolean; canCreate: boolean } }>(`/api/entities/${slug}/fields`, { timeout: 8_000 })
+    return metadata.entity.isActive && !metadata.entity.deletedAt && metadata.permissions.canRead && (!create || metadata.permissions.canCreate)
+   },
    push: async path => {
     const failure = await router.push(path)
     return !isNavigationFailure(failure) || isNavigationFailure(failure, NavigationFailureType.duplicated)

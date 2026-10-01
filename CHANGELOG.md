@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.126.0] - 2026-10-01
+#### [feature]
+- [ERD-144](https://dydasoftware.atlassian.net/browse/ERD-144) - Chattito conoce los módulos y catálogos de tu organización: «¿dónde registro mis servicios?» te lleva al módulo que ya tienes («Llévame a Servicios» y «Nuevo registro») en lugar de sugerir crear uno; «¿qué módulos tengo?» y «¿y catálogos?» enumeran los reales por separado (módulo = operativo en el menú principal, catálogo = dato de referencia que se consulta desde selectores), «llévame a catálogos» abre directamente la pantalla de Catálogos, y todo se filtra por los permisos de tu rol sin leer registros.
+
 ### [0.125.1] - 2026-10-01
 #### [bug]
 - [ERD-143](https://dydasoftware.atlassian.net/browse/ERD-143) - Los botones «Ver recorrido», «Llévame» y «Señálame» de Chattito ahora esperan a que la pantalla de destino esté lista (ruta publicada, permisos y elemento visibles) antes de iniciar el recorrido o resaltar el elemento, en lugar de navegar y no hacer nada; si no pueden iniciar, Chattito lo explica con un mensaje en lugar de fallar en silencio. Además, las respuestas a estados de ánimo difíciles («mal», «triste», «cansado») ya no muestran al avatar sonriente. - 2026-10-01

@@ -327,7 +327,16 @@ export interface NavEntity {
  * incorporar catálogos contextuales. Devuelve entidades legibles aunque
  * showInMenu sea false; buildNavigation aplica la preferencia de menú.
  */
+// Misma visibilidad para el menú y los consumidores de metadatos del usuario.
+export function visibleEntityAccess(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
+  return {
+    join: and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId)),
+    where: and(eq(entities.tenantId, tenantId), eq(entities.isActive, true), isNull(entities.deletedAt), eq(roleEntityPermissions.canRead, true), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined)
+  }
+}
+
 export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
+  const access = visibleEntityAccess(tenantId, roleId, moduleKind)
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select({
@@ -348,9 +357,9 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
       .from(entities)
       .innerJoin(
         roleEntityPermissions,
-        and(eq(roleEntityPermissions.entityId, entities.id), eq(roleEntityPermissions.roleId, roleId))
+        access.join
       )
-      .where(and(eq(entities.tenantId, tenantId), eq(entities.isActive, true), isNull(entities.deletedAt), eq(roleEntityPermissions.canRead, true), moduleKind ? eq(entities.moduleKind, moduleKind) : undefined))
+      .where(access.where)
       .orderBy(entities.name)
 
     return rows
