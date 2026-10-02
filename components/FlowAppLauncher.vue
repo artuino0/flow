@@ -90,9 +90,9 @@ onBeforeUnmount(() => { window.removeEventListener('click', closeOnOutside); win
               {{ app.label }}
               <span v-if="badge(app.key)" class="flex min-w-[22px] items-center justify-center rounded-full bg-brand-orange px-1.5 text-[10px] font-bold leading-5 text-brand-primary-fg">{{ badge(app.key) > 99 ? '99+' : badge(app.key) }}</span>
             </span>
-            <span class="block text-xs leading-4" :class="state(app)?.pending ? 'text-amber-700' : state(app) ? 'text-brand-text-muted' : 'text-brand-text-secondary'">{{ state(app)?.label || app.description }}</span>
+            <span class="block text-xs leading-4" :class="state(app)?.pending ? 'text-brand-app-pending-text' : state(app) ? 'text-brand-text-muted' : 'text-brand-text-secondary'">{{ state(app)?.label || app.description }}</span>
           </span>
-          <span v-if="state(app)?.pending" class="h-2 w-2 shrink-0 rounded-full bg-amber-600" aria-label="Configuración pendiente" />
+          <span v-if="state(app)?.pending" class="h-2 w-2 shrink-0 rounded-full bg-brand-app-pending-dot" aria-label="Configuración pendiente" />
         </button>
       </div>
 

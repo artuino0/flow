@@ -69,6 +69,18 @@
   --brand-tooltip-fg: 255 255 255;
   --brand-overlay: 33 51 67;
   --brand-shadow: 51 71 91;
+  --brand-kanban-column: 238 242 247;
+  --brand-kanban-focus: 143 200 212;
+  --brand-kanban-divider: 237 241 245;
+  --brand-stage-cyan: 0 164 189;
+  --brand-stage-purple: 106 90 205;
+  --brand-mention-hover: 0 122 145;
+  --brand-activity-error: 180 35 24;
+  --brand-origin-border: 219 232 236;
+  --brand-origin-bg: 245 250 251;
+  --brand-app-pending-text: 180 83 9;
+  --brand-app-pending-dot: 217 119 6;
+  --brand-modal-overlay: 0 0 0;
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
@@ -141,6 +153,18 @@
   --brand-tooltip-fg: 240 244 248;
   --brand-overlay: 0 0 0;
   --brand-shadow: 0 0 0;
+  --brand-kanban-column: 20 27 41;
+  --brand-kanban-focus: 63 195 222;
+  --brand-kanban-divider: 44 55 74;
+  --brand-stage-cyan: 77 208 225;
+  --brand-stage-purple: 196 167 255;
+  --brand-mention-hover: 77 208 225;
+  --brand-activity-error: 255 138 118;
+  --brand-origin-border: 58 74 94;
+  --brand-origin-bg: 20 27 41;
+  --brand-app-pending-text: 245 185 77;
+  --brand-app-pending-dot: 245 185 77;
+  --brand-modal-overlay: 0 0 0;
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
@@ -213,6 +237,18 @@
   --brand-tooltip-fg: 255 255 255;
   --brand-overlay: 33 51 67;
   --brand-shadow: 51 71 91;
+  --brand-kanban-column: 238 242 247;
+  --brand-kanban-focus: 143 200 212;
+  --brand-kanban-divider: 237 241 245;
+  --brand-stage-cyan: 0 164 189;
+  --brand-stage-purple: 106 90 205;
+  --brand-mention-hover: 0 122 145;
+  --brand-activity-error: 180 35 24;
+  --brand-origin-border: 219 232 236;
+  --brand-origin-bg: 245 250 251;
+  --brand-app-pending-text: 180 83 9;
+  --brand-app-pending-dot: 217 119 6;
+  --brand-modal-overlay: 0 0 0;
   color-scheme: light;
   color: rgb(var(--brand-body-text));
 }
@@ -287,6 +323,18 @@
   --brand-tooltip-fg: 255 255 255 !important;
   --brand-overlay: 33 51 67 !important;
   --brand-shadow: 51 71 91 !important;
+  --brand-kanban-column: 238 242 247 !important;
+  --brand-kanban-focus: 143 200 212 !important;
+  --brand-kanban-divider: 237 241 245 !important;
+  --brand-stage-cyan: 0 164 189 !important;
+  --brand-stage-purple: 106 90 205 !important;
+  --brand-mention-hover: 0 122 145 !important;
+  --brand-activity-error: 180 35 24 !important;
+  --brand-origin-border: 219 232 236 !important;
+  --brand-origin-bg: 245 250 251 !important;
+  --brand-app-pending-text: 180 83 9 !important;
+  --brand-app-pending-dot: 217 119 6 !important;
+  --brand-modal-overlay: 0 0 0 !important;
     color-scheme: light !important;
   }
 }

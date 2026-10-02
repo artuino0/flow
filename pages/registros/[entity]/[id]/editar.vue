@@ -10,7 +10,7 @@
 // Seguimiento (2026-09-05): usa entity.singularName si esta cargado (mismo
 // motivo y mismo campo que nuevo.vue, ver el comentario largo ahi) - si no,
 // sigue usando `name` tal cual.
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
@@ -104,7 +104,7 @@ async function onSubmit() {
       <form class="flex flex-col gap-5" @submit.prevent="onSubmit">
         <div class="grid grid-cols-1 gap-5" :class="hasTablaFields ? 'lg:grid-cols-12' : ''">
           <div :class="hasTablaFields ? 'lg:col-span-4' : ''">
-            <div v-if="visibleGeneralFields.length > 0" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+            <div v-if="visibleGeneralFields.length > 0" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
               <div class="border-b border-brand-border-light p-5">
                 <h2 class="text-[15px] font-bold text-brand-text">Información general</h2>
               </div>
@@ -118,7 +118,7 @@ async function onSubmit() {
             <div
               v-for="field in tablaFields"
               :key="field.id"
-              class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
+              class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]"
             >
               <div class="border-b border-brand-border-light p-5">
                 <h2 class="text-[15px] font-bold text-brand-text">{{ field.label }}</h2>
@@ -143,7 +143,7 @@ async function onSubmit() {
           <button
             type="submit"
             :disabled="submitting"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {{ submitting ? 'Guardando...' : 'Guardar cambios' }}
           </button>

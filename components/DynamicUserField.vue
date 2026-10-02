@@ -39,7 +39,7 @@ onMounted(async () => {
         <button v-if="!disabled" type="button" :aria-label="`Quitar ${label(id)}`" @click="remove(id)">×</button>
       </span>
     </div>
-    <input v-if="!disabled && (multiple || !selected.length)" v-model="search" :id="`field-${field.name}`" type="search" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm" placeholder="Buscar usuario por nombre o correo" />
+    <input v-if="!disabled && (multiple || !selected.length)" v-model="search" :id="`field-${field.name}`" type="search" class="w-full rounded border border-brand-control-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" placeholder="Buscar usuario por nombre o correo" />
     <div v-if="search && available.length" class="max-h-44 overflow-y-auto rounded border border-brand-control-border bg-brand-surface shadow-sm">
       <button v-for="user in available" :key="user.id" type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-brand-bg" @click="choose(user.id)">
         <span class="flex h-7 w-7 items-center justify-center rounded-full bg-brand-blue-bg text-xs font-bold text-brand-blue">{{ (user.fullName || user.email).slice(0, 2).toUpperCase() }}</span>

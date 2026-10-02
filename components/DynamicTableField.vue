@@ -412,7 +412,7 @@ function addRowFromPicker() {
           <input
             type="text"
             :placeholder="`Buscar ${pickerColumn!.label.toLowerCase()}...`"
-            class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
+            class="min-w-0 flex-1 border-0 bg-brand-surface p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
             :value="pickerQuery"
             @input="onPickerInput(($event.target as HTMLInputElement).value)"
             @focus="pickerOpen = true; if (!pickerResults.length) void runPickerSearch()"
@@ -489,7 +489,7 @@ function addRowFromPicker() {
                     <input
                       type="text"
                       :placeholder="`Buscar ${col.label.toLowerCase()}...`"
-                      class="min-w-0 flex-1 border-0 p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
+                      class="min-w-0 flex-1 border-0 bg-brand-surface p-0 text-xs text-brand-text focus:outline-none focus:ring-0"
                       :value="stateFor(idx).query"
                       @input="onSearchInput(idx, col, ($event.target as HTMLInputElement).value)"
                       @focus="stateFor(idx).open = true; updateDropdownPosition(idx, col); if (!stateFor(idx).results.length) void runSearch(idx, col)"

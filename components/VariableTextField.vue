@@ -3,6 +3,7 @@ import type { EntityFieldMeta } from '~/composables/useEntityFields'
 const props = defineProps<{ modelValue: string; entity: string; recordId?: string; label: string; placeholder?: string; rows?: number }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string]; submit: [] }>()
 const input = ref<HTMLTextAreaElement>()
+const themeSource = ref<HTMLElement>()
 const open = ref(false)
 const mentionOpen = ref(false)
 const query = ref('')
@@ -154,11 +155,11 @@ defineExpose({
 </script>
 
 <template>
-  <div class="variable-field" @keydown="key">
+  <div ref="themeSource" class="variable-field" @keydown="key">
     <textarea ref="input" :aria-label="label" :placeholder="placeholder" :rows="rows ?? 3" :value="modelValue" :aria-expanded="open || mentionOpen" aria-autocomplete="list" @input="change" />
     <button type="button" class="insert-variable" @click="begin">＋ Insertar dato</button>
     <Teleport to="body">
-    <div v-if="open" class="variable-menu" :style="popupStyle" @keydown="key">
+    <div v-if="open" class="variable-menu" :class="{ 'theme-light': !!themeSource?.closest('.theme-light') }" :style="popupStyle" @keydown="key">
       <div class="variable-heading"><strong>{{ path.length ? path.map(p => p.label).join(' › ') : 'Datos del registro' }}</strong><button type="button" aria-label="Cerrar variables" @click="open = false">×</button></div>
       <button v-if="path.length" type="button" class="variable-back" @click="back">← Volver</button>
       <input v-model="query" aria-label="Buscar variable" placeholder="Buscar campo…" @input="selected = 0" />
@@ -170,7 +171,7 @@ defineExpose({
       </div>
       <small class="variable-help">{{ recordId ? 'Se insertará el valor actual y quedará guardado en el texto.' : 'El dato se sustituirá al ejecutar la automatización.' }}</small>
     </div>
-      <div v-if="mentionOpen" class="variable-menu mention-menu" :style="popupStyle" @keydown="key">
+      <div v-if="mentionOpen" class="variable-menu mention-menu" :class="{ 'theme-light': !!themeSource?.closest('.theme-light') }" :style="popupStyle" @keydown="key">
         <div class="variable-heading"><strong>Mencionar usuario</strong><button type="button" aria-label="Cerrar menciones" @click="mentionOpen = false">×</button></div>
         <input v-model="mentionQuery" aria-label="Buscar usuario" placeholder="Buscar usuario…" @input="mentionSelected = 0" />
         <div role="listbox" aria-label="Usuarios disponibles" class="variable-options">
@@ -183,5 +184,5 @@ defineExpose({
   </div>
 </template>
 <style scoped>
-.variable-field{position:relative;width:100%}textarea{display:block;width:100%;resize:vertical;padding:10px 12px;border:1px solid #cbd6e2;border-radius:4px;background:white;color:#33475b;font-size:14px;line-height:1.5}textarea:focus,input:focus{outline:1px solid #0091ae}.insert-variable,.variable-back{font-size:12px;color:#0091ae;padding:6px 0}.variable-menu{position:fixed;overflow-y:auto;z-index:1000;background:white;border:1px solid #cbd6e2;border-radius:8px;box-shadow:0 6px 20px #33475b20;padding:12px;color:#33475b}.variable-heading{display:flex;align-items:center;justify-content:space-between;font-size:13px;gap:8px}.variable-heading button{font-size:22px}.variable-menu input{width:100%;border:1px solid #cbd6e2;border-radius:4px;padding:7px 10px;margin:8px 0;font-size:13px}.variable-options{max-height:220px;overflow:auto}.variable-options button{display:flex;width:100%;text-align:left;justify-content:space-between;gap:10px;padding:9px 8px;font-size:13px;border-radius:4px}.variable-options button:hover,.variable-options button[aria-selected=true]{background:#eaf3f6}.variable-options small,.variable-help{color:#516f90;font-size:11px}.variable-help{display:block;border-top:1px solid #e5eaf0;padding-top:9px;margin-top:8px}.variable-menu p{font-size:12px;padding:10px 0}
+.variable-field{position:relative;width:100%}textarea{display:block;width:100%;resize:vertical;padding:10px 12px;border:1px solid rgb(var(--brand-border));border-radius:4px;background:rgb(var(--brand-surface));color:rgb(var(--brand-text));font-size:14px;line-height:1.5}textarea:focus,input:focus{outline:1px solid rgb(var(--brand-blue))}.insert-variable,.variable-back{font-size:12px;color:rgb(var(--brand-blue));padding:6px 0}.variable-menu{position:fixed;overflow-y:auto;z-index:1000;background:rgb(var(--brand-surface));border:1px solid rgb(var(--brand-border));border-radius:8px;box-shadow:0 6px 20px rgb(var(--brand-shadow) / .12549019607843137);padding:12px;color:rgb(var(--brand-text))}.variable-heading{display:flex;align-items:center;justify-content:space-between;font-size:13px;gap:8px}.variable-heading button{font-size:22px}.variable-menu input{background:rgb(var(--brand-surface));color:rgb(var(--brand-text));width:100%;border:1px solid rgb(var(--brand-border));border-radius:4px;padding:7px 10px;margin:8px 0;font-size:13px}.variable-options{max-height:220px;overflow:auto}.variable-options button{display:flex;width:100%;text-align:left;justify-content:space-between;gap:10px;padding:9px 8px;font-size:13px;border-radius:4px}.variable-options button:hover,.variable-options button[aria-selected=true]{background:rgb(var(--brand-blue-bg))}.variable-options small,.variable-help{color:rgb(var(--brand-text-secondary));font-size:11px}.variable-help{display:block;border-top:1px solid rgb(var(--brand-border-light));padding-top:9px;margin-top:8px}.variable-menu p{font-size:12px;padding:10px 0}
 </style>

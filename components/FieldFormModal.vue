@@ -835,7 +835,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
 </script>
 
 <template>
-  <div v-if="open" :data-tour="mode === 'create' ? 'manual-field-modal' : undefined" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="requestClose()">
+  <div v-if="open" :data-tour="mode === 'create' ? 'manual-field-modal' : undefined" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4" @click.self="requestClose()">
     <div ref="dialogElement" role="dialog" aria-modal="true" aria-labelledby="field-form-title" @keydown="onDialogKeydown" class="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-lg bg-brand-surface shadow-xl">
       <div class="flex items-start justify-between border-b border-brand-border-light p-5">
         <div class="flex flex-col gap-0.5">

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.135.0] - 2026-10-02
+#### [feature]
+- [ERD-162](https://dydasoftware.atlassian.net/browse/ERD-162) - Modo oscuro, segunda fase (bloque A): el Kanban, el Calendario, la línea de tiempo de actividad y los formularios de nuevo y editar registro (con todos sus tipos de campo) ahora también se ven en oscuro, en lugar de aparecer como bloques claros dentro de la página oscura. Además, el Tablero se acomoda mejor cuando el panel de Chattito está abierto: las tarjetas ya no se encogen ni se encimen. Los colores de estos bloques salen de la paleta de marca, y en claro todo se ve igual que antes.
+
 ### [0.134.0] - 2026-10-02
 #### [feature]
 - [ERD-161](https://dydasoftware.atlassian.net/browse/ERD-161) - Modo oscuro, primera fase: un botón en el encabezado, entre las notificaciones y Chattito, permite elegir Claro, Oscuro o Sistema (por defecto sigue al sistema); la preferencia se guarda en el dispositivo y la página carga ya con el tema correcto, sin parpadeo blanco. Migrados al oscuro: el encabezado, la navegación, las notificaciones, el panel de Chattito, los componentes comunes (botones, campos, tarjetas, ventanas, tablas, insignias, avisos), el Tablero y los listados y detalles de registros. Las pantallas que aún no están migradas se muestran en claro dentro de la aplicación oscura para que nada se vea roto, y las impresiones, facturas, correos y sitios públicos de tus clientes siempre se ven en claro. La paleta oscura sale de tu diseño en Pencil.

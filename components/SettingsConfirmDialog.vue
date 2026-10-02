@@ -6,7 +6,7 @@ onMounted(() => dialog.value?.showModal())
 onBeforeUnmount(() => dialog.value?.close())
 </script>
 <template>
-  <dialog ref="dialog" aria-labelledby="settings-dialog-title" class="w-[calc(100%-32px)] max-w-md rounded-lg border-0 bg-brand-surface p-6 text-brand-text shadow-xl backdrop:bg-black/40" @cancel.prevent="emit('cancel')">
+  <dialog ref="dialog" aria-labelledby="settings-dialog-title" class="w-[calc(100%-32px)] max-w-md rounded-lg border-0 bg-brand-surface p-6 text-brand-text shadow-xl backdrop:bg-brand-modal-overlay/40" @cancel.prevent="emit('cancel')">
     <h2 id="settings-dialog-title" class="text-base font-bold">{{ title }}</h2>
     <div class="mt-3 text-sm text-brand-text-secondary"><slot /></div>
     <div class="mt-6 flex justify-end gap-3">

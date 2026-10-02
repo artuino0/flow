@@ -20,7 +20,11 @@ export const lightTokens = {
   'body-bg': '#F9FAFB', 'body-text': '#111827', 'spinner-track': '#CFE4E9',
   'skeleton-base': '#EDF1F4', 'skeleton-highlight': '#F7F9FA', 'dashboard-focus': '#71BDCD',
   'dashboard-error-border': '#EFB8B0', 'dashboard-error-hover': '#A9321C', 'filter-hover': '#DCECF1',
-  'tooltip-bg': '#33475B', 'tooltip-fg': '#FFFFFF', 'overlay': '#213343', 'shadow': '#33475B'
+  'tooltip-bg': '#33475B', 'tooltip-fg': '#FFFFFF', 'overlay': '#213343', 'shadow': '#33475B',
+  'kanban-column': '#EEF2F7', 'kanban-focus': '#8FC8D4', 'kanban-divider': '#EDF1F5',
+  'stage-cyan': '#00A4BD', 'stage-purple': '#6A5ACD', 'mention-hover': '#007A91',
+  'activity-error': '#B42318', 'origin-border': '#DBE8EC', 'origin-bg': '#F5FAFB',
+  'app-pending-text': '#B45309', 'app-pending-dot': '#D97706', 'modal-overlay': '#000000'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -44,7 +48,11 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'body-bg': '#141B29', 'body-text': '#F0F4F8', 'spinner-track': '#3A4A5E',
   'skeleton-base': '#2C374A', 'skeleton-highlight': '#3A4A5E', 'dashboard-focus': '#3FC3DE',
   'dashboard-error-border': '#FF8A76', 'dashboard-error-hover': '#FFA99A', 'filter-hover': '#174853',
-  'tooltip-bg': '#1E2A3D', 'tooltip-fg': '#F0F4F8', 'overlay': '#000000', 'shadow': '#000000'
+  'tooltip-bg': '#1E2A3D', 'tooltip-fg': '#F0F4F8', 'overlay': '#000000', 'shadow': '#000000',
+  'kanban-column': '#141B29', 'kanban-focus': '#3FC3DE', 'kanban-divider': '#2C374A',
+  'stage-cyan': '#4DD0E1', 'stage-purple': '#C4A7FF', 'mention-hover': '#4DD0E1',
+  'activity-error': '#FF8A76', 'origin-border': '#3A4A5E', 'origin-bg': '#141B29',
+  'app-pending-text': '#F5B94D', 'app-pending-dot': '#F5B94D', 'modal-overlay': '#000000'
 }
 
 export function rgbChannels(hex: string): string {

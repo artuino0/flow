@@ -523,7 +523,7 @@ async function changeState(to: string, label?: string) {
       </div>
 
       <div v-else class="min-h-0 flex-1 overflow-auto">
-        <ActivityTimeline class="theme-light" v-if="record" :key="`${entitySlug}:${record.id}`" compact :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
+        <ActivityTimeline v-if="record" :key="`${entitySlug}:${record.id}`" compact :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
         <div v-else class="m-6 flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
           <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" /><span>Guarda el registro primero para empezar a registrar actividad.</span>
         </div>

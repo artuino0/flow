@@ -52,7 +52,7 @@ describe('contrato de tokens y alcance de HU-161', () => {
     expect(header.indexOf('<NotificationCenter />')).toBeLessThan(header.indexOf('<ThemeSelector />'))
     expect(header.indexOf('<ThemeSelector />')).toBeLessThan(header.indexOf('<ChattitoToggle'))
     for (const file of ['components/PrintReportPage.vue', 'components/PrintReportSheet.vue', 'components/PrintReportPreview.vue']) expect(readFileSync(file, 'utf8')).toContain('theme-light')
-    expect(readFileSync('components/RecordDetailView.vue', 'utf8')).toContain('<ActivityTimeline class="theme-light"')
+    expect(readFileSync('components/RecordDetailView.vue', 'utf8')).not.toContain('<ActivityTimeline class="theme-light"')
   })
 
   it('comprueba AA en los valores derivados oscuros y congela las excepciones de Pencil y del claro original', () => {

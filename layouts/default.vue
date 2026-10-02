@@ -181,7 +181,7 @@ async function onLogout(reason?: 'inactividad') {
     >{{ confirmDialog.message }}</SettingsConfirmDialog>
 
     <div class="relative flex min-h-0 flex-1">
-      <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-black/30 sm:hidden" @click="mobileMenuOpen = false" />
+      <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="fixed inset-0 z-30 bg-brand-modal-overlay/30 sm:hidden" @click="mobileMenuOpen = false" />
       <aside
         v-if="!editorFullscreen"
         data-tour="menu"

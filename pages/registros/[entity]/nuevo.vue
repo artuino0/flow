@@ -35,7 +35,7 @@
 
 import { Clock } from '@lucide/vue'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
@@ -147,7 +147,7 @@ async function onSubmit() {
     <template v-else-if="data">
       <form class="grid grid-cols-1 gap-5 lg:grid-cols-[360px_1fr]" @submit.prevent="onSubmit">
         <!-- COLUMNA IZQUIERDA: Detalle (Card Form) -->
-        <div class="flex flex-col h-fit self-start rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <div class="flex flex-col h-fit self-start rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
           <div class="flex flex-col gap-3 border-b border-brand-border-light p-5">
             <div class="flex min-w-0 items-start gap-3">
               <div class="flex min-w-0 flex-col gap-0.5">
@@ -168,7 +168,7 @@ async function onSubmit() {
               <button
                 type="submit"
                 :disabled="submitting"
-                class="w-full rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                class="w-full rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {{ submitting ? 'Guardando...' : 'Guardar y continuar' }}
               </button>
@@ -198,7 +198,7 @@ async function onSubmit() {
               <div
                 v-for="field in tablaFields"
                 :key="field.id"
-                class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]"
+                class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]"
               >
                 <div class="border-b border-brand-border-light px-4 py-3">
                   <h3 class="text-sm font-bold text-brand-text">{{ field.label }}</h3>

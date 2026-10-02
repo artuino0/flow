@@ -135,8 +135,8 @@ defineExpose({ validateAll })
         type="text"
         :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         :maxlength="(field.validationRules?.maxLength as number) || undefined"
-        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+        class="w-full rounded border bg-brand-surface px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
         @blur="field.dataType === 'text' && onInput(field, normalizeClientText(displayValue(field.name), field.validationRules))"
@@ -152,7 +152,7 @@ defineExpose({ validateAll })
         :max="field.validationRules?.max as number"
         :step="field.validationRules?.integer ? 1 : 'any'"
         class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
+        :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -170,7 +170,7 @@ defineExpose({ validateAll })
           :max="field.validationRules?.max as number"
           :step="1 / Math.pow(10, currencyDecimals(field.validationRules))"
           class="w-full rounded border py-[9px] pl-14 pr-3 text-right tabular-nums text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
+          :class="[errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue', isCalculated(field) ? 'cursor-not-allowed bg-brand-bg text-brand-text-secondary' : 'bg-brand-surface']"
           :value="displayValue(field.name)"
           placeholder="0.00"
           @input="onInput(field, ($event.target as HTMLInputElement).value)"
@@ -186,7 +186,7 @@ defineExpose({ validateAll })
           type="checkbox"
           :disabled="disabled || disabledFields?.includes(field.name)"
           :checked="Boolean(valueFor(field.name))"
-          class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
+          class="h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange"
           @change="onInput(field, ($event.target as HTMLInputElement).checked)"
         />
         <span>Si</span>
@@ -200,8 +200,8 @@ defineExpose({ validateAll })
         :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         :min="field.validationRules?.min as string"
         :max="field.validationRules?.max as string"
-        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+        class="w-full rounded border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue'"
         :value="dateInputValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -213,8 +213,8 @@ defineExpose({ validateAll })
         rows="4"
         :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
         placeholder="{}"
-        class="w-full rounded border px-3 py-[9px] font-mono text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+        class="w-full rounded border bg-brand-surface px-3 py-[9px] font-mono text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLTextAreaElement).value)"
       />
@@ -273,8 +273,8 @@ defineExpose({ validateAll })
         :id="`field-${field.name}`"
         type="text"
         :disabled="disabled"
-        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
+        class="w-full rounded border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-control-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
       />
@@ -286,6 +286,8 @@ defineExpose({ validateAll })
 </template>
 
 <style scoped>
+input, textarea, select { color-scheme:inherit; }
+option { background:rgb(var(--brand-surface)); color:rgb(var(--brand-text)); }
 /* Edición dentro de la ficha: controles blancos con borde gris y foco azul (sin fondos teñidos). */
 .detail-form :is(input:not([type='checkbox']), select, textarea) {
   border-color:rgb(var(--brand-control-border));

@@ -18,6 +18,7 @@ export function themeContrasts() {
   pairs.push(['primary-fg', 'orange', 4.5], ['primary-fg', 'orange-hover', 4.5], ['blue', 'surface', 4.5], ['blue-hover', 'surface', 4.5], ['accent-fg', 'blue', 4.5], ['error-fg', 'error-text', 4.5], ['border', 'surface', 3], ['control-border', 'surface', 3])
   pairs.push(['tooltip-fg', 'tooltip-bg', 4.5], ['tooltip-muted', 'tooltip-bg', 4.5], ['tooltip-link', 'tooltip-bg', 4.5], ['help-text', 'help-bg', 4.5], ['panel-muted', 'panel-soft', 4.5], ['message-text', 'info-bg', 4.5])
   for (const name of ['success', 'warning', 'error', 'info', 'neutral', 'purple', 'pink', 'gold', 'indigo'] as const) pairs.push([`${name}-text`, `${name}-bg`, 4.5])
+  pairs.push(['text', 'kanban-column', 4.5], ['text', 'origin-bg', 4.5], ['mention-hover', 'surface', 4.5], ['activity-error', 'surface', 4.5], ['stage-purple', 'surface', 4.5], ['app-pending-text', 'surface', 4.5])
   return (['light', 'dark'] as const).flatMap(theme => pairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }

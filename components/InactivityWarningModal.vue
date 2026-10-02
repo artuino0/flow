@@ -36,7 +36,7 @@ const progressOffset = computed(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4">
     <div class="flex w-full max-w-[440px] flex-col rounded-lg bg-brand-surface shadow-xl">
       <div class="flex items-start gap-3 border-b border-brand-border-light p-5">
         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-error-bg">
