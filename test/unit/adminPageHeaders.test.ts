@@ -49,7 +49,7 @@ describe('encabezados de administración', () => {
     expect(button.loc.source).toContain('@click="openCreateModal"')
     expect(button.loc.source).toContain('Crear rol')
     expect(elements(button.children).some(node => node.tag === 'Plus')).toBe(true)
-    expect(attribute(button, 'class')).toBe('flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover')
+    expect(attribute(button, 'class')).toBe('flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover')
     const note = nodes.find(node => attribute(node, 'role') === 'note')!
     expect(note).toBeDefined()
     expect(root.children.indexOf(note)).toBeGreaterThan(root.children.indexOf(header))

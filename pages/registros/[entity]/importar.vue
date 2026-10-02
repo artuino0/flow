@@ -12,7 +12,7 @@
 // colores brand-*) en vez de inventar un estilo nuevo.
 import { ArrowLeft, CloudUpload, FileUp, X } from '@lucide/vue'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
@@ -117,7 +117,7 @@ const previewRows = computed(() => rows.value.slice(0, 5))
       Volver
     </NuxtLink>
 
-    <div class="rounded-lg border border-brand-border-light bg-brand-surface p-6 shadow-[0_1px_3px_0_#33475B14]">
+    <div class="rounded-lg border border-brand-border-light bg-brand-surface p-6 shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
       <h1 class="text-lg font-bold text-brand-text">Importar{{ meta?.entity?.name ? ` - ${meta.entity.name}` : '' }}</h1>
       <p class="mt-1 text-sm text-brand-text-muted">
         Sube un archivo CSV con encabezados que coincidan con el nombre técnico de los campos. Las columnas de tipo relación
@@ -186,7 +186,7 @@ const previewRows = computed(() => rows.value.slice(0, 5))
             <button
               type="button"
               :disabled="importing || missingRequired.length > 0"
-              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="onImport"
             >
               {{ importing ? 'Importando...' : `Importar ${rows.length} fila${rows.length === 1 ? '' : 's'}` }}
@@ -228,7 +228,7 @@ const previewRows = computed(() => rows.value.slice(0, 5))
             >
               Importar otro archivo
             </button>
-            <NuxtLink :to="`/registros/${slug}`" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover">
+            <NuxtLink :to="`/registros/${slug}`" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover">
               Ver registros
             </NuxtLink>
           </div>

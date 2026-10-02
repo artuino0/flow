@@ -81,6 +81,23 @@
   --brand-app-pending-text: 180 83 9;
   --brand-app-pending-dot: 217 119 6;
   --brand-modal-overlay: 0 0 0;
+  --brand-settings-overlay: 29 41 57;
+  --brand-settings-dialog-overlay: 29 41 59;
+  --brand-billing-divider: 238 242 246;
+  --brand-billing-warning-fill: 217 154 22;
+  --brand-billing-critical-fill: 224 91 67;
+  --brand-billing-sites: 54 185 209;
+  --brand-billing-docs: 155 221 237;
+  --brand-billing-history: 223 232 239;
+  --brand-billing-warning-border: 244 213 141;
+  --brand-billing-warning-bg: 255 244 214;
+  --brand-billing-warning-text: 128 88 0;
+  --brand-billing-error-border: 240 183 173;
+  --brand-billing-error-bg: 253 231 227;
+  --brand-billing-error-text: 168 52 32;
+  --brand-billing-info-border: 190 228 236;
+  --brand-billing-info-bg: 234 247 250;
+  --brand-billing-info-text: 8 111 131;
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
@@ -165,6 +182,23 @@
   --brand-app-pending-text: 245 185 77;
   --brand-app-pending-dot: 245 185 77;
   --brand-modal-overlay: 0 0 0;
+  --brand-settings-overlay: 0 0 0;
+  --brand-settings-dialog-overlay: 0 0 0;
+  --brand-billing-divider: 44 55 74;
+  --brand-billing-warning-fill: 245 185 77;
+  --brand-billing-critical-fill: 255 138 118;
+  --brand-billing-sites: 77 208 225;
+  --brand-billing-docs: 155 221 237;
+  --brand-billing-history: 58 74 94;
+  --brand-billing-warning-border: 245 185 77;
+  --brand-billing-warning-bg: 64 45 10;
+  --brand-billing-warning-text: 245 185 77;
+  --brand-billing-error-border: 255 138 118;
+  --brand-billing-error-bg: 61 23 18;
+  --brand-billing-error-text: 255 138 118;
+  --brand-billing-info-border: 63 195 222;
+  --brand-billing-info-bg: 15 46 54;
+  --brand-billing-info-text: 77 208 225;
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
@@ -249,6 +283,23 @@
   --brand-app-pending-text: 180 83 9;
   --brand-app-pending-dot: 217 119 6;
   --brand-modal-overlay: 0 0 0;
+  --brand-settings-overlay: 29 41 57;
+  --brand-settings-dialog-overlay: 29 41 59;
+  --brand-billing-divider: 238 242 246;
+  --brand-billing-warning-fill: 217 154 22;
+  --brand-billing-critical-fill: 224 91 67;
+  --brand-billing-sites: 54 185 209;
+  --brand-billing-docs: 155 221 237;
+  --brand-billing-history: 223 232 239;
+  --brand-billing-warning-border: 244 213 141;
+  --brand-billing-warning-bg: 255 244 214;
+  --brand-billing-warning-text: 128 88 0;
+  --brand-billing-error-border: 240 183 173;
+  --brand-billing-error-bg: 253 231 227;
+  --brand-billing-error-text: 168 52 32;
+  --brand-billing-info-border: 190 228 236;
+  --brand-billing-info-bg: 234 247 250;
+  --brand-billing-info-text: 8 111 131;
   color-scheme: light;
   color: rgb(var(--brand-body-text));
 }
@@ -335,6 +386,23 @@
   --brand-app-pending-text: 180 83 9 !important;
   --brand-app-pending-dot: 217 119 6 !important;
   --brand-modal-overlay: 0 0 0 !important;
+  --brand-settings-overlay: 29 41 57 !important;
+  --brand-settings-dialog-overlay: 29 41 59 !important;
+  --brand-billing-divider: 238 242 246 !important;
+  --brand-billing-warning-fill: 217 154 22 !important;
+  --brand-billing-critical-fill: 224 91 67 !important;
+  --brand-billing-sites: 54 185 209 !important;
+  --brand-billing-docs: 155 221 237 !important;
+  --brand-billing-history: 223 232 239 !important;
+  --brand-billing-warning-border: 244 213 141 !important;
+  --brand-billing-warning-bg: 255 244 214 !important;
+  --brand-billing-warning-text: 128 88 0 !important;
+  --brand-billing-error-border: 240 183 173 !important;
+  --brand-billing-error-bg: 253 231 227 !important;
+  --brand-billing-error-text: 168 52 32 !important;
+  --brand-billing-info-border: 190 228 236 !important;
+  --brand-billing-info-bg: 234 247 250 !important;
+  --brand-billing-info-text: 8 111 131 !important;
     color-scheme: light !important;
   }
 }

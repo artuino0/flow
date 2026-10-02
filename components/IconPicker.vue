@@ -79,7 +79,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
       <span
         v-if="!disabled"
         title="Este ícono se puede editar"
-        class="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-brand-surface bg-brand-orange text-white"
+        class="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-brand-surface bg-brand-orange text-brand-primary-fg"
       >
         <Pencil class="h-[10px] w-[10px]" :stroke-width="2.5" />
       </span>
@@ -87,7 +87,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
     <div
       v-if="open"
-      class="absolute left-0 top-full z-10 mt-1.5 flex w-72 flex-col gap-2 rounded-lg border border-brand-border-light bg-brand-surface p-2 shadow-[0_4px_16px_0_#33475B33]"
+      class="absolute left-0 top-full z-10 mt-1.5 flex w-72 flex-col gap-2 rounded-lg border border-brand-border-light bg-brand-surface p-2 shadow-[0_4px_16px_0_rgb(var(--brand-shadow)/0.2)]"
     >
       <div class="flex items-center gap-2 rounded border border-brand-border bg-brand-bg px-2.5 py-1.5">
         <Search class="h-[14px] w-[14px] shrink-0 text-brand-text-muted" :stroke-width="1.75" />
@@ -96,7 +96,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
           v-model="search"
           type="text"
           placeholder="Buscar ícono..."
-          class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
+          class="w-full bg-brand-bg text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
         />
       </div>
 
@@ -120,3 +120,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
     </div>
   </div>
 </template>
+
+<style scoped>
+input, textarea, select { color-scheme: inherit; }
+</style>

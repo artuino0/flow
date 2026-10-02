@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.136.0] - 2026-10-02
+#### [feature]
+- [ERD-163](https://dydasoftware.atlassian.net/browse/ERD-163) - Modo oscuro, segunda fase (bloque B): Ajustes (sus nueve secciones, incluidos perfil, seguridad y sesiones, plan y consumo, identidad, API e integraciones y notificaciones), Mi cuenta, Organización, Usuarios y su detalle, la matriz de Roles y permisos, los planes de plataforma y la importación de registros ahora también se ven en oscuro. El código QR de seguridad sigue sobre fondo blanco para poder escanearse, y las vistas previas de reportes y correos y los logos de los clientes se mantienen en claro. En claro todo se ve igual que antes.
+
 ### [0.135.0] - 2026-10-02
 #### [feature]
 - [ERD-162](https://dydasoftware.atlassian.net/browse/ERD-162) - Modo oscuro, segunda fase (bloque A): el Kanban, el Calendario, la línea de tiempo de actividad y los formularios de nuevo y editar registro (con todos sus tipos de campo) ahora también se ven en oscuro, en lugar de aparecer como bloques claros dentro de la página oscura. Además, el Tablero se acomoda mejor cuando el panel de Chattito está abierto: las tarjetas ya no se encogen ni se encimen. Los colores de estos bloques salen de la paleta de marca, y en claro todo se ve igual que antes.

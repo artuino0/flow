@@ -11,7 +11,7 @@ onBeforeUnmount(() => dialog.value?.close())
     <div class="mt-3 text-sm text-brand-text-secondary"><slot /></div>
     <div class="mt-6 flex justify-end gap-3">
       <button autofocus :disabled="busy" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold" @click="emit('cancel')">{{ cancelLabel || 'Cancelar' }}</button>
-      <button :disabled="busy" class="rounded px-4 py-2 text-sm font-semibold text-brand-primary-fg disabled:opacity-50" :class="destructive ? 'bg-brand-error-text' : 'bg-brand-orange'" @click="emit('confirm')">{{ busy ? 'Procesando…' : confirmLabel }}</button>
+      <button :disabled="busy" class="rounded px-4 py-2 text-sm font-semibold disabled:opacity-50" :class="destructive ? 'bg-brand-error-text text-brand-error-fg' : 'bg-brand-orange text-brand-primary-fg'" @click="emit('confirm')">{{ busy ? 'Procesando…' : confirmLabel }}</button>
     </div>
   </dialog>
 </template>

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-/** Lista cerrada: cascarón HU-161, componentes compartidos y registros HU-162. */
+/** Lista cerrada: cascarón HU-161, registros HU-162 y ajustes/administración HU-163. */
 export const migratedThemeFiles = [
   'app.vue', 'assets/css/main.css', 'layouts/default.vue', 'pages/index.vue',
   'components/AppNav.vue', 'components/AppNavEntity.vue', 'components/AppNavGroup.vue', 'components/AppNavTooltip.vue',
@@ -17,7 +17,14 @@ export const migratedThemeFiles = [
   'components/RecordLinesTable.vue', 'components/RecordKanbanBoard.vue', 'components/RecordCalendar.vue',
   'components/ActivityTimeline.vue', 'components/VariableTextField.vue',
   'pages/registros/[entity]/index.vue', 'pages/registros/[entity]/[id]/index.vue',
-  'pages/registros/[entity]/nuevo.vue', 'pages/registros/[entity]/[id]/editar.vue'
+  'pages/registros/[entity]/nuevo.vue', 'pages/registros/[entity]/[id]/editar.vue',
+  'pages/ajustes/index.vue', 'pages/mi-cuenta.vue', 'pages/organizacion.vue',
+  'pages/usuarios/index.vue', 'pages/usuarios/[id].vue', 'pages/roles/index.vue',
+  'pages/platform/plans.vue', 'pages/registros/[entity]/importar.vue',
+  'components/SettingsProfile.vue', 'components/SettingsSessions.vue', 'components/SettingsApiKeys.vue',
+  'components/SettingsBillingSummary.vue', 'components/SettingsEmailAccordion.vue',
+  'components/SettingsFiscalModuleMapping.vue', 'components/SettingsNotificationGroups.vue',
+  'components/AgentUsageTable.vue', 'components/IconPicker.vue', 'components/ModuleTourHelpButton.vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.

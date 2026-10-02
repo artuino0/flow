@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ImageUp, Landmark, ReceiptText, RefreshCw, Trash2 } from '@lucide/vue'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 interface TenantResponse {
   id: string
@@ -425,7 +425,7 @@ async function testPac() {
           <p v-if="pending" role="status" class="text-sm text-brand-text-muted">Cargando ajustes…</p>
           <div v-else-if="error" role="alert" class="settings-card"><p>No se pudo cargar la configuración.</p><button class="settings-button mt-3" @click="refresh()">Reintentar</button></div>
           <template v-else-if="tenant">
-            <form v-if="section === 'organizacion'" class="overflow-hidden rounded-lg border border-brand-border-light bg-white" @submit.prevent="onSave">
+            <form v-if="section === 'organizacion'" class="overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface" @submit.prevent="onSave">
               <div class="settings-card border-0"><h2>Información general</h2><p>Datos básicos de tu organización, visibles para tu equipo</p>
                 <div class="settings-grid mt-6">
                   <label class="settings-field sm:col-span-2">Nombre de la organización<input v-model="name" required /></label>
@@ -446,48 +446,48 @@ async function testPac() {
             <div class="flex gap-4">
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalRfc" class="text-[13px] font-semibold text-brand-text">RFC</label>
-                <input id="fiscalRfc" v-model="fiscal.rfc" type="text" placeholder="AAA010101AAA" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm uppercase text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="fiscal.rfc = fiscal.rfc.toUpperCase()" />
+                <input id="fiscalRfc" v-model="fiscal.rfc" type="text" placeholder="AAA010101AAA" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm uppercase text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @input="fiscal.rfc = fiscal.rfc.toUpperCase()" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalRegimen" class="text-[13px] font-semibold text-brand-text">Régimen fiscal</label>
-                <input id="fiscalRegimen" v-model="fiscal.regimenFiscal" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalRegimen" v-model="fiscal.regimenFiscal" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
             </div>
 
             <div class="flex gap-4">
               <div class="flex flex-[2] flex-col gap-1.5">
                 <label for="fiscalCalle" class="text-[13px] font-semibold text-brand-text">Calle</label>
-                <input id="fiscalCalle" v-model="fiscal.calle" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalCalle" v-model="fiscal.calle" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalNumExt" class="text-[13px] font-semibold text-brand-text">N.º exterior</label>
-                <input id="fiscalNumExt" v-model="fiscal.numeroExterior" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalNumExt" v-model="fiscal.numeroExterior" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalNumInt" class="text-[13px] font-semibold text-brand-text">N.º interior</label>
-                <input id="fiscalNumInt" v-model="fiscal.numeroInterior" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalNumInt" v-model="fiscal.numeroInterior" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
             </div>
 
             <div class="flex gap-4">
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalColonia" class="text-[13px] font-semibold text-brand-text">Colonia</label>
-                <input id="fiscalColonia" v-model="fiscal.colonia" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalColonia" v-model="fiscal.colonia" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalCp" class="text-[13px] font-semibold text-brand-text">Código postal</label>
-                <input id="fiscalCp" v-model="fiscal.codigoPostal" type="text" inputmode="numeric" maxlength="5" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalCp" v-model="fiscal.codigoPostal" type="text" inputmode="numeric" maxlength="5" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
             </div>
 
             <div class="flex gap-4">
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalMunicipio" class="text-[13px] font-semibold text-brand-text">Municipio</label>
-                <input id="fiscalMunicipio" v-model="fiscal.municipio" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalMunicipio" v-model="fiscal.municipio" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
               <div class="flex flex-1 flex-col gap-1.5">
                 <label for="fiscalEstado" class="text-[13px] font-semibold text-brand-text">Estado</label>
-                <input id="fiscalEstado" v-model="fiscal.estado" type="text" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+                <input id="fiscalEstado" v-model="fiscal.estado" type="text" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
               </div>
             </div>
           </div>
@@ -497,7 +497,7 @@ async function testPac() {
             </form>
             <template v-else-if="section === 'identidad'">
               <section class="settings-card"><h2>Logo de la organización</h2><p class="mb-6">Se utiliza en reportes y correos enviados por tu organización</p>          <div class="flex items-center gap-4">
-            <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded border border-brand-border-light bg-brand-bg">
+            <div class="theme-light flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded border border-brand-border-light bg-brand-bg">
               <img v-if="logoSrc" :src="logoSrc" alt="Logo de la organización" class="h-full w-full object-contain" />
               <span v-else class="text-[10px] text-brand-text-muted">LOGO</span>
             </div>
@@ -531,7 +531,7 @@ async function testPac() {
 <p class="mt-4 text-xs">El logo se guarda al subirlo o quitarlo.</p></section>
               <div class="settings-grid">
                 <section class="settings-card"><h2>Vista previa en reportes</h2><div class="theme-light mt-4 rounded border border-brand-border-light bg-brand-surface p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en reportes" class="mb-3 h-10 max-w-40 object-contain" /><strong class="text-sm">{{ tenant.name }}</strong><hr class="my-3 border-brand-border-light" /><p class="text-xs">Reporte operativo</p><div class="mt-3 h-12 rounded bg-brand-bg" /></div></section>
-                <section class="settings-card"><h2>Vista previa en correos</h2><div class="theme-light mt-4 rounded border border-brand-border-light bg-brand-surface p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en correos" class="mb-3 h-10 max-w-40 object-contain" /><strong v-else class="text-brand-blue">Flow</strong><h3 class="mt-4 text-sm font-semibold">Notificación de {{ tenant.name }}</h3><p class="mt-2 text-xs">Aquí aparecerá el contenido de tu correo.</p><span class="mt-4 inline-block rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white">Ver detalle</span></div></section>
+                <section class="settings-card"><h2>Vista previa en correos</h2><div class="theme-light mt-4 rounded border border-brand-border-light bg-brand-surface p-5"><img v-if="logoSrc" :src="logoSrc" alt="Logo en correos" class="mb-3 h-10 max-w-40 object-contain" /><strong v-else class="text-brand-blue">Flow</strong><h3 class="mt-4 text-sm font-semibold">Notificación de {{ tenant.name }}</h3><p class="mt-2 text-xs">Aquí aparecerá el contenido de tu correo.</p><span class="mt-4 inline-block rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-brand-primary-fg">Ver detalle</span></div></section>
               </div>
             </template>
             <section v-else-if="section === 'regional'" class="settings-card"><h2>Zona horaria y moneda</h2><p>Define cómo se muestran las fechas y los importes de tu organización</p><div class="settings-grid mt-6"><ReportOptionSelect class="settings-select" label="Zona horaria" v-model="timezone" :options="TIMEZONE_OPTIONS" /><ReportOptionSelect class="settings-select" label="Moneda por defecto" v-model="defaultCurrency" :options="CURRENCY_OPTIONS" /></div><div class="mt-6 rounded bg-brand-bg p-4"><h3 class="mb-3 text-sm font-semibold">Vista previa</h3><dl class="grid gap-4 text-sm sm:grid-cols-3"><div><dt class="text-xs text-brand-text-muted">Fecha</dt><dd class="mt-1">{{ regionalPreview.date }}</dd></div><div><dt class="text-xs text-brand-text-muted">Hora</dt><dd class="mt-1">{{ regionalPreview.time }}</dd></div><div><dt class="text-xs text-brand-text-muted">Importe</dt><dd class="mt-1">{{ regionalPreview.amount }}</dd></div></dl></div></section>
@@ -545,7 +545,7 @@ async function testPac() {
                 <template v-else-if="pac">
                   <div class="settings-grid mt-6">
                     <label class="settings-field">Proveedor
-                      <select v-model="pacProvider" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+                      <select v-model="pacProvider" class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
                         <option value="facturapi">Facturapi (PAC real)</option>
                         <option value="lab">Laboratorio local Flow (sin PAC, gratis)</option>
                       </select>
@@ -611,23 +611,24 @@ async function testPac() {
   </div>
 </template>
 <style scoped>
+input, textarea, select { color-scheme: inherit; }
+
 .settings-page { --list-page-gutter-x: 32px; --list-page-gutter-y: 32px; @apply flex min-h-[calc(100vh-120px)] flex-col gap-6 pb-20 text-brand-text; }
 .settings-layout { @apply grid items-start gap-6 lg:grid-cols-[224px_minmax(0,1fr)]; }
 .settings-nav { @apply flex gap-1 overflow-x-auto lg:sticky lg:top-5 lg:flex-col; }
 .settings-nav button { @apply flex shrink-0 items-center gap-2.5 rounded px-3 py-3 text-left text-[13px] text-brand-text-secondary hover:bg-brand-blue-bg; }
 .settings-nav button.selected { @apply bg-brand-blue-bg font-semibold text-brand-blue; }
-.settings-card { @apply rounded-lg border border-brand-border-light bg-white p-6; }
+.settings-card { @apply rounded-lg border border-brand-border-light bg-brand-surface p-6; }
 .settings-card h2 { @apply text-[15px] font-bold; }
 .settings-card p { @apply mt-1 text-[13px] text-brand-text-secondary; }
 .settings-grid { @apply grid gap-5 sm:grid-cols-2; }
 .settings-field { @apply flex flex-col gap-2 text-[13px] font-semibold; }
-.settings-field input,.settings-field select,.settings-field textarea { @apply w-full rounded border border-brand-border bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue; }
-.settings-button { @apply rounded border border-brand-border bg-white px-4 py-2 text-[13px] font-semibold hover:bg-brand-bg disabled:opacity-50; }
-.settings-primary { @apply rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50; }
+.settings-field input,.settings-field select,.settings-field textarea { @apply w-full rounded border border-brand-border bg-brand-surface px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue; }
+.settings-button { @apply rounded border border-brand-border bg-brand-surface px-4 py-2 text-[13px] font-semibold hover:bg-brand-bg disabled:opacity-50; }
+.settings-primary { @apply rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-50; }
 .settings-select { @apply flex-col items-stretch gap-2; }
 .settings-select :deep(.report-option-label) { @apply text-[13px] text-brand-text; }
 .settings-select :deep(.report-option-trigger) { @apply min-h-10 w-full font-normal; }
 .settings-select :deep(.report-option-menu) { @apply max-h-64 overflow-y-auto; }
 </style>
-
 

@@ -59,7 +59,8 @@ describe('contratos HU-162', () => {
     const index = readFileSync('pages/registros/[entity]/index.vue', 'utf8')
     expect(index).not.toContain('class="theme-light"')
     expect(readFileSync('components/RecordDetailView.vue', 'utf8')).not.toContain('<ActivityTimeline class="theme-light"')
-    for (const file of ['pages/ajustes/index.vue', 'pages/registros/[entity]/importar.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    // HU-163 migra ajustes e importación; módulos y catálogos siguen protegidos.
+    for (const file of ['pages/modulos/index.vue', 'pages/catalogos/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
     expect(readFileSync('components/PrintReportPage.vue', 'utf8')).toContain('theme-light')
   })
   it('usa los canales globales en calendario y el esquema nativo heredado', () => {

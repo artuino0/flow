@@ -168,7 +168,7 @@ onBeforeUnmount(() => emit('dirty', false))
   <div class="flex flex-col gap-5">
     
 
-    <div v-if="mode === 'profile'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div v-if="mode === 'profile'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
       <div class="flex items-center gap-3 border-b border-brand-border-light p-5">
         <UserRound class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
         <h2 class="text-[15px] font-bold text-brand-text">Tu perfil</h2>
@@ -177,8 +177,8 @@ onBeforeUnmount(() => emit('dirty', false))
         <div class="flex items-center gap-3"><span class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-blue-bg text-lg font-semibold text-brand-blue">{{ (user?.fullName || user?.email || '?').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase() }}</span><div><p class="text-sm font-semibold text-brand-text">{{ user?.fullName }}</p><p class="text-xs text-brand-text-muted">{{ user?.jobTitle || user?.email }}</p></div></div>
         <p v-if="profileError" class="text-sm text-brand-error-text">{{ profileError }}</p>
         <template v-if="profileEditing">
-          <div class="grid gap-4 sm:grid-cols-2"><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Nombre completo<input v-model="profile.fullName" required class="rounded border border-brand-border px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Teléfono<input v-model="profile.phone" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Puesto o cargo<input v-model="profile.jobTitle" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Zona horaria<select v-model="profile.timezone" class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal"><option value="America/Mexico_City">Ciudad de México</option><option value="America/Bogota">Bogotá</option><option value="America/Lima">Lima</option><option value="UTC">UTC</option></select></label></div>
-          <div class="flex justify-end gap-2"><button type="button" class="rounded border border-brand-border px-3 py-2 text-sm font-semibold text-brand-text" @click="cancelProfile">Cancelar</button><button type="button" class="rounded bg-brand-orange px-3 py-2 text-sm font-semibold text-white" :disabled="profileSaving" @click="saveProfile">{{ profileSaving ? 'Guardando...' : 'Guardar cambios' }}</button></div>
+          <div class="grid gap-4 sm:grid-cols-2"><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Nombre completo<input v-model="profile.fullName" required class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Teléfono<input v-model="profile.phone" class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Puesto o cargo<input v-model="profile.jobTitle" class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal" /></label><label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Zona horaria<select v-model="profile.timezone" class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm font-normal"><option value="America/Mexico_City">Ciudad de México</option><option value="America/Bogota">Bogotá</option><option value="America/Lima">Lima</option><option value="UTC">UTC</option></select></label></div>
+          <div class="flex justify-end gap-2"><button type="button" class="rounded border border-brand-border px-3 py-2 text-sm font-semibold text-brand-text" @click="cancelProfile">Cancelar</button><button type="button" class="rounded bg-brand-orange px-3 py-2 text-sm font-semibold text-brand-primary-fg" :disabled="profileSaving" @click="saveProfile">{{ profileSaving ? 'Guardando...' : 'Guardar cambios' }}</button></div>
         </template>
         <template v-else>
           <div class="grid gap-3 sm:grid-cols-2"><div><span class="text-[13px] font-semibold text-brand-text-muted">Nombre completo</span><p class="text-sm text-brand-text">{{ user?.fullName || 'Sin nombre' }}</p></div><div><span class="text-[13px] font-semibold text-brand-text-muted">Correo electrónico</span><p class="text-sm text-brand-text">{{ user?.email }}</p></div><div><span class="text-[13px] font-semibold text-brand-text-muted">Teléfono</span><p class="text-sm text-brand-text">{{ user?.phone || 'Sin teléfono' }}</p></div><div><span class="text-[13px] font-semibold text-brand-text-muted">Puesto o cargo</span><p class="text-sm text-brand-text">{{ user?.jobTitle || 'Sin puesto' }}</p></div></div>
@@ -188,7 +188,7 @@ onBeforeUnmount(() => emit('dirty', false))
       </div>
     </div>
 
-    <div v-if="mode === 'security'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div v-if="mode === 'security'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
       <div class="flex items-center gap-3 border-b border-brand-border-light p-5">
         <KeyRound class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
         <h2 class="text-[15px] font-bold text-brand-text">Cambiar contraseña</h2>
@@ -204,7 +204,7 @@ onBeforeUnmount(() => emit('dirty', false))
             type="password"
             required
             autocomplete="current-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -216,7 +216,7 @@ onBeforeUnmount(() => emit('dirty', false))
             type="password"
             required
             autocomplete="new-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
           <p class="text-xs text-brand-text-muted">Al menos 8 caracteres, con letras y números.</p>
         </div>
@@ -229,7 +229,7 @@ onBeforeUnmount(() => emit('dirty', false))
             type="password"
             required
             autocomplete="new-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -237,7 +237,7 @@ onBeforeUnmount(() => emit('dirty', false))
           <button
             type="submit"
             :disabled="savingPassword"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {{ savingPassword ? 'Guardando...' : 'Cambiar contraseña' }}
           </button>
@@ -245,7 +245,7 @@ onBeforeUnmount(() => emit('dirty', false))
       </form>
     </div>
 
-    <div v-if="mode === 'security'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div v-if="mode === 'security'" class="rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
       <div class="flex items-center justify-between border-b border-brand-border-light p-5">
         <div class="flex items-center gap-3">
           <ShieldCheck class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
@@ -274,7 +274,7 @@ onBeforeUnmount(() => emit('dirty', false))
             <button
               type="button"
               :disabled="totpLoading"
-              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="startTotpSetup"
             >
               {{ totpLoading ? 'Generando...' : 'Activar 2FA' }}
@@ -286,7 +286,7 @@ onBeforeUnmount(() => emit('dirty', false))
         <template v-else-if="!totpEnabled && totpStep === 'setup'">
           <p class="text-sm text-brand-text-secondary">Escaneá este código con tu app autenticadora:</p>
           <div class="flex items-center gap-4">
-            <img v-if="totpQrCodeDataUrl" :src="totpQrCodeDataUrl" alt="Código QR para configurar 2FA" class="h-36 w-36 rounded border border-brand-border-light" />
+            <img v-if="totpQrCodeDataUrl" :src="totpQrCodeDataUrl" alt="Código QR para configurar 2FA" class="theme-light h-36 w-36 rounded border border-brand-border-light bg-brand-surface" />
             <div class="flex flex-1 flex-col gap-1.5">
               <span class="flex items-center gap-1.5 text-[13px] font-semibold text-brand-text-muted">
                 <QrCode class="h-3.5 w-3.5" :stroke-width="1.75" />
@@ -316,7 +316,7 @@ onBeforeUnmount(() => emit('dirty', false))
               inputmode="numeric"
               maxlength="6"
               placeholder="000000"
-              class="w-full max-w-[160px] rounded border border-brand-border px-3 py-[9px] text-center text-sm font-semibold tracking-[0.3em] text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full max-w-[160px] rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-center text-sm font-semibold tracking-[0.3em] text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
           </div>
 
@@ -324,7 +324,7 @@ onBeforeUnmount(() => emit('dirty', false))
             <button
               type="button"
               :disabled="totpLoading || totpVerifyCode.length !== 6"
-              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="confirmTotpSetup"
             >
               {{ totpLoading ? 'Verificando...' : 'Verificar y activar' }}
@@ -360,14 +360,14 @@ onBeforeUnmount(() => emit('dirty', false))
               v-model="disablePassword"
               type="password"
               autocomplete="current-password"
-              class="w-full max-w-xs rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full max-w-xs rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
           </div>
           <div class="flex gap-3">
             <button
               type="button"
               :disabled="totpLoading || !disablePassword"
-              class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-brand-error-fg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               @click="confirmTotpDisable"
             >
               {{ totpLoading ? 'Desactivando...' : 'Confirmar desactivación' }}
@@ -381,3 +381,7 @@ onBeforeUnmount(() => emit('dirty', false))
     </div>
   </div>
 </template>
+
+<style scoped>
+input, textarea, select { color-scheme: inherit; }
+</style>

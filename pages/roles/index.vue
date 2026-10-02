@@ -23,7 +23,7 @@ import type { ChatPermissionKey, ChatPermissionValues } from '~/utils/chat'
 import { FLOW_APP_LIST, type FlowAppKey } from '~/utils/flowApps'
 import { FLOW_APP_ACCESS_CAPABILITY, type FlowCapabilityKey, type FlowCapabilityValues } from '~/utils/flowCapabilities'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 interface RoleRow {
   id: string
@@ -323,7 +323,7 @@ async function onCreateRole() {
       <template #actions>
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
           @click="openCreateModal"
         >
           <Plus class="h-4 w-4" :stroke-width="1.75" />
@@ -368,7 +368,7 @@ async function onCreateRole() {
 
           <div
             v-if="selectorOpen"
-            class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[280px] w-full flex-col overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_4px_16px_0_#33475B33]"
+            class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[280px] w-full flex-col overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_4px_16px_0_rgb(var(--brand-shadow)/0.2)]"
           >
             <div class="flex shrink-0 items-center gap-2 border-b border-brand-border-light px-3 py-2.5">
               <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
@@ -376,7 +376,7 @@ async function onCreateRole() {
                 v-model="roleSearch"
                 type="text"
                 placeholder="Buscar rol..."
-                class="w-full text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
+                class="w-full bg-brand-bg text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none"
               />
             </div>
             <div class="flex flex-col gap-0.5 overflow-y-auto p-1.5">
@@ -425,7 +425,7 @@ async function onCreateRole() {
             </div>
             <NuxtLink
               to="/modulos"
-              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
             >
               Ir a Módulos
               <ArrowRight class="h-4 w-4" :stroke-width="1.75" />
@@ -446,7 +446,7 @@ async function onCreateRole() {
               <button type="button" role="tab" :aria-selected="activeTab === 'applications'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'applications' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'applications'">Aplicaciones</button>
               <button type="button" role="tab" :aria-selected="activeTab === 'chat'" class="border-b-2 px-4 py-2.5 text-sm font-semibold" :class="activeTab === 'chat' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted hover:text-brand-text'" @click="activeTab = 'chat'">Chat</button>
             </div>
-            <div v-if="activeTab === 'hecho' || activeTab === 'dimension'" class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+            <div v-if="activeTab === 'hecho' || activeTab === 'dimension'" class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
             <table class="min-w-full text-sm">
               <thead class="border-b border-brand-border-light bg-brand-bg">
                 <tr>
@@ -462,7 +462,7 @@ async function onCreateRole() {
               <tbody class="divide-y divide-brand-border-light">
                 <tr v-for="row in visibleRows" :key="row.entityId" class="hover:bg-brand-bg">
                   <td class="px-4 py-3 font-medium text-brand-text">{{ row.entityName }}</td>
-                  <td class="px-4 py-3"><select v-model="row.visibility" :aria-label="`Visibilidad: ${row.entityName}`" class="rounded border border-brand-border px-2 py-1.5 text-xs"><option value="all">Todos</option><option value="own">Solo los suyos</option></select></td>
+                  <td class="px-4 py-3"><select v-model="row.visibility" :aria-label="`Visibilidad: ${row.entityName}`" class="rounded border border-brand-border bg-brand-surface px-2 py-1.5 text-xs"><option value="all">Todos</option><option value="own">Solo los suyos</option></select></td>
                   <td v-for="col in visibleColumns" :key="col.key" class="px-4 py-3 text-center">
                     <button
                       type="button"
@@ -473,7 +473,7 @@ async function onCreateRole() {
                       :class="row[col.key] ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
                       @click="toggle(row, col.key)"
                     >
-                      <Check v-if="row[col.key]" class="h-3 w-3 text-white" :stroke-width="3" />
+                      <Check v-if="row[col.key]" class="h-3 w-3 text-brand-primary-fg" :stroke-width="3" />
                     </button>
                   </td>
                 </tr>
@@ -481,7 +481,7 @@ async function onCreateRole() {
             </table>
             </div>
             <p v-if="(activeTab === 'hecho' || activeTab === 'dimension') && visibleRows.length === 0" class="px-2 py-4 text-sm text-brand-text-muted">No hay {{ activeTab === 'hecho' ? 'módulos' : 'catálogos' }} para este rol.</p>
-            <div v-if="activeTab === 'applications'" class="overflow-hidden rounded-lg border border-brand-border-light bg-white">
+            <div v-if="activeTab === 'applications'" class="overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
               <div class="border-b border-brand-border-light px-5 py-4">
                 <h3 class="text-sm font-bold text-brand-text">Acceso base a aplicaciones</h3>
                 <p class="mt-1 text-xs text-brand-text-muted">Define qué áreas de Flow puede abrir este rol. Core y Ajustes forman la base del sistema.</p>
@@ -494,18 +494,18 @@ async function onCreateRole() {
                   </div>
                   <div class="flex items-center gap-3">
                     <span v-if="app.key === 'core' || app.key === 'settings'" class="text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">Base</span>
-                    <button type="button" role="switch" :aria-checked="appPermissions[app.capability]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="appPermissions[app.capability] ? 'justify-end bg-brand-orange' : 'justify-start bg-[#CBD6E2]'" :disabled="permsData.role.isSystem || app.key === 'core' || app.key === 'settings'" @click="toggleAppPermission(app.capability)"><span class="h-5 w-5 rounded-full bg-white shadow" /></button>
+                    <button type="button" role="switch" :aria-checked="appPermissions[app.capability]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="appPermissions[app.capability] ? 'justify-end bg-brand-orange' : 'justify-start bg-brand-border'" :disabled="permsData.role.isSystem || app.key === 'core' || app.key === 'settings'" @click="toggleAppPermission(app.capability)"><span class="h-5 w-5 rounded-full bg-brand-switch-thumb shadow" /></button>
                   </div>
                 </div>
               </div>
               <p v-if="permsData.role.isSystem" class="border-t border-brand-border-light bg-brand-bg px-5 py-3 text-xs text-brand-text-muted">El rol Administrador conserva acceso a todas las aplicaciones.</p>
             </div>
-            <div v-if="activeTab === 'chat'" class="overflow-hidden rounded-lg border border-brand-border-light bg-white">
+            <div v-if="activeTab === 'chat'" class="overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
               <div class="border-b border-brand-border-light px-5 py-4"><h3 class="text-sm font-bold text-brand-text">Permisos base de chat</h3><p class="mt-1 text-xs text-brand-text-muted">Cada usuario hereda estos permisos salvo que tenga una excepción individual.</p></div>
               <div class="divide-y divide-brand-border-light">
                 <div v-for="permission in chatRows" :key="permission.key" class="flex items-center justify-between gap-6 px-5 py-4">
                   <div><p class="text-sm font-semibold text-brand-text">{{ permission.title }}</p><p class="mt-1 text-xs text-brand-text-muted">{{ permission.description }}</p></div>
-                  <button type="button" role="switch" :aria-checked="chatPermissions[permission.key]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="chatPermissions[permission.key] ? 'justify-end bg-brand-orange' : 'justify-start bg-[#CBD6E2]'" :disabled="permsData.role.isSystem" @click="toggleChatPermission(permission.key)"><span class="h-5 w-5 rounded-full bg-white shadow" /></button>
+                  <button type="button" role="switch" :aria-checked="chatPermissions[permission.key]" class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition" :class="chatPermissions[permission.key] ? 'justify-end bg-brand-orange' : 'justify-start bg-brand-border'" :disabled="permsData.role.isSystem" @click="toggleChatPermission(permission.key)"><span class="h-5 w-5 rounded-full bg-brand-switch-thumb shadow" /></button>
                 </div>
               </div>
               <p v-if="permsData.role.isSystem" class="border-t border-brand-border-light bg-brand-bg px-5 py-3 text-xs text-brand-text-muted">El rol Administrador conserva todos los permisos de chat.</p>
@@ -516,7 +516,7 @@ async function onCreateRole() {
             <button
               type="button"
               :disabled="saving"
-              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="onSave"
             >
               {{ saving ? 'Guardando...' : 'Guardar permisos' }}
@@ -527,7 +527,7 @@ async function onCreateRole() {
       </template>
     </template>
 
-    <div v-if="createOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div v-if="createOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4">
       <div class="flex w-full max-w-[440px] flex-col rounded-lg bg-brand-surface shadow-xl">
         <div class="relative border-b border-brand-border-light p-5">
           <h2 class="text-[15px] font-bold text-brand-text">Crear nuevo rol</h2>
@@ -550,7 +550,7 @@ async function onCreateRole() {
               v-model="createName"
               type="text"
               placeholder="Supervisor de ventas"
-              class="rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
+              class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
               @keydown.enter="onCreateRole"
             />
             <p class="text-xs text-brand-text-muted">Así lo van a ver los usuarios al asignarlo</p>
@@ -575,7 +575,7 @@ async function onCreateRole() {
 
             <div
               v-if="copySelectorOpen"
-              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[240px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_#33475B33]"
+              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[240px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_rgb(var(--brand-shadow)/0.2)]"
             >
               <button
                 type="button"
@@ -613,7 +613,7 @@ async function onCreateRole() {
           <button
             type="button"
             :disabled="creating"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onCreateRole"
           >
             <Plus class="h-4 w-4" :stroke-width="1.75" />
@@ -624,3 +624,7 @@ async function onCreateRole() {
     </div>
   </div>
 </template>
+
+<style scoped>
+input, textarea, select { color-scheme: inherit; }
+</style>

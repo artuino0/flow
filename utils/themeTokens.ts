@@ -24,7 +24,13 @@ export const lightTokens = {
   'kanban-column': '#EEF2F7', 'kanban-focus': '#8FC8D4', 'kanban-divider': '#EDF1F5',
   'stage-cyan': '#00A4BD', 'stage-purple': '#6A5ACD', 'mention-hover': '#007A91',
   'activity-error': '#B42318', 'origin-border': '#DBE8EC', 'origin-bg': '#F5FAFB',
-  'app-pending-text': '#B45309', 'app-pending-dot': '#D97706', 'modal-overlay': '#000000'
+  'app-pending-text': '#B45309', 'app-pending-dot': '#D97706', 'modal-overlay': '#000000',
+  'settings-overlay': '#1D2939', 'settings-dialog-overlay': '#1D293B', 'billing-divider': '#EEF2F6',
+  'billing-warning-fill': '#D99A16', 'billing-critical-fill': '#E05B43',
+  'billing-sites': '#36B9D1', 'billing-docs': '#9BDDED', 'billing-history': '#DFE8EF',
+  'billing-warning-border': '#F4D58D', 'billing-warning-bg': '#FFF4D6', 'billing-warning-text': '#805800',
+  'billing-error-border': '#F0B7AD', 'billing-error-bg': '#FDE7E3', 'billing-error-text': '#A83420',
+  'billing-info-border': '#BEE4EC', 'billing-info-bg': '#EAF7FA', 'billing-info-text': '#086F83'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -52,7 +58,14 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'kanban-column': '#141B29', 'kanban-focus': '#3FC3DE', 'kanban-divider': '#2C374A',
   'stage-cyan': '#4DD0E1', 'stage-purple': '#C4A7FF', 'mention-hover': '#4DD0E1',
   'activity-error': '#FF8A76', 'origin-border': '#3A4A5E', 'origin-bg': '#141B29',
-  'app-pending-text': '#F5B94D', 'app-pending-dot': '#F5B94D', 'modal-overlay': '#000000'
+  'app-pending-text': '#F5B94D', 'app-pending-dot': '#F5B94D', 'modal-overlay': '#000000',
+  // HU-163: derivados de roles existentes; los claros son los literales originales de ajustes.
+  'settings-overlay': '#000000', 'settings-dialog-overlay': '#000000', 'billing-divider': '#2C374A',
+  'billing-warning-fill': '#F5B94D', 'billing-critical-fill': '#FF8A76',
+  'billing-sites': '#4DD0E1', 'billing-docs': '#9BDDED', 'billing-history': '#3A4A5E',
+  'billing-warning-border': '#F5B94D', 'billing-warning-bg': '#402D0A', 'billing-warning-text': '#F5B94D',
+  'billing-error-border': '#FF8A76', 'billing-error-bg': '#3D1712', 'billing-error-text': '#FF8A76',
+  'billing-info-border': '#3FC3DE', 'billing-info-bg': '#0F2E36', 'billing-info-text': '#4DD0E1'
 }
 
 export function rgbChannels(hex: string): string {

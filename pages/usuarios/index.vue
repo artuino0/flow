@@ -22,7 +22,7 @@
 //   diseño, solo lo completa.
 import { UserPlus, Pencil, Trash2, Clock, Send, X, ChevronDown, Check, Copy } from '@lucide/vue'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 type UserStatus = 'activo' | 'inactivo' | 'invitacion_pendiente'
 
@@ -252,7 +252,7 @@ async function onResend(user: UserRow) {
       <template #actions>
         <button
           type="button"
-          class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
           @click="openInviteModal"
         >
           <UserPlus class="h-4 w-4" :stroke-width="1.75" />
@@ -272,7 +272,7 @@ async function onResend(user: UserRow) {
       <p v-if="users.length === 0" class="text-sm text-brand-text-muted">Todavía no invitaste a nadie a esta organización.</p>
       <p v-else-if="filteredUsers.length === 0" class="text-sm text-brand-text-muted">Ningún usuario coincide con "{{ search }}".</p>
 
-      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725)]">
         <table class="min-w-full text-sm">
           <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
@@ -343,7 +343,7 @@ async function onResend(user: UserRow) {
     </template>
 
     <!-- Modal "Invitar usuario" (Invite Modal del diseño) -->
-    <div v-if="inviteOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div v-if="inviteOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4">
       <div class="flex w-full max-w-[440px] flex-col rounded-lg bg-brand-surface shadow-xl">
         <div class="relative border-b border-brand-border-light p-5">
           <h2 class="text-[15px] font-bold text-brand-text">Invitar usuario</h2>
@@ -366,7 +366,7 @@ async function onResend(user: UserRow) {
               v-model="inviteEmail"
               type="email"
               placeholder="nuevo.usuario@acme.com"
-              class="rounded border border-brand-border px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
+              class="rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:border-brand-orange focus:outline-none"
               @keydown.enter="onInvite"
             />
             <p class="text-xs text-brand-text-muted">Se le enviará un enlace de invitación a este correo</p>
@@ -384,7 +384,7 @@ async function onResend(user: UserRow) {
             </button>
             <div
               v-if="inviteRoleSelectorOpen"
-              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[220px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_#33475B33]"
+              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[220px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_rgb(var(--brand-shadow)/0.2)]"
             >
               <button
                 v-for="role in roles"
@@ -404,7 +404,7 @@ async function onResend(user: UserRow) {
             <label for="invite-url" class="text-xs font-semibold text-brand-text-secondary">Enlace de invitación</label>
             <div class="flex items-center gap-2">
               <input id="invite-url" :value="inviteUrl" readonly class="min-w-0 flex-1 rounded border border-brand-border bg-brand-surface px-2 py-1.5 text-xs text-brand-text" />
-              <button type="button" class="flex shrink-0 items-center gap-1.5 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white hover:bg-brand-orange-hover" @click="copyInviteUrl">
+              <button type="button" class="flex shrink-0 items-center gap-1.5 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="copyInviteUrl">
                 <Copy class="h-3.5 w-3.5" :stroke-width="1.75" />
                 {{ inviteCopied ? 'Copiado' : 'Copiar' }}
               </button>
@@ -421,7 +421,7 @@ async function onResend(user: UserRow) {
           <button
             type="button"
             :disabled="inviting"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onInvite"
           >
             <Send class="h-4 w-4" :stroke-width="1.75" />
@@ -432,7 +432,7 @@ async function onResend(user: UserRow) {
     </div>
 
     <!-- Modal "Editar usuario" (fuera del mock literal - ver comentario largo arriba) -->
-    <div v-if="editOpen && editUser" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div v-if="editOpen && editUser" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4">
       <div class="flex w-full max-w-[440px] flex-col rounded-lg bg-brand-surface shadow-xl">
         <div class="relative border-b border-brand-border-light p-5">
           <h2 class="text-[15px] font-bold text-brand-text">Editar usuario</h2>
@@ -460,7 +460,7 @@ async function onResend(user: UserRow) {
             </button>
             <div
               v-if="editRoleSelectorOpen"
-              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[220px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_#33475B33]"
+              class="absolute left-0 top-full z-10 mt-1.5 flex max-h-[220px] w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_4px_16px_0_rgb(var(--brand-shadow)/0.2)]"
             >
               <button
                 v-for="role in roles"
@@ -487,7 +487,7 @@ async function onResend(user: UserRow) {
               :class="editIsActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
               @click="editIsActive = !editIsActive"
             >
-              <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+              <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
             </button>
           </div>
 
@@ -501,7 +501,7 @@ async function onResend(user: UserRow) {
           <button
             type="button"
             :disabled="editSaving"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onSaveEdit"
           >
             {{ editSaving ? 'Guardando...' : 'Guardar cambios' }}
@@ -511,7 +511,7 @@ async function onResend(user: UserRow) {
     </div>
 
     <!-- Confirmacion: cancelar invitacion / desactivar acceso -->
-    <div v-if="confirmOpen && confirmTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div v-if="confirmOpen && confirmTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4">
       <div class="flex w-full max-w-[400px] flex-col gap-5 rounded-lg bg-brand-surface p-5 shadow-xl">
         <div class="flex flex-col gap-1">
           <h2 class="text-[15px] font-bold text-brand-text">
@@ -533,7 +533,7 @@ async function onResend(user: UserRow) {
           <button
             type="button"
             :disabled="confirmLoading"
-            class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-brand-error-fg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             @click="onConfirm"
           >
             {{ confirmLoading ? 'Aplicando...' : 'Confirmar' }}
@@ -543,3 +543,7 @@ async function onResend(user: UserRow) {
     </div>
   </div>
 </template>
+
+<style scoped>
+input, textarea, select { color-scheme: inherit; }
+</style>
