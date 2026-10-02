@@ -1,3 +1,4 @@
+import { withSystemRecordAccess } from '../../server/utils/recordActorContext'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
@@ -34,6 +35,8 @@ beforeAll(async () => {
   selfDef = d2!.id
   process.env.APP_DATABASE_URL = testDb.appUrl
   ;({ withTenant } = await import('../../server/db'))
+  const originalWithTenant = withTenant
+  withTenant = (tenant, fn) => withSystemRecordAccess(() => originalWithTenant(tenant, fn))
   util = await import('../../server/utils/recordAssociations')
 }, 60_000)
 

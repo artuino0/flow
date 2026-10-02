@@ -1,3 +1,4 @@
+import { MAX_FILE_SIZE_BYTES } from '~/server/utils/fieldValidations/filePolicy'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -8,7 +9,6 @@ import { deleteStoredObject, getStoredObject, localObjectPath, putStoredObject, 
 import { releaseStorage, reserveStorage } from '~/server/utils/storageUsage'
 import { getPublicAppBaseUrl } from '~/server/utils/publicUrls'
 
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_SITE_ASSET_BYTES = 15 * 1024 * 1024
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])

@@ -1,0 +1,35 @@
+Quiero un CRM de seguimiento de prospectos para DynamicData, una empresa de
+software que vende un ERP configurable a negocios (restaurantes, clínicas,
+agencias de viajes, despachos). Mi equipo comercial es chico (2 a 5 personas).
+
+CATÁLOGOS
+- Etapas del embudo: Nuevo, Contactado, Demo agendada, Propuesta enviada,
+  Negociación, Ganado, Perdido (con orden y color).
+- Industrias: Restaurante, Clínica, Agencia de viajes, Despacho, Otra.
+- Fuentes: Recomendación, Redes sociales, Sitio web, Evento, Llamada en frío.
+- Motivos de pérdida: Precio, Eligió otro sistema, Sin presupuesto, Sin respuesta.
+- Planes de interés: Free, Starter, Business, Enterprise.
+- Responsables (usuarios del equipo).
+
+MÓDULOS
+1) Prospectos: nombre del negocio, contacto, puesto, teléfono, correo, ciudad,
+   industria, fuente, plan de interés, número de empleados, responsable,
+   etapa, fecha de próximo seguimiento, notas, motivo de pérdida (solo si la
+   etapa es Perdido).
+2) Seguimientos: prospecto, fecha, tipo (llamada, WhatsApp, correo, demo,
+   reunión), resultado, siguiente paso, fecha del siguiente paso.
+3) Propuestas: prospecto, plan, monto mensual, descuento, fecha de envío,
+   vigencia, estado (borrador, enviada, aceptada, rechazada).
+
+REGLAS
+- Flujo de estados del Prospecto: Nuevo → Contactado → Demo agendada →
+  Propuesta enviada → Negociación → Ganado o Perdido. No se puede pasar a
+  Ganado sin una propuesta aceptada, ni a Perdido sin motivo de pérdida.
+- En Prospectos: total de seguimientos, fecha del último seguimiento y días
+  sin contacto (calculados).
+- Avisos: notificar al responsable el día del próximo seguimiento y cuando un
+  prospecto lleve más de 7 días sin contacto.
+
+VISTAS
+- Embudo por etapa, prospectos por responsable, prospectos sin contacto
+  reciente y ganados contra perdidos por mes.

@@ -1,9 +1,9 @@
 import { and, eq, ne, sql } from 'drizzle-orm'
-import { z } from 'zod'
+import { buildRecordSchema, applyFieldDefaults } from '~/server/utils/fieldValidations/registry'
 import { requirePermission } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
-import { entities, entityFields, recordActivities, records } from '~/server/db/schema'
-import { buildFieldType } from '~/server/utils/dynamicSchema'
+import { entities, entityFields, recordActivities, records, tenants } from '~/server/db/schema'
+
 import { computeInverseRelations, resolveDetailLayout } from '~/server/utils/detailLayout'
 import { generateIncrementalValue, MissingIncrementalPrefixError } from '~/server/utils/incrementalField'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents } from '~/server/utils/calculatedFields'
@@ -55,16 +55,18 @@ export default defineEventHandler(async (event) => {
         .where(and(eq(records.id, id), eq(records.entityId, entity.id), eq(records.tenantId, auth.tenantId), recordNotDeleted)).limit(1)
       if (!source) throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
 
+      const [organization] = await tx.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
+      const validationContext = { timezone: organization?.timezone, userId: auth.sub }
       const parentFields = await tx.select().from(entityFields).where(eq(entityFields.entityId, entity.id))
       const inverse = await computeInverseRelations(tx, auth.tenantId, entity.slug)
       const layout = resolveDetailLayout(entity.detailLayout, parentFields.map(field => field.name), inverse)
       const sourceData = source.customData as Record<string, unknown>
-      let parentData = copyValues(parentFields, sourceData, entity.workflowConfig)
+      let parentData = applyFieldDefaults(parentFields, copyValues(parentFields, sourceData, entity.workflowConfig), validationContext)
       for (const field of parentFields) {
         if (field.dataType === 'incremental') parentData[field.name] = await generateIncrementalValue(tx, auth.tenantId, field, parentData)
       }
       parentData = await applyCalculatedFields(tx, auth.tenantId, entity.id, parentData, undefined, parentFields)
-      const parentSchema = z.object(Object.fromEntries(parentFields.map(field => [field.name, buildFieldType(field)])))
+      const parentSchema = buildRecordSchema(parentFields, validationContext)
       const parsedParent = parentSchema.safeParse(parentData)
       if (!parsedParent.success) throw createError({ statusCode: 422, statusMessage: 'No se puede duplicar el encabezado con el esquema actual', data: parsedParent.error.flatten() })
       parentData = parsedParent.data as Record<string, unknown>
@@ -83,14 +85,14 @@ export default defineEventHandler(async (event) => {
           .where(and(eq(entities.tenantId, auth.tenantId), eq(entities.slug, relation.entitySlug))).limit(1)
         if (!childEntity) continue
         const childFields = await tx.select().from(entityFields).where(eq(entityFields.entityId, childEntity.id))
-        const childSchema = z.object(Object.fromEntries(childFields.map(field => [field.name, buildFieldType(field)])))
+        const childSchema = buildRecordSchema(childFields, validationContext)
         const children = await tx.select().from(records).where(and(
           eq(records.tenantId, auth.tenantId), eq(records.entityId, childEntity.id), ne(records.id, created.id), recordNotDeleted,
           sql`${records.customData}->>${relation.fieldName} = ${source.id}`
         )).orderBy(records.createdAt, records.id)
         for (const child of children) {
           const original = child.customData as Record<string, unknown>
-          let data = copyValues(childFields, original, childEntity.workflowConfig)
+          let data = applyFieldDefaults(childFields, copyValues(childFields, original, childEntity.workflowConfig), validationContext)
           data[relation.fieldName] = created.id
           for (const field of childFields) {
             if (field.dataType === 'incremental') data[field.name] = await generateIncrementalValue(tx, auth.tenantId, field, data)

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.130.0] - 2026-10-02
+#### [feature]
+- [ERD-152](https://dydasoftware.atlassian.net/browse/ERD-152) - Catálogo de validaciones por tipo de campo como fuente única (39 capacidades) y nuevas validaciones: en Texto, formatos guiados (correo, teléfono MX, URL, RFC, CURP, código postal, solo letras, solo números, alfanumérico), quitar espacios, mayúsculas o minúsculas, no solo espacios y valor por defecto; en Número, decimales máximos, múltiplo de y solo positivos; en Fecha, rangos relativos a hoy y posterior o anterior a otro campo; en Booleano, «debe estar marcado»; en Multiselect, mínimo y máximo de selecciones; en Relación, filtro de registros elegibles; en Archivo, tipos y tamaño máximo por campo; en Tabla, mínimo y máximo de filas. Se retiran la regex libre y los «valores permitidos» de Texto (el Select los cubre). Un campo con valores ya no puede cambiar de tipo, en un Select con datos solo se agregan opciones, y al endurecer reglas se avisa cuántos registros dejarían de cumplir sin bloquear el guardado. El diseñador de módulos con IA conoce las validaciones desde el mismo catálogo.
+
 ### [0.129.0] - 2026-10-01
 #### [feature]
 - [ERD-151](https://dydasoftware.atlassian.net/browse/ERD-151) - En el diseñador, los campos del módulo seleccionado se ven como filas compactas (etiqueta, nombre técnico, tipo, obligatorio, estado y errores) y al hacer clic en uno se abre el mismo modal visual de creación y edición de campos del editor de módulos; «Agregar campo» usa ese mismo modal. Las relaciones, columnas y fórmulas toman los módulos y campos del plano (existentes y propuestos), los campos existentes se abren en solo lectura y los cambios se validan al guardar.

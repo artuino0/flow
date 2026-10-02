@@ -60,7 +60,6 @@ const PERSON_PASSWORD = process.env.SALMANTINO_PASSWORD || 'Salmantino2026'
 // seed - la funcionalidad de prefijo ya esta cubierta por HU-ERD-84 y no es
 // el foco de este dataset.
 
-const EMAIL_REGEX_SRC = '^[^@]+@[^@]+\\.[^@]+$'
 
 const entityDefs = [
   {
@@ -75,7 +74,7 @@ const entityDefs = [
       { name: 'identificacion_fiscal', label: 'Identificación fiscal', dataType: 'text', isRequired: false, validationRules: { maxLength: 40 } },
       { name: 'contacto_nombre', label: 'Contacto', dataType: 'text', isRequired: false, validationRules: { maxLength: 120 } },
       { name: 'telefono', label: 'Teléfono', dataType: 'text', isRequired: false, validationRules: { maxLength: 20 } },
-      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { pattern: EMAIL_REGEX_SRC } },
+      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { format: 'email' } },
       { name: 'direccion', label: 'Dirección', dataType: 'text', isRequired: false, validationRules: { maxLength: 200 } },
       { name: 'municipio', label: 'Municipio', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } },
       { name: 'estado', label: 'Estado', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } },
@@ -240,7 +239,7 @@ const entityDefs = [
       },
       { name: 'ciudad', label: 'Ciudad', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } },
       { name: 'contacto_nombre', label: 'Contacto', dataType: 'text', isRequired: false, validationRules: { maxLength: 120 } },
-      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { pattern: EMAIL_REGEX_SRC } },
+      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { format: 'email' } },
       { name: 'telefono', label: 'Teléfono', dataType: 'text', isRequired: false, validationRules: { maxLength: 20 } },
       {
         name: 'incoterm',

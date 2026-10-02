@@ -1,3 +1,4 @@
+import { withSystemRecordAccess } from '../../server/utils/recordActorContext'
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID, createHmac } from 'node:crypto'
@@ -83,6 +84,10 @@ beforeAll(async () => {
   process.env.APP_DATABASE_URL = testDb.appUrl
   process.env.TRIGGER_WEBHOOK_DEFAULT_SECRET = TRIGGER_WEBHOOK_SECRET
   ;({ executeTriggerActions, retryTriggerLog, computeBackoffMs } = await import('../../server/utils/triggerActions'))
+  const originalExecute = executeTriggerActions
+  const originalRetry = retryTriggerLog
+  executeTriggerActions = (...args) => withSystemRecordAccess(() => originalExecute(...args))
+  retryTriggerLog = (...args) => withSystemRecordAccess(() => originalRetry(...args))
 }, 60_000)
 
 afterAll(async () => {

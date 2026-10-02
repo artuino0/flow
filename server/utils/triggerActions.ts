@@ -1,3 +1,4 @@
+import { defaultRecordValues } from '~/server/utils/fieldValidations/references'
 import { templateRelationData } from '~/server/utils/templateRelations'
 import { createHmac } from 'node:crypto'
 import { z } from 'zod'
@@ -314,10 +315,12 @@ async function runUpsertRecordAction(
           }
         }
       } else {
-        let preparedData = await applyCalculatedFields(tx, tenantId, targetEntity.id, writableMappedData, undefined, targetFields)
+        const defaultedData = await defaultRecordValues(tx, tenantId, targetFields, writableMappedData)
+        let preparedData = await applyCalculatedFields(tx, tenantId, targetEntity.id, defaultedData, undefined, targetFields)
         const workflow = stateWorkflowSchema.safeParse(targetEntity.workflowConfig)
         if (workflow.success && workflow.data.enabled) preparedData = { ...preparedData, [workflow.data.field]: workflow.data.initial }
-        const validated = targetSchema.safeParse(preparedData)
+        const creationSchema = await getEntityZodSchema(tenantId, targetEntity.id, {})
+        const validated = creationSchema.safeParse(preparedData)
         if (!validated.success) throw new Error(`Faltan datos para crear el registro destino: ${JSON.stringify(validated.error.flatten().fieldErrors)}`)
         let customData = { ...(validated.data as Record<string, unknown>) }
         for (const field of targetFields) {

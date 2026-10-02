@@ -1,3 +1,5 @@
+import { defaultRecordValues } from '~/server/utils/fieldValidations/references'
+import { assertFieldReferences } from '~/server/utils/fieldValidations/references'
 import { and, eq, sql as dsql } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { entities, entityFields, people, records, users } from '~/server/db/schema'
@@ -157,7 +159,7 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
       return matches[0].id
     }
 
-    const schema = await getEntityZodSchema(tenantId, entityId)
+    const schema = await getEntityZodSchema(tenantId, entityId, {})
     const toInsert: Record<string, unknown>[] = []
     const errors: ImportRowError[] = []
 
@@ -233,13 +235,15 @@ export async function importRecords(tenantId: string, entityId: string, rows: Ar
         }
       }
 
-      const calculatedRow = await applyCalculatedFields(tx, tenantId, entityId, stripCalculatedValues(fieldRows, resolvedRow), undefined, fieldRows)
+      const defaultedRow = await defaultRecordValues(tx, tenantId, fieldRows, stripCalculatedValues(fieldRows, resolvedRow))
+      const calculatedRow = await applyCalculatedFields(tx, tenantId, entityId, defaultedRow, undefined, fieldRows)
       const parsed = schema.safeParse(calculatedRow)
       if (!parsed.success) {
         errors.push({ row: rowNumber, error: parsed.error.issues.map((issue) => issue.message).join('; ') })
         continue
       }
       try {
+        await assertFieldReferences(tx, tenantId, fieldRows, parsed.data as Record<string, unknown>)
         await assertWritableUsers(tx, tenantId, fieldRows, parsed.data as Record<string, unknown>)
         await assertEditableLineParents(tx, tenantId, entityId, fieldRows, parsed.data as Record<string, unknown>)
       } catch (error) {

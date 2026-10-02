@@ -91,12 +91,12 @@ describe('FieldFormModal en diseñador y editor original', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
   it('permite editar propuestas y conserva reglas sin control visual', async () => {
-    const { host, props, submit } = mount({ fieldSource: source, mode: 'edit', allowSchemaEditing: true, initialField: { name: 'codigo', label: 'Código', dataType: 'text', isRequired: true, validationRules: { pattern: '^[A-Z]+$', minLength: 2 } } })
+    const { host, props, submit } = mount({ fieldSource: source, mode: 'edit', allowSchemaEditing: true, initialField: { name: 'codigo', label: 'Código', dataType: 'text', isRequired: true, validationRules: { format: 'lettersOnly', minLength: 2 } } })
     await open(props)
     expect(host.querySelector<HTMLInputElement>('#field-name')!.disabled).toBe(false)
     await input(host, '#field-name', 'codigo_nuevo')
     button(host, 'Guardar campo').click(); await nextTick()
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ name: 'codigo_nuevo', isRequired: true, validationRules: { pattern: '^[A-Z]+$', minLength: 2 } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ name: 'codigo_nuevo', isRequired: true, validationRules: { format: 'lettersOnly', minLength: 2 } }))
   })
   it('deshabilita existentes y no ofrece guardar', async () => {
     const { host, props, submit } = mount({ fieldSource: source, readOnly: true, mode: 'edit', initialField: { name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true, validationRules: {} } })

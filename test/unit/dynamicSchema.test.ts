@@ -38,14 +38,14 @@ describe('buildFieldType', () => {
       expect(type.safeParse('abc').success).toBe(true)
     })
 
-    it('valida pattern (regex)', () => {
-      const type = buildFieldType({ name: 'email', dataType: 'text', validationRules: { pattern: '^[^@]+@[^@]+$' }, isRequired: true })
+    it('valida el formato guiado email', () => {
+      const type = buildFieldType({ name: 'email', dataType: 'text', validationRules: { format: 'email' }, isRequired: true })
       expect(type.safeParse('a@b.com').success).toBe(true)
       expect(type.safeParse('no-es-email').success).toBe(false)
     })
 
-    it('enum: solo acepta valores de la lista', () => {
-      const type = buildFieldType({ name: 'estado', dataType: 'text', validationRules: { enum: ['activo', 'inactivo'] }, isRequired: true })
+    it('Select: solo acepta valores de la lista', () => {
+      const type = buildFieldType({ name: 'estado', dataType: 'select', validationRules: { options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] }, isRequired: true })
       expect(type.safeParse('activo').success).toBe(true)
       expect(type.safeParse('pendiente').success).toBe(false)
     })

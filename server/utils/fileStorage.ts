@@ -1,3 +1,4 @@
+import { MAX_FILE_SIZE_BYTES } from '~/server/utils/fieldValidations/filePolicy'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
@@ -19,7 +20,7 @@ type Tx = typeof db
 // relationDefinitions.ts) para poder testearlo contra un directorio temporal
 // real, sin pasar por HTTP ni por multipart/form-data.
 
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB
+
 
 export class FileTooLargeError extends Error {}
 export class FileEntityNotFoundError extends Error {}

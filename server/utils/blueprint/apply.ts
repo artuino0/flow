@@ -1,3 +1,4 @@
+import { assertValidationReferences } from '~/server/utils/fieldValidations/references'
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { createError } from 'h3'
@@ -74,7 +75,7 @@ async function applyBlueprintWithActor(tenantId: string, userId: string | null, 
     const newFields = normalized.modules.flatMap(module => (checked.newFields.get(module.ref) ?? []).map(field => ({ module, field })))
     const addField = async (module: Blueprint['modules'][number], field: BlueprintField) => {
       const entityId = ids.get(module.slug)!
-      await createEntityFieldInTx(tx, tenantId, entityId, { name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), isOwnerField: field.isOwnerField ?? false, validationRules: field.validationRules ?? {} })
+      await createEntityFieldInTx(tx, tenantId, entityId, { name: field.name, label: field.label, dataType: field.dataType, isRequired: Boolean(field.required), isOwnerField: field.isOwnerField ?? false, validationRules: field.validationRules ?? {} }, true)
       result.fields.push({ entityId, name: field.name })
       touched.add(entityId)
     }
@@ -105,6 +106,8 @@ async function applyBlueprintWithActor(tenantId: string, userId: string | null, 
       const [{ module, field }] = pending.splice(next, 1)
       await addField(module, field)
     }
+    for (const { module, field } of newFields) await assertValidationReferences(tx, tenantId, ids.get(module.ref)!, field.name, field.dataType, field.validationRules ?? {})
+
     for (const module of normalized.modules) {
       const desiredLines = module.lines ?? []
       if (!desiredLines.length) continue

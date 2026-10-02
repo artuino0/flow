@@ -149,6 +149,15 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
     for (const [fieldIndex, field] of module.fields.entries()) {
       const at = `${base}.fields[${fieldIndex}]`
       const rules = rulesOf(field)
+      if (field.dataType === 'date') for (const key of ['after', 'before']) {
+        if (rules[key] !== undefined && (rules[key] === field.name || fieldFor(module.slug, String(rules[key]))?.dataType !== 'date')) add(`${at}.validationRules.${key}`, 'Debe referirse a otro campo Fecha de la misma entidad')
+      }
+      if (field.dataType === 'relation' && rules.eligibleFilter) {
+        const filter = rules.eligibleFilter as { field: string }
+        const destination = target(String(rules.relationEntity))
+        const candidate = destination ? fieldFor(destination, filter.field) : undefined
+        if (!candidate || !['text', 'number', 'currency', 'boolean', 'select', 'date'].includes(candidate.dataType)) add(`${at}.validationRules.eligibleFilter`, 'El filtro necesita un campo simple real de la entidad destino')
+      }
       if (field.dataType === 'user' && Array.isArray(rules.roles)) for (const roleName of rules.roles) {
         if (!knownRoles.has(String(roleName)) && !(normalized.roles ?? []).some(role => role.name === roleName)) add(`${at}.validationRules.roles`, `El rol ${roleName} no existe ni se propone en el plano`)
       }

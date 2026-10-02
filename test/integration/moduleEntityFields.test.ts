@@ -1,3 +1,4 @@
+import { withRecordActor } from '../../server/utils/recordActorContext'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
@@ -32,6 +33,7 @@ let DuplicateFieldNameError: typeof DuplicateFieldNameErrorType
 let EntityNotFoundError: typeof EntityNotFoundErrorType
 let InvalidValidationRulesError: typeof InvalidValidationRulesErrorType
 
+const actors = new Map<string, { userId: string; roleId: string }>()
 let entityA: string
 let entityB: string
 
@@ -47,9 +49,22 @@ beforeAll(async () => {
   const [entB] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_B}, 'Clientes', 'clientes') returning id`
   entityB = entB.id as string
 
+  for (const tenant of [TENANT_A, TENANT_B]) {
+    const [role] = await admin`insert into roles (tenant_id, name, is_system) values (${tenant}, 'Administrador', true) returning id`
+    const [person] = await admin`insert into people (email, password_hash, full_name) values (${`${tenant}@prueba.local`}, 'no-login', 'Prueba') returning id`
+    const [user] = await admin`insert into users (tenant_id, role_id, person_id) values (${tenant}, ${role.id}, ${person.id}) returning id`
+    actors.set(tenant, { userId: user.id, roleId: role.id })
+  }
+
   process.env.APP_DATABASE_URL = testDb.appUrl
   ;({ createEntityField, updateEntityField, deleteEntityField, DuplicateFieldNameError, EntityNotFoundError, InvalidValidationRulesError } =
     await import('../../server/utils/moduleEntityFields'))
+  const originalCreate = createEntityField
+  const originalUpdate = updateEntityField
+  const originalDelete = deleteEntityField
+  createEntityField = (...args) => withRecordActor(actors.get(args[0])!, () => originalCreate(...args))
+  updateEntityField = (...args) => withRecordActor(actors.get(args[0])!, () => originalUpdate(...args))
+  deleteEntityField = (...args) => withRecordActor(actors.get(args[0])!, () => originalDelete(...args))
 }, 60_000)
 
 afterAll(async () => {
@@ -224,21 +239,15 @@ describe('moduleEntityFields (Postgres real)', () => {
     expect(refreshedRecord.is_dirty).toBe(true)
   })
 
-  it('updateEntityField rechaza (sin guardar nada) si el dataType nuevo no es compatible con las validationRules vigentes', async () => {
-    const field = await createEntityField(TENANT_A, entityA, {
-      name: 'puntaje',
-      label: 'Puntaje',
-      dataType: 'number',
-      validationRules: { min: 0, max: 100 },
-      isRequired: false
-    })
-
-    await expect(updateEntityField(TENANT_A, field.id, { dataType: 'boolean' }, null)).rejects.toBeInstanceOf(InvalidValidationRulesError)
-
-    const [unchanged] = await admin`select data_type from entity_fields where id = ${field.id}`
-    expect(unchanged.data_type).toBe('number')
-    const history = await admin`select id from entity_field_history where entity_field_id = ${field.id}`
-    expect(history).toHaveLength(0)
+  it('updateEntityField permite cambiar un tipo sin valores y elimina reglas incompatibles', async () => {
+    const field = await createEntityField(TENANT_A, entityA, { name: 'puntaje', label: 'Puntaje', dataType: 'number', validationRules: { min: 0, max: 100 }, isRequired: false })
+    expect(await updateEntityField(TENANT_A, field.id, { dataType: 'boolean' }, null)).toMatchObject({ dataType: 'boolean', validationRules: {} })
+    const [changed] = await admin`select data_type, validation_rules from entity_fields where id = ${field.id}`
+    expect(changed).toMatchObject({ data_type: 'boolean', validation_rules: {} })
+    const history = await admin`select data_type, validation_rules from entity_field_history where entity_field_id = ${field.id}`
+    // El servicio y el trigger SQL existente conservan ambos snapshots previos.
+    expect(history).toHaveLength(2)
+    for (const snapshot of history) expect(snapshot).toMatchObject({ data_type: 'number', validation_rules: { min: 0, max: 100 } })
   })
 
   it('updateEntityField devuelve null si el campo no existe o es de otra entity/tenant', async () => {
@@ -395,5 +404,110 @@ describe('moduleEntityFields - incremental (Postgres real)', () => {
     await expect(
       updateEntityField(TENANT_A, field.id, { validationRules: { digits: 6, prefixSource: { relationField: 'no_existe', sourceField: 'codigo' } } }, null)
     ).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+})
+
+describe('HU-ERD-152: tipo bloqueado e impacto aislado por organización', () => {
+  it('campo vacío cambia de tipo y limpia reglas anteriores', async () => {
+    const field = await createEntityField(TENANT_A, entityA, { name: 'vacio152', label: 'Vacío', dataType: 'text', validationRules: { minLength: 2 }, isRequired: false })
+    const result = await updateEntityField(TENANT_A, field.id, { dataType: 'number' }, null)
+    expect(result?.dataType).toBe('number')
+    expect(result?.validationRules).toEqual({})
+  })
+  it('valores activos bloquean el tipo, borrados no lo bloquean y otro tenant no filtra', async () => {
+    const field = await createEntityField(TENANT_A, entityA, { name: 'tipo152', label: 'Tipo', dataType: 'text', validationRules: {}, isRequired: false })
+    const [row] = await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"tipo152":"privado"}') returning id`
+    await expect(updateEntityField(TENANT_A, field.id, { dataType: 'number' }, null)).rejects.toThrow('ya tiene valores')
+    expect(await updateEntityField(TENANT_B, field.id, { dataType: 'number' }, null)).toBeNull()
+    await admin`update records set deleted_at = now() where id = ${row.id}`
+    expect((await updateEntityField(TENANT_A, field.id, { dataType: 'number' }, null))?.dataType).toBe('number')
+  })
+  it('impacto cuenta solo nuevos incumplimientos activos, sin modificar datos ni filtrar valores', async () => {
+    const field = await createEntityField(TENANT_A, entityA, { name: 'impacto152', label: 'Impacto', dataType: 'text', validationRules: { minLength: 2 }, isRequired: false })
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"impacto152":"xx"}'), (${TENANT_A}, ${entityA}, '{"impacto152":"xxxx"}'), (${TENANT_A}, ${entityA}, '{"impacto152":"x"}')`
+    await admin`insert into records (tenant_id, entity_id, custom_data, deleted_at) values (${TENANT_A}, ${entityA}, '{"impacto152":"xx"}', now())`
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_B}, ${entityB}, '{"impacto152":"xx"}')`
+    const before = await admin`select id, custom_data from records where tenant_id = ${TENANT_A} order by id`
+    const result = await updateEntityField(TENANT_A, field.id, { validationRules: { minLength: 3 } }, null)
+    expect(result?.validationImpact?.nonCompliantRecords).toBe(1)
+    expect(result?.validationImpact?.truncated).toBe(false)
+    expect(Object.keys(result!.validationImpact!).sort()).toEqual(['limit', 'nonCompliantRecords', 'scannedRecords', 'truncated'])
+    expect(await admin`select id, custom_data from records where tenant_id = ${TENANT_A} order by id`).toEqual(before)
+    expect((await updateEntityField(TENANT_A, field.id, { validationRules: { minLength: 1 } }, null))?.validationImpact?.nonCompliantRecords).toBe(0)
+  })
+  for (const type of ['select', 'multiselect']) it(`${type}: agrega opciones y cambia etiqueta/color, protege value usado`, async () => {
+    const name = `${type}152`
+    const field = await createEntityField(TENANT_A, entityA, { name, label: 'Opciones', dataType: type, validationRules: { options: [{ value: 'a', label: 'A' }, { value: 'sin_uso', label: 'Sin uso' }] }, isRequired: false })
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, ${admin.json({ [name]: type === 'select' ? 'a' : ['a'] })})`
+    expect((await updateEntityField(TENANT_A, field.id, { validationRules: { options: [{ value: 'a', label: 'Renombrada', color: 'red' }, { value: 'b', label: 'B' }] } }, null))?.validationRules).toEqual({ options: [{ value: 'a', label: 'Renombrada', color: 'red' }, { value: 'b', label: 'B' }] })
+    await expect(updateEntityField(TENANT_A, field.id, { validationRules: { options: [{ value: 'b', label: 'B' }] } }, null)).rejects.toThrow('opciones en uso: a')
+    await expect(updateEntityField(TENANT_A, field.id, { validationRules: { options: [{ value: 'renombrado', label: 'Renombrada' }] } }, null)).rejects.toThrow('opciones en uso: a')
+  })
+  it('referencias de fecha de otra entidad y reglas heredadas no se guardan', async () => {
+    await createEntityField(TENANT_A, entityA, { name: 'inicio152', label: 'Inicio', dataType: 'date', validationRules: {}, isRequired: false })
+    await expect(createEntityField(TENANT_A, entityA, { name: 'fin152', label: 'Fin', dataType: 'date', validationRules: { after: 'inicio152' }, isRequired: false })).resolves.toMatchObject({ dataType: 'date' })
+    await expect(createEntityField(TENANT_B, entityB, { name: 'fin152', label: 'Fin', dataType: 'date', validationRules: { after: 'inicio152' }, isRequired: false })).rejects.toThrow('misma entidad')
+    for (const rules of [{ pattern: 'x' }, { enum: ['a'] }]) await expect(createEntityField(TENANT_A, entityA, { name: 'heredado152', label: 'Heredado', dataType: 'text', validationRules: rules, isRequired: false })).rejects.toBeInstanceOf(InvalidValidationRulesError)
+  })
+  it('el filtro de relación usa registros activos del destino y metadata de archivos real', async () => {
+    const { withTenant: originalWithTenant } = await import('../../server/db')
+    const withTenant: typeof originalWithTenant = (tenant, fn) => withRecordActor(actors.get(tenant)!, () => originalWithTenant(tenant, fn))
+    const { referenceValidationFailures } = await import('../../server/utils/fieldValidations/references')
+    await createEntityField(TENANT_A, entityA, { name: 'elegible152', label: 'Elegible', dataType: 'boolean', validationRules: {}, isRequired: false })
+    const rel = { name: 'destino', dataType: 'relation', validationRules: { relationEntity: 'clientes', eligibleFilter: { field: 'elegible152', value: true } } }
+    const [eligible] = await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"elegible152":true}') returning id`
+    const [ineligible] = await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"elegible152":false}') returning id`
+    const [foreign] = await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_B}, ${entityB}, '{"elegible152":true}') returning id`
+    expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [rel], { destino: eligible.id }))).toEqual([])
+    for (const id of [ineligible.id, foreign.id]) expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [rel], { destino: id }))).toEqual(['destino'])
+    await admin`update records set deleted_at = now() where id = ${eligible.id}`
+    expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [rel], { destino: eligible.id }))).toEqual(['destino'])
+    const [file] = await admin`insert into files (tenant_id, entity_id, file_name, mime_type, size_bytes, storage_key) values (${TENANT_A}, ${entityA}, 'prueba.pdf', 'application/pdf', 100, 'prueba152') returning id`
+    const fileField = { name: 'archivo', dataType: 'file', validationRules: { allowedTypes: ['application/pdf'], maxSizeBytes: 100 } }
+    expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [fileField], { archivo: file.id }))).toEqual([])
+    expect(await withTenant(TENANT_B, tx => referenceValidationFailures(tx, TENANT_B, entityB, [fileField], { archivo: file.id }))).toEqual(['archivo'])
+    expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [{ ...fileField, validationRules: { maxSizeBytes: 99 } }], { archivo: file.id }))).toEqual(['archivo'])
+    expect(await withTenant(TENANT_A, tx => referenceValidationFailures(tx, TENANT_A, entityA, [{ ...fileField, validationRules: { allowedTypes: ['image/png'] } }], { archivo: file.id }))).toEqual(['archivo'])
+  })
+})
+
+describe('HU-ERD-152 REV2: tipos solo en campos configurados', () => {
+  it('usa MIME y extensión persistidos tanto directamente como en la precarga de impacto', async () => {
+    const { referenceValidationFailures, preloadValidationReferences } = await import('../../server/utils/fieldValidations/references')
+    const { withTenant } = await import('../../server/db')
+    const [entity] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Archivo REV2', 'archivo-rev2') returning id`
+    for (const [fileName, mimeType, allowed, valid] of [
+      ['prueba.pdf', 'application/pdf', 'application/pdf', true],
+      ['prueba.exe', 'application/pdf', 'application/pdf', false],
+      ['prueba.pdf', 'application/json', 'application/pdf', false],
+      ['viejo.doc', 'application/msword', 'application/msword', true],
+      ['viejo.xls', 'application/vnd.ms-excel', 'application/vnd.ms-excel', true],
+      ['viejo.ppt', 'application/vnd.ms-powerpoint', 'application/vnd.ms-powerpoint', true],
+      ['audio.mp3', 'audio/mpeg', 'application/pdf', false],
+      ['datos.xml', 'application/xml', 'application/pdf', false]
+    ] as const) {
+      const [file] = await admin`insert into files (tenant_id, entity_id, file_name, mime_type, size_bytes, storage_key) values (${TENANT_A}, ${entity.id}, ${fileName}, ${mimeType}, 100, 'rev2') returning id`
+      for (const validationRules of [{}, { maxSizeBytes: 100 }, { allowedTypes: [allowed] }]) {
+        const fields = [{ name: 'archivo', dataType: 'file', validationRules }]
+        const data = { archivo: file.id, mimeType: 'application/pdf', fileName: 'cliente.pdf' }
+        const expected = 'allowedTypes' in validationRules && !valid ? ['archivo'] : []
+        await withTenant(TENANT_A, async tx => {
+          expect(await referenceValidationFailures(tx, TENANT_A, entity.id, fields, data)).toEqual(expected)
+          const cache = await preloadValidationReferences(tx, TENANT_A, fields, [data])
+          expect(await referenceValidationFailures(tx, TENANT_A, entity.id, fields, data, cache)).toEqual(expected)
+        })
+      }
+    }
+  })
+})
+
+describe('HU-ERD-152: límite del conteo de impacto', () => {
+  it('pagina hasta 10000 y declara truncamiento sin devolver valores', async () => {
+    const [entity] = await admin`insert into entities (tenant_id, name, slug) values (${TENANT_A}, 'Impacto acotado', 'impacto-cap152') returning id`
+    const field = await createEntityField(TENANT_A, entity.id, { name: 'valor', label: 'Valor', dataType: 'text', validationRules: {}, isRequired: false })
+    await admin`insert into records (tenant_id, entity_id, custom_data) select ${TENANT_A}, ${entity.id}, '{"valor":"aa"}'::jsonb from generate_series(1, 10001)`
+    const result = await updateEntityField(TENANT_A, field.id, { validationRules: { minLength: 3 } }, null)
+    expect(result?.validationImpact).toEqual({ nonCompliantRecords: 10000, scannedRecords: 10000, truncated: true, limit: 10000 })
+    expect((await admin`select count(*)::int as total from records where entity_id = ${entity.id}`)[0].total).toBe(10001)
   })
 })

@@ -1,3 +1,4 @@
+import { assertFieldReferences } from '~/server/utils/fieldValidations/references'
 import { and, eq } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db } from '~/server/db'
@@ -36,6 +37,7 @@ export async function assertWritableRelations(
   nextData: Record<string, unknown>,
   previousData: Record<string, unknown> = {}
 ): Promise<void> {
+  await assertFieldReferences(tx, tenantId, fields, nextData)
   await assertWritableUsers(tx, tenantId, fields, nextData, previousData)
   const previous = new Map<string, number>()
   for (const ref of refs(fields, previousData)) {

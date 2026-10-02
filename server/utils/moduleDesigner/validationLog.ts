@@ -1,7 +1,8 @@
+import { FIELD_VALIDATIONS } from '~/server/utils/fieldValidations/registry'
 import { KNOWN_DATA_TYPES } from '~/server/utils/dynamicSchema'
 import type { BlueprintValidationError } from '~/server/utils/blueprint/validate'
 
-const ruleKeys = new Set(['minLength', 'maxLength', 'pattern', 'enum', 'min', 'max', 'integer', 'calculation', 'currency', 'decimals', 'allowNegative', 'relationEntity', 'multiple', 'roles', 'defaultCurrentUser', 'unique', 'columns', 'options', 'digits', 'prefix', 'prefixSource'])
+const ruleKeys = new Set(FIELD_VALIDATIONS.map(rule => rule.id))
 const calculationKeys = new Set(['kind', 'operator', 'leftField', 'rightField', 'aggregate', 'sourceEntity', 'relationField', 'valueField', 'filter', 'field', 'value', 'expression'])
 const pathKeys = new Set([...ruleKeys, ...calculationKeys, 'modules', 'fields', 'operations', 'module', 'changes', 'op', 'slug', 'name', 'label', 'ref', 'action', 'dataType', 'required', 'isOwnerField', 'validationRules', 'workflow', 'enabled', 'initial', 'states', 'locked', 'editableFields', 'transitions', 'from', 'to', 'layout', 'x', 'y', 'rules', 'type', 'mode', 'when', 'message', 'lineEntity', 'relatedField', 'compareField', 'lines', 'childRef', 'totals', 'associations', 'sourceRef', 'targetRef', 'roles', 'permissions', 'moduleRef', 'visibility', 'canRead', 'canCreate', 'canUpdate', 'canDelete', 'icon', 'description', 'singularName', 'snapshot', 'detailLayout', 'relations', 'entitySlug', 'fieldName', 'editable', 'calendarConfig', 'startDateField', 'startTimeField', 'durationField', 'endField', 'titleField', 'colorField', 'groupByField', 'version', 'summary', 'blueprint', 'explanation'])
 

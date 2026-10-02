@@ -225,3 +225,70 @@ describe('blueprint (Postgres real con RLS)', () => {
     await expect(applyApi(event(adminRoleId, { blueprint: invalid, idempotencyKey: 'invalid' }) as never)).rejects.toMatchObject({ statusCode: 422, data: { errors: expect.arrayContaining([expect.objectContaining({ path: 'modules[0].fields[0].validationRules.relationEntity' })]) } })
   })
 })
+
+
+describe('HU-ERD-152: catálogo en planos del diseñador', () => {
+  it('el CRM real archivado sigue siendo válido sin red y acepta formatos nuevos', async () => {
+    const crm: unknown = JSON.parse(await readFile(new URL('../fixtures/hu152-crm.json', import.meta.url), 'utf8'))
+    const [tenant] = await admin`insert into tenants (name, slug) values ('CRM 152', 'crm152') returning id`
+    await admin`insert into tenant_subscriptions (tenant_id, plan_id, status) select ${tenant.id}, id, 'active' from plans where key = 'empresarial'`
+    const original = await validator.validateBlueprint(tenant.id, crm)
+    expect(original.errors).toEqual([])
+    expect(original.normalized).not.toBeNull()
+    const enhanced = structuredClone(original.normalized!)
+    const module = enhanced.modules.find(item => item.kind === 'hecho')!
+    module.fields.push({ name: 'correo152', label: 'Correo validado', dataType: 'text', validationRules: { format: 'email', trim: true, case: 'lower', notBlank: true } })
+    expect((await validator.validateBlueprint(tenant.id, enhanced)).errors).toEqual([])
+  })
+  it('aplica referencias de fecha y filtros aunque sus campos destino se declaren después', async () => {
+    const [tenant] = await admin`insert into tenants (name, slug) values ('Referencias 152', 'references152') returning id`
+    const proposal = { version: 1, summary: 'Validaciones nuevas', modules: [{ ref: 'referencias152', slug: 'referencias152', name: 'Referencias 152', action: 'create', kind: 'dimension', fields: [
+      { name: 'fin', label: 'Fin', dataType: 'date', validationRules: { after: 'inicio' } },
+      { name: 'inicio', label: 'Inicio', dataType: 'date', validationRules: { minRelative: 0, default: 'today' } },
+      { name: 'destino', label: 'Destino', dataType: 'relation', validationRules: { relationEntity: 'referencias152', eligibleFilter: { field: 'activo', value: true } } },
+      { name: 'activo', label: 'Activo', dataType: 'boolean', validationRules: { default: true } }
+    ] }], associations: [] }
+    expect((await validator.validateBlueprint(tenant.id, proposal)).errors).toEqual([])
+    const result = await blueprint.applyBlueprint(tenant.id, null, proposal, 'referencias152')
+    expect(result.fields).toHaveLength(4)
+    const exported = await exporter.exportBlueprint(tenant.id)
+    expect(exported.modules[0].fields.find(field => field.name === 'fin')?.validationRules).toEqual({ after: 'inicio' })
+    const invalid = structuredClone(proposal)
+    invalid.modules[0].fields[0].validationRules = { after: 'activo' }
+    expect((await validator.validateBlueprint(otherTenant, invalid)).errors.some(error => error.path.endsWith('validationRules.after'))).toBe(true)
+  })
+})
+
+describe('HU-ERD-152: registros con defaults y normalización', () => {
+  it('POST aplica defaults antes del cálculo; PUT/PATCH no reaplican defaults y respetan fechas cruzadas', async () => {
+    const { createEntityField } = await import('../../server/utils/moduleEntityFields')
+    const { dateDay } = await import('../../server/utils/fieldValidations/registry')
+    const [entity] = await admin`insert into entities (tenant_id, name, slug, module_kind) values (${tenantId}, 'Defaults 152', 'defaults152', 'dimension') returning id`
+    await admin`insert into role_entity_permissions (role_id, entity_id, can_read, can_create, can_update, can_delete) values (${adminRoleId}, ${entity.id}, true, true, true, true)`
+    const actor = { userId, roleId: adminRoleId }
+    const specs = [
+      { name: 'nombre', label: 'Nombre', dataType: 'text', validationRules: { trim: true, case: 'upper', default: 'sin nombre', notBlank: true } },
+      { name: 'cantidad', label: 'Cantidad', dataType: 'number', validationRules: { default: 2, positive: true, maxDecimals: 0 } },
+      { name: 'precio', label: 'Precio', dataType: 'number', validationRules: { default: 3 } },
+      { name: 'importe', label: 'Importe', dataType: 'number', validationRules: { calculation: { kind: 'formula', operator: 'multiply', leftField: 'cantidad', rightField: 'precio' } } },
+      { name: 'inicio', label: 'Inicio', dataType: 'date', validationRules: { default: 'today', minRelative: 0 } },
+      { name: 'fin', label: 'Fin', dataType: 'date', validationRules: { after: 'inicio' } }
+    ]
+    for (const spec of specs) await withRecordActor(actor, () => createEntityField(tenantId, entity.id, { ...spec, isRequired: false }))
+    const event = (body: unknown, id?: string) => ({ context: { auth: { tenantId, roleId: adminRoleId, sub: userId }, params: { entity: 'defaults152', id }, body } })
+    const created = await withRecordActor(actor, () => createRecord(event({ customData: {} })))
+    expect(created.customData).toMatchObject({ nombre: 'SIN NOMBRE', cantidad: 2, precio: 3, importe: 6 })
+    const [organization] = await admin`select timezone from tenants where id = ${tenantId}`
+    expect(dateDay(created.customData.inicio, organization.timezone)).toBe(dateDay(new Date(), organization.timezone))
+    const explicit = await withRecordActor(actor, () => createRecord(event({ customData: { nombre: '  ána ', cantidad: 4, precio: null, inicio: null } })))
+    expect(explicit.customData).toMatchObject({ nombre: 'ÁNA', cantidad: 4, precio: null })
+    const put = (await import('../../server/api/records/[entity]/[id].put')).default
+    const patch = (await import('../../server/api/records/[entity]/[id].patch')).default
+    const updated = await withRecordActor(actor, () => put(event({ customData: { nombre: '  cambio ', cantidad: 5, precio: 3, inicio: created.customData.inicio } }, created.id) as never))
+    expect(updated.customData).toMatchObject({ nombre: 'CAMBIO', cantidad: 5, importe: 15 })
+    await expect(withRecordActor(actor, () => put(event({ customData: { nombre: '   ' } }, created.id) as never))).rejects.toMatchObject({ statusCode: 422 })
+    await expect(withRecordActor(actor, () => patch(event({ changes: { fin: created.customData.inicio } }, created.id) as never))).rejects.toMatchObject({ statusCode: 422 })
+    const omitted = await withRecordActor(actor, () => put(event({ customData: { cantidad: 1, precio: 2 } }, created.id) as never))
+    expect((omitted.customData as Record<string, unknown>).nombre).toBeUndefined()
+  })
+})

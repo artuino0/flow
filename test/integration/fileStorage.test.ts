@@ -80,6 +80,24 @@ describe('fileStorage (Postgres real + disco temporal)', () => {
     expect(path.basename(found!.fullPath)).not.toContain('ñ')
   })
 
+  it('cargas generales y administradas conservan tipos fuera del catálogo de campos', async () => {
+    const { storeManagedFile, ManagedFileTooLargeError } = await import('../../server/utils/managedStorage')
+    for (const [fileName, mimeType] of [
+      ['antiguo.doc', 'application/msword'], ['antiguo.xls', 'application/vnd.ms-excel'],
+      ['antiguo.ppt', 'application/vnd.ms-powerpoint'], ['video.mp4', 'video/mp4'],
+      ['audio.mp3', 'audio/mpeg'], ['datos.xml', 'application/xml'],
+      ['datos.json', 'application/json'], ['texto.rtf', 'application/rtf'],
+      ['pagina.html', 'text/html'], ['desconocido.bin', 'application/octet-stream']
+    ]) {
+      for (const store of [storeFile, storeManagedFile]) {
+        const stored = await store(TENANT_A, clientesId, { fileName, mimeType, buffer: Buffer.from('prueba'), uploadedBy: null })
+        expect(stored.mimeType).toBe(mimeType)
+        expect(stored.fileName).toBe(fileName)
+      }
+    }
+    await expect(storeManagedFile(TENANT_A, clientesId, { fileName: 'grande.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(15 * 1024 * 1024 + 1), uploadedBy: null })).rejects.toBeInstanceOf(ManagedFileTooLargeError)
+  })
+
   it('rechaza un archivo que supera el maximo de 15 MB, sin dejar nada en disco', async () => {
     const tooBig = Buffer.alloc(15 * 1024 * 1024 + 1)
     await expect(

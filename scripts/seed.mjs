@@ -41,11 +41,7 @@ if (!['generico', 'agro'].includes(perfil)) {
   process.exit(1)
 }
 
-// RFC_REGEX identico a server/utils/tenantFiscal.ts (HU-ERD-61), reusado aca
-// para el campo "rfc" de Empresas - mismo formato en todo el sistema.
-const RFC_REGEX_SRC = '^[A-ZÑ&]{3,4}\\d{6}[A-Z0-9]{3}$'
-const EMAIL_REGEX_SRC = '^[^@]+@[^@]+\\.[^@]+$'
-
+// Los formatos guiados de correo y RFC se validan en el catálogo del servidor.
 // Definicion base (perfil "generico") de las 3 entidades del modulo
 // CRM/Directorio Central, mas los campos extra que agrega el perfil "agro".
 const entityDefs = [
@@ -60,7 +56,7 @@ const entityDefs = [
     icon: 'Users',
     fields: [
       { name: 'nombre', label: 'Nombre', dataType: 'text', isRequired: true, validationRules: { maxLength: 120 } },
-      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { pattern: EMAIL_REGEX_SRC } },
+      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { format: 'email' } },
       { name: 'telefono', label: 'Telefono', dataType: 'text', isRequired: false, validationRules: { maxLength: 20 } },
       { name: 'direccion', label: 'Direccion', dataType: 'text', isRequired: false, validationRules: { maxLength: 200 } }
     ],
@@ -68,9 +64,9 @@ const entityDefs = [
       {
         name: 'tipo_cliente',
         label: 'Tipo de cliente',
-        dataType: 'text',
+        dataType: 'select',
         isRequired: true,
-        validationRules: { enum: ['comprador', 'proveedor', 'ambos'] }
+        validationRules: { options: [{ value: 'comprador', label: 'Comprador' }, { value: 'proveedor', label: 'Proveedor' }, { value: 'ambos', label: 'Ambos' }] }
       }
     ]
   },
@@ -80,7 +76,7 @@ const entityDefs = [
     icon: 'Building2',
     fields: [
       { name: 'razon_social', label: 'Razon social', dataType: 'text', isRequired: true, validationRules: { maxLength: 150 } },
-      { name: 'rfc', label: 'RFC', dataType: 'text', isRequired: false, validationRules: { pattern: RFC_REGEX_SRC } },
+      { name: 'rfc', label: 'RFC', dataType: 'text', isRequired: false, validationRules: { format: 'rfc' } },
       { name: 'telefono', label: 'Telefono', dataType: 'text', isRequired: false, validationRules: { maxLength: 20 } },
       { name: 'direccion', label: 'Direccion', dataType: 'text', isRequired: false, validationRules: { maxLength: 200 } }
     ],
@@ -96,7 +92,7 @@ const entityDefs = [
     fields: [
       { name: 'nombre_completo', label: 'Nombre completo', dataType: 'text', isRequired: true, validationRules: { maxLength: 150 } },
       { name: 'puesto', label: 'Puesto', dataType: 'text', isRequired: false, validationRules: { maxLength: 100 } },
-      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { pattern: EMAIL_REGEX_SRC } },
+      { name: 'email', label: 'Correo', dataType: 'text', isRequired: false, validationRules: { format: 'email' } },
       { name: 'fecha_ingreso', label: 'Fecha de ingreso', dataType: 'date', isRequired: false, validationRules: {} }
     ],
     agroFields: [

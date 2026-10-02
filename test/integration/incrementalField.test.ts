@@ -1,3 +1,4 @@
+import { withSystemRecordAccess } from '../../server/utils/recordActorContext'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
@@ -57,6 +58,8 @@ beforeAll(async () => {
   process.env.APP_DATABASE_URL = testDb.appUrl
   ;({ generateIncrementalValue, MissingIncrementalPrefixError } = await import('../../server/utils/incrementalField'))
   ;({ withTenant } = await import('../../server/db'))
+  const originalWithTenant = withTenant
+  withTenant = (tenant, fn) => withSystemRecordAccess(() => originalWithTenant(tenant, fn))
 }, 60_000)
 
 afterAll(async () => {

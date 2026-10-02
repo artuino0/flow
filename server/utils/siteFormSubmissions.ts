@@ -1,3 +1,4 @@
+import { defaultRecordValues } from '~/server/utils/fieldValidations/references'
 import { and, eq, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import {
@@ -175,9 +176,9 @@ export async function submitSiteForm(input: {
       context.default_values ?? {},
       context.value_mappings ?? {}
     )
-    const dynamicSchema = await getEntityZodSchema(context.tenant_id, context.entity_id)
+    const dynamicSchema = await getEntityZodSchema(context.tenant_id, context.entity_id, {})
     const row = await withTenant(context.tenant_id, async tx => {
-      let customData = stripCalculatedValues(fields, mappedData)
+      let customData = await defaultRecordValues(tx, context.tenant_id, fields, stripCalculatedValues(fields, mappedData))
       for (const field of fields) {
         if (field.dataType !== 'incremental') continue
         customData[field.name] = await generateIncrementalValue(tx, context.tenant_id, field, customData)

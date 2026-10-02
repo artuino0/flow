@@ -1,8 +1,10 @@
-import { and, count, eq, sql } from 'drizzle-orm'
+import { buildRecordSchema, FIELD_VALIDATIONS } from '~/server/utils/fieldValidations/registry'
+import { assertValidationReferences, referenceValidationFailures, preloadValidationReferences } from '~/server/utils/fieldValidations/references'
+import { and, count, eq, gt, sql } from 'drizzle-orm'
 import { invalidatesTenantAccess } from '~/server/utils/shortCache'
 import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 import { db, withTenant } from '~/server/db'
-import { entities, entityFieldHistory, entityFields, records } from '~/server/db/schema'
+import { entities, entityFieldHistory, entityFields, records, tenants } from '~/server/db/schema'
 import { getValidationRulesSchema, invalidateEntitySchemaCache } from '~/server/utils/dynamicSchema'
 import { recordNotDeleted } from '~/server/utils/records'
 
@@ -69,6 +71,7 @@ export interface EntityFieldSummary {
   isRequired: boolean
   isOwnerField: boolean
   sortOrder: number
+  validationImpact?: { nonCompliantRecords: number; scannedRecords: number; truncated: boolean; limit: number }
 }
 
 function toSummary(row: typeof entityFields.$inferSelect): EntityFieldSummary {
@@ -166,7 +169,13 @@ function assertValidationRules(dataType: string, validationRules: unknown): void
   }
   const result = schema.safeParse(validationRules ?? {})
   if (!result.success) {
-    throw new InvalidValidationRulesError(`validationRules invalido para dataType "${dataType}": ${result.error.message}`)
+    const messages = result.error.issues.map(issue => {
+      if (issue.code === 'unrecognized_keys') return `Este tipo de campo no admite las reglas: ${issue.keys.join(', ')}`
+      if (issue.code === 'custom') return issue.message
+      const label = FIELD_VALIDATIONS.find(rule => rule.id === issue.path[0])?.label ?? 'Regla'
+      return `${label}: revisa el tipo de parámetro, las opciones y los límites permitidos`
+    })
+    throw new InvalidValidationRulesError(messages.join('; '))
   }
 }
 
@@ -351,7 +360,7 @@ export interface CreateEntityFieldInput {
   isOwnerField?: boolean
 }
 
-export async function createEntityField(tenantId: string, entityId: string, input: CreateEntityFieldInput, existingTx?: Tx): Promise<EntityFieldSummary> {
+export async function createEntityField(tenantId: string, entityId: string, input: CreateEntityFieldInput, existingTx?: Tx, deferValidationReferences = false): Promise<EntityFieldSummary> {
   assertValidationRules(input.dataType, input.validationRules)
   if (input.isOwnerField && input.dataType !== 'user') throw new InvalidValidationRulesError('Responsable del registro requiere un campo de tipo Usuario')
 
@@ -360,6 +369,7 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
     if (input.dataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, entityId, input.validationRules)
     }
+    if (!deferValidationReferences) await assertValidationReferences(tx, tenantId, entityId, input.name, input.dataType, (input.validationRules ?? {}) as Record<string, unknown>)
     await assertCalculatedConfig(tx, tenantId, entityId, input.name, input.dataType, input.validationRules)
 
     // "El organizador" (pedido del usuario, 2026-09-01): un campo nuevo se
@@ -407,7 +417,7 @@ export async function createEntityField(tenantId: string, entityId: string, inpu
   return existingTx ? run(existingTx) : withTenant(tenantId, run)
 }
 
-export const createEntityFieldInTx = (tx: Tx, tenantId: string, entityId: string, input: CreateEntityFieldInput) => createEntityField(tenantId, entityId, input, tx)
+export const createEntityFieldInTx = (tx: Tx, tenantId: string, entityId: string, input: CreateEntityFieldInput, deferValidationReferences = false) => createEntityField(tenantId, entityId, input, tx, deferValidationReferences)
 
 export interface UpdateEntityFieldInput {
   label?: string
@@ -436,19 +446,51 @@ export async function updateEntityField(
   changedBy: string | null
 ): Promise<EntityFieldSummary | null> {
   return withTenant(tenantId, async (tx) => {
-    const current = await findFieldInTenant(tx, tenantId, fieldId)
+    let current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return null
     if (current.name === 'id') {
       throw new ProtectedFieldError('El campo "id" es un identificador reservado del sistema y no se puede editar.')
     }
 
+    // Serializa ediciones de metadata del mismo campo antes de inspeccionar valores.
+    await tx.execute(sql`select id from entity_fields where id = ${fieldId} for update`)
+    current = await findFieldInTenant(tx, tenantId, fieldId)
+    if (!current) return null
     const effectiveDataType = input.dataType ?? current.dataType
-    const effectiveRules = input.validationRules !== undefined ? input.validationRules : current.validationRules
+    const changedType = effectiveDataType !== current.dataType
+    const activeRecords = and(eq(records.tenantId, tenantId), eq(records.entityId, current.entityId), recordNotDeleted)
+    const hasValue = sql`${records.customData}->${current.name} is not null and ${records.customData}->${current.name} <> 'null'::jsonb and ${records.customData}->${current.name} <> '""'::jsonb and ${records.customData}->${current.name} <> '[]'::jsonb`
+    const [valued] = await tx.select({ id: records.id }).from(records).where(and(activeRecords, hasValue)).limit(1)
+    if (changedType && valued) throw new InvalidValidationRulesError('No se puede cambiar el tipo de un campo que ya tiene valores en registros activos')
+    let effectiveRules = input.validationRules !== undefined ? input.validationRules : changedType ? {} : current.validationRules
+    if (changedType && input.validationRules && typeof input.validationRules === 'object') {
+      const sent = input.validationRules as Record<string, unknown>
+      if ('pattern' in sent || 'enum' in sent) throw new InvalidValidationRulesError('Texto no admite pattern ni enum; usa un formato guiado o Select')
+      const allowed = new Set(FIELD_VALIDATIONS.filter(rule => rule.variants[effectiveDataType as 'text']).map(rule => rule.id))
+      effectiveRules = Object.fromEntries(Object.entries(sent).filter(([id]) => allowed.has(id) || !FIELD_VALIDATIONS.some(rule => rule.id === id)))
+      input = { ...input, validationRules: effectiveRules }
+    }
+    if (changedType && input.validationRules === undefined) input = { ...input, validationRules: effectiveRules }
+    // Solo las opciones realmente utilizadas quedan protegidas; etiquetas y colores son editables.
+    if (!changedType && ['select', 'multiselect'].includes(current.dataType) && input.validationRules !== undefined) {
+      const nextOptions = ((effectiveRules ?? {}) as Record<string, unknown>).options
+      const nextValues = new Set(Array.isArray(nextOptions) ? (nextOptions as Array<{ value: string }>).map(option => option.value) : [])
+      const oldOptions = ((current.validationRules ?? {}) as Record<string, unknown>).options
+      const removed = (Array.isArray(oldOptions) ? oldOptions as Array<{ value: string }> : []).map(option => option.value).filter(value => !nextValues.has(value))
+      const used: string[] = []
+      for (const value of removed) {
+        const [found] = await tx.select({ id: records.id }).from(records).where(and(activeRecords, sql`(${records.customData}->>${current.name} = ${value} or ${records.customData}->${current.name} @> ${JSON.stringify([value])}::jsonb)`)).limit(1)
+        if (found) used.push(value)
+      }
+      if (used.length) throw new InvalidValidationRulesError(`No se pueden quitar ni cambiar los valores de opciones en uso: ${used.join(', ')}`)
+    }
+    if (changedType && effectiveDataType !== 'user' && input.isOwnerField === undefined && current.isOwnerField) input = { ...input, isOwnerField: false }
     if ((input.isOwnerField ?? current.isOwnerField) && effectiveDataType !== 'user') throw new InvalidValidationRulesError('Responsable del registro requiere un campo de tipo Usuario')
     assertValidationRules(effectiveDataType, effectiveRules)
     if (effectiveDataType === 'incremental') {
       await assertIncrementalConfig(tx, tenantId, current.entityId, effectiveRules)
     }
+    await assertValidationReferences(tx, tenantId, current.entityId, current.name, effectiveDataType, (effectiveRules ?? {}) as Record<string, unknown>)
     await assertCalculatedConfig(tx, tenantId, current.entityId, current.name, effectiveDataType, effectiveRules)
 
     const changesMetadataShape =
@@ -456,6 +498,36 @@ export async function updateEntityField(
       (input.validationRules !== undefined && JSON.stringify(input.validationRules) !== JSON.stringify(current.validationRules)) ||
       (input.isRequired !== undefined && input.isRequired !== current.isRequired)
       || (input.isOwnerField !== undefined && input.isOwnerField !== current.isOwnerField)
+
+    let validationImpact: EntityFieldSummary['validationImpact']
+    if (input.validationRules !== undefined || input.isRequired !== undefined) {
+      const limit = 10000
+      const [organization] = await tx.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+      const context = { timezone: organization?.timezone ?? 'America/Mexico_City' }
+      const candidate = { ...current, dataType: effectiveDataType, validationRules: effectiveRules, isRequired: input.isRequired ?? current.isRequired }
+      const previousSchema = buildRecordSchema([current], context)
+      const nextSchema = buildRecordSchema([candidate], context)
+      let scannedRecords = 0
+      let nonCompliantRecords = 0
+      let cursor: string | undefined
+      let truncated = false
+      while (scannedRecords <= limit) {
+        const page = await tx.select({ id: records.id, customData: records.customData }).from(records).where(and(activeRecords, cursor ? gt(records.id, cursor) : undefined)).orderBy(records.id).limit(Math.min(250, limit - scannedRecords + 1))
+        if (!page.length) break
+        const referenceCache = await preloadValidationReferences(tx, tenantId, [current, candidate], page.map(row => row.customData as Record<string, unknown>))
+        for (const row of page) {
+          if (scannedRecords === limit) { truncated = true; break }
+          scannedRecords++
+          const data = row.customData as Record<string, unknown>
+          const oldValid = previousSchema.safeParse(data).success && !(await referenceValidationFailures(tx, tenantId, current.entityId, [current], data, referenceCache)).length
+          const newValid = nextSchema.safeParse(data).success && !(await referenceValidationFailures(tx, tenantId, current.entityId, [candidate], data, referenceCache)).length
+          if (oldValid && !newValid) nonCompliantRecords++
+          cursor = row.id
+        }
+        if (truncated) break
+      }
+      validationImpact = { nonCompliantRecords, scannedRecords, truncated, limit }
+    }
 
     if (changesMetadataShape) {
       await tx.insert(entityFieldHistory).values({
@@ -478,7 +550,7 @@ export async function updateEntityField(
     const [updated] = await tx.update(entityFields).set(setValues).where(eq(entityFields.id, fieldId)).returning()
 
     invalidateEntitySchemaCache(tenantId, current.entityId)
-    return toSummary(updated)
+    return { ...toSummary(updated), ...(validationImpact ? { validationImpact } : {}) }
   })
 }
 

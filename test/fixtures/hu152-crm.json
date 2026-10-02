@@ -1,0 +1,597 @@
+{
+  "version": 1,
+  "summary": "CRM de seguimiento comercial para DynamicData, con prospectos, seguimientos, propuestas y catálogos reutilizables.",
+  "modules": [
+    {
+      "ref": "prospectos",
+      "action": "create",
+      "kind": "hecho",
+      "name": "Prospectos",
+      "singularName": "Prospecto",
+      "slug": "prospectos",
+      "icon": "ContactRound",
+      "fields": [
+        {
+          "name": "folio",
+          "label": "Folio",
+          "dataType": "incremental",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "digits": 6,
+            "prefix": "PRO-"
+          }
+        },
+        {
+          "name": "nombre_negocio",
+          "label": "Nombre del negocio",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "nombre_contacto",
+          "label": "Nombre del contacto",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "puesto_contacto",
+          "label": "Puesto del contacto",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "telefono",
+          "label": "Teléfono",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "correo",
+          "label": "Correo",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "ciudad",
+          "label": "Ciudad",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "industria",
+          "label": "Industria",
+          "dataType": "relation",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "industrias"
+          }
+        },
+        {
+          "name": "fuente",
+          "label": "Fuente",
+          "dataType": "relation",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "fuentes"
+          }
+        },
+        {
+          "name": "plan_interes",
+          "label": "Plan de interés",
+          "dataType": "relation",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "planes-interes"
+          }
+        },
+        {
+          "name": "numero_empleados",
+          "label": "Número de empleados",
+          "dataType": "number",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "responsable",
+          "label": "Responsable",
+          "dataType": "user",
+          "required": false,
+          "isOwnerField": true,
+          "validationRules": {}
+        },
+        {
+          "name": "etapa",
+          "label": "Etapa",
+          "dataType": "select",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "options": [
+              {
+                "value": "nuevo",
+                "label": "Nuevo"
+              },
+              {
+                "value": "contactado",
+                "label": "Contactado"
+              },
+              {
+                "value": "demo_agendada",
+                "label": "Demo agendada"
+              },
+              {
+                "value": "propuesta_enviada",
+                "label": "Propuesta enviada"
+              },
+              {
+                "value": "negociacion",
+                "label": "Negociación"
+              },
+              {
+                "value": "ganado",
+                "label": "Ganado"
+              },
+              {
+                "value": "perdido",
+                "label": "Perdido"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fecha_proximo_seguimiento",
+          "label": "Fecha de próximo seguimiento",
+          "dataType": "date",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "notas",
+          "label": "Notas",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "motivo_perdida",
+          "label": "Motivo de pérdida",
+          "dataType": "relation",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "motivos-perdida"
+          }
+        },
+        {
+          "name": "total_seguimientos",
+          "label": "Total de seguimientos",
+          "dataType": "number",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "calculation": {
+              "kind": "rollup",
+              "aggregate": "count",
+              "sourceEntity": "seguimientos",
+              "relationField": "prospecto",
+              "valueField": "prospecto"
+            }
+          }
+        }
+      ],
+      "workflow": {
+        "enabled": true,
+        "field": "etapa",
+        "initial": "nuevo",
+        "states": {
+          "nuevo": {
+            "locked": false,
+            "editableFields": []
+          },
+          "contactado": {
+            "locked": false,
+            "editableFields": []
+          },
+          "demo_agendada": {
+            "locked": false,
+            "editableFields": []
+          },
+          "propuesta_enviada": {
+            "locked": false,
+            "editableFields": []
+          },
+          "negociacion": {
+            "locked": false,
+            "editableFields": []
+          },
+          "ganado": {
+            "locked": false,
+            "editableFields": []
+          },
+          "perdido": {
+            "locked": false,
+            "editableFields": []
+          }
+        },
+        "transitions": [
+          {
+            "from": "nuevo",
+            "to": "contactado",
+            "roles": "all",
+            "label": "Marcar como contactado"
+          },
+          {
+            "from": "contactado",
+            "to": "demo_agendada",
+            "roles": "all",
+            "label": "Agendar demo"
+          },
+          {
+            "from": "demo_agendada",
+            "to": "propuesta_enviada",
+            "roles": "all",
+            "label": "Enviar propuesta"
+          },
+          {
+            "from": "propuesta_enviada",
+            "to": "negociacion",
+            "roles": "all",
+            "label": "Iniciar negociación"
+          },
+          {
+            "from": "negociacion",
+            "to": "ganado",
+            "roles": "all",
+            "label": "Marcar como ganado"
+          },
+          {
+            "from": "negociacion",
+            "to": "perdido",
+            "roles": "all",
+            "label": "Marcar como perdido"
+          }
+        ],
+        "rules": [
+          {
+            "type": "required",
+            "mode": "block",
+            "when": {
+              "to": "perdido"
+            },
+            "fields": [
+              "motivo_perdida"
+            ],
+            "message": "Selecciona un motivo de pérdida"
+          }
+        ]
+      }
+    },
+    {
+      "ref": "seguimientos",
+      "action": "create",
+      "kind": "hecho",
+      "name": "Seguimientos",
+      "singularName": "Seguimiento",
+      "slug": "seguimientos",
+      "icon": "CalendarClock",
+      "fields": [
+        {
+          "name": "folio",
+          "label": "Folio",
+          "dataType": "incremental",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "digits": 6,
+            "prefix": "SEG-"
+          }
+        },
+        {
+          "name": "prospecto",
+          "label": "Prospecto",
+          "dataType": "relation",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "prospectos"
+          }
+        },
+        {
+          "name": "fecha",
+          "label": "Fecha",
+          "dataType": "date",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "tipo",
+          "label": "Tipo",
+          "dataType": "select",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "options": [
+              {
+                "value": "llamada",
+                "label": "Llamada"
+              },
+              {
+                "value": "whatsapp",
+                "label": "WhatsApp"
+              },
+              {
+                "value": "correo",
+                "label": "Correo"
+              },
+              {
+                "value": "demo",
+                "label": "Demo"
+              },
+              {
+                "value": "reunion",
+                "label": "Reunión"
+              }
+            ]
+          }
+        },
+        {
+          "name": "resultado",
+          "label": "Resultado",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "siguiente_paso",
+          "label": "Siguiente paso",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "fecha_siguiente_paso",
+          "label": "Fecha del siguiente paso",
+          "dataType": "date",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    },
+    {
+      "ref": "propuestas",
+      "action": "create",
+      "kind": "hecho",
+      "name": "Propuestas",
+      "singularName": "Propuesta",
+      "slug": "propuestas",
+      "icon": "FileText",
+      "fields": [
+        {
+          "name": "folio",
+          "label": "Folio",
+          "dataType": "incremental",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {
+            "digits": 6,
+            "prefix": "PROP-"
+          }
+        },
+        {
+          "name": "prospecto",
+          "label": "Prospecto",
+          "dataType": "relation",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "prospectos"
+          }
+        },
+        {
+          "name": "plan",
+          "label": "Plan",
+          "dataType": "relation",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "relationEntity": "planes-interes"
+          }
+        },
+        {
+          "name": "monto_mensual",
+          "label": "Monto mensual",
+          "dataType": "currency",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "descuento",
+          "label": "Descuento",
+          "dataType": "number",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "fecha_envio",
+          "label": "Fecha de envío",
+          "dataType": "date",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "vigencia",
+          "label": "Vigencia",
+          "dataType": "date",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "estado",
+          "label": "Estado",
+          "dataType": "select",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {
+            "options": [
+              {
+                "value": "borrador",
+                "label": "Borrador"
+              },
+              {
+                "value": "enviada",
+                "label": "Enviada"
+              },
+              {
+                "value": "aceptada",
+                "label": "Aceptada"
+              },
+              {
+                "value": "rechazada",
+                "label": "Rechazada"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "ref": "etapas",
+      "action": "create",
+      "kind": "dimension",
+      "name": "Etapas del embudo",
+      "singularName": "Etapa",
+      "slug": "etapas",
+      "icon": "ListOrdered",
+      "fields": [
+        {
+          "name": "nombre",
+          "label": "Nombre",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "orden",
+          "label": "Orden",
+          "dataType": "number",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "dataType": "text",
+          "required": false,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    },
+    {
+      "ref": "industrias",
+      "action": "create",
+      "kind": "dimension",
+      "name": "Industrias",
+      "singularName": "Industria",
+      "slug": "industrias",
+      "icon": "Building2",
+      "fields": [
+        {
+          "name": "nombre",
+          "label": "Nombre",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    },
+    {
+      "ref": "fuentes",
+      "action": "create",
+      "kind": "dimension",
+      "name": "Fuentes",
+      "singularName": "Fuente",
+      "slug": "fuentes",
+      "icon": "Navigation",
+      "fields": [
+        {
+          "name": "nombre",
+          "label": "Nombre",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    },
+    {
+      "ref": "motivos-perdida",
+      "action": "create",
+      "kind": "dimension",
+      "name": "Motivos de pérdida",
+      "singularName": "Motivo de pérdida",
+      "slug": "motivos-perdida",
+      "icon": "Tags",
+      "fields": [
+        {
+          "name": "nombre",
+          "label": "Nombre",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    },
+    {
+      "ref": "planes-interes",
+      "action": "create",
+      "kind": "dimension",
+      "name": "Planes de interés",
+      "singularName": "Plan de interés",
+      "slug": "planes-interes",
+      "icon": "Layers",
+      "fields": [
+        {
+          "name": "nombre",
+          "label": "Nombre",
+          "dataType": "text",
+          "required": true,
+          "isOwnerField": false,
+          "validationRules": {}
+        }
+      ]
+    }
+  ],
+  "associations": []
+}
