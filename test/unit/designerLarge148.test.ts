@@ -18,7 +18,8 @@ describe('ERD-148: rescate de planos grandes', () => {
     expect(generated.result?.normalized?.modules[0]?.fields[0]).toMatchObject({ dataType: 'number', validationRules: {} })
     expect(generated.result?.normalized?.modules[0]?.fields[1]?.name).toBe('fecha')
     expect(generated.warnings.join(' ')).toContain('Días sin contacto')
-    expect(generated.explanation).toContain('campo simple')
+    expect(generated.warningItems).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'different', text: expect.stringContaining('campo simple') })]))
+    expect(generated.explanation).not.toContain('campo simple')
   })
   it('localiza el error y dirige la reparación sin perder metadatos ni filtrar textos al log', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

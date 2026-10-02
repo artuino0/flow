@@ -21,7 +21,8 @@ import type { Blueprint } from '~/server/utils/blueprint/schema'
 import type { BlueprintValidationError } from '~/server/utils/blueprint/validate'
 import { degradeDesignerFields } from './degrade'
 import { logger } from '~/server/utils/logger'
-import { designerCapabilityWarnings } from './capabilities'
+import { designerCapabilityWarnings, designerCapabilityWarningItems, designerClassifiedWarningItem, DESIGNER_SCOPE_PROMPT } from './capabilities'
+import { groupDesignerWarningItems, isDesignerAutoWarning, type DesignerWarningItem } from '~/utils/designerWarnings'
 import { degradeDesignerPatchFields, designerPatchFieldErrors } from './patchFields'
 import { designerValidationLog } from './validationLog'
 import { designerOmissionsSchema, safeDesignerOmissions, extractDesignerOmissions, designerOmissionWarnings, designerCoverageWarnings, type DesignerOmission } from './coverage'
@@ -44,7 +45,7 @@ ${validationCapabilitiesPrompt()}
 ${WORKFLOW_EXAMPLE}
 En ese ejemplo, Pedidos lleva "icon":"ShoppingCart" y Partidas de pedido lleva "icon":"ListOrdered".
 Si existe Clientes y piden órdenes, conserva Clientes como extend con su instantánea intacta. Si piden placas para Vehículos, agrega el campo al módulo existente.
-El plano admite estados, transiciones y reglas de validación del flujo. No admite triggers, vistas, dashboards ni notificaciones por tiempo: cuando los pidan, explica explícitamente en message y explanation que no puedes crearlos desde aquí. Automatizaciones admite acciones al crear, actualizar o borrar registros; no prometas avisos programados por tiempo. Las expresiones admiten aritmética, comparaciones, SI/IF, Y/AND, O/OR, NO/NOT, MIN, MAX, REDONDEAR/ROUND y ABS; no hay HOY/NOW ni diferencias de fechas. El campo del workflow debe ser select con las opciones de todos los estados, nunca relation a un catálogo. Las transiciones nuevas usan roles:"all"; no inventes identificadores ni uses nombres de roles en sus restricciones. Si piden restringir transiciones por rol, explica que deben configurar esa restricción posteriormente en Estados. blueprint.roles configura permisos de módulos, no restricciones de transiciones. Nunca inventes reglas o funciones.`
+El plano admite estados, transiciones y reglas de validación del flujo. ${DESIGNER_SCOPE_PROMPT} Las expresiones admiten aritmética, comparaciones, SI/IF, Y/AND, O/OR, NO/NOT, MIN, MAX, REDONDEAR/ROUND y ABS; no hay HOY/NOW ni diferencias de fechas. El campo del workflow debe ser select con las opciones de todos los estados, nunca relation a un catálogo. Las transiciones nuevas usan roles:"all"; no inventes identificadores ni uses nombres de roles en sus restricciones. Si piden restringir transiciones por rol, explica que deben configurar esa restricción posteriormente en Estados. blueprint.roles configura permisos de módulos, no restricciones de transiciones. Nunca inventes reglas o funciones.`
 
 const answerSchema = z.object({ message: z.string().trim().min(1).max(1000), explanation: z.string().trim().max(10000).optional(), omissions: designerOmissionsSchema, mode: z.literal('full').optional(), blueprint: z.unknown() })
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -84,6 +85,8 @@ export async function runDesignerGeneration(options: {
   let firstValid = false
   let repairs = 0
   let warnings: string[] = []
+  let automaticWarnings: string[] = []
+  let silentIconAdjustments = 0
   let omissions: DesignerOmission[] = []
   const capabilityWarnings = designerCapabilityWarnings(instruction)
   let appliedPatch: ReturnType<typeof designerPatchSchema.parse> | null = null
@@ -99,7 +102,7 @@ export async function runDesignerGeneration(options: {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt) repairs++
     const workflowError = errors.some(error => error.path.includes('.workflow'))
-    const system = `${DESIGNER_SYSTEM_PROMPT}\nEn modo full y patch incluye siempre omissions: [{"item":"nombre de lo pedido","reason":"motivo en una frase en español"}], máximo 40 elementos, item hasta 160 caracteres y reason hasta 360. omissions pertenece a la respuesta, al mismo nivel que message y explanation; nunca dentro de blueprint ni de operations. Declara TODO lo solicitado que falta o quedó simplificado, incluidos cálculos convertidos a campos simples, catálogos omitidos y reglas no expresables. Declarar omisiones es obligatorio y bueno: permite revisar el plano con honestidad. Usa [] solo si todo quedó representado. Cada omisión debe corresponder a una petición del usuario; no añadas requisitos supuestos, preferencias de formato no especificadas ni limitaciones de funciones adicionales que tú propusiste. Si el usuario no especificó porcentaje o importe, elegir un formato para descuento no es una omisión. No inventes capacidades; sin código, SQL, HTML ni enlaces en omissions. La explicación debe contener decisiones concretas: nunca viñetas vacías ni puntos que solo sean … o ... .${options.mode ? `\nPara esta evaluación responde obligatoriamente en modo ${options.mode}.` : ''}`
+    const system = `${DESIGNER_SYSTEM_PROMPT}\nEn modo full y patch incluye siempre omissions: [{"item":"frase corta y natural de lo pedido","reason":"motivo en una sola frase en español","kind":"unsupported|elsewhere|different|pending"}], máximo 40 elementos, item hasta 160 caracteres y reason hasta 360. omissions pertenece a la respuesta, al mismo nivel que message y explanation; nunca dentro de blueprint ni de operations. Etiqueta elsewhere para capacidades existentes que se configuran fuera del diseñador, conforme a las secciones verificadas de Flow. Etiqueta unsupported solo para carencias reales del producto, different si quedó simplificado o representado de otra forma, pending para pasos que debe completar el usuario (como cargar registros iniciales de catálogos). Sin kind o con kind inválido se tratará como different. No uses «No quedó completo» ni jerga en item o reason. Nunca declares omitido algo ya cubierto de otra forma en el plano, por ejemplo una relación mediante campo relation o user. Declara TODO lo solicitado que falta o quedó simplificado, incluidos cálculos convertidos a campos simples, catálogos omitidos y reglas no expresables. Declarar omisiones es obligatorio y bueno: permite revisar el plano con honestidad. Usa [] solo si todo quedó representado. Cada omisión debe corresponder a una petición del usuario; no añadas requisitos supuestos, preferencias de formato no especificadas ni limitaciones de funciones adicionales que tú propusiste. Si el usuario no especificó porcentaje o importe, elegir un formato para descuento no es una omisión. No inventes capacidades; sin código, SQL, HTML ni enlaces en omissions. La explicación debe contener decisiones concretas: nunca viñetas vacías ni puntos que solo sean … o ... .${options.mode ? `\nPara esta evaluación responde obligatoriamente en modo ${options.mode}.` : ''}`
     const completion: DesignerCompletion = await complete({ system, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, currentBlueprint, proposedAnswer: completionValue, previousExplanation: explanation, errors, instruction: `Corrige únicamente las piezas identificadas por path, módulo, campo y regla en errors. Conserva todos los demás módulos, campos, reglas y relaciones exactamente. Devuelve un ${options.mode ?? requestedMode} corregido. Conserva la explicación si las decisiones no cambian; si cambian, actualízala.`, ...(workflowError ? { workflowExample: WORKFLOW_EXAMPLE } : {}) }) })
     usage.inputTokens += completion.inputTokens
     usage.outputTokens += completion.outputTokens
@@ -163,6 +166,8 @@ export async function runDesignerGeneration(options: {
     const normalizedWorkflow = normalizeDesignerWorkflows(normalizedIcons.blueprint)
     const normalizedAssociations = normalizeDesignerAssociations(normalizedWorkflow.blueprint)
     warnings = [...patchWarnings, ...normalizedIcons.warnings, ...normalizedWorkflow.warnings, ...normalizedAssociations.warnings]
+    automaticWarnings = warnings.filter(isDesignerAutoWarning)
+    silentIconAdjustments = normalizedIcons.silentAdjustments ?? 0
     proposal = normalizedAssociations.blueprint
     if (containsUnsafeBlueprintText(proposal, trusted)) { result = null; errors = [{ path: 'blueprint', code: 'unsafe_text', message: 'El plano contiene código, SQL, URL o texto demasiado largo' }]; logFailure(attempt + 1); continue }
     const fieldDedupe = mergeDesignerFields(proposal, current)
@@ -207,7 +212,14 @@ export async function runDesignerGeneration(options: {
   warnings.push(...designerOmissionWarnings(omissions))
   if (valid && result?.normalized) warnings.push(...designerCoverageWarnings(instruction, result.normalized, omissions, warnings))
   warnings = [...new Set(warnings)]
-  return { valid, result, message, explanation: limitDesignerExplanation(explanation || message, warnings), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings }
+  if (automaticWarnings.length || silentIconAdjustments) logger.info('designer_validation', { autoAdjustments: automaticWarnings.length + silentIconAdjustments, types: [...new Set([...automaticWarnings.map(text => text.startsWith('Omití la asociación') ? 'redundant-association' : 'icon-normalization'), ...(silentIconAdjustments ? ['icon-normalization'] : [])])] })
+  const omissionWarnings = designerOmissionWarnings(omissions)
+  const warningItems = groupDesignerWarningItems([
+    ...warnings.filter(text => !capabilityWarnings.includes(text) && !omissionWarnings.includes(text)).map((text): DesignerWarningItem => ({ kind: isDesignerAutoWarning(text) ? 'auto' : 'different', text })),
+    ...designerCapabilityWarningItems(instruction),
+    ...omissions.map(({ item, reason, kind }) => designerClassifiedWarningItem(kind ?? 'different', item, reason))
+  ])
+  return { valid, result, message, explanation: limitDesignerExplanation(explanation || message), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings, warningItems }
 }
 
 export async function generateDesign(tenantId: string, sessionId: string, instruction: string) {
@@ -248,13 +260,13 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     const normalized = result.normalized
     const diff = await diffBlueprint(tenantId, result)
     const merges = result.merges
-    const chatMessage = [message, ...merges.map(merge => merge.message), ...generated.warnings].join('\n')
+    const chatMessage = [message, ...merges.map(merge => merge.message)].join('\n')
     const finalExplanation = limitDesignerExplanation(generated.explanation, merges.map(merge => merge.message))
-    const messages = [...conversation, { role: 'assistant' as const, content: chatMessage, explanation: finalExplanation, warnings: generated.warnings, createdAt: new Date().toISOString(), mode: generated.patch ? 'patch' as const : 'full' as const, ...(generated.patch ? { patch: generated.patch } : {}), blueprintVersion: session.version + 1, blueprint: normalized }]
+    const messages = [...conversation, { role: 'assistant' as const, content: chatMessage, explanation: finalExplanation, warnings: generated.warnings, warningItems: generated.warningItems, createdAt: new Date().toISOString(), mode: generated.patch ? 'patch' as const : 'full' as const, ...(generated.patch ? { patch: generated.patch } : {}), blueprintVersion: session.version + 1, blueprint: normalized }]
     const credits = await aiCreditBalance(tenantId)
     const finalized = await finishAiCredits(tenantId, sessionId, allocations, usage, true, { blueprint: normalized, messages, version: session.version + 1 })
     if (!finalized) throw createError({ statusCode: 409, statusMessage: 'La generación venció y sus créditos ya fueron devueltos. Puedes volver a intentarlo.' })
-    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, warnings: generated.warnings, diff, merges, credits }
+    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, warnings: generated.warnings, warningItems: generated.warningItems, diff, merges, credits }
   } catch (error) {
     await finishAiCredits(tenantId, sessionId, allocations, usage, false)
     // Proveedor saturado/caído tras los reintentos: 503 recuperable en vez de 500 genérico (HU-ERD-109b).

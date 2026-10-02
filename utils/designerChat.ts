@@ -1,4 +1,12 @@
-export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; createdAt: string }
+import type { DesignerWarningItem } from '~/utils/designerWarnings'
+
+import { isDesignerAutoWarning } from '~/utils/designerWarnings'
+
+function cleanDesignerLegacyText(value: string): string {
+  return value.split('\n').filter(line => !isDesignerAutoWarning(line.replace(/^- \*\*Ajuste automático:\*\* /, ''))).join('\n')
+}
+
+export type DesignerChatMessage = { role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; warningItems?: DesignerWarningItem[]; createdAt: string }
 export type DesignerChatDraft = { id: string; content: string; createdAt: string; status: 'pending' | 'failed'; error: string; action: 'retry' | 'plan' }
 export type DesignerChatEntry = DesignerChatMessage & { id: string; draft?: DesignerChatDraft }
 
@@ -25,7 +33,15 @@ export function failDesignerChat(drafts: DesignerChatDraft[], id: string, code?:
 }
 
 export function designerChatEntries(messages: DesignerChatMessage[], drafts: DesignerChatDraft[]): DesignerChatEntry[] {
-  const persisted = messages.map((message, index) => ({ ...message, id: `saved-${index}-${message.createdAt}` }))
+  const persisted = messages.map((message, index) => ({
+    ...message,
+    ...(message.role === 'assistant' ? {
+      content: cleanDesignerLegacyText(message.content),
+      ...(message.explanation ? { explanation: cleanDesignerLegacyText(message.explanation) } : {}),
+      ...(message.warnings ? { warnings: message.warnings.filter(warning => !isDesignerAutoWarning(warning)) } : {})
+    } : {}),
+    id: `saved-${index}-${message.createdAt}`
+  }))
   const local = drafts.map(draft => ({ role: 'user' as const, content: draft.content, createdAt: draft.createdAt, id: draft.id, draft }))
   return [...persisted, ...local].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 }

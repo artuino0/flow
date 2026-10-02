@@ -1,3 +1,5 @@
+import { isDesignerAutoWarning } from '~/utils/designerWarnings'
+
 export const DESIGNER_EXPLANATION_LIMIT = 1500
 
 function fitLines(value: string, limit: number): string {
@@ -21,7 +23,7 @@ function fitLines(value: string, limit: number): string {
 }
 
 export function limitDesignerExplanation(value: string, warnings: string[] = []): string {
-  const warningText = warnings.map(warning => `- **Ajuste automático:** ${warning}`).join('\n')
+  const warningText = warnings.filter(warning => !isDesignerAutoWarning(warning)).map(warning => `- **Ajuste automático:** ${warning}`).join('\n')
   if (!warningText) return fitLines(value, DESIGNER_EXPLANATION_LIMIT)
   const reserved = Math.min(warningText.length + 1, DESIGNER_EXPLANATION_LIMIT - 160)
   const explanation = fitLines(value, DESIGNER_EXPLANATION_LIMIT - reserved)

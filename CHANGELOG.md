@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.132.2] - 2026-10-02
+#### [bug]
+- [ERD-159](https://dydasoftware.atlassian.net/browse/ERD-159) - El diseñador de módulos con IA ya no llena el chat de avisos: los ajustes automáticos que no cambian el resultado (por ejemplo, asociaciones que ya existían como campo de relación) dejan de mostrarse, y el resto se agrupa por tema, con contador y plegado: «Quedó diferente a lo que pediste», «Todavía no disponible en Flow» (cálculos con fechas, avisos por tiempo, reglas entre módulos, dashboards propios), «Se configura en otra parte de Flow» (Automatización, Reportes, Tablero y las vistas del listado, que no se presentan como una pérdida) y «Te toca a ti». Los avisos repetidos de un mismo tema se funden en uno sin perder ningún elemento.
+
 ### [0.132.1] - 2026-10-02
 #### [bug]
 - [ERD-158](https://dydasoftware.atlassian.net/browse/ERD-158) - En el modal de un campo Fecha, la sección «Presentación» ahora sigue el estilo del resto del modal: va dentro de una tarjeta como «Campo obligatorio», el botón de ayuda es un icono alineado a la derecha, «Mostrar tiempo relativo» tiene título y descripción, y la vista previa es un recuadro «Así se verá» con una fila de fecha pasada y otra de fecha futura, que se acomoda en pantallas angostas. El popover de ayuda ya no se recorta dentro del modal.

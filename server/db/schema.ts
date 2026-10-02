@@ -1,5 +1,7 @@
 // Esquema dinamico del Motor ERP (dominio OLTP).
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
+import type { DesignerWarningItem } from '~/utils/designerWarnings'
+
 import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -529,7 +531,7 @@ export const moduleDesignSessions = pgTable('module_design_sessions', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').notNull(),
   status: text('status').notNull().default('draft'),
-  messages: jsonb('messages').$type<Array<{ role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; createdAt: string; mode?: 'patch' | 'full'; patch?: unknown; blueprintVersion?: number; blueprint?: unknown }>>().notNull().default(sql`'[]'::jsonb`),
+  messages: jsonb('messages').$type<Array<{ role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; warningItems?: DesignerWarningItem[]; createdAt: string; mode?: 'patch' | 'full'; patch?: unknown; blueprintVersion?: number; blueprint?: unknown }>>().notNull().default(sql`'[]'::jsonb`),
   blueprint: jsonb('blueprint').notNull(),
   version: integer('version').notNull().default(1),
   creditsConsumed: integer('credits_consumed').notNull().default(0),

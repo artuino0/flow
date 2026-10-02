@@ -1,3 +1,5 @@
+import type { DesignerWarningItem } from '~/utils/designerWarnings'
+
 import type { Blueprint } from '~/server/utils/blueprint/schema'
 import type { DesignerDiff, DesignerPositions } from '~/utils/designerGraph'
 import type { NavigationLayout } from '~/utils/moduleNavigation'
@@ -5,7 +7,7 @@ import type { NavigationLayout } from '~/utils/moduleNavigation'
 export interface DesignerSession {
   id: string
   status: 'draft' | 'applied' | 'discarded' | 'error'
-  messages: Array<{ role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; createdAt: string }>
+  messages: Array<{ role: 'user' | 'assistant'; content: string; explanation?: string; warnings?: string[]; warningItems?: DesignerWarningItem[]; createdAt: string }>
   blueprint: Blueprint
   creditsConsumed: number
   version: number
@@ -14,7 +16,7 @@ export interface DesignerSession {
 }
 export interface CreditBalance { included: number | null; used: number; includedRemaining: number | null; packages: number }
 export interface DesignerValidation { normalized: Blueprint | null; errors: Array<{ path: string; message: string; code?: string }>; diff: DesignerDiff; merges: DesignerDiff['merges'] }
-export interface DesignerGeneration { message: string; explanation: string; blueprint: Blueprint; warnings?: string[]; diff: DesignerDiff; merges: DesignerDiff['merges']; credits: CreditBalance; session?: DesignerSession }
+export interface DesignerGeneration { message: string; explanation: string; blueprint: Blueprint; warnings?: string[]; warningItems?: DesignerWarningItem[]; diff: DesignerDiff; merges: DesignerDiff['merges']; credits: CreditBalance; session?: DesignerSession }
 export interface DesignerApply { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[] }
 export interface DesignerApplication { id: string; createdAt: string; userId: string | null; userName: string | null; summary: string; modules: number; fields: number; associations: number; undoneAt: string | null; canUndo: boolean; reason: string | null; warnings: string[] }
 export interface DesignerNavigation { layout: NavigationLayout; entities: Array<{ id: string; slug: string }> }

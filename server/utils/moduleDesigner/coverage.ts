@@ -4,7 +4,8 @@ import { containsUnsafeBlueprintText } from './safety'
 
 export const designerOmissionsSchema = z.array(z.object({
   item: z.string().trim().min(1).max(160),
-  reason: z.string().trim().min(1).max(360)
+  reason: z.string().trim().min(1).max(360),
+  kind: z.preprocess(value => value === undefined ? undefined : typeof value === 'string' && ['unsupported', 'elsewhere', 'different', 'pending'].includes(value) ? value : 'different', z.enum(['unsupported', 'elsewhere', 'different', 'pending']).optional())
 }).strict()).max(40).default([])
 export type DesignerOmission = z.infer<typeof designerOmissionsSchema>[number]
 
@@ -13,7 +14,7 @@ export function safeDesignerOmissions(omissions: DesignerOmission[]): DesignerOm
 }
 
 const omissionRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))
-const omissionShape = (value: unknown) => omissionRecord(value) && Object.keys(value).length === 2 && 'item' in value && 'reason' in value
+const omissionShape = (value: unknown) => omissionRecord(value) && 'item' in value && 'reason' in value && Object.keys(value).every(key => ['item', 'reason', 'kind'].includes(key))
 
 /** Recupera solo metadatos de omisiones; las demás claves siguen llegando al esquema estricto. */
 export function extractDesignerOmissions(input: unknown): unknown {

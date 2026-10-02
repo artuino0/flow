@@ -11,9 +11,10 @@ for (const key of MODULE_ICON_KEYS) {
 }
 
 /** Corrige solo iconos emitidos por la IA; el PUT manual conserva la validación estricta. */
-export function normalizeDesignerIcons(input: unknown, current: Pick<Blueprint, 'modules'>): { blueprint: unknown; warnings: string[] } {
+export function normalizeDesignerIcons(input: unknown, current: Pick<Blueprint, 'modules'>): { blueprint: unknown; warnings: string[]; silentAdjustments?: number } {
   if (!record(input) || !Array.isArray(input.modules)) return { blueprint: input, warnings: [] }
   const warnings: string[] = []
+  let silentAdjustments = 0
   const modules = input.modules.map((module: unknown, index: number) => {
     if (!record(module)) return module
     const existing = module.action === 'extend' ? current.modules.find(item => item.slug === module.slug) : undefined
@@ -24,10 +25,10 @@ export function normalizeDesignerIcons(input: unknown, current: Pick<Blueprint, 
     if (module.action !== 'create') return module
     if (typeof module.icon === 'string' && MODULE_ICON_KEY_SET.has(module.icon)) return module
     const resolved = typeof module.icon === 'string' ? byFolded.get(folded(module.icon)) : undefined
-    if (resolved) return { ...module, icon: resolved }
+    if (resolved) { silentAdjustments++; return { ...module, icon: resolved } }
     const name = typeof module.name === 'string' && module.name.trim() ? module.name : `módulo ${index + 1}`
     warnings.push(`Usé un icono genérico para ${name}; puedes cambiarlo desde el inspector.`)
     return { ...module, icon: 'Box' }
   })
-  return { blueprint: { ...input, modules }, warnings }
+  return { blueprint: { ...input, modules }, warnings, ...(silentAdjustments ? { silentAdjustments } : {}) }
 }
