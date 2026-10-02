@@ -45,7 +45,7 @@ import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { OPTION_COLORS, colorDotClass } from '~/utils/optionColors'
 import type { FieldFormSource } from '~/utils/designerFieldForm'
-import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, LockKeyhole, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, CircleHelp, GripVertical, Hash, Link2, List, ListOrdered, LockKeyhole, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -380,17 +380,49 @@ const dateFormatLabels: Record<string, string> = { short: 'Corta', medium: 'Inte
 const dateHelpOpen = ref(false)
 const dateHelpRoot = ref<HTMLElement | null>(null)
 const dateHelpButton = ref<HTMLButtonElement | null>(null)
+const dateHelpPopover = ref<HTMLElement | null>(null)
+const dateHelpStyle = ref<Record<string, string>>({})
+function positionDateHelp() {
+  const button = dateHelpButton.value?.getBoundingClientRect()
+  const dialog = dialogElement.value?.getBoundingClientRect()
+  if (!button || !dialog) return
+  const leftBound = Math.max(12, dialog.left + 12)
+  const rightBound = Math.min(window.innerWidth - 12, dialog.right - 12)
+  const width = Math.max(0, Math.min(320, rightBound - leftBound))
+  const left = Math.max(leftBound, Math.min(button.right - width, rightBound - width))
+  const below = Math.max(0, window.innerHeight - button.bottom - 20)
+  const above = Math.max(0, button.top - 20)
+  const height = dateHelpPopover.value?.getBoundingClientRect().height ?? 0
+  const placeAbove = height > below && above > below
+  dateHelpStyle.value = {
+    width: `${width}px`, left: `${left}px`,
+    top: placeAbove ? 'auto' : `${Math.max(12, button.bottom + 8)}px`,
+    bottom: placeAbove ? `${Math.max(12, window.innerHeight - button.top + 8)}px` : 'auto',
+    maxHeight: `${placeAbove ? above : below}px`
+  }
+}
+function removeDateHelpListeners() {
+  document.removeEventListener('click', onDateHelpOutside, true)
+  document.removeEventListener('scroll', positionDateHelp, true)
+  window.removeEventListener('resize', positionDateHelp)
+}
 function closeDateHelp() {
   if (!dateHelpOpen.value) return
   dateHelpOpen.value = false
   dateHelpButton.value?.focus()
 }
 function onDateHelpOutside(event: MouseEvent) {
-  if (event.target instanceof Node && !dateHelpRoot.value?.contains(event.target)) closeDateHelp()
+  if (event.target instanceof Node && !dateHelpRoot.value?.contains(event.target) && !dateHelpPopover.value?.contains(event.target)) closeDateHelp()
 }
-watch(dateHelpOpen, open => {
-  if (open) document.addEventListener('click', onDateHelpOutside, true)
-  else document.removeEventListener('click', onDateHelpOutside, true)
+watch(dateHelpOpen, async open => {
+  removeDateHelpListeners()
+  if (!open) return
+  document.addEventListener('click', onDateHelpOutside, true)
+  document.addEventListener('scroll', positionDateHelp, true)
+  window.addEventListener('resize', positionDateHelp)
+  positionDateHelp()
+  await nextTick()
+  if (dateHelpOpen.value) positionDateHelp()
 })
 watch(() => form.dataType, () => { dateHelpOpen.value = false })
 const ruleErrors = computed(() => Object.fromEntries(selectedRules.value.map(r => [r.id, parameterError(r.parameters[form.dataType], form.catalogRules[r.id])])))
@@ -799,7 +831,7 @@ function onDialogKeydown(event: KeyboardEvent) {
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
 }
-onBeforeUnmount(() => { document.removeEventListener('click', onDateHelpOutside, true); if (props.open) returnFocus?.focus() })
+onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.focus() })
 </script>
 
 <template>
@@ -994,28 +1026,44 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDateHelpOutside,
             <p v-if="ruleErrors[rule.id]" :id="`validation-${rule.id}-error`" role="alert" class="text-xs text-brand-error-text">{{ ruleErrors[rule.id] }}</p>
           </div>
         </div>
-        <div v-if="form.dataType === 'date' && dateFormatCapability" class="flex flex-col gap-2">
-          <div ref="dateHelpRoot" class="relative flex items-center gap-2">
+        <div v-if="form.dataType === 'date' && dateFormatCapability" data-date-presentation class="flex flex-col gap-5 rounded border border-brand-border-light p-3">
+          <div ref="dateHelpRoot" class="flex items-center justify-between gap-2">
             <h3 class="text-[13px] font-semibold text-brand-text">Presentación</h3>
-            <button ref="dateHelpButton" type="button" aria-label="Ayuda sobre presentación de fechas" :aria-expanded="dateHelpOpen" aria-controls="date-presentation-help" class="flex h-7 w-7 items-center justify-center rounded border border-brand-border text-sm text-brand-text-secondary hover:bg-brand-bg focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="dateHelpOpen = !dateHelpOpen">?</button>
-            <div v-if="dateHelpOpen" id="date-presentation-help" role="note" class="absolute left-0 top-full z-10 mt-1 max-w-full rounded border border-brand-border bg-brand-surface p-3 text-sm text-brand-text shadow-lg">
+            <button ref="dateHelpButton" type="button" aria-label="Ayuda sobre presentación de fechas" :aria-expanded="dateHelpOpen" aria-controls="date-presentation-help" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-brand-text-secondary hover:bg-brand-bg focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="dateHelpOpen = !dateHelpOpen"><CircleHelp class="h-4 w-4" aria-hidden="true" :stroke-width="1.75" /></button>
+          </div>
+          <!-- El panel fijo se monta directamente en el diálogo para escapar del contenido desplazable y conservar su árbol accesible. -->
+          <Teleport v-if="dateHelpOpen && dialogElement" :to="dialogElement">
+            <div ref="dateHelpPopover" id="date-presentation-help" role="note" :style="dateHelpStyle" class="fixed z-10 overflow-y-auto break-words rounded border border-brand-border bg-brand-surface p-3 text-sm text-brand-text shadow-lg">
               El formato cambia solo cómo se ve la fecha; el dato guardado no cambia. El tiempo relativo agrega cuánto falta o cuánto pasó respecto a hoy (por ejemplo, «hace 12 días» o «en 1 mes») y se calcula al abrir la pantalla.
             </div>
+          </Teleport>
+          <div class="flex flex-col gap-1.5">
+            <label for="date-format" class="text-[13px] font-semibold text-brand-text">{{ dateFormatCapability.label }}</label>
+            <select id="date-format" :value="presentation.dateFormat" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.dateFormat = ($event.target as HTMLSelectElement).value">
+              <option v-for="value in dateFormatCapability.parameters.date.values" :key="value" :value="value">{{ dateFormatLabels[value] }} · {{ formattedFieldDate(previewDays.today, value as FieldDateFormat, previewZone) }}</option>
+            </select>
           </div>
-          <label for="date-format" class="text-[13px] font-semibold text-brand-text">{{ dateFormatCapability.label }}</label>
-          <select id="date-format" :value="presentation.dateFormat" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.dateFormat = ($event.target as HTMLSelectElement).value">
-            <option v-for="value in dateFormatCapability.parameters.date.values" :key="value" :value="value">{{ dateFormatLabels[value] }} · {{ formattedFieldDate(previewDays.today, value as FieldDateFormat, previewZone) }}</option>
-          </select>
-          <div class="flex items-center justify-between gap-2">
-            <span id="date-show-relative-label" class="text-sm text-brand-text">Mostrar tiempo relativo</span>
-            <button id="date-show-relative" type="button" role="switch" aria-labelledby="date-show-relative-label" :aria-checked="presentation.showRelative" class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-blue" :class="presentation.showRelative ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'" @click="form.catalogRules.showRelative = !presentation.showRelative">
+          <div class="flex items-center justify-between gap-3 border-t border-brand-border-light pt-5">
+            <div class="min-w-0 flex flex-col gap-0.5">
+              <p id="date-show-relative-label" class="text-sm font-semibold text-brand-text">Mostrar tiempo relativo</p>
+              <p id="date-show-relative-description" class="text-xs text-brand-text-secondary">Agrega cuánto falta o cuánto pasó junto a la fecha.</p>
+            </div>
+            <button id="date-show-relative" type="button" role="switch" aria-labelledby="date-show-relative-label" aria-describedby="date-show-relative-description" :aria-checked="presentation.showRelative" class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-blue" :class="presentation.showRelative ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'" @click="form.catalogRules.showRelative = !presentation.showRelative">
               <span class="h-[18px] w-[18px] rounded-full bg-brand-surface shadow" />
             </button>
           </div>
-          <div data-date-preview class="flex flex-col gap-1 text-sm text-brand-text">
-            <p class="text-xs font-semibold text-brand-text-secondary">Vista previa</p>
-            <p><FieldDateValue :value="previewDays.past" :rules="presentation" :now="previewNow" :timezone="previewZone" /></p>
-            <p><FieldDateValue :value="previewDays.future" :rules="presentation" :now="previewNow" :timezone="previewZone" /></p>
+          <div data-date-preview class="min-w-0 rounded border border-brand-border-light bg-brand-bg p-3 text-sm text-brand-text">
+            <p class="mb-2 text-xs font-semibold text-brand-text-secondary">Así se verá</p>
+            <dl class="divide-y divide-brand-border-light">
+              <div data-date-preview-row class="grid grid-cols-1 gap-1 py-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-3">
+                <dt class="text-xs text-brand-text-secondary">Fecha pasada</dt>
+                <dd class="min-w-0 break-words sm:text-right"><FieldDateValue :value="previewDays.past" :rules="presentation" :now="previewNow" :timezone="previewZone" /></dd>
+              </div>
+              <div data-date-preview-row class="grid grid-cols-1 gap-1 py-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-3">
+                <dt class="text-xs text-brand-text-secondary">Fecha futura</dt>
+                <dd class="min-w-0 break-words sm:text-right"><FieldDateValue :value="previewDays.future" :rules="presentation" :now="previewNow" :timezone="previewZone" /></dd>
+              </div>
+            </dl>
           </div>
         </div>
 

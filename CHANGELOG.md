@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.132.1] - 2026-10-02
+#### [bug]
+- [ERD-158](https://dydasoftware.atlassian.net/browse/ERD-158) - En el modal de un campo Fecha, la sección «Presentación» ahora sigue el estilo del resto del modal: va dentro de una tarjeta como «Campo obligatorio», el botón de ayuda es un icono alineado a la derecha, «Mostrar tiempo relativo» tiene título y descripción, y la vista previa es un recuadro «Así se verá» con una fila de fecha pasada y otra de fecha futura, que se acomoda en pantallas angostas. El popover de ayuda ya no se recorta dentro del modal.
+
 ### [0.132.0] - 2026-10-02
 #### [feature]
 - [ERD-157](https://dydasoftware.atlassian.net/browse/ERD-157) - Los campos de fecha siempre muestran la fecha y en el modal del campo se elige cómo verla: formato corto (02/10/2026), intermedio (2 oct 2026) o largo (2 de octubre de 2026), con o sin hora, y un interruptor «Mostrar tiempo relativo» que agrega junto a la fecha «hace 12 días» o «en 1 mes». El modal muestra una vista previa en vivo y un «?» con una explicación corta. Reemplaza la opción «Mostrar como» de la versión anterior. Los campos sin configurar se ven igual que antes.

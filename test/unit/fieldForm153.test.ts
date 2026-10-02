@@ -41,11 +41,40 @@ async function change(host: HTMLElement, id: string, value: string, event = 'cha
   expect(el, id).toBeDefined(); el.value = value; el.dispatchEvent(new Event(event, { bubbles: true })); await flush()
 }
 const initial = (type = 'text', rules: Record<string, unknown> = {}) => ({ name: 'valor', label: 'Valor', dataType: type, isRequired: false, validationRules: rules })
-afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.clearAllMocks() })
+afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 describe('Modal HU-153 real', () => {
   it.each([false, true])('vista previa en vivo y popover accesible, diseñador=%s', async designer => {
     const { host, props, close } = mount({ mode: 'edit', initialField: initial('date'), ...(designer ? { fieldSource: { entities: [], fieldsByEntity: {} } } : {}) })
     await open(props)
+    const section = host.querySelector<HTMLElement>('[data-date-presentation]')!
+    const required = [...host.querySelectorAll('p')].find(p => p.textContent === 'Campo obligatorio')!.parentElement!.parentElement!
+    for (const token of ['rounded', 'border', 'border-brand-border-light', 'p-3']) {
+      expect(required.classList.contains(token)).toBe(true)
+      expect(section.classList.contains(token)).toBe(true)
+    }
+    expect(section.classList.contains('bg-brand-bg')).toBe(required.classList.contains('bg-brand-bg'))
+    expect(section.parentElement!.classList.contains('gap-5')).toBe(true)
+    expect(section.previousElementSibling!.hasAttribute('data-validations')).toBe(true)
+    expect(section.classList.contains('gap-5')).toBe(true)
+    expect(section.querySelector('h3')!.className).toBe(host.querySelector('label[for="add-validation"]')!.className)
+    expect(section.querySelector('#date-format')!.className).toBe(host.querySelector('#add-validation')!.className)
+    expect(section.querySelector('#date-format')!.parentElement!.classList.contains('gap-1.5')).toBe(true)
+    const toggle = section.querySelector<HTMLButtonElement>('#date-show-relative')!
+    expect(toggle.getAttribute('role')).toBe('switch')
+    expect(toggle.getAttribute('aria-labelledby')).toBe('date-show-relative-label')
+    expect(section.querySelector('#date-show-relative-label')!.textContent).toBe('Mostrar tiempo relativo')
+    expect(section.querySelector(`#${toggle.getAttribute('aria-describedby')}`)!.textContent).toBe('Agrega cuánto falta o cuánto pasó junto a la fecha.')
+    expect(toggle.classList.contains('focus:ring-1')).toBe(true)
+    const previewBox = section.querySelector('[data-date-preview]')!
+    expect(previewBox.querySelector('p')!.textContent).toBe('Así se verá')
+    expect(previewBox.classList.contains('bg-brand-bg')).toBe(true)
+    const rows = [...previewBox.querySelectorAll('[data-date-preview-row]')]
+    expect(rows.map(row => row.querySelector('dt')!.textContent)).toEqual(['Fecha pasada', 'Fecha futura'])
+    for (const row of rows) {
+      expect(row.classList.contains('grid-cols-1')).toBe(true)
+      expect(row.classList.contains('sm:grid-cols-[auto_minmax(0,1fr)]')).toBe(true)
+      expect(row.querySelector('dd')!.classList.contains('break-words')).toBe(true)
+    }
     const choices = [...host.querySelector<HTMLSelectElement>('#date-format')!.options]
     const days = relativeDate.datePreviewDays(new Date(), 'America/Mexico_City')
     expect(choices.map(o => o.text)).toEqual(['short', 'medium', 'long'].map(format => `${({ short: 'Corta', medium: 'Intermedia', long: 'Larga' })[format]} · ${relativeDate.formattedFieldDate(days.today, format as relativeDate.FieldDateFormat)}`))
@@ -55,19 +84,79 @@ describe('Modal HU-153 real', () => {
       expect(preview.textContent).toContain(relativeDate.formattedFieldDate(days.past, format))
       expect(preview.textContent).toContain(relativeDate.formattedFieldDate(days.future, format))
       expect(preview.textContent).not.toContain('hace 12 días')
+      expect(toggle.getAttribute('aria-checked')).toBe('false')
+      expect(rows.map(row => row.querySelector('dd')!.textContent)).toEqual([days.past, days.future].map(day => relativeDate.formattedFieldDate(day, format)))
       host.querySelector<HTMLButtonElement>('#date-show-relative')!.click(); await flush()
+      expect(toggle.getAttribute('aria-checked')).toBe('true')
+      expect(rows[0].querySelector('dd')!.textContent).toBe(`${relativeDate.formattedFieldDate(days.past, format)} · hace 12 días`)
+      expect(rows[1].querySelector('dd')!.textContent).toBe(`${relativeDate.formattedFieldDate(days.future, format)} · en 1 mes`)
+      expect(rows[0].querySelector('dd span span')!.classList.contains('text-brand-text-secondary')).toBe(true)
       expect(preview.textContent).toContain('hace 12 días'); expect(preview.textContent).toContain('en 1 mes')
       expect(preview.querySelector('span')!.getAttribute('aria-label')).toContain(relativeDate.formattedFieldDate(days.past, 'long'))
       host.querySelector<HTMLButtonElement>('#date-show-relative')!.click(); await flush()
     }
     const help = host.querySelector<HTMLButtonElement>('[aria-controls="date-presentation-help"]')!
-    help.focus(); help.click(); await flush()
+    expect(help.textContent).toBe('')
+    expect(help.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    expect(help.getAttribute('aria-label')).toBe('Ayuda sobre presentación de fechas')
+    expect(help.classList.contains('h-8')).toBe(true); expect(help.classList.contains('w-8')).toBe(true)
+    expect(help.classList.contains('border')).toBe(false)
+    expect(help.parentElement!.classList.contains('justify-between')).toBe(true)
+    help.focus()
+    // jsdom no sintetiza el click nativo de Enter/Espacio: se reproduce su evento sin puntero (detail=0).
+    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    help.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 })); await flush()
     expect(help.getAttribute('aria-expanded')).toBe('true')
     expect(host.querySelector('#date-presentation-help')!.textContent).toContain('el dato guardado no cambia')
+    expect(host.querySelector('#date-presentation-help')!.parentElement).toBe(host.querySelector('[role="dialog"]'))
+    expect(section.contains(host.querySelector('#date-presentation-help'))).toBe(false)
+    host.querySelector<HTMLElement>('#date-presentation-help')!.click(); await flush()
+    expect(help.getAttribute('aria-expanded')).toBe('true')
     help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush()
     expect(help.getAttribute('aria-expanded')).toBe('false'); expect(document.activeElement).toBe(help); expect(close).not.toHaveBeenCalled()
     help.click(); await flush(); document.body.click(); await flush()
     expect(host.querySelector('#date-presentation-help')).toBeNull(); expect(document.activeElement).toBe(help)
+    help.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    help.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 })); await flush()
+    expect(help.getAttribute('aria-expanded')).toBe('true')
+    props.open = false; await flush()
+    expect(host.querySelector('#date-presentation-help')).toBeNull()
+  })
+  it('ancla la ayuda dentro del ancho del modal pequeño, recoloca con scroll/resize y limpia al cambiar tipo', async () => {
+    const { host, props } = mount({ mode: 'edit', initialField: initial('date') }); await open(props)
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    const help = host.querySelector<HTMLButtonElement>('[aria-controls="date-presentation-help"]')!
+    vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue({ left: 16, right: 344 } as DOMRect)
+    const anchor = vi.spyOn(help, 'getBoundingClientRect').mockReturnValue({ right: 320, top: 100, bottom: 132 } as DOMRect)
+    vi.stubGlobal('innerWidth', 360)
+    vi.stubGlobal('innerHeight', 640)
+    help.click(); await flush()
+    const panel = host.querySelector<HTMLElement>('#date-presentation-help')!
+    expect(panel.classList.contains('fixed')).toBe(true)
+    expect(panel.style.width).toBe('304px'); expect(panel.style.left).toBe('28px'); expect(panel.style.top).toBe('140px')
+    expect(Number.parseFloat(panel.style.left) + Number.parseFloat(panel.style.width)).toBeLessThanOrEqual(332)
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ height: 150 } as DOMRect)
+    anchor.mockReturnValue({ right: 320, top: 560, bottom: 592 } as DOMRect)
+    dialog.dispatchEvent(new Event('scroll')); await flush()
+    expect(panel.style.top).toBe('auto'); expect(panel.style.bottom).toBe('88px')
+    anchor.mockReturnValue({ right: 300, top: 100, bottom: 132 } as DOMRect)
+    window.dispatchEvent(new Event('resize')); await flush()
+    expect(panel.style.top).toBe('140px')
+    await click(host, 'Cambiar'); await click(host, 'Texto')
+    expect(host.querySelector('[data-date-presentation]')).toBeNull()
+    expect(host.querySelector('#date-presentation-help')).toBeNull()
+    anchor.mockClear(); window.dispatchEvent(new Event('resize')); dialog.dispatchEvent(new Event('scroll'))
+    expect(anchor).not.toHaveBeenCalled()
+  })
+  it('reorganizar presentación conserva el campo y todas sus reglas guardadas', async () => {
+    const rules = { dateFormat: 'long', showRelative: true, min: '2026-01-01', antigua: 'conservar' }
+    const field = initial('date', rules)
+    const { host, props, submit } = mount({ mode: 'edit', initialField: field }); await open(props)
+    const help = host.querySelector<HTMLButtonElement>('[aria-controls="date-presentation-help"]')!
+    help.click(); await flush(); help.click(); await flush()
+    await click(host, 'Guardar campo')
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ name: field.name, label: field.label, dataType: 'date', isRequired: false, validationRules: rules }))
+    expect(field.validationRules).toEqual(rules)
   })
   it.each(['absolute', 'both', 'relative'])('convierte %s heredado al guardar sin display', async display => {
     const { host, props, submit } = mount({ mode: 'edit', initialField: initial('date', { display }) })
