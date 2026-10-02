@@ -38,7 +38,8 @@ import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // campo de esa entidad relacionada (copyFrom "entidad.campo", ver DOCS
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import type { FieldFormSource } from '~/utils/designerFieldForm'
 import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
@@ -65,6 +66,10 @@ const props = defineProps<{
   // opciones (el resto del modal sigue funcionando igual para los demas tipos).
   existingFields?: EntityFieldMeta[]
   entityId?: string
+  // Opcional: el diseñador resuelve todos los selectores desde su plano local.
+  fieldSource?: FieldFormSource
+  readOnly?: boolean
+  allowSchemaEditing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -218,7 +223,7 @@ function relationEntitySlugFor(fieldName: string): string | null {
 const incrementalSourceFieldOptions = computed<EntityFieldMeta[]>(() => {
   const slug = relationEntitySlugFor(form.incrementalRelationField)
   if (!slug) return []
-  return (relatedFieldsByEntity[slug] ?? []).filter((f) => f.dataType === 'text' && f.name !== 'id')
+  return (relatedFieldsByEntity.value[slug] ?? []).filter((f) => f.dataType === 'text' && f.name !== 'id')
 })
 
 function onIncrementalRelationFieldChange() {
@@ -230,14 +235,15 @@ function onIncrementalRelationFieldChange() {
 // Entidades del tenant, para el picker "Entidad relacionada" de una columna
 // tipo Tabla (HU-ERD-71) - cargadas una sola vez, bajo demanda (no todo
 // campo Tabla necesita una columna de relación).
-const relatedEntities = ref<Array<{ id: string; slug: string; name: string }>>([])
+const tenantEntities = ref<Array<{ id: string; slug: string; name: string }>>([])
+const relatedEntities = computed(() => props.fieldSource?.entities ?? tenantEntities.value)
 let relatedEntitiesLoaded = false
 async function ensureRelatedEntitiesLoaded() {
-  if (relatedEntitiesLoaded) return
+  if (props.fieldSource || relatedEntitiesLoaded) return
   relatedEntitiesLoaded = true
   try {
     const res = await $fetch<{ entities: Array<{ id: string; slug: string; name: string }> }>('/api/entities')
-    relatedEntities.value = res.entities
+    tenantEntities.value = res.entities
   } catch {
     // Sin admin o el fetch falla: el picker queda vacío, el resto del
     // builder de columnas sigue funcionando igual para columnas no-relación.
@@ -246,14 +252,15 @@ async function ensureRelatedEntitiesLoaded() {
 
 // Campos de cada entidad relacionada ya elegida en alguna columna, para
 // armar las opciones de "Copiar desde" (copyFrom) de las DEMAS columnas.
-const relatedFieldsByEntity = reactive<Record<string, EntityFieldMeta[]>>({})
+const tenantFieldsByEntity = reactive<Record<string, EntityFieldMeta[]>>({})
+const relatedFieldsByEntity = computed(() => props.fieldSource?.fieldsByEntity ?? tenantFieldsByEntity)
 async function ensureRelatedFieldsLoaded(slug: string) {
-  if (!slug || relatedFieldsByEntity[slug]) return
+  if (props.fieldSource || !slug || relatedFieldsByEntity.value[slug]) return
   try {
     const res = await $fetch<{ fields: EntityFieldMeta[] }>(`/api/entities/${slug}/fields`)
-    relatedFieldsByEntity[slug] = res.fields
+    tenantFieldsByEntity[slug] = res.fields
   } catch {
-    relatedFieldsByEntity[slug] = []
+    tenantFieldsByEntity[slug] = []
   }
 }
 
@@ -290,7 +297,7 @@ const rollupFilterSelectOptions = computed(() => {
   return field?.dataType === 'select' && Array.isArray(field.validationRules?.options) ? field.validationRules.options as Array<{ value: string; label: string }> : []
 })
 const currentEntitySlug = computed(() => relatedEntities.value.find(entity => entity.id === props.entityId)?.slug ?? '')
-const rollupSourceFields = computed(() => relatedFieldsByEntity[form.rollupSourceEntity] ?? [])
+const rollupSourceFields = computed(() => relatedFieldsByEntity.value[form.rollupSourceEntity] ?? [])
 const rollupRelationFields = computed(() => rollupSourceFields.value.filter(field =>
   field.dataType === 'relation' && field.validationRules?.relationEntity === currentEntitySlug.value
 ))
@@ -325,7 +332,7 @@ function copyFromOptions(currentColumnName: string): CopyFromOption[] {
   for (const relCol of relationColumns.value) {
     if (relCol.name === currentColumnName) continue
     const relatedEntity = relatedEntities.value.find((e) => e.slug === relCol.relationEntity)
-    const fields = relatedFieldsByEntity[relCol.relationEntity] ?? []
+    const fields = relatedFieldsByEntity.value[relCol.relationEntity] ?? []
     for (const f of fields) {
       opts.push({ value: `${relCol.relationEntity}.${f.name}`, label: `${relatedEntity?.name ?? relCol.relationEntity} → ${f.label}` })
     }
@@ -606,7 +613,7 @@ const nameError = computed(() => {
   // (fields.post.ts) para que el error aparezca al tipear, no recien al
   // enviar. Solo aplica en modo creacion: en edicion el nombre ya viene
   // deshabilitado (no se puede cambiar una vez creado).
-  if (props.mode === 'create' && form.name === 'id') {
+  if ((props.mode === 'create' || props.allowSchemaEditing) && form.name === 'id') {
     return '"id" es un nombre reservado: el identificador del registro ya existe automáticamente'
   }
   return null
@@ -670,33 +677,78 @@ const canSubmit = computed(() => {
   return true
 })
 
+function unrepresentedRules(): Record<string, unknown> {
+  const controlled = new Set(['minLength', 'maxLength', 'min', 'max', 'integer', 'currency', 'decimals', 'allowNegative', 'calculation', 'relationEntity', 'multiple', 'unique', 'roles', 'defaultCurrentUser', 'options', 'columns', 'digits', 'prefix', 'prefixSource'])
+  return Object.fromEntries(Object.entries(props.initialField?.validationRules ?? {}).filter(([key]) => !controlled.has(key)))
+}
 function onSubmit() {
-  if (!canSubmit.value) return
+  if (props.readOnly || !canSubmit.value) return
   emit('submit', {
     name: form.name,
     label: form.label,
     dataType: form.dataType,
-    validationRules: validationRulesForSubmit(),
+    validationRules: props.fieldSource && props.initialField?.dataType === form.dataType
+      ? { ...unrepresentedRules(), ...validationRulesForSubmit() }
+      : validationRulesForSubmit(),
     isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired,
     isOwnerField: form.dataType === 'user' && form.isOwnerField
   })
 }
+const dialogElement = ref<HTMLElement | null>(null)
+const { confirm: confirmDiscard, dialog: discardDialog } = useConfirm()
+let returnFocus: HTMLElement | null = null
+const baseline = ref('')
+const closing = ref(false)
+watch(() => props.open, async open => {
+  if (!props.fieldSource) return
+  if (open) {
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    baseline.value = JSON.stringify(form)
+    await nextTick()
+    dialogElement.value?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus()
+  } else {
+    await nextTick()
+    returnFocus?.focus()
+  }
+}, { flush: 'post' })
+async function requestClose() {
+  if ((props.fieldSource && props.saving) || closing.value) return
+  if (props.fieldSource && !props.readOnly && JSON.stringify(form) !== baseline.value) {
+    closing.value = true
+    const accepted = await confirmDiscard({ title: 'Descartar cambios del campo', message: 'Hay cambios sin guardar. ¿Quieres descartarlos?', confirmLabel: 'Descartar', destructive: true })
+    closing.value = false
+    if (!accepted) { dialogElement.value?.querySelector<HTMLElement>('button:not(:disabled)')?.focus(); return }
+  }
+  emit('close')
+}
+function onDialogKeydown(event: KeyboardEvent) {
+  if (!props.fieldSource || discardDialog.value) return
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void requestClose() }
+  if (event.key !== 'Tab') return
+  const items = Array.from(dialogElement.value?.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex="0"]') ?? [])
+    .filter(item => !item.matches(':disabled') && item.getClientRects().length > 0)
+  const first = items[0]; const last = items.at(-1)
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+}
+onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus() })
 </script>
 
 <template>
-  <div v-if="open" :data-tour="mode === 'create' ? 'manual-field-modal' : undefined" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="emit('close')">
-    <div class="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-lg bg-brand-surface shadow-xl">
+  <div v-if="open" :data-tour="mode === 'create' ? 'manual-field-modal' : undefined" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="requestClose()">
+    <div ref="dialogElement" role="dialog" aria-modal="true" aria-labelledby="field-form-title" @keydown="onDialogKeydown" class="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-lg bg-brand-surface shadow-xl">
       <div class="flex items-start justify-between border-b border-brand-border-light p-5">
         <div class="flex flex-col gap-0.5">
-          <h2 class="text-[17px] font-bold text-brand-text">{{ mode === 'create' ? 'Agregar campo' : 'Editar campo' }}</h2>
+          <h2 id="field-form-title" class="text-[17px] font-bold text-brand-text">{{ readOnly ? 'Detalle del campo' : mode === 'create' ? 'Agregar campo' : 'Editar campo' }}</h2>
           <p class="text-sm text-brand-text-secondary">Define las propiedades de este campo</p>
         </div>
-        <button type="button" class="flex h-7 w-7 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg" @click="emit('close')">
+        <button type="button" aria-label="Cerrar campo" class="flex h-7 w-7 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg" @click="requestClose()">
           <X class="h-4 w-4" :stroke-width="1.75" />
         </button>
       </div>
 
-      <div class="flex flex-col gap-5 p-5">
+      <p v-if="readOnly" class="px-5 pt-5 text-sm text-brand-text-secondary">Este campo ya existe; los campos existentes no se pueden cambiar desde el diseñador</p>
+      <fieldset :disabled="readOnly || (fieldSource && saving)" class="flex min-w-0 flex-col gap-5 border-0 p-5">
         <!-- Pedido por el usuario (2026-09-01): el primer campo a escribir
              debe ser el nombre visible del campo, no el nombre tecnico - la
              logica de auto-generado (onFieldLabelInput -> slugifyIdentifier,
@@ -722,12 +774,12 @@ function onSubmit() {
               id="field-name"
               :value="form.name"
               type="text"
-              :disabled="mode === 'edit'"
+              :disabled="mode === 'edit' && !allowSchemaEditing"
               class="w-full rounded border border-brand-border px-3 py-[9px] font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-bg disabled:text-brand-text-muted"
               @input="onFieldNameInput(($event.target as HTMLInputElement).value)"
             />
             <p v-if="nameError" class="text-xs text-brand-error-text">{{ nameError }}</p>
-            <p v-else class="text-xs text-brand-text-muted">{{ mode === 'edit' ? 'No se puede cambiar una vez creado.' : 'Se completa automáticamente a partir de la etiqueta; puede ajustarse si hace falta.' }}</p>
+            <p v-else class="text-xs text-brand-text-muted">{{ mode === 'edit' && !allowSchemaEditing ? 'No se puede cambiar una vez creado.' : 'Se completa automáticamente a partir de la etiqueta; puede ajustarse si hace falta.' }}</p>
           </div>
         </div>
 
@@ -965,7 +1017,7 @@ function onSubmit() {
           </div>
 
           <div class="flex flex-col gap-2">
-            <div v-for="(opt, index) in form.options" :key="index" class="flex items-center gap-2">
+            <div v-for="(opt, index) in form.options" :key="index" :class="fieldSource ? 'flex-wrap' : ''" class="flex items-center gap-2">
               <GripVertical class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
               <span class="h-4 w-4 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
               <select
@@ -1022,7 +1074,7 @@ function onSubmit() {
 
           <div class="flex flex-col gap-3">
             <div v-for="(col, index) in form.columns" :key="index" class="flex flex-col gap-2 rounded border border-brand-border-light p-3">
-              <div class="flex items-center gap-2">
+              <div :class="fieldSource ? 'flex-wrap' : ''" class="flex items-center gap-2">
                 <GripVertical class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
                 <input
                   type="text"
@@ -1222,14 +1274,15 @@ function onSubmit() {
           </template>
         </div>
 
-        <p v-if="error" class="text-sm text-brand-error-text">{{ error }}</p>
-      </div>
+      </fieldset>
+      <p v-if="error" role="alert" class="px-5 pb-5 text-sm text-brand-error-text">{{ error }}</p>
 
       <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-        <button type="button" :data-tour="mode === 'create' ? 'manual-field-cancel' : undefined" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="emit('close')">
-          Cancelar
+        <button type="button" :data-tour="mode === 'create' ? 'manual-field-cancel' : undefined" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="requestClose()">
+          {{ readOnly ? 'Cerrar' : 'Cancelar' }}
         </button>
         <button
+          v-if="!readOnly"
           :data-tour="mode === 'create' ? 'manual-field-save' : undefined"
           type="button"
           :disabled="!canSubmit || saving"

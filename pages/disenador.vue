@@ -2,12 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, ChevronDown, Coins, CreditCard, ExternalLink, LoaderCircle, Maximize2, MessageSquareText, Minimize2, PanelLeftClose, Plus, RotateCcw, Send, Sparkles, Trash2, X } from '@lucide/vue'
 import type { Blueprint, BlueprintField } from '~/server/utils/blueprint/schema'
-import { buildDesignerGraph, designerFieldTypeLabel, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
+import { buildDesignerGraph, type DesignerDiff, type DesignerPositions, type DesignerRelationFilter } from '~/utils/designerGraph'
 import { designerProposalChanges } from '~/utils/designerMotion'
 import { createDesignerClient, type CreditBalance, type DesignerApplication, type DesignerApply, type DesignerNavigation, type DesignerSession } from '~/utils/designerClient'
 import { beginDesignerChat, canSendDesignerChat, designerChatEntries, designerExplanationBody, designerExplanationSummary, failDesignerChat, toggleDesignerFocus, type DesignerChatDraft } from '~/utils/designerChat'
 import { buildDesignerRepairMessage, readableDesignerValidationErrors } from '~/utils/designerValidationErrors'
 import { acceptDesignerSession, designerBlueprintsEqual } from '~/utils/designerBlueprintState'
+import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
+import { badgeFor } from '~/utils/fieldTypeBadge'
+import { blueprintFieldToDraft, fieldDraftToBlueprint, uniqueDesignerFieldName, designerFieldFormSource, designerFieldIsEditable } from '~/utils/designerFieldForm'
 import { designerChattitoState, isAnimatedDesignerChattitoMessage } from '~/utils/designerChattito'
 
 definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true })
@@ -48,7 +51,17 @@ const chatFocused = ref(false)
 const explanationText = ref('')
 const inspectorOpen = ref(false)
 const sessionMenuOpen = ref(false)
-const rulesDraft = ref<Record<string, string>>({})
+const fieldModalOpen = ref(false)
+const fieldModalMode = ref<'create' | 'edit'>('create')
+const fieldModalInitial = ref<FieldDraft | null>(null)
+const fieldModalIndex = ref<number | null>(null)
+const fieldModalSlug = ref('')
+const fieldModalSaving = ref(false)
+const fieldModalError = ref('')
+const fieldSource = computed(() => designerFieldFormSource(current.value, working.value))
+const fieldModalModule = computed(() => working.value?.modules.find(module => module.slug === fieldModalSlug.value))
+const fieldModalReadonly = computed(() => session.value?.status === 'applied' || (fieldModalIndex.value !== null && !designerFieldIsEditable(current.value, fieldModalSlug.value, fieldModalModule.value?.fields[fieldModalIndex.value]?.name ?? '')))
+const fieldModalValidationError = computed(() => fieldModalIndex.value === null ? '' : fieldError(working.value?.modules.findIndex(module => module.slug === fieldModalSlug.value) ?? -1, fieldModalIndex.value))
 const chatPanel = usePanelWidth({ storageKey: 'flow-designer-chat-width', defaultValue: 360, min: 280, max: 520 })
 const inspectorPanel = usePanelWidth({ storageKey: 'flow-designer-inspector-width', defaultValue: 320, min: 280, max: 480 })
 const chatWidth = chatPanel.width
@@ -62,7 +75,7 @@ function scheduleCanvasFit() {
 watch([chatWidth, inspectorWidth], scheduleCanvasFit)
 watch(selectedId, id => { if (!id) relationFilter.value = 'none' })
 function onEscape(event: KeyboardEvent) {
-  if (event.key !== 'Escape') return
+  if (event.key !== 'Escape' || fieldModalOpen.value) return
   if (chatFocused.value) { chatFocused.value = false; event.stopPropagation() }
   else if (explanationText.value) explanationText.value = ''
 }
@@ -74,7 +87,6 @@ function toggleFocus() {
 
 const graph = computed(() => current.value && working.value ? buildDesignerGraph(current.value, working.value, diff.value, navigation.value) : null)
 const selected = computed(() => working.value?.modules.find(module => module.slug === selectedId.value) ?? null)
-const selectedGraph = computed(() => graph.value?.modules.find(module => module.id === selectedId.value))
 const relatedEdges = computed(() => graph.value?.edges.filter(edge => edge.source === selectedId.value || edge.target === selectedId.value) ?? [])
 const hasProposal = computed(() => Boolean(working.value && current.value && !designerBlueprintsEqual({ modules: working.value.modules, associations: working.value.associations, roles: working.value.roles ?? [] }, { modules: current.value.modules, associations: current.value.associations, roles: current.value.roles ?? [] })))
 const dirty = computed(() => Boolean(working.value && session.value && !designerBlueprintsEqual(working.value, session.value.blueprint)))
@@ -109,7 +121,6 @@ const changes = computed(() => [
   { label: 'Relaciones', count: (diff.value?.relations.length ?? 0) + (diff.value?.associations.length ?? 0) },
   { label: 'Estados', count: diff.value?.states.length ?? 0 }
 ])
-const fieldTypes = ['text', 'number', 'currency', 'boolean', 'date', 'select', 'multiselect', 'relation', 'user', 'incremental', 'file', 'tabla', 'json'] as const
 
 function cloneBlueprint(value: Blueprint): Blueprint { return JSON.parse(JSON.stringify(value)) as Blueprint }
 function syncSessionBlueprint(updated: DesignerSession) {
@@ -342,29 +353,61 @@ async function savePositions(value: DesignerPositions) {
   positions.value = value
   try { await api.putLayout(value) } catch (error) { errorText.value = `No se pudo guardar el acomodo: ${apiError(error).message}` }
 }
+function openField(index: number | null) {
+  if (!selected.value || busy.value) return
+  fieldModalSlug.value = selected.value.slug
+  fieldModalIndex.value = index
+  fieldModalMode.value = index === null ? 'create' : 'edit'
+  fieldModalInitial.value = index === null
+    ? { name: uniqueDesignerFieldName(selected.value.fields), label: 'Nuevo campo', dataType: 'text', isRequired: false, validationRules: {} }
+    : blueprintFieldToDraft({ ...selected.value.fields[index]!, validationRules: fieldSource.value.fieldsByEntity[selected.value.slug]?.find(field => field.name === selected.value!.fields[index]!.name)?.validationRules ?? selected.value.fields[index]!.validationRules })
+  fieldModalError.value = ''
+  fieldModalOpen.value = true
+}
 function addField() {
-  if (!selected.value || !working.value) return
-  const names = new Set(selected.value.fields.map(field => field.name))
-  let index = 1
-  while (names.has(`nuevo_campo_${index}`)) index++
-  selected.value.fields.push({ name: `nuevo_campo_${index}`, label: 'Nuevo campo', dataType: 'text', required: false, validationRules: {} })
+  if (session.value?.status !== 'applied') openField(null)
 }
-function updateType(field: BlueprintField, value: string) {
-  field.dataType = value as BlueprintField['dataType']
-  field.isOwnerField = false
-  field.validationRules = value === 'relation' ? { relationEntity: working.value?.modules.find(module => module.slug !== selectedId.value)?.slug ?? '' } : value === 'select' || value === 'multiselect' ? { options: [{ value: 'opcion', label: 'Opción' }] } : {}
+async function submitDesignerField(draft: FieldDraft) {
+  const module = fieldModalModule.value
+  if (!module || !working.value || fieldModalReadonly.value || busy.value || fieldModalSaving.value) return
+  const index = fieldModalIndex.value
+  if (module.fields.some((field, at) => at !== index && field.name === draft.name)) {
+    fieldModalError.value = `Módulo «${module.name}», campo «${draft.label}»: el nombre técnico ya existe.`
+    return
+  }
+  fieldModalError.value = ''
+  const field = fieldDraftToBlueprint(draft)
+  if (index === null) {
+    fieldModalIndex.value = module.fields.length
+    module.fields.push(field)
+    fieldModalMode.value = 'edit'
+  } else module.fields[index] = field
+  fieldModalSaving.value = true
+  // Agrupa el cambio local antes de usar el mismo validador del plano.
+  await new Promise(resolve => setTimeout(resolve, 250))
+  const snapshot = cloneBlueprint(working.value)
+  try {
+    const validated = await api.validate(snapshot)
+    if (!designerBlueprintsEqual(snapshot, working.value)) {
+      fieldModalError.value = 'El plano cambió durante la validación. Guarda el campo de nuevo.'
+      return
+    }
+    diff.value = validated.diff
+    fieldErrors.value = validated.errors.filter(error => error.code !== 'plan_limit')
+    if (!fieldModalValidationError.value) fieldModalOpen.value = false
+  } catch (error) { fieldModalError.value = apiError(error).message }
+  finally { fieldModalSaving.value = false }
 }
-function updateOptions(field: BlueprintField, value: string) {
-  field.validationRules = { ...(field.validationRules ?? {}), options: value.split(',').map(label => label.trim()).filter(Boolean).map(label => ({ value: label.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_'), label })) }
+function fieldIsEditable(field: BlueprintField) {
+  return Boolean(selected.value) && designerFieldIsEditable(current.value, selected.value!.slug, field.name)
 }
-function updateRules(field: BlueprintField, key: string, value: string) {
-  try { field.validationRules = JSON.parse(value) as BlueprintField['validationRules']; delete rulesDraft.value[key]; errorText.value = '' }
-  catch { rulesDraft.value[key] = value; errorText.value = 'Las reglas avanzadas deben ser JSON válido.' }
+function fieldError(moduleIndex: number, fieldIndex: number) {
+  const path = `modules[${moduleIndex}].fields[${fieldIndex}]`
+  return readableErrors.value.filter(error => error.path === path || error.path.startsWith(`${path}.`))
+    .map(error => `${error.label}: ${error.message}`).join(' · ')
 }
-function fieldIsEditable(field: BlueprintField) { return selectedGraph.value?.fields.find(item => item.name === field.name)?.state !== 'existing' }
-function fieldError(moduleIndex: number, fieldIndex: number) { return fieldErrors.value.filter(error => error.path.startsWith(`modules[${moduleIndex}].fields[${fieldIndex}]`)).map(error => error.message).join(' · ') }
 async function removeField(index: number) {
-  if (!selected.value || !fieldIsEditable(selected.value.fields[index]!)) return
+  if (!selected.value || busy.value || session.value?.status === 'applied' || !fieldIsEditable(selected.value.fields[index]!)) return
   if (await confirm({ title: 'Quitar campo', message: 'Se quitará este campo de la propuesta. Los módulos existentes no cambiarán hasta aprobar.', confirmLabel: 'Quitar', destructive: true })) selected.value.fields.splice(index, 1)
 }
 async function removeModule() {
@@ -386,7 +429,6 @@ async function removeModule() {
   selectedId.value = null
   focusId.value = null
 }
-function editableTypeName(field: BlueprintField) { return designerFieldTypeLabel(field).split(' → ')[0] }
 function formatDate(value: string) { return new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) }
 </script>
 
@@ -471,7 +513,22 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
         </div>
         <div class="flex border-b border-brand-border-light px-3"><button v-for="tab in [{ id: 'fields', label: 'Campos' }, { id: 'relations', label: 'Relaciones' }, { id: 'states', label: 'Estados' }] as const" :key="tab.id" type="button" class="px-2.5 py-3 text-xs font-semibold" :class="inspectorTab === tab.id ? 'border-b-2 border-brand-blue text-brand-blue' : 'text-brand-text-muted hover:text-brand-text'" @click="inspectorTab = tab.id">{{ tab.label }}</button></div>
         <div v-if="selected" class="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-xs">
-          <template v-if="inspectorTab === 'fields'"><p class="mb-3 text-brand-text-muted">Los campos existentes son de solo lectura. Los cambios nuevos se guardan gratis.</p><div v-for="(field, index) in selected.fields" :key="`${selected.slug}-${index}`" class="mb-3 rounded-md border border-brand-border-light p-3" :class="fieldIsEditable(field) ? 'bg-brand-blue-bg/30' : 'bg-brand-bg/60'"><template v-if="fieldIsEditable(field) && session?.status !== 'applied'"><div class="flex items-center justify-between"><span class="font-bold text-brand-blue">{{ selected.action === 'create' ? 'Campo nuevo' : 'Se agrega' }}</span><button type="button" class="rounded p-1 text-brand-text-muted hover:bg-red-50 hover:text-red-700" :aria-label="`Quitar ${field.label}`" @click="removeField(index)"><Trash2 class="h-3.5 w-3.5" /></button></div><label class="mt-2 block font-semibold">Etiqueta<input v-model="field.label" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5 outline-none focus:border-brand-blue" /></label><label class="mt-2 block font-semibold">Nombre técnico<input v-model="field.name" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5 font-mono outline-none focus:border-brand-blue" /></label><label class="mt-2 block font-semibold">Tipo<select :value="field.dataType" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5" @change="updateType(field, ($event.target as HTMLSelectElement).value)"><option v-for="type in fieldTypes" :key="type" :value="type">{{ designerFieldTypeLabel({ ...field, dataType: type, validationRules: {} }) }}</option></select></label><label v-if="field.dataType === 'relation'" class="mt-2 block font-semibold">Módulo destino<select v-model="field.validationRules!.relationEntity" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5"><option v-for="module in working?.modules.filter(value => value.slug !== selected?.slug)" :key="module.slug" :value="module.slug">{{ module.name }}</option></select></label><label v-if="field.dataType === 'select' || field.dataType === 'multiselect'" class="mt-2 block font-semibold">Opciones (separadas por coma)<input :value="((field.validationRules?.options ?? []) as Array<{ label: string }>).map(item => item.label).join(', ')" class="mt-1 w-full rounded border border-brand-border-light bg-white px-2 py-1.5" @change="updateOptions(field, ($event.target as HTMLInputElement).value)" /></label><label class="mt-2 flex items-center gap-2"><input v-model="field.required" type="checkbox" class="accent-brand-blue" />Obligatorio</label><details class="mt-2"><summary class="cursor-pointer text-brand-blue">Reglas avanzadas (JSON)</summary><textarea :value="rulesDraft[`${selected.slug}.${field.name}`] ?? JSON.stringify(field.validationRules ?? {}, null, 2)" rows="4" class="mt-2 w-full rounded border border-brand-border-light bg-white p-2 font-mono text-[10px]" @change="updateRules(field, `${selected.slug}.${field.name}`, ($event.target as HTMLTextAreaElement).value)" /></details></template><template v-else><div class="flex items-center justify-between gap-2"><strong>{{ field.label }}<span v-if="field.required" class="text-brand-orange"> *</span></strong><span class="text-[10px] text-brand-text-muted">{{ editableTypeName(field) }}</span></div><code class="mt-1 block text-[10px] text-brand-text-muted">{{ field.name }}</code></template><p v-if="fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index)" role="alert" class="mt-2 text-[11px] text-red-700">{{ fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index) }}</p></div><button v-if="session?.status !== 'applied'" type="button" class="flex w-full items-center justify-center gap-1 rounded border border-brand-blue px-3 py-2 font-semibold text-brand-blue hover:bg-brand-blue-bg" @click="addField"><Plus class="h-4 w-4" />Agregar campo</button><button v-if="selected.action === 'create' && session?.status !== 'applied'" type="button" class="mt-4 flex w-full items-center justify-center gap-1 rounded border border-red-200 px-3 py-2 font-semibold text-red-700 hover:bg-red-50" @click="removeModule"><Trash2 class="h-4 w-4" />Quitar módulo nuevo</button></template>
+          <template v-if="inspectorTab === 'fields'">
+            <p class="mb-3 text-brand-text-muted">Los campos existentes son de solo lectura. Los cambios nuevos se guardan gratis.</p>
+            <div v-for="(field, index) in selected.fields" :key="`${selected.slug}-${index}`" class="mb-2 rounded-md border border-brand-border-light">
+              <div class="flex items-center gap-1">
+                <button type="button" class="min-w-0 flex-1 rounded-md p-3 text-left hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :disabled="Boolean(busy)" @click="openField(index)">
+                  <span class="flex items-start justify-between gap-2"><strong class="break-words">{{ field.label }}<span v-if="field.required" class="ml-1 text-brand-orange" aria-label="Obligatorio">*</span></strong><span class="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]" :class="[badgeFor(field.dataType).bg, badgeFor(field.dataType).text]"><component :is="badgeFor(field.dataType).icon" class="h-3 w-3" />{{ field.validationRules?.calculation ? 'Calculado ƒx' : badgeFor(field.dataType).label }}</span></span>
+                  <code class="mt-1 block break-all text-[10px] text-brand-text-muted">{{ field.name }}</code>
+                  <span class="mt-2 flex items-center gap-1.5 text-[10px] text-brand-text-secondary"><i class="h-2 w-2 rounded-full" :class="!fieldIsEditable(field) ? 'bg-slate-300' : selected.action === 'create' ? 'bg-brand-orange' : 'bg-brand-blue'" />{{ !fieldIsEditable(field) ? 'Existente' : selected.action === 'create' ? 'Nuevo' : 'Se agrega' }}</span>
+                  <span v-if="fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index)" role="alert" class="mt-2 flex items-start gap-1 text-[11px] text-brand-error-text"><AlertCircle class="mt-0.5 h-3 w-3 shrink-0" />{{ fieldError(working!.modules.findIndex(value => value.slug === selected?.slug), index) }}</span>
+                </button>
+                <button v-if="fieldIsEditable(field) && session?.status !== 'applied'" type="button" :disabled="Boolean(busy)" class="mr-2 rounded p-1 text-brand-text-muted hover:bg-brand-error-bg hover:text-brand-error-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" :aria-label="`Quitar ${field.label}`" @click="removeField(index)"><Trash2 class="h-3.5 w-3.5" /></button>
+              </div>
+            </div>
+            <button v-if="session?.status !== 'applied'" type="button" :disabled="Boolean(busy)" class="flex w-full items-center justify-center gap-1 rounded border border-brand-blue px-3 py-2 font-semibold text-brand-blue hover:bg-brand-blue-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" @click="addField"><Plus class="h-4 w-4" />Agregar campo</button>
+            <button v-if="selected.action === 'create' && session?.status !== 'applied'" type="button" class="mt-4 flex w-full items-center justify-center gap-1 rounded border border-red-200 px-3 py-2 font-semibold text-red-700 hover:bg-red-50" @click="removeModule"><Trash2 class="h-4 w-4" />Quitar módulo nuevo</button>
+          </template>
           <template v-else-if="inspectorTab === 'relations'"><p v-if="!relatedEdges.length" class="text-brand-text-muted">Este módulo no tiene relaciones.</p><div v-for="edge in relatedEdges" :key="edge.id" class="mb-2 rounded border border-brand-border-light p-3"><div class="flex items-center justify-between"><strong>{{ graph?.modules.find(item => item.id === (edge.source === selectedId ? edge.target : edge.source))?.module.name }}</strong><span v-if="edge.state === 'new'" class="rounded bg-brand-orange/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-orange">Nueva</span></div><p class="mt-1 text-brand-text-secondary">{{ edge.label }}</p></div></template>
           <template v-else><p v-if="!selected.workflow" class="text-brand-text-muted">Este módulo no tiene estados definidos.</p><template v-else><div class="mb-4 flex flex-wrap items-center gap-2"><template v-for="(state, name) in selected.workflow.states" :key="name"><span class="rounded-full border px-3 py-1.5 font-semibold" :class="name === selected.workflow.initial ? 'border-brand-blue bg-brand-blue-bg text-brand-blue' : 'border-brand-border-light'">{{ name }}</span></template></div><div v-for="(transition, index) in selected.workflow.transitions" :key="index" class="mb-2 flex items-center gap-2 rounded border border-brand-border-light px-3 py-2"><span class="rounded-full border border-brand-border-light bg-brand-bg px-2 py-1">{{ transition.from }}</span><span class="text-brand-blue">→</span><strong class="rounded-full border border-brand-blue bg-brand-blue-bg px-2 py-1 text-brand-blue">{{ transition.to }}</strong><small class="ml-auto text-brand-text-muted">{{ transition.label || (transition.roles === 'all' ? 'Todos' : `${transition.roles.length} roles`) }}</small></div><div v-if="selected.workflow.rules?.length" class="mt-5"><strong class="text-[10px] uppercase tracking-wide text-brand-text-muted">Reglas</strong><p v-for="rule in selected.workflow.rules" :key="rule.message" class="mt-2 rounded bg-brand-bg p-2.5 leading-5">Para pasar a <b>{{ rule.when.to }}</b>: {{ rule.message }} <span class="font-semibold">{{ rule.mode === 'block' ? '· bloquea' : '· advierte' }}</span></p></div><p class="mt-4 text-[11px] text-brand-text-muted">Los estados son de solo lectura en esta fase.</p></template></template>
         </div><div v-else class="p-5 text-xs leading-5 text-brand-text-muted">Selecciona una caja del lienzo para revisar sus campos, relaciones y estados.</div>
@@ -482,6 +539,7 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
       </aside>
     </div>
 
+    <FieldFormModal :open="fieldModalOpen" :mode="fieldModalMode" :initial-field="fieldModalInitial" :read-only="fieldModalReadonly" :allow-schema-editing="true" :field-source="fieldSource" :existing-fields="fieldSource.fieldsByEntity[fieldModalSlug] ?? []" :entity-id="fieldModalSlug" :saving="fieldModalSaving" :error="fieldModalError || fieldModalValidationError" @close="fieldModalOpen = false" @submit="submitDesignerField" />
     <div v-if="reviewOpen" class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 pt-[8vh]" @keydown.esc="reviewOpen = false"><div role="dialog" aria-modal="true" aria-labelledby="review-title" class="w-full max-w-[600px] rounded-lg border border-brand-border-light bg-brand-surface shadow-2xl"><div class="flex items-center justify-between border-b border-brand-border-light px-5 py-4"><h2 id="review-title" class="text-base font-bold">Revisar y aprobar</h2><button type="button" aria-label="Cerrar" class="rounded p-1 hover:bg-brand-bg" @click="reviewOpen = false"><X class="h-4 w-4" /></button></div><div class="space-y-5 p-5 text-xs"><div><h3 class="mb-2 font-bold uppercase tracking-wide text-brand-text-muted">Resumen de cambios</h3><div class="grid grid-cols-2 gap-2 sm:grid-cols-3"><div v-for="item in changes" :key="item.label" class="rounded-md bg-brand-bg px-3 py-2"><b class="mr-1 text-base text-brand-text">{{ item.count }}</b>{{ item.label }}</div></div></div><p v-if="diff?.merges.length" class="rounded bg-brand-blue-bg p-3 text-brand-blue">Se reutilizaron módulos existentes: {{ diff.merges.map(item => item.to).join(', ') }}</p><div class="rounded-md bg-brand-bg p-4"><h3 class="mb-2 font-bold">Impacto en el plan</h3><p>{{ diff?.plan.name }}: {{ diff?.plan.used }} actuales + {{ diff?.plan.added }} nuevos = {{ diff?.plan.after }} / {{ diff?.plan.limit ?? 'sin límite' }} módulos.</p><p class="mt-1">Créditos usados en esta sesión: {{ session?.creditsConsumed ?? 0 }}. Aprobar no consume créditos adicionales.</p><p v-if="diff && !diff.plan.allowed" class="mt-3 font-semibold text-red-700">Se excede el límite del plan. Quita módulos nuevos o mejora tu plan.</p></div><div class="rounded-md bg-green-50 p-3 text-green-900"><CheckCircle2 class="mr-1 inline h-4 w-4" />No se borra ni renombra nada de la estructura existente.</div></div><div class="flex flex-wrap items-center justify-between gap-2 border-t border-brand-border-light px-5 py-4"><button type="button" class="rounded border border-brand-border-light px-3 py-2 text-xs font-semibold" @click="reviewOpen = false">Seguir editando</button><div class="flex gap-2"><button v-if="diff && !diff.plan.allowed" type="button" class="rounded border border-brand-blue px-3 py-2 text-xs font-semibold text-brand-blue" @click="reviewOpen = false">Quitar módulos</button><NuxtLink v-if="diff && !diff.plan.allowed" to="/ajustes?section=plan" class="inline-flex items-center gap-1 rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white"><CreditCard class="h-3.5 w-3.5" />Mejorar plan</NuxtLink><button type="button" class="rounded bg-brand-orange px-3 py-2 text-xs font-semibold text-white disabled:opacity-40" :disabled="!canApprove" @click="approve"><LoaderCircle v-if="busy === 'apply'" class="mr-1 inline h-3.5 w-3.5 animate-spin" />Aprobar y crear</button></div></div></div></div>
   </div>
 </template>

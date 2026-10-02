@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.129.0] - 2026-10-01
+#### [feature]
+- [ERD-151](https://dydasoftware.atlassian.net/browse/ERD-151) - En el diseñador, los campos del módulo seleccionado se ven como filas compactas (etiqueta, nombre técnico, tipo, obligatorio, estado y errores) y al hacer clic en uno se abre el mismo modal visual de creación y edición de campos del editor de módulos; «Agregar campo» usa ese mismo modal. Las relaciones, columnas y fórmulas toman los módulos y campos del plano (existentes y propuestos), los campos existentes se abren en solo lectura y los cambios se validan al guardar.
+
 ### [0.128.2] - 2026-10-01
 #### [bug]
 - [ERD-150](https://dydasoftware.atlassian.net/browse/ERD-150) - En el diseñador, la leyenda del lienzo (Existente / Nuevo / Se agrega) ya no tapa el contador «N módulos y catálogos · M secciones»: el contador pasa a una fila propia debajo del lienzo y no se encima a ningún ancho.
