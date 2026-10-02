@@ -33,7 +33,7 @@ async function print() {
 }
 </script>
 <template>
-  <main class="report-preview">
+  <main class="theme-light report-preview">
     <header class="report-preview-toolbar">
       <div class="report-preview-actions"><button type="button" @click="emit('close')"><ArrowLeft :size="16" /> Volver</button><div><strong>{{ title || 'Vista previa del reporte' }}</strong><p>Vista previa · {{ pageCount }} {{ pageCount === 1 ? 'página' : 'páginas' }}</p></div></div>
       <div class="report-preview-actions"><button v-if="hasParameters" type="button" @click="emit('change-filters')"><SlidersHorizontal :size="16" /> Cambiar filtros</button><button v-if="editable" type="button" @click="emit('edit')"><Pencil :size="16" /> Editar diseño</button><button type="button" class="report-print-button" :disabled="!ready || loading || !!error" @click="print"><Printer :size="16" /> Imprimir / PDF</button></div>

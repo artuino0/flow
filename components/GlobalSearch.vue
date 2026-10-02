@@ -97,7 +97,7 @@ onBeforeUnmount(() => { clearTimeout(timer); controller?.abort(); document.remov
   </button>
   <Teleport to="body">
     <Transition name="global-search">
-      <div v-if="open" class="fixed inset-0 z-[80] flex items-start justify-center bg-brand-navy/30 px-3 pt-[8vh] sm:pt-[12vh]" @mousedown.self="close">
+      <div data-theme-shell v-if="open" class="fixed inset-0 z-[80] flex items-start justify-center bg-brand-overlay/30 px-3 pt-[8vh] sm:pt-[12vh]" @mousedown.self="close">
         <section ref="panel" role="dialog" aria-modal="true" aria-label="Buscar en Flow" class="flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-brand-border-light bg-brand-surface text-brand-text shadow-2xl">
           <div class="flex items-center gap-3 border-b border-brand-border-light px-5 py-4">
             <Search class="h-5 w-5 shrink-0 text-brand-blue" />

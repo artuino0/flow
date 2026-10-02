@@ -87,7 +87,7 @@ function toggle() {
       </template>
     </div>
     <Teleport to="body">
-      <section v-if="panelOpen" :id="panelId" ref="panel" role="dialog" :aria-label="group.name" tabindex="-1" :style="position"
+      <section data-theme-shell v-if="panelOpen" :id="panelId" ref="panel" role="dialog" :aria-label="group.name" tabindex="-1" :style="position"
         class="fixed z-[65] flex w-72 max-w-[calc(100vw-88px)] flex-col overflow-hidden rounded-xl border border-brand-border-light bg-brand-surface text-brand-text shadow-[0_12px_36px_#33475B26] outline-none"
         @keydown.esc.stop.prevent="closePanel(true)">
         <header class="flex shrink-0 items-center gap-3 border-b border-brand-border-light px-4 py-3">

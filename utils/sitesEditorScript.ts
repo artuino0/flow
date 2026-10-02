@@ -39,5 +39,5 @@ const PREVIEW_BRIDGE = `(function(){
 const EDITOR_STYLES = '.flow-editor-form-focus{outline:2px solid #0091ae!important;outline-offset:3px!important;background:rgba(0,145,174,.08)!important}.flow-editor-field-focus{outline:2px solid #ff7a59!important;outline-offset:2px!important;background:rgba(255,122,89,.14)!important}'
 
 export function buildPreviewDocument(html: string, css: string): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{min-height:100%;margin:0}${css}${EDITOR_STYLES}</style></head><body>${html}<script>${PREVIEW_BRIDGE}</script></body></html>`
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><style>html,body{min-height:100%;margin:0}${css}${EDITOR_STYLES}:root{color-scheme:light!important}</style></head><body>${html}<script>${PREVIEW_BRIDGE}</script></body></html>`
 }

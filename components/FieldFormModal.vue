@@ -864,7 +864,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               id="field-label"
               :value="form.label"
               type="text"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
               @input="onFieldLabelInput(($event.target as HTMLInputElement).value)"
             />
           </div>
@@ -875,7 +875,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               :value="form.name"
               type="text"
               :disabled="mode === 'edit' && !allowSchemaEditing"
-              class="w-full rounded border border-brand-border px-3 py-[9px] font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-bg disabled:text-brand-text-muted"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-bg disabled:text-brand-text-muted"
               @input="onFieldNameInput(($event.target as HTMLInputElement).value)"
             />
             <p v-if="nameError" class="text-xs text-brand-error-text">{{ nameError }}</p>
@@ -894,7 +894,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               :class="
                 form.dataType === opt.value || (opt.value === 'select' && form.dataType === 'multiselect')
                   ? 'border-2 border-brand-blue bg-brand-blue-bg'
-                  : 'border-brand-border bg-brand-surface'
+                  : 'border-brand-control-border bg-brand-surface'
               "
               @click="selectDataType(opt.value)"
             >
@@ -920,7 +920,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               >{{ opt.label }}</span>
             </button>
           </div>
-          <div v-else class="flex items-center gap-3 rounded border border-brand-border bg-brand-bg p-3">
+          <div v-else class="flex items-center gap-3 rounded border border-brand-control-border bg-brand-bg p-3">
             <component :is="chosenType.icon" class="h-5 w-5 shrink-0 text-brand-blue" />
             <div class="min-w-0 flex-1"><p class="text-sm font-semibold text-brand-text">{{ form.dataType === 'multiselect' ? 'Multiselect' : chosenType.label }}</p><p class="text-xs text-brand-text-muted">{{ form.dataType === 'date' ? 'Fecha de calendario' : `Campo de tipo ${chosenType.label.toLowerCase()}` }}</p></div>
             <button v-if="!typeLocked && !readOnly" data-change-type type="button" class="rounded px-2 py-1 text-sm font-semibold text-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="reopenTypes">Cambiar</button>
@@ -939,7 +939,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
             <p class="text-[13px] font-semibold text-brand-text">Valor del campo</p>
             <p class="mt-0.5 text-xs text-brand-text-muted">Puede capturarse, calcularse con otros campos o acumular registros relacionados.</p>
           </div>
-          <select v-model="form.calculationMode" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="onCalculationModeChange">
+          <select v-model="form.calculationMode" class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="onCalculationModeChange">
             <option value="manual">Captura manual</option>
             <option value="formula">Fórmula entre dos campos</option>
             <option value="expression">Expresión (varios campos y condicionales)</option>
@@ -947,37 +947,37 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </select>
 
           <div v-if="form.calculationMode === 'formula'" class="grid grid-cols-[1fr_120px_1fr] gap-2">
-            <select v-model="form.formulaLeftField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Primer campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
-            <select v-model="form.formulaOperator" class="rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="add">Sumar</option><option value="subtract">Restar</option><option value="multiply">Multiplicar</option><option value="divide">Dividir</option></select>
-            <select v-model="form.formulaRightField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Segundo campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <select v-model="form.formulaLeftField" class="min-w-0 rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text"><option value="">Primer campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <select v-model="form.formulaOperator" class="rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text"><option value="add">Sumar</option><option value="subtract">Restar</option><option value="multiply">Multiplicar</option><option value="divide">Dividir</option></select>
+            <select v-model="form.formulaRightField" class="min-w-0 rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text"><option value="">Segundo campo</option><option v-for="field in numericOwnFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
           </div>
 
           <div v-else-if="form.calculationMode === 'expression'" class="flex flex-col gap-2">
-            <textarea ref="expressionInput" v-model="form.expressionText" rows="3" spellcheck="false" placeholder="sueldo + bonos - isr - imss" class="w-full rounded border border-brand-border px-3 py-2 font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+            <textarea ref="expressionInput" v-model="form.expressionText" rows="3" spellcheck="false" placeholder="sueldo + bonos - isr - imss" class="w-full rounded border border-brand-control-border px-3 py-2 font-mono text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
             <div class="flex flex-wrap gap-1.5">
-              <button v-for="field in expressionOwnFields" :key="field.id" type="button" :title="field.label" class="rounded-full border border-brand-border px-2 py-0.5 font-mono text-xs text-brand-text-secondary hover:bg-white hover:text-brand-blue" @click="insertIntoExpression(field.name)">{{ field.name }}</button>
+              <button v-for="field in expressionOwnFields" :key="field.id" type="button" :title="field.label" class="rounded-full border border-brand-control-border px-2 py-0.5 font-mono text-xs text-brand-text-secondary hover:bg-brand-surface hover:text-brand-blue" @click="insertIntoExpression(field.name)">{{ field.name }}</button>
             </div>
             <div class="flex flex-wrap gap-1.5">
-              <button v-for="snippet in ['SI(condición; valor_si; valor_no)', 'Y(a; b)', 'O(a; b)', 'REDONDEAR(valor; 2)', 'MAX(a; b)', 'MIN(a; b)']" :key="snippet" type="button" class="rounded border border-dashed border-brand-border px-2 py-0.5 font-mono text-xs text-brand-text-muted hover:bg-white hover:text-brand-blue" @click="insertIntoExpression(snippet)">{{ snippet }}</button>
+              <button v-for="snippet in ['SI(condición; valor_si; valor_no)', 'Y(a; b)', 'O(a; b)', 'REDONDEAR(valor; 2)', 'MAX(a; b)', 'MIN(a; b)']" :key="snippet" type="button" class="rounded border border-dashed border-brand-control-border px-2 py-0.5 font-mono text-xs text-brand-text-muted hover:bg-brand-surface hover:text-brand-blue" @click="insertIntoExpression(snippet)">{{ snippet }}</button>
             </div>
             <p v-if="expressionError && form.expressionText.trim()" class="text-xs text-brand-error-text" role="alert">{{ expressionError }}</p>
             <p class="text-xs text-brand-text-muted">Usa los nombres técnicos de los campos, + − × ÷, comparaciones (= &lt;&gt; &lt; &gt; &lt;= &gt;=) y textos entre comillas, como <span class="font-mono">SI(tipo = 'salida'; -cantidad; cantidad)</span>. En un campo de lista se compara con el valor técnico de la opción.</p>
           </div>
 
           <div v-else-if="form.calculationMode === 'rollup'" class="flex flex-col gap-2">
-            <select v-model="form.rollupSourceEntity" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text" @focus="ensureRelatedEntitiesLoaded" @change="onRollupSourceEntityChange"><option value="">Módulo que contiene los registros</option><option v-for="entity in relatedEntities.filter(item => item.id !== entityId)" :key="entity.id" :value="entity.slug">{{ entity.name }}</option></select>
+            <select v-model="form.rollupSourceEntity" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm text-brand-text" @focus="ensureRelatedEntitiesLoaded" @change="onRollupSourceEntityChange"><option value="">Módulo que contiene los registros</option><option v-for="entity in relatedEntities.filter(item => item.id !== entityId)" :key="entity.id" :value="entity.slug">{{ entity.name }}</option></select>
             <div class="grid grid-cols-2 gap-2">
-              <select v-model="form.rollupRelationField" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Relación hacia este módulo</option><option v-for="field in rollupRelationFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
-              <select v-model="form.rollupAggregate" class="min-w-0 rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="sum">Sumar valores</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option><option value="count">Contar registros</option></select>
+              <select v-model="form.rollupRelationField" class="min-w-0 rounded border border-brand-control-border px-3 py-2 text-sm text-brand-text"><option value="">Relación hacia este módulo</option><option v-for="field in rollupRelationFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+              <select v-model="form.rollupAggregate" class="min-w-0 rounded border border-brand-control-border px-3 py-2 text-sm text-brand-text"><option value="sum">Sumar valores</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option><option value="count">Contar registros</option></select>
             </div>
-            <select v-if="form.rollupAggregate !== 'count'" v-model="form.rollupValueField" class="w-full rounded border border-brand-border px-3 py-2 text-sm text-brand-text"><option value="">Campo que se acumulará</option><option v-for="field in rollupValueFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
-            <div v-if="form.rollupSourceEntity" class="flex flex-col gap-1.5 rounded border border-dashed border-brand-border p-2">
+            <select v-if="form.rollupAggregate !== 'count'" v-model="form.rollupValueField" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm text-brand-text"><option value="">Campo que se acumulará</option><option v-for="field in rollupValueFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+            <div v-if="form.rollupSourceEntity" class="flex flex-col gap-1.5 rounded border border-dashed border-brand-control-border p-2">
               <p class="text-xs font-semibold text-brand-text-secondary">Solo registros que cumplan (opcional)</p>
               <div class="grid grid-cols-[1fr_110px_1fr] gap-2">
-                <select v-model="form.rollupFilterField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text" @change="form.rollupFilterValue = ''"><option value="">Sin filtro</option><option v-for="field in rollupFilterFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
-                <select v-model="form.rollupFilterOperator" :disabled="!form.rollupFilterField" class="rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="eq">es igual a</option><option value="neq">es distinto de</option><option value="gt">mayor que</option><option value="gte">mayor o igual</option><option value="lt">menor que</option><option value="lte">menor o igual</option></select>
-                <select v-if="rollupFilterSelectOptions.length" v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text"><option value="">Valor</option><option v-for="option in rollupFilterSelectOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
-                <input v-else v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" placeholder="Valor" class="min-w-0 rounded border border-brand-border px-2 py-2 text-sm text-brand-text">
+                <select v-model="form.rollupFilterField" class="min-w-0 rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text" @change="form.rollupFilterValue = ''"><option value="">Sin filtro</option><option v-for="field in rollupFilterFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
+                <select v-model="form.rollupFilterOperator" :disabled="!form.rollupFilterField" class="rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text"><option value="eq">es igual a</option><option value="neq">es distinto de</option><option value="gt">mayor que</option><option value="gte">mayor o igual</option><option value="lt">menor que</option><option value="lte">menor o igual</option></select>
+                <select v-if="rollupFilterSelectOptions.length" v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" class="min-w-0 rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text"><option value="">Valor</option><option v-for="option in rollupFilterSelectOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+                <input v-else v-model="form.rollupFilterValue" :disabled="!form.rollupFilterField" placeholder="Valor" class="min-w-0 rounded border border-brand-control-border px-2 py-2 text-sm text-brand-text">
               </div>
             </div>
             <p v-if="form.rollupSourceEntity && !rollupRelationFields.length" class="text-xs text-brand-warning-text">El módulo elegido necesita un campo Relación que apunte a este módulo.</p>
@@ -993,10 +993,10 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           <button
             type="button"
             class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors"
-            :class="form.isRequired ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
+            :class="form.isRequired ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-control-border bg-brand-surface'"
             @click="form.isRequired = !form.isRequired"
           >
-            <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+            <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
           </button>
         </div>
 
@@ -1005,11 +1005,11 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           <label class="flex items-center gap-2 text-sm"><input v-model="form.userUnique" type="checkbox" :disabled="form.userMultiple">Valor único: cada usuario solo puede aparecer en un registro</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="form.isOwnerField" type="checkbox">Responsable del registro</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="form.userDefaultCurrent" type="checkbox">Usuario actual al crear</label>
-          <label class="text-sm">Roles permitidos (nombres o ID, separados por coma)<input v-model="form.userRoles" class="mt-1 w-full rounded border border-brand-border px-3 py-2" placeholder="Doctor, Técnico"></label>
+          <label class="text-sm">Roles permitidos (nombres o ID, separados por coma)<input v-model="form.userRoles" class="mt-1 w-full rounded border border-brand-control-border px-3 py-2" placeholder="Doctor, Técnico"></label>
         </div>
         <div class="flex flex-col gap-2" data-validations>
           <label for="add-validation" class="text-[13px] font-semibold text-brand-text">Validaciones</label>
-          <select id="add-validation" aria-label="Agregar validación" :disabled="catalogLoading || !availableRules.length" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="addValidation">
+          <select id="add-validation" aria-label="Agregar validación" :disabled="catalogLoading || !availableRules.length" class="w-full rounded border border-brand-control-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="addValidation">
             <option value="">{{ catalogLoading ? 'Cargando validaciones…' : 'Agregar validación' }}</option>
             <option v-for="rule in availableRules" :key="rule.id" :value="rule.id">{{ rule.label }}</option>
           </select>
@@ -1033,13 +1033,13 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </div>
           <!-- El panel fijo se monta directamente en el diálogo para escapar del contenido desplazable y conservar su árbol accesible. -->
           <Teleport v-if="dateHelpOpen && dialogElement" :to="dialogElement">
-            <div ref="dateHelpPopover" id="date-presentation-help" role="note" :style="dateHelpStyle" class="fixed z-10 overflow-y-auto break-words rounded border border-brand-border bg-brand-surface p-3 text-sm text-brand-text shadow-lg">
+            <div ref="dateHelpPopover" id="date-presentation-help" role="note" :style="dateHelpStyle" class="fixed z-10 overflow-y-auto break-words rounded border border-brand-control-border bg-brand-surface p-3 text-sm text-brand-text shadow-lg">
               El formato cambia solo cómo se ve la fecha; el dato guardado no cambia. El tiempo relativo agrega cuánto falta o cuánto pasó respecto a hoy (por ejemplo, «hace 12 días» o «en 1 mes») y se calcula al abrir la pantalla.
             </div>
           </Teleport>
           <div class="flex flex-col gap-1.5">
             <label for="date-format" class="text-[13px] font-semibold text-brand-text">{{ dateFormatCapability.label }}</label>
-            <select id="date-format" :value="presentation.dateFormat" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.dateFormat = ($event.target as HTMLSelectElement).value">
+            <select id="date-format" :value="presentation.dateFormat" class="w-full rounded border border-brand-control-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.dateFormat = ($event.target as HTMLSelectElement).value">
               <option v-for="value in dateFormatCapability.parameters.date.values" :key="value" :value="value">{{ dateFormatLabels[value] }} · {{ formattedFieldDate(previewDays.today, value as FieldDateFormat, previewZone) }}</option>
             </select>
           </div>
@@ -1048,7 +1048,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               <p id="date-show-relative-label" class="text-sm font-semibold text-brand-text">Mostrar tiempo relativo</p>
               <p id="date-show-relative-description" class="text-xs text-brand-text-secondary">Agrega cuánto falta o cuánto pasó junto a la fecha.</p>
             </div>
-            <button id="date-show-relative" type="button" role="switch" aria-labelledby="date-show-relative-label" aria-describedby="date-show-relative-description" :aria-checked="presentation.showRelative" class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-blue" :class="presentation.showRelative ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'" @click="form.catalogRules.showRelative = !presentation.showRelative">
+            <button id="date-show-relative" type="button" role="switch" aria-labelledby="date-show-relative-label" aria-describedby="date-show-relative-description" :aria-checked="presentation.showRelative" class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-blue" :class="presentation.showRelative ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-control-border bg-brand-surface'" @click="form.catalogRules.showRelative = !presentation.showRelative">
               <span class="h-[18px] w-[18px] rounded-full bg-brand-surface shadow" />
             </button>
           </div>
@@ -1076,7 +1076,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           <label class="text-[13px] font-semibold text-brand-text">Entidad relacionada</label>
           <select
             v-model="form.relationEntity"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             @focus="ensureRelatedEntitiesLoaded()"
           >
             <option value="">Sin especificar</option>
@@ -1119,7 +1119,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               <span class="h-4 w-4 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
               <select
                 :value="opt.color"
-                class="w-[92px] shrink-0 rounded border border-brand-border bg-brand-surface px-1.5 py-[7px] text-xs text-brand-text focus:border-brand-blue focus:outline-none"
+                class="w-[92px] shrink-0 rounded border border-brand-control-border bg-brand-surface px-1.5 py-[7px] text-xs text-brand-text focus:border-brand-blue focus:outline-none"
                 @change="opt.color = ($event.target as HTMLSelectElement).value"
               >
                 <option v-for="c in OPTION_COLORS" :key="c.value" :value="c.value">{{ c.label }}</option>
@@ -1128,7 +1128,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 type="text"
                 :value="opt.label"
                 placeholder="Etiqueta"
-                class="min-w-0 flex-1 rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                class="min-w-0 flex-1 rounded border border-brand-control-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 @input="onOptionLabelInput(opt, ($event.target as HTMLInputElement).value)"
               />
               <input
@@ -1137,7 +1137,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 :disabled="optionInUse(opt)"
                 :aria-label="`Valor interno de ${opt.label}`"
                 placeholder="valor"
-                class="w-[100px] shrink-0 rounded border border-brand-border px-2 py-[7px] font-mono text-xs text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                class="w-[100px] shrink-0 rounded border border-brand-control-border px-2 py-[7px] font-mono text-xs text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 @input="onOptionValueInput(opt, ($event.target as HTMLInputElement).value)"
               />
               <div class="flex shrink-0 gap-0.5">
@@ -1156,7 +1156,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </div>
           <p v-if="optionsHaveDuplicateValues" class="text-xs text-brand-error-text">Hay valores repetidos entre las opciones - cada uno debe ser único.</p>
 
-          <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addOption">
+          <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-control-border px-3 py-1.5 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addOption">
             <Plus class="h-3.5 w-3.5" :stroke-width="2" />
             Agregar opción
           </button>
@@ -1180,19 +1180,19 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                   type="text"
                   :value="col.label"
                   placeholder="Etiqueta"
-                  class="min-w-0 flex-1 rounded border border-brand-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  class="min-w-0 flex-1 rounded border border-brand-control-border px-3 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   @input="onColumnLabelInput(col, ($event.target as HTMLInputElement).value)"
                 />
                 <input
                   type="text"
                   :value="col.name"
                   placeholder="nombre_tecnico"
-                  class="w-[130px] shrink-0 rounded border border-brand-border px-2 py-[7px] font-mono text-xs text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  class="w-[130px] shrink-0 rounded border border-brand-control-border px-2 py-[7px] font-mono text-xs text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   @input="onColumnNameInput(col, ($event.target as HTMLInputElement).value)"
                 />
                 <select
                   :value="col.type"
-                  class="w-[110px] shrink-0 rounded border border-brand-border bg-brand-surface px-1.5 py-[7px] text-xs text-brand-text focus:border-brand-blue focus:outline-none"
+                  class="w-[110px] shrink-0 rounded border border-brand-control-border bg-brand-surface px-1.5 py-[7px] text-xs text-brand-text focus:border-brand-blue focus:outline-none"
                   @change="col.type = ($event.target as HTMLSelectElement).value; onColumnTypeChange(col)"
                 >
                   <option v-for="t in TABLE_COLUMN_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
@@ -1215,7 +1215,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 <label class="text-xs font-semibold text-brand-text-secondary">Entidad relacionada</label>
                 <select
                   :value="col.relationEntity"
-                  class="w-full max-w-xs rounded border border-brand-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
+                  class="w-full max-w-xs rounded border border-brand-control-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
                   @change="col.relationEntity = ($event.target as HTMLSelectElement).value; onColumnRelationEntityChange(col)"
                 >
                   <option value="" disabled>Elegir entidad...</option>
@@ -1233,7 +1233,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                   <input
                     :checked="col.readonly"
                     type="checkbox"
-                    class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
+                    class="h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange"
                     @change="onColumnReadonlyToggle(col, ($event.target as HTMLInputElement).checked)"
                   />
                   Columna calculada (solo lectura) - producto de las demás columnas numéricas de la fila
@@ -1243,14 +1243,14 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                   <label class="text-xs font-semibold text-brand-text-secondary">Copiar desde (opcional)</label>
                   <select
                     :value="col.copyFrom"
-                    class="w-full max-w-xs rounded border border-brand-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
+                    class="w-full max-w-xs rounded border border-brand-control-border bg-brand-surface px-2 py-[7px] text-sm text-brand-text focus:border-brand-blue focus:outline-none"
                     @change="col.copyFrom = ($event.target as HTMLSelectElement).value"
                   >
                     <option value="">Sin copiar (valor propio)</option>
                     <option v-for="o in copyFromOptions(col.name)" :key="o.value" :value="o.value">{{ o.label }}</option>
                   </select>
                   <label v-if="col.copyFrom" class="flex items-center gap-2 text-sm text-brand-text">
-                    <input v-model="col.editable" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
+                    <input v-model="col.editable" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange" />
                     Editable después de copiar
                   </label>
                 </div>
@@ -1259,7 +1259,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </div>
           <p v-if="columnsHaveDuplicateNames" class="text-xs text-brand-error-text">Hay columnas con el mismo nombre técnico - cada una debe ser única.</p>
 
-          <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-border px-3 py-1.5 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addColumn">
+          <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-control-border px-3 py-1.5 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addColumn">
             <Plus class="h-3.5 w-3.5" :stroke-width="2" />
             Agregar columna
           </button>
@@ -1284,7 +1284,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
               type="number"
               min="1"
               max="15"
-              class="w-full max-w-[140px] rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full max-w-[140px] rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
             <p class="text-xs text-brand-text-muted">Se rellena con ceros a la izquierda (ej. 6 dígitos: "003902").</p>
           </div>
@@ -1325,7 +1325,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 type="text"
                 maxlength="20"
                 placeholder="Ej. FAC-"
-                class="w-full max-w-[220px] rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                class="w-full max-w-[220px] rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
               />
               <p class="text-xs text-brand-text-muted">
                 Se antepone al consecutivo (ej. {{ form.incrementalPrefix.trim() || 'FAC-' }}{{ String(1).padStart(form.incrementalDigits ?? 6, '0') }}).
@@ -1346,7 +1346,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 <label class="text-[13px] font-semibold text-brand-text">Campo de relación</label>
                 <select
                   v-model="form.incrementalRelationField"
-                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   @change="onIncrementalRelationFieldChange"
                 >
                   <option value="" disabled>Elegir campo...</option>
@@ -1358,7 +1358,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
                 <label class="text-[13px] font-semibold text-brand-text">Campo de la entidad relacionada (prefijo)</label>
                 <select
                   v-model="form.incrementalSourceField"
-                  class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 >
                   <option value="" disabled>Elegir campo...</option>
                   <option v-for="f in incrementalSourceFieldOptions" :key="f.id" :value="f.name">{{ f.label }}</option>
@@ -1378,7 +1378,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
       <p v-if="error" role="alert" class="px-5 pb-5 text-sm text-brand-error-text">{{ error }}</p>
 
       <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-        <button type="button" :data-tour="mode === 'create' ? 'manual-field-cancel' : undefined" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="requestClose()">
+        <button type="button" :data-tour="mode === 'create' ? 'manual-field-cancel' : undefined" class="rounded border border-brand-control-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="requestClose()">
           {{ readOnly ? 'Cerrar' : 'Cancelar' }}
         </button>
         <button
@@ -1386,7 +1386,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           :data-tour="mode === 'create' ? 'manual-field-save' : undefined"
           type="button"
           :disabled="!canSubmit || saving"
-          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="onSubmit"
         >
           {{ saving ? 'Guardando...' : mode === 'create' ? 'Agregar campo' : 'Guardar campo' }}

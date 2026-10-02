@@ -597,7 +597,7 @@ function publicFormsRuntime(page: PublicSitePage) {
 export function renderPublicSiteDocument(page: PublicSitePage) {
   const title = escapeDocumentText(String(page.seo?.title || page.pageTitle))
   const description = escapeDocumentText(String(page.seo?.description || ''))
-  const style = `<style data-flow-sites>${page.css}</style>`
+  const style = `<meta name="color-scheme" content="light"><style data-flow-sites>${page.css}</style><style data-flow-theme>:root{color-scheme:light!important}</style>`
   const meta = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>${description ? `<meta name="description" content="${description}">` : ''}${style}`
   const runtime = publicFormsRuntime(page)
   if (/<html[\s>]/i.test(page.html)) {

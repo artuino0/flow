@@ -172,7 +172,7 @@ function totalText(field: EntityFieldMeta): string {
           <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
               <th v-for="field in columns" :key="field.name" class="whitespace-nowrap px-3 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">{{ field.label }}</th>
-              <th v-if="permissions.canUpdate || permissions.canDelete" class="sticky right-0 z-10 bg-brand-bg px-3 py-2.5 text-center shadow-[inset_1px_0_0_0_#e5e7eb] text-[12px] font-bold tracking-wide text-brand-text-secondary">Acciones</th>
+              <th v-if="permissions.canUpdate || permissions.canDelete" class="sticky right-0 z-10 bg-brand-bg px-3 py-2.5 text-center shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))] text-[12px] font-bold tracking-wide text-brand-text-secondary">Acciones</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-brand-border-light">
@@ -186,7 +186,7 @@ function totalText(field: EntityFieldMeta): string {
                 <DynamicFileValue v-else-if="field.dataType === 'file' && typeof row.customData[field.name] === 'string'" :file-id="String(row.customData[field.name])" compact />
                 <template v-else>{{ formatFieldValue(field, row.customData[field.name], relationLabels) }}</template>
               </td>
-              <td v-if="permissions.canUpdate || permissions.canDelete" class="sticky right-0 whitespace-nowrap bg-brand-surface px-3 py-2.5 text-center shadow-[inset_1px_0_0_0_#e5e7eb]">
+              <td v-if="permissions.canUpdate || permissions.canDelete" class="sticky right-0 whitespace-nowrap bg-brand-surface px-3 py-2.5 text-center shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))]">
                 <button v-if="permissions.canUpdate" type="button" title="Editar línea" aria-label="Editar línea" class="rounded p-1.5 text-brand-text-secondary hover:bg-brand-blue-bg hover:text-brand-blue" :disabled="Boolean(busyId) || saving" @click="startEdit(row)"><Pencil class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
                 <button v-if="permissions.canDelete" type="button" title="Eliminar línea" aria-label="Eliminar línea" class="rounded p-1.5 text-brand-text-secondary hover:bg-brand-error-bg hover:text-brand-error-text disabled:opacity-60" :disabled="Boolean(busyId) || saving" @click="remove(row)"><Trash2 class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
               </td>
@@ -216,7 +216,7 @@ function totalText(field: EntityFieldMeta): string {
       <template #footer>
         <button type="button" class="rounded border border-brand-border px-3 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg disabled:opacity-60" :disabled="saving" @click="cancel">Cancelar</button>
         <button v-if="!editing?.id" type="button" class="rounded border border-brand-orange px-3 py-2 text-[13px] font-semibold text-brand-orange hover:bg-brand-bg disabled:opacity-60" :disabled="saving" @click="save(true)">Guardar y agregar otra</button>
-        <button type="button" class="rounded bg-brand-orange px-3 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="save(false)">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
+        <button type="button" class="rounded bg-brand-orange px-3 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="save(false)">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
       </template>
     </RecordDrawer>
     <SettingsConfirmDialog v-if="pendingDelete" title="Eliminar línea" confirm-label="Eliminar" cancel-label="Cancelar" @cancel="pendingDelete = null" @confirm="confirmRemove">¿Eliminar esta línea? Esta acción no se puede deshacer.</SettingsConfirmDialog>

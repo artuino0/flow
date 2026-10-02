@@ -9,7 +9,7 @@ import { ChevronRight } from '@lucide/vue'
 // Reusa RecordDetailView.vue (el MISMO componente que la vista previa del
 // configurador en pages/modulos/[id]/editar.vue) - preview y resultado real
 // nunca pueden divergir en forma, porque son literalmente el mismo componente.
-definePageMeta({ layout: 'default', fullBleed: true })
+definePageMeta({ layout: 'default', fullBleed: true, darkReady: true })
 
 const route = useRoute()
 const router = useRouter()
@@ -47,7 +47,7 @@ function onDeleted() {
 
 <template>
   <div class="flex h-full min-h-0 flex-col bg-brand-bg">
-    <nav class="flex h-[55px] shrink-0 items-center gap-1.5 border-b border-brand-border-light bg-white px-7 text-[13px]" aria-label="Ruta del registro">
+    <nav class="flex h-[55px] shrink-0 items-center gap-1.5 border-b border-brand-border-light bg-brand-surface px-7 text-[13px]" aria-label="Ruta del registro">
       <NuxtLink to="/" class="text-brand-text-secondary hover:text-brand-blue">Inicio</NuxtLink>
       <ChevronRight class="h-3.5 w-3.5 text-brand-text-muted" :stroke-width="1.75" />
       <NuxtLink :to="`/registros/${slug}`" class="text-brand-text-secondary hover:text-brand-blue">{{ data?.entity?.name || slug }}</NuxtLink>

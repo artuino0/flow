@@ -167,12 +167,12 @@ onMounted(() => {
       type="text"
       :disabled="disabled"
       placeholder="uuid del registro relacionado"
-      class="w-full rounded border border-brand-border px-3 py-[9px] font-mono text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+      class="w-full rounded border border-brand-control-border px-3 py-[9px] font-mono text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
       :value="currentValue"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
 
-    <div v-else-if="currentValue" class="flex items-center gap-2 rounded border border-brand-border bg-brand-blue-bg px-3 py-[7px]">
+    <div v-else-if="currentValue" class="flex items-center gap-2 rounded border border-brand-control-border bg-brand-blue-bg px-3 py-[7px]">
       <Link2 class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="1.75" />
       <span class="flex-1 truncate text-sm font-semibold text-brand-blue">{{ labelCache[cacheKey(currentValue)] ?? initialLabel ?? '...' }}</span>
       <button v-if="!disabled" type="button" class="text-brand-blue hover:text-brand-error-text" @click="clearValue">
@@ -182,7 +182,7 @@ onMounted(() => {
 
     <p v-else-if="targetDisabled" class="text-sm text-brand-text-muted">El módulo relacionado está deshabilitado.</p>
     <div v-else-if="!disabled" class="relative">
-      <div class="flex items-center gap-2 rounded border border-brand-border px-3 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
+      <div class="flex items-center gap-2 rounded border border-brand-control-border px-3 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
         <Search class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
         <input
           :id="`field-${field.name}`"

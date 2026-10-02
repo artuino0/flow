@@ -65,6 +65,8 @@ describe('public site forms runtime', () => {
     })
 
     expect(html).toContain('data-flow-sites-runtime')
+    expect(html).toContain('<meta name="color-scheme" content="light">')
+    expect(html).toContain('<style data-flow-theme>:root{color-scheme:light!important}</style>')
     expect(html).toContain('/api/sites/forms/submit')
     expect(html).toContain('submittedPayload=payload(form)')
     expect(html).toContain("form.removeAttribute('aria-busy')}},true)")

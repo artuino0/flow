@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
     </div>
     </div>
     <Teleport to="body">
-      <div v-if="open" :id="dialogId" ref="panel" role="dialog" aria-label="Detalle del consumo del plan" class="usage-detail" :style="position" @keydown="keyboard">
+      <div data-theme-shell v-if="open" :id="dialogId" ref="panel" role="dialog" aria-label="Detalle del consumo del plan" class="usage-detail" :style="position" @keydown="keyboard">
         <header><div class="detail-title"><div><strong>{{ planName }}</strong><p v-if="cycle" class="cycle">{{ cycle }}</p></div><button type="button" aria-label="Cerrar detalle del consumo" @click="close(true)"><X :size="16" /></button></div><p v-if="renewal" class="renewal"><CalendarDays :size="12" />Se renueva el {{ renewal }}</p></header>
         <div class="detail-body">
           <div v-for="item in details" :key="item.concept" class="detail-resource" :class="usageState(item)">
@@ -161,14 +161,14 @@ p { margin:0; }
 .usage-track>span { display:block; height:100%; border-radius:999px; background:var(--usage-color); }
 .usage-text,.limit-explanation { color:theme('colors.brand.text-secondary'); font-weight:500; }
 .state-message { color:var(--usage-color); font-weight:600; }
-.warning .state-message { color:#985e08; }
+.warning .state-message { color:rgb(var(--brand-usage-warning)); }
 .normal .state-message { color:theme('colors.brand.text-secondary'); font-weight:400; }
 .limit-explanation { font-weight:400; }
 .links-row { font-size:11px; font-weight:600; }
-.links-row button { color:#007c95; }
+.links-row button { color:rgb(var(--brand-usage-link)); }
 .upgrade-link { color:theme('colors.brand.text-secondary'); }
-.warning .upgrade-link { color:#985e08; font-weight:700; }
-.upgrade-button { display:flex; align-items:center; justify-content:center; border-radius:4px; padding:8px 10px; background:theme('colors.brand.orange'); color:#fff; font-size:12px; font-weight:700; }
+.warning .upgrade-link { color:rgb(var(--brand-usage-warning)); font-weight:700; }
+.upgrade-button { display:flex; align-items:center; justify-content:center; border-radius:4px; padding:8px 10px; background:theme('colors.brand.orange'); color:rgb(var(--brand-primary-fg)); font-size:12px; font-weight:700; }
 .upgrade-button:hover { background:theme('colors.brand.orange-hover'); }
 button:hover,.upgrade-link:hover { text-decoration:underline; }
 button:focus-visible,a:focus-visible { outline:2px solid theme('colors.brand.navy'); outline-offset:3px; border-radius:4px; }
@@ -180,8 +180,8 @@ button:focus-visible,a:focus-visible { outline:2px solid theme('colors.brand.nav
 .tooltip-plan.warning { --usage-color:theme('colors.brand.warning-text'); }
 .tooltip-plan.critical,.tooltip-plan.limit { --usage-color:theme('colors.brand.error-text'); }
 .tooltip-plan .status-dot { width:6px; height:6px; }
-.tooltip-usage { margin:4px 0; color:#d7e0e8; }
-.tooltip-action { color:#7fd8ee; font-weight:700; }
+.tooltip-usage { margin:4px 0; color:rgb(var(--brand-tooltip-muted)); }
+.tooltip-action { color:rgb(var(--brand-tooltip-link)); font-weight:700; }
 .usage-detail { position:fixed; z-index:75; width:340px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; border:1px solid theme('colors.brand.border-light'); border-radius:8px; background:theme('colors.brand.surface'); box-shadow:0 8px 20px #33475b26; color:theme('colors.brand.text'); font-family:Inter,ui-sans-serif,system-ui,sans-serif; font-size:11px; line-height:1.2; }
 .usage-detail header { padding:16px 18px; border-bottom:1px solid theme('colors.brand.border-light'); }
 .detail-title strong { font-size:15px; font-weight:700; }
@@ -194,7 +194,7 @@ button:focus-visible,a:focus-visible { outline:2px solid theme('colors.brand.nav
 .resource-title>span { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
 .resource-title svg,.detail-resource p { color:theme('colors.brand.text-secondary'); }
 .resource-title b { color:theme('colors.brand.text-secondary'); font-weight:700; }
-.warning .resource-title b { color:#985e08; }
+.warning .resource-title b { color:rgb(var(--brand-usage-warning)); }
 .critical .resource-title b,.limit .resource-title b { color:theme('colors.brand.error-text'); }
 .usage-detail footer { padding:14px 18px; border-top:1px solid theme('colors.brand.border-light'); }
 .usage-detail footer .upgrade-button { padding:9px 14px; }

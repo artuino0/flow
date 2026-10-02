@@ -85,7 +85,7 @@ const progressOffset = computed(() => {
         </button>
         <button
           type="button"
-          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
           @click="emit('confirm')"
         >
           Seguir conectado

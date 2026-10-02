@@ -43,10 +43,10 @@ async function goToAction(url: string) {
   <div ref="root" class="relative">
     <button type="button" data-tour="notifications" title="Notificaciones" aria-label="Notificaciones" :aria-expanded="open" class="relative flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg" @click.stop="toggleOpen">
       <Bell class="h-[17px] w-[17px]" :stroke-width="1.75" />
-      <span v-if="state.unreadCount" class="absolute right-0.5 top-0.5 flex min-w-[15px] translate-x-1/4 -translate-y-1/4 items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[15px] text-white">{{ state.unreadCount > 99 ? '99+' : state.unreadCount }}</span>
+      <span v-if="state.unreadCount" class="absolute right-0.5 top-0.5 flex min-w-[15px] translate-x-1/4 -translate-y-1/4 items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[15px] text-brand-primary-fg">{{ state.unreadCount > 99 ? '99+' : state.unreadCount }}</span>
     </button>
 
-    <div v-if="open" class="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-brand-border-light bg-white shadow-[0_8px_24px_#33475B22]">
+    <div v-if="open" class="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_8px_24px_#33475B22]">
       <header class="flex items-center justify-between border-b border-brand-border-light px-4 py-3">
         <div><h2 class="text-sm font-bold text-brand-text">Notificaciones</h2><p class="mt-0.5 text-[11px] text-brand-text-muted">{{ state.connected ? 'Actualizadas en tiempo real' : 'Actualizando automáticamente' }}</p></div>
         <button v-if="state.unreadCount" type="button" class="flex items-center gap-1 text-[11px] font-semibold text-brand-blue hover:underline" @click="markAllRead"><Check class="h-3.5 w-3.5" />Marcar como leídas</button>

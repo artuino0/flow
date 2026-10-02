@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
 
           <section v-if="workspace !== 'code' || connectionOpen" class="preview-pane">
             <div class="preview-bar"><span><Laptop />Vista previa</span><div><small>{{ viewport === 'desktop' ? 'Escritorio' : viewport === 'tablet' ? 'Tablet' : 'Móvil' }}</small><button type="button" title="Ajustar vista" @click="previewZoom = 100"><Maximize2 /></button></div></div>
-            <div class="preview-stage"><iframe ref="previewFrame" :style="previewTransform" sandbox="allow-scripts allow-forms allow-modals" :srcdoc="previewDocument" title="Vista previa aislada de la página" @load="sendPreviewSelection" /></div>
+            <div class="preview-stage"><iframe class="theme-light" ref="previewFrame" :style="previewTransform" sandbox="allow-scripts allow-forms allow-modals" :srcdoc="previewDocument" title="Vista previa aislada de la página" @load="sendPreviewSelection" /></div>
           </section>
         </main>
       </div>

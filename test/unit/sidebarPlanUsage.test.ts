@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import { detailConcepts, resourcePercent, sidebarResource, usageActions, usageMessages, usageState, usageText } from '../../utils/sidebarPlanUsage'
 import type { PlanUsageEntry } from '../../utils/planLimit'
+import { darkTokens, lightTokens } from '../../utils/themeTokens'
 
 const storage = (percent: number | null, limit: number | null = 10 * 1024 ** 3): PlanUsageEntry => ({ concept: 'storageBytes', label: 'Almacenamiento', used: 4.2 * 1024 ** 3, limit, percent })
 
@@ -69,11 +70,13 @@ describe('consumo del menú lateral ERD-136', () => {
     expect(settings).toContain('Promise.all([refreshOverview(), refreshPlanUsage()])')
     expect(settings).toContain('@click="refresh"')
   })
-  it('conserva texto blanco y las medidas del botón naranja', () => {
+  it('conserva texto blanco en claro, usa el foreground oscuro y mantiene las medidas del botón naranja', () => {
     const component = readFileSync('components/SidebarPlanUsage.vue', 'utf8')
     const style = parse(component).descriptor.styles[0]!.content
     const button = style.match(/\.upgrade-button\s*\{([^}]+)\}/)![1]!
-    expect(button).toContain('color:#fff')
+    expect(button).toContain('color:rgb(var(--brand-primary-fg))')
+    expect(lightTokens['primary-fg']).toBe('#FFFFFF')
+    expect(darkTokens['primary-fg']).toBe('#1A2233')
     expect(button).not.toContain('brand.navy')
     expect(button).toContain("background:theme('colors.brand.orange')")
     expect(button).toContain('font-size:12px; font-weight:700')

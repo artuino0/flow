@@ -78,7 +78,7 @@ onMounted(() => { watch([lines, layout, branding, status], paginate, { immediate
 onBeforeUnmount(() => { revision++; emit('ready', false) })
 </script>
 <template>
-  <div class="report-sheets" :class="{ 'report-compact': layout.density === 'compact' }" :style="paperStyle">
+  <div class="theme-light report-sheets" :class="{ 'report-compact': layout.density === 'compact' }" :style="paperStyle">
     <p v-if="overflow" class="report-overflow-warning" role="alert">Una fila supera el alto de la hoja. Usa orientación vertical, densidad compacta o reduce las columnas antes de imprimir.</p>
     <div ref="measure" class="report-measure" aria-hidden="true" inert><PrintReportPage v-bind="common" :lines="lines" :page="1" :pages="pageIndexes.length || 1" /></div>
     <PrintReportPage v-for="(pageLines, index) in pages" :key="index" v-bind="common" :lines="pageLines" :page="index + 1" :pages="pageIndexes.length" />

@@ -133,7 +133,7 @@ async function onDelete(id: string) {
             </th>
             <th 
               class="px-4 py-2.5 text-center text-[12px] font-bold tracking-wide text-brand-text-secondary"
-              :class="actionsSticky ? 'sticky right-0 z-10 bg-brand-bg shadow-[inset_1px_0_0_0_#e5e7eb]' : ''"
+              :class="actionsSticky ? 'sticky right-0 z-10 bg-brand-bg shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))]' : ''"
             >
               Acciones
             </th>
@@ -151,7 +151,7 @@ async function onDelete(id: string) {
             </td>
             <td 
               class="whitespace-nowrap px-4 py-3"
-              :class="actionsSticky ? 'sticky right-0 z-10 bg-inherit shadow-[inset_1px_0_0_0_#e5e7eb]' : ''"
+              :class="actionsSticky ? 'sticky right-0 z-10 bg-inherit shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))]' : ''"
             >
               <div class="flex justify-center gap-2">
                 <!-- HU-ERD-74: ficha de solo lectura - siempre disponible
@@ -207,7 +207,7 @@ async function onDelete(id: string) {
           :key="p"
           type="button"
           class="flex h-8 w-8 items-center justify-center rounded text-[13px] font-semibold"
-          :class="p === page ? 'bg-brand-orange text-white' : 'text-brand-text-secondary hover:bg-brand-bg'"
+          :class="p === page ? 'bg-brand-orange text-brand-primary-fg' : 'text-brand-text-secondary hover:bg-brand-bg'"
           @click="emit('update:page', p)"
         >
           {{ p }}

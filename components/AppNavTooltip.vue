@@ -54,9 +54,9 @@ onBeforeUnmount(() => {
   <div ref="root" @mouseover="show" @mouseout="leave" @focusin="show" @focusout="leave" @click="hide" @keydown.esc="hide">
     <slot />
     <Teleport to="body">
-      <div v-if="enabled && label" :id="id" ref="tooltip" role="tooltip"
+      <div data-theme-shell v-if="enabled && label" :id="id" ref="tooltip" role="tooltip"
         class="nav-tooltip fixed z-[70] -translate-y-1/2"
-        :class="planUsage ? 'usage-tooltip' : 'rounded-md border border-brand-border-light bg-white px-3 py-2 text-xs font-semibold text-brand-text shadow-[0_6px_18px_#33475B20]'"
+        :class="planUsage ? 'usage-tooltip' : 'rounded-md border border-brand-border-light bg-brand-surface px-3 py-2 text-xs font-semibold text-brand-text shadow-[0_6px_18px_#33475B20]'"
         :style="position">
         <slot name="tooltip" :label="label">{{ label }}</slot>
       </div>
@@ -66,7 +66,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .nav-tooltip { pointer-events: none; max-width: min(280px, calc(100vw - 90px)); overflow-wrap: anywhere; }
-.nav-tooltip::before { content: ''; position: absolute; left: -5px; top: 50%; width: 8px; height: 8px; background: white; border-left: 1px solid; border-bottom: 1px solid; border-color: inherit; transform: translateY(-50%) rotate(45deg); }
-.usage-tooltip { width:220px; max-width:calc(100vw - 16px); padding:10px 12px; border-radius:4px; background:theme('colors.brand.text'); color:theme('colors.brand.surface'); box-shadow:0 4px 12px #33475b33; font-size:11px; line-height:1.2; font-weight:400; }
-.usage-tooltip::before { background:theme('colors.brand.text'); border:0; }
+.nav-tooltip::before { content: ''; position: absolute; left: -5px; top: 50%; width: 8px; height: 8px; background: rgb(var(--brand-surface)); border-left: 1px solid; border-bottom: 1px solid; border-color: inherit; transform: translateY(-50%) rotate(45deg); }
+.usage-tooltip { width:220px; max-width:calc(100vw - 16px); padding:10px 12px; border-radius:4px; background:theme('colors.brand.tooltip-bg'); color:theme('colors.brand.tooltip-fg'); box-shadow:0 4px 12px #33475b33; font-size:11px; line-height:1.2; font-weight:400; }
+.usage-tooltip::before { background:theme('colors.brand.tooltip-bg'); border:0; }
 </style>

@@ -1,3 +1,5 @@
+import { themeBootstrap } from './utils/theme'
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-27',
   devtools: { enabled: true },
@@ -11,7 +13,7 @@ export default defineNuxtConfig({
   },
   // HU-ERD-21: Tailwind CSS + tema por defecto.
   modules: ['@nuxtjs/tailwindcss'],
-  css: ['driver.js/dist/driver.css', '~/assets/css/onboarding.css'],
+  css: ['~/assets/css/theme.css', 'driver.js/dist/driver.css', '~/assets/css/onboarding.css'],
   tailwindcss: {
     cssPath: '~/assets/css/main.css',
     configPath: 'tailwind.config.ts'
@@ -36,6 +38,8 @@ export default defineNuxtConfig({
   app: {
     head: {
       title: 'Flow',
+      meta: [{ name: 'theme-color', content: '#F5F8FA' }],
+      script: [{ innerHTML: themeBootstrap, tagPosition: 'head' }],
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },

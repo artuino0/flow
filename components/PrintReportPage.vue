@@ -32,7 +32,7 @@ const meta = computed(() => {
 })
 </script>
 <template>
-  <article class="report-paper">
+  <article class="theme-light report-paper">
     <header class="report-heading">
       <div class="report-company">
         <div class="report-logobox"><img v-if="logo" :src="logo" alt="" class="report-logo" /><span v-else class="report-logo-placeholder">LOGO</span></div>

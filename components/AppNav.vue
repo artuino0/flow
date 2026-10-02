@@ -110,7 +110,7 @@ function active(to: string) {
         >
           <span class="relative flex h-[17px] w-[17px] shrink-0 items-center justify-center">
             <component :is="item.icon" class="h-[17px] w-[17px]" :stroke-width="1.75" />
-            <span v-if="item.badge" class="absolute -left-2 -top-2 z-10 flex min-w-[18px] items-center justify-center rounded-full bg-brand-orange px-1 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">{{ item.badge > 99 ? '99+' : item.badge }}</span>
+            <span v-if="item.badge" class="absolute -left-2 -top-2 z-10 flex min-w-[18px] items-center justify-center rounded-full bg-brand-orange px-1 py-0.5 text-[9px] font-bold leading-none text-brand-primary-fg shadow-sm">{{ item.badge > 99 ? '99+' : item.badge }}</span>
           </span>
           <span v-if="!compact" class="min-w-0 flex-1">{{ item.label }}</span>
         </NuxtLink>
@@ -121,7 +121,7 @@ function active(to: string) {
           <button v-if="!compact" type="button" class="flex items-center justify-between rounded px-3 py-1.5 text-left text-[11px] font-bold tracking-wide text-brand-text-muted" :aria-expanded="!closed[section.key] || tourNeedsAdministration(activeTourId, section.key)" @click="toggle(section.key)">{{ section.label }}<ChevronDown class="h-3.5 w-3.5" :class="{ '-rotate-90': closed[section.key] && !tourNeedsAdministration(activeTourId, section.key) }" /></button>
           <template v-if="compact || !closed[section.key] || tourNeedsAdministration(activeTourId, section.key)">
             <NuxtLink v-for="item in section.items" :key="item.to" :to="item.to" :data-tour="item.to === '/modulos' ? 'modules-core' : item.to === '/disenador' ? 'designer-access' : undefined" :aria-label="item.label" :aria-current="active(item.to) ? 'page' : undefined" class="group relative flex items-center gap-2.5 rounded py-2 text-sm font-medium" :class="[compact ? 'justify-center px-2' : 'px-3', active(item.to) ? 'bg-brand-sidebar-active-bg font-semibold text-brand-blue' : 'text-brand-text-secondary hover:bg-brand-bg']">
-              <span class="relative flex h-[17px] w-[17px] shrink-0 items-center justify-center"><component :is="item.icon" class="h-[17px] w-[17px]" :stroke-width="1.75" /><span v-if="item.badge" class="absolute -left-2 -top-2 z-10 flex min-w-[18px] items-center justify-center rounded-full bg-brand-orange px-1 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">{{ item.badge > 99 ? '99+' : item.badge }}</span></span>
+              <span class="relative flex h-[17px] w-[17px] shrink-0 items-center justify-center"><component :is="item.icon" class="h-[17px] w-[17px]" :stroke-width="1.75" /><span v-if="item.badge" class="absolute -left-2 -top-2 z-10 flex min-w-[18px] items-center justify-center rounded-full bg-brand-orange px-1 py-0.5 text-[9px] font-bold leading-none text-brand-primary-fg shadow-sm">{{ item.badge > 99 ? '99+' : item.badge }}</span></span>
               <span v-if="!compact" class="min-w-0 flex-1">{{ item.label }}</span>
             </NuxtLink>
           </template>

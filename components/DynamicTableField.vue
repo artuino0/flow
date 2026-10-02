@@ -334,6 +334,7 @@ interface PickerResult { id: string; label: string; customData: Record<string, u
 const pickerQuery = ref('')
 const pickerOpen = ref(false)
 const pickerLoading = ref(false)
+const themeSource = ref<HTMLElement>()
 const pickerResults = ref<PickerResult[]>([])
 const pickerSelected = ref<PickerResult | null>(null)
 let pickerDebounce: ReturnType<typeof setTimeout> | undefined
@@ -398,7 +399,7 @@ function addRowFromPicker() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-3 rounded border border-brand-border-light bg-brand-surface p-3">
+  <div ref="themeSource" class="flex flex-col gap-3 rounded border border-brand-border-light bg-brand-surface p-3">
     <!-- Buscador "picker" arriba de la tabla (solo Campo Tabla de 1 columna de
     relacion - ver isSinglePickerColumn) - reemplaza el flujo generico de
     "Agregar linea + buscar dentro de la fila" por "elegir primero, confirmar
@@ -406,7 +407,7 @@ function addRowFromPicker() {
     <p v-if="isSinglePickerColumn && targetDisabled(pickerColumn?.relationEntity)" class="text-xs text-brand-text-muted">El módulo relacionado está deshabilitado.</p>
     <div v-if="isSinglePickerColumn && !disabled && !targetDisabled(pickerColumn?.relationEntity)" class="flex items-center gap-2">
       <div class="relative flex-1">
-        <div class="flex items-center gap-1.5 rounded border border-brand-border px-2.5 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
+        <div class="flex items-center gap-1.5 rounded border border-brand-control-border px-2.5 py-[7px] focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue">
           <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
           <input
             type="text"
@@ -443,7 +444,7 @@ function addRowFromPicker() {
         type="button"
         title="Agregar"
         :disabled="!pickerSelected"
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-brand-border text-brand-text-secondary hover:bg-brand-bg disabled:cursor-not-allowed disabled:opacity-50"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-brand-control-border text-brand-text-secondary hover:bg-brand-bg disabled:cursor-not-allowed disabled:opacity-50"
         @click="addRowFromPicker"
       >
         <Plus class="h-4 w-4" :stroke-width="2" />
@@ -482,7 +483,7 @@ function addRowFromPicker() {
                 <div v-else-if="!disabled && !isSinglePickerColumn && !targetDisabled(col.relationEntity)" class="relative">
                   <div
                     :ref="(el) => setSearchWrapperRef(idx, col, el as Element | null)"
-                    class="flex items-center gap-1.5 rounded border border-brand-border px-2 py-[7px]"
+                    class="flex items-center gap-1.5 rounded border border-brand-control-border px-2 py-[7px]"
                   >
                     <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
                     <input
@@ -498,6 +499,7 @@ function addRowFromPicker() {
                   <Teleport to="body">
                     <div
                       v-if="stateFor(idx).open"
+                      :class="{ 'theme-light': !!themeSource?.closest('.theme-light') }"
                       class="fixed z-50 max-h-64 overflow-auto rounded border border-brand-border-light bg-brand-surface py-1 shadow-xl"
                       :style="{
                         top: `${dropdownStyle[searchKey(idx, col)]?.top ?? 0}px`,
@@ -538,7 +540,7 @@ function addRowFromPicker() {
                 type="checkbox"
                 :disabled="disabled"
                 :checked="Boolean(row[col.name])"
-                class="h-4 w-4 rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange"
+                class="h-4 w-4 rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange"
                 @change="updateRow(idx, col.name, ($event.target as HTMLInputElement).checked)"
               />
 
@@ -597,7 +599,7 @@ function addRowFromPicker() {
     generico de varias columnas; con isSinglePickerColumn el boton de arriba
     ya cubre agregar filas, no hace falta este. -->
     <div v-if="!disabled && !isSinglePickerColumn" class="border-t border-brand-border-light pt-3">
-      <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-border px-3 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addRow">
+      <button type="button" class="flex items-center gap-1.5 self-start rounded border border-brand-control-border px-3 py-1.5 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="addRow">
         <Plus class="h-3.5 w-3.5" :stroke-width="2" />
         Agregar línea
       </button>

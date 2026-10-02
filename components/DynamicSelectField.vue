@@ -92,7 +92,7 @@ function clearSingle() {
       v-if="!isMultiple"
       type="button"
       :disabled="disabled"
-      class="flex w-full items-center gap-2 rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-left text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:cursor-not-allowed disabled:bg-brand-bg"
+      class="flex w-full items-center gap-2 rounded border border-brand-control-border bg-brand-surface px-3 py-[9px] text-left text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:cursor-not-allowed disabled:bg-brand-bg"
       @click="open ? (open = false) : openDropdown()"
       @blur="scheduleClose"
     >
@@ -120,7 +120,7 @@ function clearSingle() {
     </div>
 
     <!-- Multiselect: chips removibles + trigger para agregar -->
-    <div v-else-if="isMultiple" class="flex flex-wrap items-center gap-1.5 rounded border border-brand-border bg-brand-surface px-2 py-1.5">
+    <div v-else-if="isMultiple" class="flex flex-wrap items-center gap-1.5 rounded border border-brand-control-border bg-brand-surface px-2 py-1.5">
       <span
         v-for="value in selectedValues"
         :key="value"

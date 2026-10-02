@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { chattitoSessionIdentity } from '~/utils/chattito'
 import { onboardingSessionIdentity, shouldResetOnboarding } from '~/utils/onboardingTours'
+import { contentNeedsLight } from '~/utils/theme'
 
 const showNavigationFeedback = ref(false)
 const { panel: chattitoPanel, reset: resetChattito } = useChattitoPanel()
@@ -8,6 +9,10 @@ const { reset: resetOnboarding } = useOnboarding()
 const { user } = useAuth()
 const { data: isAdmin } = useIsAdmin()
 const route = useRoute()
+useHead({ bodyAttrs: { 'data-content-theme': computed(() => contentNeedsLight(route.meta) ? 'light' : 'inherit') } })
+const theme = useTheme()
+onMounted(theme.initialize)
+onBeforeUnmount(theme.dispose)
 const sessionIdentity = computed(() => chattitoSessionIdentity(user.value))
 const onboardingIdentity = computed(() => onboardingSessionIdentity(user.value))
 const showChattito = computed(() => Boolean(sessionIdentity.value) && route.meta.layout !== false && user.value?.emailVerified && user.value?.onboardingStatus === 'complete')
@@ -46,7 +51,7 @@ onBeforeUnmount(stopNavigationFeedback)
   <ChattitoSymbolRegistry v-if="sessionIdentity" />
   <OnboardingTour v-if="showChattito" />
   <ChattitoHelp v-if="showChattito" />
-  <NuxtLoadingIndicator color="#0091AE" :height="3" :throttle="0" :duration="1600" />
+  <NuxtLoadingIndicator color="rgb(var(--brand-blue))" :height="3" :throttle="0" :duration="1600" />
   <Transition name="navigation-feedback">
     <div v-if="showNavigationFeedback" class="navigation-feedback" role="status" aria-live="polite">
       <span class="navigation-spinner" />
@@ -54,7 +59,7 @@ onBeforeUnmount(stopNavigationFeedback)
     </div>
   </Transition>
   <div class="chattito-app-shell">
-    <div class="chattito-app-content">
+    <div class="chattito-app-content" :class="{ 'theme-light': route.meta.layout === false }">
       <NuxtLayout>
         <NuxtPage />
       </NuxtLayout>
@@ -69,8 +74,8 @@ onBeforeUnmount(stopNavigationFeedback)
 .chattito-app-shell{display:flex;width:100%;height:100dvh;overflow:hidden}.chattito-app-content{min-width:0;flex:1;overflow:hidden}.chattito-panel-slot{width:0;min-width:0;flex:none;overflow:hidden;transition:width .24s cubic-bezier(.22,1,.36,1)}.chattito-panel-slot--open{width:var(--chattito-panel-width)}.chattito-panel-slot--resizing{transition:none}
 @media(max-width:1023px){.chattito-panel-slot{position:fixed;z-index:190;inset:0 0 0 auto;height:100dvh}.chattito-panel-slot--open{width:100vw}}
 @media(prefers-reduced-motion:reduce){.chattito-panel-slot{transition:none}}
-.navigation-feedback{position:fixed;z-index:200;top:68px;right:20px;display:flex;align-items:center;gap:8px;height:34px;border:1px solid #e5eaf0;border-radius:6px;background:#fff;padding:0 12px;box-shadow:0 6px 18px #33475b1f;color:#516f90;font-size:12px;font-weight:600;pointer-events:none}
-.navigation-spinner{width:14px;height:14px;border:2px solid #cfe4e9;border-top-color:#0091ae;border-radius:50%;animation:navigation-spin .7s linear infinite}
+.navigation-feedback{position:fixed;z-index:200;top:68px;right:20px;display:flex;align-items:center;gap:8px;height:34px;border:1px solid rgb(var(--brand-border-light));border-radius:6px;background:rgb(var(--brand-surface));padding:0 12px;box-shadow:0 6px 18px #33475b1f;color:rgb(var(--brand-text-secondary));font-size:12px;font-weight:600;pointer-events:none}
+.navigation-spinner{width:14px;height:14px;border:2px solid rgb(var(--brand-spinner-track));border-top-color:rgb(var(--brand-blue));border-radius:50%;animation:navigation-spin .7s linear infinite}
 .navigation-feedback-enter-active,.navigation-feedback-leave-active{transition:opacity .12s ease,transform .12s ease}.navigation-feedback-enter-from,.navigation-feedback-leave-to{opacity:0;transform:translateY(-4px)}
 @keyframes navigation-spin{to{transform:rotate(360deg)}}
 @media(max-width:640px){.navigation-feedback{top:64px;right:12px}}

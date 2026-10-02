@@ -193,7 +193,7 @@ function totalPages(state: AssociationState) {
           v-if="definition.canLink"
           type="button"
           class="flex shrink-0 items-center gap-1.5 rounded px-3 py-1.5 text-[13px] font-semibold"
-          :class="states[definition.id]?.pickerOpen ? 'border border-brand-border text-brand-text hover:bg-brand-bg' : 'bg-brand-orange text-white hover:bg-brand-orange-hover'"
+          :class="states[definition.id]?.pickerOpen ? 'border border-brand-border text-brand-text hover:bg-brand-bg' : 'bg-brand-orange text-brand-primary-fg hover:bg-brand-orange-hover'"
           @click="togglePicker(definition.id)"
         >
           <template v-if="states[definition.id]?.pickerOpen"><X class="h-3.5 w-3.5" :stroke-width="1.75" /> Cerrar</template>
@@ -202,7 +202,7 @@ function totalPages(state: AssociationState) {
       </header>
 
       <div v-if="states[definition.id]?.pickerOpen" class="border-b border-brand-border-light bg-brand-bg p-3">
-        <label class="flex items-center gap-2 rounded border border-brand-border bg-white px-2.5">
+        <label class="flex items-center gap-2 rounded border border-brand-border bg-brand-surface px-2.5">
           <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
           <input
             v-model="states[definition.id]!.search"
@@ -213,7 +213,7 @@ function totalPages(state: AssociationState) {
             @input="onSearchInput(definition.id)"
           >
         </label>
-        <ul class="mt-2 max-h-60 overflow-auto rounded border border-brand-border-light bg-white">
+        <ul class="mt-2 max-h-60 overflow-auto rounded border border-brand-border-light bg-brand-surface">
           <li v-if="states[definition.id]!.searching && !states[definition.id]!.candidates.length" class="px-3 py-3 text-xs text-brand-text-muted">Buscando…</li>
           <li v-else-if="!states[definition.id]!.candidates.length" class="px-3 py-3 text-xs text-brand-text-muted">No hay registros disponibles para asociar.</li>
           <li v-for="candidate in states[definition.id]!.candidates" :key="candidate.id" class="border-b border-brand-border-light last:border-b-0">
@@ -241,7 +241,7 @@ function totalPages(state: AssociationState) {
               <tr>
                 <th v-for="(column, index) in states[definition.id]!.columns" :key="column.name" class="whitespace-nowrap px-4 py-2.5 text-left text-[12px] font-bold tracking-wide text-brand-text-secondary">{{ column.label }}<span v-if="index === 0" class="sr-only"> (abrir ficha)</span></th>
                 <th v-if="!states[definition.id]!.columns.length" class="px-4 py-2.5 text-left text-[12px] font-bold text-brand-text-secondary">Registro</th>
-                <th v-if="definition.canLink" class="sticky right-0 z-10 bg-brand-bg px-4 py-2.5 text-center shadow-[inset_1px_0_0_0_#e5e7eb] text-[12px] font-bold tracking-wide text-brand-text-secondary">Acciones</th>
+                <th v-if="definition.canLink" class="sticky right-0 z-10 bg-brand-bg px-4 py-2.5 text-center shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))] text-[12px] font-bold tracking-wide text-brand-text-secondary">Acciones</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-brand-border-light">
@@ -256,7 +256,7 @@ function totalPages(state: AssociationState) {
                   <template v-else>{{ cell(states[definition.id]!, column, row) }}</template>
                 </td>
                 <td v-if="!states[definition.id]!.columns.length" class="px-4 py-2.5"><NuxtLink :to="`/registros/${definition.relatedSlug}/${row.recordId}`" class="font-semibold text-brand-blue hover:underline">{{ row.label }}</NuxtLink></td>
-                <td v-if="definition.canLink" class="sticky right-0 bg-brand-surface px-4 py-2.5 text-center shadow-[inset_1px_0_0_0_#e5e7eb]">
+                <td v-if="definition.canLink" class="sticky right-0 bg-brand-surface px-4 py-2.5 text-center shadow-[inset_1px_0_0_0_rgb(var(--brand-table-divider))]">
                   <button
                     type="button"
                     class="inline-flex items-center gap-1 rounded border border-brand-border-light px-2 py-1 text-xs font-semibold text-brand-text-secondary hover:bg-brand-error-bg hover:text-brand-error-text disabled:opacity-60"

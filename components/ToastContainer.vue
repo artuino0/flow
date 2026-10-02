@@ -33,7 +33,7 @@ const VARIANT_META: Record<ToastVariant, { icon: typeof CircleCheck; iconWrapCla
 
 <template>
   <Teleport to="body">
-    <div class="fixed right-4 top-4 z-[100] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-3">
+    <div data-theme-shell class="fixed right-4 top-4 z-[100] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-3">
       <TransitionGroup name="toast">
         <div
           v-for="toast in toasts"

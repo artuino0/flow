@@ -352,7 +352,7 @@ async function changeState(to: string, label?: string) {
               <p class="text-[10px] font-bold uppercase tracking-[0.04em] text-brand-text-muted">Detalle de {{ entityName }}</p>
               <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
                 <h1 class="min-w-0 break-words text-[18px] font-bold leading-6 text-brand-text">{{ displayLabel }}</h1>
-                <span v-if="statusLabel" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#EAF0F6] px-2.5 py-[3px] text-[11px] font-semibold text-brand-text-secondary">
+                <span v-if="statusLabel" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-neutral-bg px-2.5 py-[3px] text-[11px] font-semibold text-brand-text-secondary">
                   <span class="h-1.5 w-1.5 rounded-full bg-brand-text-muted" />
                   {{ statusLabel }}
                 </span>
@@ -366,7 +366,7 @@ async function changeState(to: string, label?: string) {
           </div>
 
           <div v-if="record && availableTransitions.length" class="flex flex-wrap gap-2">
-            <button v-for="transition in availableTransitions" :key="`${transition.from}-${transition.to}`" type="button" class="rounded bg-brand-blue px-3 py-2 text-xs font-semibold text-white hover:opacity-90" @click="changeState(transition.to, transition.label)">{{ transition.label || `Pasar a ${(statusField?.validationRules?.options as Array<{ value: string; label: string }> | undefined)?.find(option => option.value === transition.to)?.label || transition.to}` }}</button>
+            <button v-for="transition in availableTransitions" :key="`${transition.from}-${transition.to}`" type="button" class="rounded bg-brand-blue px-3 py-2 text-xs font-semibold text-brand-primary-fg hover:opacity-90" @click="changeState(transition.to, transition.label)">{{ transition.label || `Pasar a ${(statusField?.validationRules?.options as Array<{ value: string; label: string }> | undefined)?.find(option => option.value === transition.to)?.label || transition.to}` }}</button>
           </div>
           <p v-if="record && isWorkflowLocked" class="text-xs text-brand-text-muted">Registro bloqueado por el estado actual.</p>
 
@@ -390,7 +390,7 @@ async function changeState(to: string, label?: string) {
                 >
                   <EllipsisVertical class="h-4 w-4" :stroke-width="1.9" />
                 </button>
-                <div v-if="actionMenuOpen" class="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[210px] overflow-hidden rounded-md border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+                <div v-if="actionMenuOpen" class="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[210px] overflow-hidden rounded-md border border-brand-border-light bg-brand-surface py-1 shadow-[0_8px_24px_#33475B22]">
                   <button v-if="canCreate" type="button" :disabled="duplicating" class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg disabled:opacity-60" @click="actionMenuOpen = false; onDuplicate()">
                     <Copy class="h-4 w-4 shrink-0" :stroke-width="1.75" />{{ duplicating ? 'Duplicando…' : 'Duplicar' }}
                   </button>
@@ -418,7 +418,7 @@ async function changeState(to: string, label?: string) {
             </template>
             <template v-else>
               <button type="button" :disabled="submittingEdit" class="flex h-9 flex-1 items-center justify-center rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="cancelEditing">Cancelar</button>
-              <button type="button" :disabled="submittingEdit" class="flex h-9 flex-1 items-center justify-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="saveEdit">{{ submittingEdit ? 'Guardando…' : 'Guardar' }}</button>
+              <button type="button" :disabled="submittingEdit" class="flex h-9 flex-1 items-center justify-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="saveEdit">{{ submittingEdit ? 'Guardando…' : 'Guardar' }}</button>
             </template>
           </div>
           <p v-if="deleteError" class="rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">{{ deleteError }}</p>
@@ -456,7 +456,7 @@ async function changeState(to: string, label?: string) {
       <div v-if="activePane === 'associations'" class="flex min-h-0 flex-1 flex-col">
         <div v-if="!hasAnyAssociationType && (!record || directAssociationCount !== null)" class="flex flex-1 items-center justify-center p-10 text-center">
           <div class="flex max-w-[380px] flex-col items-center">
-            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF0F6] text-brand-text-muted"><Link2 class="h-[26px] w-[26px]" :stroke-width="1.75" /></span>
+            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-brand-neutral-bg text-brand-text-muted"><Link2 class="h-[26px] w-[26px]" :stroke-width="1.75" /></span>
             <h3 class="mt-4 text-[15px] font-bold text-brand-text">Sin asociaciones</h3>
             <p class="mt-1 max-w-[340px] text-[13px] leading-5 text-brand-text-secondary">Este módulo no tiene tipos de asociación definidos ni otros módulos con un campo de relación hacia este registro.</p>
             <button v-if="record && canEditRecord" type="button" class="mt-4 flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="startEditing">
@@ -473,7 +473,7 @@ async function changeState(to: string, label?: string) {
                 <h3 class="text-sm font-bold text-brand-text">{{ rel.meta!.entityName }}</h3>
                 <p class="text-xs text-brand-text-muted">{{ rel.meta!.fieldLabel }}</p>
               </div>
-              <NuxtLink v-if="record && !isWorkflowLocked && !rel.editable && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+              <NuxtLink v-if="record && !isWorkflowLocked && !rel.editable && relatedTables[`${rel.entitySlug}.${rel.fieldName}`]?.canCreate" :to="relatedCreateLink(rel.entitySlug, rel.fieldName)" class="flex items-center gap-1.5 rounded bg-brand-orange px-3 py-1.5 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover">
                 <Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar
               </NuxtLink>
             </div>
@@ -523,7 +523,7 @@ async function changeState(to: string, label?: string) {
       </div>
 
       <div v-else class="min-h-0 flex-1 overflow-auto">
-        <ActivityTimeline v-if="record" :key="`${entitySlug}:${record.id}`" compact :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
+        <ActivityTimeline class="theme-light" v-if="record" :key="`${entitySlug}:${record.id}`" compact :entity="entitySlug" :record-id="record.id" :can-update="canUpdate" :fields="fields" :highlight-activity-id="initialActivityId" />
         <div v-else class="m-6 flex items-center gap-2 rounded border border-brand-border-light bg-brand-bg p-3 text-xs text-brand-text-secondary">
           <Clock class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" /><span>Guarda el registro primero para empezar a registrar actividad.</span>
         </div>

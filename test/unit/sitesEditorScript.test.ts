@@ -28,5 +28,7 @@ describe('sitesEditorScript (ERD-87)', () => {
     expect(doc).toContain('<style>html,body{min-height:100%;margin:0}body{color:red}')
     expect(doc).toContain('<body><form data-flow-form="f"></form><script>(function(){')
     expect(doc.endsWith('</script></body></html>')).toBe(true)
+    expect(doc).toContain('<meta name="color-scheme" content="light">')
+    expect(doc).toContain(':root{color-scheme:light!important}')
   })
 })

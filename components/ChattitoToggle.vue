@@ -11,5 +11,5 @@ const { activeId } = useOnboarding()
 </template>
 
 <style scoped>
-.chattito-toggle{display:flex;width:44px;height:44px;flex:none;align-items:center;justify-content:center;border-radius:8px;color:#33475b;transition:background .15s ease}.chattito-toggle:hover{background:#f5f8fa}.chattito-toggle__still{width:42px;height:42px;flex:none}
+.chattito-toggle{display:flex;width:44px;height:44px;flex:none;align-items:center;justify-content:center;border-radius:8px;color:rgb(var(--brand-text));transition:background .15s ease}.chattito-toggle:hover{background:rgb(var(--brand-bg))}.chattito-toggle__still{width:42px;height:42px;flex:none}
 </style>

@@ -34,13 +34,13 @@ onMounted(async () => {
   <div class="space-y-2">
     <div v-if="selected.length" class="flex flex-wrap gap-1.5">
       <span v-for="id in selected" :key="id" class="inline-flex items-center gap-2 rounded-full bg-brand-blue-bg px-2.5 py-1 text-xs text-brand-text">
-        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-brand-blue text-[9px] font-bold text-white">{{ label(id).slice(0, 2).toUpperCase() }}</span>
+        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-brand-blue text-[9px] font-bold text-brand-accent-fg">{{ label(id).slice(0, 2).toUpperCase() }}</span>
         {{ label(id) }}
         <button v-if="!disabled" type="button" :aria-label="`Quitar ${label(id)}`" @click="remove(id)">×</button>
       </span>
     </div>
-    <input v-if="!disabled && (multiple || !selected.length)" v-model="search" :id="`field-${field.name}`" type="search" class="w-full rounded border border-brand-border px-3 py-2 text-sm" placeholder="Buscar usuario por nombre o correo" />
-    <div v-if="search && available.length" class="max-h-44 overflow-y-auto rounded border border-brand-border bg-white shadow-sm">
+    <input v-if="!disabled && (multiple || !selected.length)" v-model="search" :id="`field-${field.name}`" type="search" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm" placeholder="Buscar usuario por nombre o correo" />
+    <div v-if="search && available.length" class="max-h-44 overflow-y-auto rounded border border-brand-control-border bg-brand-surface shadow-sm">
       <button v-for="user in available" :key="user.id" type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-brand-bg" @click="choose(user.id)">
         <span class="flex h-7 w-7 items-center justify-center rounded-full bg-brand-blue-bg text-xs font-bold text-brand-blue">{{ (user.fullName || user.email).slice(0, 2).toUpperCase() }}</span>
         <span>{{ user.fullName || user.email }} <small class="text-brand-text-muted">{{ user.roleName }}</small></span>

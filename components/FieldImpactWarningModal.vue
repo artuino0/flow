@@ -104,7 +104,7 @@ const COPY = {
         <button
           type="button"
           :disabled="!acknowledged || confirming"
-          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="emit('confirm')"
         >
           {{ confirming ? 'Aplicando...' : COPY[action].confirmLabel }}

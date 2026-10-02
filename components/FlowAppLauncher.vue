@@ -52,7 +52,7 @@ onBeforeUnmount(() => { window.removeEventListener('click', closeOnOutside); win
     >
       <span class="relative grid grid-cols-3 gap-[2px]" aria-hidden="true">
         <span v-for="cell in 6" :key="cell" class="h-[4px] w-[4px] rounded-[1px] bg-current" />
-        <span v-if="chat.unreadCount.value" class="absolute -right-2.5 -top-2.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-white">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
+        <span v-if="chat.unreadCount.value" class="absolute -right-2.5 -top-2.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-brand-primary-fg">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
       </span>
       <span class="hidden text-sm font-semibold md:inline">{{ activeApp.label }}</span>
       <ChevronDown class="hidden h-3.5 w-3.5 transition-transform md:block" :class="open ? 'rotate-180' : ''" />
@@ -81,14 +81,14 @@ onBeforeUnmount(() => { window.removeEventListener('click', closeOnOutside); win
           @click="select(app)"
         >
           <span v-if="activeKey === app.key" class="absolute inset-y-2.5 left-2.5 w-1 rounded-full bg-brand-orange" />
-          <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-bg text-brand-text-secondary group-hover/app:bg-white" :class="activeKey === app.key ? 'bg-white text-brand-blue' : ''">
+          <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-bg text-brand-text-secondary group-hover/app:bg-brand-surface" :class="activeKey === app.key ? 'bg-brand-surface text-brand-blue' : ''">
             <LockKeyhole v-if="app.enabled && !app.accessible" class="h-4 w-4" :stroke-width="1.75" />
             <component v-else :is="app.icon" class="h-4 w-4" :stroke-width="1.75" />
           </span>
           <span class="min-w-0 flex-1">
             <span class="flex items-center gap-1.5 text-sm font-semibold leading-5" :class="activeKey === app.key ? 'text-brand-blue' : 'text-brand-text'">
               {{ app.label }}
-              <span v-if="badge(app.key)" class="flex min-w-[22px] items-center justify-center rounded-full bg-brand-orange px-1.5 text-[10px] font-bold leading-5 text-white">{{ badge(app.key) > 99 ? '99+' : badge(app.key) }}</span>
+              <span v-if="badge(app.key)" class="flex min-w-[22px] items-center justify-center rounded-full bg-brand-orange px-1.5 text-[10px] font-bold leading-5 text-brand-primary-fg">{{ badge(app.key) > 99 ? '99+' : badge(app.key) }}</span>
             </span>
             <span class="block text-xs leading-4" :class="state(app)?.pending ? 'text-amber-700' : state(app) ? 'text-brand-text-muted' : 'text-brand-text-secondary'">{{ state(app)?.label || app.description }}</span>
           </span>

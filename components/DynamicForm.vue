@@ -288,8 +288,8 @@ defineExpose({ validateAll })
 <style scoped>
 /* Edición dentro de la ficha: controles blancos con borde gris y foco azul (sin fondos teñidos). */
 .detail-form :is(input:not([type='checkbox']), select, textarea) {
-  border-color:#CBD6E2;
-  background:#FFFFFF;
+  border-color:rgb(var(--brand-control-border));
+  background:rgb(var(--brand-surface));
   border-radius:4px;
   padding-top:6px;
   padding-bottom:6px;
@@ -297,11 +297,11 @@ defineExpose({ validateAll })
   box-shadow:none;
 }
 .detail-form :is(input:not([type='checkbox']), select, textarea):disabled {
-  background:#F5F8FA;
+  background:rgb(var(--brand-bg));
 }
 .detail-form :is(input:not([type='checkbox']), select, textarea):focus {
-  border-color:#0091AE;
+  border-color:rgb(var(--brand-blue));
   outline:none;
-  box-shadow:0 0 0 1px #0091AE;
+  box-shadow:0 0 0 1px rgb(var(--brand-blue));
 }
 </style>

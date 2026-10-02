@@ -10,6 +10,7 @@
 // (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
 // "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
 import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings, MessageCircle } from '@lucide/vue'
+import { contentNeedsLight } from '~/utils/theme'
 import { IDLE_RETURN_KEY, safeInternalRoute } from '~/utils/returnToRoute'
 import { tourNeedsMobileMenu } from '~/utils/onboardingTours'
 
@@ -34,6 +35,7 @@ const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const profileMenuOpen = ref(false)
 const navRoute = useRoute()
+const forceLightContent = computed(() => contentNeedsLight(navRoute.meta))
 const { navigationTourId: activeTourId, navigationTourIndex: activeTourIndex } = useOnboarding()
 const { activeKey } = useFlowApps()
 const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
@@ -104,7 +106,8 @@ async function onLogout(reason?: 'inactividad') {
     <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
       <div class="flex items-center gap-2">
         <button v-if="!editorFullscreen" type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
-        <img src="/brand/isotipo.png" alt="Flow" class="h-7 w-7 object-contain" />
+        <img src="/brand/isotipo.png" alt="Flow" class="flow-mark-light h-7 w-7 object-contain" />
+        <img src="/brand/isotipo-white.png" alt="Flow" class="flow-mark-dark h-7 w-7 object-contain" />
         <span class="text-base font-bold text-brand-text">Flow</span>
         <div class="mx-1 hidden h-5 w-px bg-brand-border-light sm:block" />
         <FlowAppLauncher v-if="!editorFullscreen" />
@@ -114,9 +117,10 @@ async function onLogout(reason?: 'inactividad') {
       <div class="flex items-center gap-2 sm:gap-4">
         <NuxtLink v-if="chat.canAccess.value" to="/chat" aria-label="Abrir chat" class="relative flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/25">
           <MessageCircle class="h-[18px] w-[18px]" :stroke-width="1.75" />
-          <span v-if="chat.unreadCount.value" class="absolute -right-1.5 -top-1.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-white">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
+          <span v-if="chat.unreadCount.value" class="absolute -right-1.5 -top-1.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-brand-primary-fg">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
         </NuxtLink>
         <NotificationCenter />
+        <ThemeSelector />
         <ChattitoToggle v-if="user?.authenticated && user.emailVerified && user.onboardingStatus === 'complete'" />
 
         <div class="h-6 w-px bg-brand-border-light" />
@@ -137,7 +141,7 @@ async function onLogout(reason?: 'inactividad') {
             <ChevronDown class="h-[15px] w-[15px] text-brand-text-muted transition-transform" :class="profileMenuOpen ? 'rotate-180' : ''" :stroke-width="2" />
           </button>
 
-          <div v-if="profileMenuOpen" data-tour="account-menu" class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-brand-border-light bg-white py-1 shadow-[0_8px_24px_#33475B22]">
+          <div v-if="profileMenuOpen" data-tour="account-menu" class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface py-1 shadow-[0_8px_24px_#33475B22]">
             <div class="border-b border-brand-border-light px-4 py-3">
               <p class="truncate text-sm font-semibold text-brand-text">{{ user?.fullName || user?.email }}</p>
               <p v-if="user?.fullName" class="truncate text-xs text-brand-text-muted">{{ user.email }}</p>
@@ -203,14 +207,14 @@ async function onLogout(reason?: 'inactividad') {
         </div>
       </aside>
 
-      <main class="min-h-0 min-w-0 flex-1" :class="fullBleedRoute ? 'overflow-hidden p-0' : editorFullscreen ? 'overflow-auto p-0' : 'overflow-auto p-8 pb-24'">
+      <main class="min-h-0 min-w-0 flex-1" :class="[forceLightContent ? 'theme-light bg-brand-bg' : '', fullBleedRoute ? 'overflow-hidden p-0' : editorFullscreen ? 'overflow-auto p-0' : 'overflow-auto p-8 pb-24']">
         <slot />
       </main>
     </div>
 
-    <div v-if="settingsDirty" class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between gap-4 border-t border-brand-border-light bg-white px-6 py-4 shadow-[0_-2px_8px_#33475B12]" :class="sidebarCollapsed ? 'sm:left-16' : activeKey === 'sites' ? 'sm:left-60' : 'sm:left-80'">
+    <div v-if="settingsDirty" class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between gap-4 border-t border-brand-border-light bg-brand-surface px-6 py-4 shadow-[0_-2px_8px_#33475B12]" :class="sidebarCollapsed ? 'sm:left-16' : activeKey === 'sites' ? 'sm:left-60' : 'sm:left-80'">
       <span class="text-xs font-medium text-brand-warning-text">Cambios sin guardar</span>
-      <div class="flex gap-3"><button class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="discardHandler?.()">Descartar</button><button class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="saveHandler?.()">Guardar cambios</button></div>
+      <div class="flex gap-3"><button class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="discardHandler?.()">Descartar</button><button class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="saveHandler?.()">Guardar cambios</button></div>
     </div>
 
     <ChatFloatingDock />
@@ -224,9 +228,9 @@ async function onLogout(reason?: 'inactividad') {
 </template>
 
 <style scoped>
-:deep(.sidebar-scroll) { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+:deep(.sidebar-scroll) { scrollbar-width: thin; scrollbar-color: rgb(var(--brand-scrollbar)) transparent; }
 :deep(.sidebar-scroll)::-webkit-scrollbar { width: 4px; }
-:deep(.sidebar-scroll)::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+:deep(.sidebar-scroll)::-webkit-scrollbar-thumb { background: rgb(var(--brand-scrollbar)); border-radius: 4px; }
 :deep(.sidebar-scroll)::-webkit-scrollbar-button { display: none; }
 </style>
 

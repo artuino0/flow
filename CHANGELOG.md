@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.134.0] - 2026-10-02
+#### [feature]
+- [ERD-161](https://dydasoftware.atlassian.net/browse/ERD-161) - Modo oscuro, primera fase: un botón en el encabezado, entre las notificaciones y Chattito, permite elegir Claro, Oscuro o Sistema (por defecto sigue al sistema); la preferencia se guarda en el dispositivo y la página carga ya con el tema correcto, sin parpadeo blanco. Migrados al oscuro: el encabezado, la navegación, las notificaciones, el panel de Chattito, los componentes comunes (botones, campos, tarjetas, ventanas, tablas, insignias, avisos), el Tablero y los listados y detalles de registros. Las pantallas que aún no están migradas se muestran en claro dentro de la aplicación oscura para que nada se vea roto, y las impresiones, facturas, correos y sitios públicos de tus clientes siempre se ven en claro. La paleta oscura sale de tu diseño en Pencil.
+
 ### [0.133.0] - 2026-10-02
 #### [feature]
 - [ERD-160](https://dydasoftware.atlassian.net/browse/ERD-160) - El diseñador de módulos con IA revisa su propio plano antes de mostrártelo para evitar estructuras sin sentido, como un catálogo que ningún campo usa o el mismo concepto repetido como catálogo y como Select (por ejemplo, las etapas de un embudo). Lo que se puede corregir con seguridad se corrige y se te avisa; si algo requiere criterio, la IA hace una única corrección dirigida y solo se adopta si el plano mejora. Además, el diseñador ahora sabe desde el primer intento que las etapas y estados van como Select o flujo de estados y que un catálogo solo se crea si algún campo lo usa. La revisión no cuesta créditos extra.
