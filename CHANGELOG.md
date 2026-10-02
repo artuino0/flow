@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.128.2] - 2026-10-01
+#### [bug]
+- [ERD-150](https://dydasoftware.atlassian.net/browse/ERD-150) - En el diseñador, la leyenda del lienzo (Existente / Nuevo / Se agrega) ya no tapa el contador «N módulos y catálogos · M secciones»: el contador pasa a una fila propia debajo del lienzo y no se encima a ningún ancho.
+
 ### [0.128.1] - 2026-10-01
 #### [bug]
 - [ERD-149](https://dydasoftware.atlassian.net/browse/ERD-149) - El diseñador de módulos con IA ya no omite en silencio lo que pediste: la IA debe declarar lo que no incluyó o dejó simple (por ejemplo un campo calculado) y además una verificación propia compara tu petición con el plano y avisa de lo que falte; esos avisos se ven completos en el chat. Se corrige el punto vacío «…» que aparecía en la explicación al recortarse y que ocultaba esos avisos, y si la IA coloca esa lista en un lugar equivocado ya no se rechaza todo el plano.
