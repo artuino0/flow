@@ -3,7 +3,7 @@ export const DESIGNER_EXPLANATION_LIMIT = 1500
 function fitLines(value: string, limit: number): string {
   const output: string[] = []
   let length = 0
-  for (const line of value.trim().split(/\r?\n/).map(item => item.trimEnd())) {
+  for (const line of value.trim().split(/\r?\n/).map(item => item.trimEnd()).filter(item => !/^\s*(?:(?:[-*+]\s*|\d+[.)]\s*)(?:…|\.{3})?|…|\.{3})\s*$/.test(item))) {
     const separator = output.length ? 1 : 0
     if (length + separator + line.length <= limit) {
       output.push(line)
@@ -11,12 +11,10 @@ function fitLines(value: string, limit: number): string {
       continue
     }
     const room = limit - length - separator
-    if (room >= 4 && line.startsWith('- ')) output.push('- …')
-    else if (room >= 2) {
+    if (room >= 2 && !/^\s*(?:[-*+]|\d+[.)])\s/.test(line)) {
       const cut = line.slice(0, room).lastIndexOf(' ')
-      output.push(cut > 0 ? `${line.slice(0, cut)}…` : '…')
+      if (cut > 0) output.push(`${line.slice(0, cut)}…`)
     }
-    else if (output.length) output[output.length - 1] = `${output[output.length - 1]!.slice(0, -1)}…`
     return output.join('\n')
   }
   return output.join('\n')

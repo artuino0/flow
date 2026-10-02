@@ -23,6 +23,7 @@ import { logger } from '~/server/utils/logger'
 import { designerCapabilityWarnings } from './capabilities'
 import { degradeDesignerPatchFields, designerPatchFieldErrors } from './patchFields'
 import { designerValidationLog } from './validationLog'
+import { designerOmissionsSchema, safeDesignerOmissions, extractDesignerOmissions, designerOmissionWarnings, designerCoverageWarnings, type DesignerOmission } from './coverage'
 
 export const WORKFLOW_EXAMPLE = `Ejemplo válido de encabezado, partidas y flujo (dentro de modules; agrega version, summary y associations al plano): [{"ref":"pedidos","action":"create","kind":"hecho","name":"Pedidos","slug":"pedidos","fields":[{"name":"folio","label":"Folio","dataType":"text"},{"name":"cliente","label":"Cliente","dataType":"text"},{"name":"estado","label":"Estado","dataType":"select","validationRules":{"options":[{"value":"recibido","label":"Recibido"},{"value":"confirmado","label":"Confirmado"}]}},{"name":"total","label":"Total","dataType":"currency","validationRules":{"calculation":{"kind":"rollup","aggregate":"sum","sourceEntity":"partidas-pedido","relationField":"pedido","valueField":"importe"}}}],"lines":[{"childRef":"partidas-pedido","relationField":"pedido","totals":["importe"]}],"workflow":{"enabled":true,"field":"estado","initial":"recibido","states":{"recibido":{"locked":false,"editableFields":[]},"confirmado":{"locked":true,"editableFields":[]}},"transitions":[{"from":"recibido","to":"confirmado","label":"Confirmar","roles":"all"}],"rules":[{"type":"required","mode":"block","when":{"to":"confirmado"},"fields":["cliente"],"message":"Captura el cliente"},{"type":"aggregate","mode":"block","when":{"to":"confirmado"},"lineEntity":"partidas-pedido","relationField":"pedido","aggregate":"count","operator":">=","value":1,"message":"Agrega al menos una partida"}]}},{"ref":"partidas-pedido","action":"create","kind":"hecho","name":"Partidas de pedido","slug":"partidas-pedido","fields":[{"name":"pedido","label":"Pedido","dataType":"relation","validationRules":{"relationEntity":"pedidos"}},{"name":"cantidad","label":"Cantidad","dataType":"number"},{"name":"precio","label":"Precio","dataType":"currency"},{"name":"importe","label":"Importe","dataType":"currency","validationRules":{"calculation":{"kind":"formula","operator":"multiply","leftField":"cantidad","rightField":"precio"}}}]}].`
 
@@ -42,7 +43,7 @@ En ese ejemplo, Pedidos lleva "icon":"ShoppingCart" y Partidas de pedido lleva "
 Si existe Clientes y piden órdenes, conserva Clientes como extend con su instantánea intacta. Si piden placas para Vehículos, agrega el campo al módulo existente.
 El plano admite estados, transiciones y reglas de validación del flujo. No admite triggers, vistas, dashboards ni notificaciones por tiempo: cuando los pidan, explica explícitamente en message y explanation que no puedes crearlos desde aquí. Automatizaciones admite acciones al crear, actualizar o borrar registros; no prometas avisos programados por tiempo. Las expresiones admiten aritmética, comparaciones, SI/IF, Y/AND, O/OR, NO/NOT, MIN, MAX, REDONDEAR/ROUND y ABS; no hay HOY/NOW ni diferencias de fechas. Solo number y currency admiten calculation; date y text no la admiten. unique solo está disponible en campos user. El campo del workflow debe ser select con las opciones de todos los estados, nunca relation a un catálogo. Las transiciones nuevas usan roles:"all"; no inventes identificadores ni uses nombres de roles en sus restricciones. Si piden restringir transiciones por rol, explica que deben configurar esa restricción posteriormente en Estados. blueprint.roles configura permisos de módulos, no restricciones de transiciones. Nunca inventes reglas o funciones.`
 
-const answerSchema = z.object({ message: z.string().trim().min(1).max(1000), explanation: z.string().trim().max(10000).optional(), mode: z.literal('full').optional(), blueprint: z.unknown() })
+const answerSchema = z.object({ message: z.string().trim().min(1).max(1000), explanation: z.string().trim().max(10000).optional(), omissions: designerOmissionsSchema, mode: z.literal('full').optional(), blueprint: z.unknown() })
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const words = (value: string) => new Set(normalize(value).split(/[^a-z0-9]+/).filter(word => word.length > 2))
 
@@ -80,6 +81,7 @@ export async function runDesignerGeneration(options: {
   let firstValid = false
   let repairs = 0
   let warnings: string[] = []
+  let omissions: DesignerOmission[] = []
   const capabilityWarnings = designerCapabilityWarnings(instruction)
   let appliedPatch: ReturnType<typeof designerPatchSchema.parse> | null = null
   let completionValue: unknown
@@ -94,7 +96,7 @@ export async function runDesignerGeneration(options: {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt) repairs++
     const workflowError = errors.some(error => error.path.includes('.workflow'))
-    const system = `${DESIGNER_SYSTEM_PROMPT}${options.mode ? `\nPara esta evaluación responde obligatoriamente en modo ${options.mode}.` : ''}`
+    const system = `${DESIGNER_SYSTEM_PROMPT}\nEn modo full y patch incluye siempre omissions: [{"item":"nombre de lo pedido","reason":"motivo en una frase en español"}], máximo 40 elementos, item hasta 160 caracteres y reason hasta 360. omissions pertenece a la respuesta, al mismo nivel que message y explanation; nunca dentro de blueprint ni de operations. Declara TODO lo solicitado que falta o quedó simplificado, incluidos cálculos convertidos a campos simples, catálogos omitidos y reglas no expresables. Declarar omisiones es obligatorio y bueno: permite revisar el plano con honestidad. Usa [] solo si todo quedó representado. Cada omisión debe corresponder a una petición del usuario; no añadas requisitos supuestos, preferencias de formato no especificadas ni limitaciones de funciones adicionales que tú propusiste. Si el usuario no especificó porcentaje o importe, elegir un formato para descuento no es una omisión. No inventes capacidades; sin código, SQL, HTML ni enlaces en omissions. La explicación debe contener decisiones concretas: nunca viñetas vacías ni puntos que solo sean … o ... .${options.mode ? `\nPara esta evaluación responde obligatoriamente en modo ${options.mode}.` : ''}`
     const completion: DesignerCompletion = await complete({ system, prompt: attempt === 0 ? prompt : JSON.stringify({ original: prompt, currentBlueprint, proposedAnswer: completionValue, previousExplanation: explanation, errors, instruction: `Corrige únicamente las piezas identificadas por path, módulo, campo y regla en errors. Conserva todos los demás módulos, campos, reglas y relaciones exactamente. Devuelve un ${options.mode ?? requestedMode} corregido. Conserva la explicación si las decisiones no cambian; si cambian, actualízala.`, ...(workflowError ? { workflowExample: WORKFLOW_EXAMPLE } : {}) }) })
     usage.inputTokens += completion.inputTokens
     usage.outputTokens += completion.outputTokens
@@ -102,7 +104,7 @@ export async function runDesignerGeneration(options: {
     completionValue = completion.value
     let isPatch = typeof completion.value === 'object' && completion.value !== null && 'mode' in completion.value && completion.value.mode === 'patch'
     requestedMode = isPatch ? 'patch' : 'full'
-    let answerValue = completion.value
+    let answerValue = extractDesignerOmissions(completion.value)
     let parsed = isPatch ? designerPatchSchema.safeParse(answerValue) : answerSchema.safeParse(answerValue)
     let patchWarnings: string[] = []
     if (!parsed.success && isPatch && attempt === 1) {
@@ -131,6 +133,9 @@ export async function runDesignerGeneration(options: {
       continue
     }
     message = parsed.data.message
+    omissions = safeDesignerOmissions(parsed.data.omissions)
+    // Las omisiones inseguras se descartan antes de validar/aplicar el parche.
+    answerValue = { ...parsed.data, omissions }
     const candidateBlueprintJson = JSON.stringify(isPatch ? (parsed.data as z.infer<typeof designerPatchSchema>).operations : (parsed.data as z.infer<typeof answerSchema>).blueprint)
     const changed = attempt > 0 && previousBlueprintJson !== candidateBlueprintJson
     previousBlueprintJson = candidateBlueprintJson
@@ -196,6 +201,9 @@ export async function runDesignerGeneration(options: {
   }
   const valid = Boolean(result?.normalized && errors.every(error => error.message.startsWith('Duplicado de')))
   warnings.push(...capabilityWarnings)
+  warnings.push(...designerOmissionWarnings(omissions))
+  if (valid && result?.normalized) warnings.push(...designerCoverageWarnings(instruction, result.normalized, omissions, warnings))
+  warnings = [...new Set(warnings)]
   return { valid, result, message, explanation: limitDesignerExplanation(explanation || message, warnings), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings }
 }
 

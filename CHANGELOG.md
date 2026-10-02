@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.128.1] - 2026-10-01
+#### [bug]
+- [ERD-149](https://dydasoftware.atlassian.net/browse/ERD-149) - El diseñador de módulos con IA ya no omite en silencio lo que pediste: la IA debe declarar lo que no incluyó o dejó simple (por ejemplo un campo calculado) y además una verificación propia compara tu petición con el plano y avisa de lo que falte; esos avisos se ven completos en el chat. Se corrige el punto vacío «…» que aparecía en la explicación al recortarse y que ocultaba esos avisos, y si la IA coloca esa lista en un lugar equivocado ya no se rechaza todo el plano.
+
 ### [0.128.0] - 2026-10-01
 #### [feature]
 - [ERD-148](https://dydasoftware.atlassian.net/browse/ERD-148) - El diseñador de módulos con IA aguanta peticiones grandes: si un campo del plano queda mal armado (por ejemplo una fórmula en un campo de fecha) ya no se cae todo con «La IA no produjo un plano válido»; el diseñador reintenta corrigiendo solo esa pieza y, si no puede, entrega el plano con ese campo simplificado u omitido y un aviso visible. Los errores dicen en qué módulo y campo ocurrieron, y el diseñador declara lo que Flow no puede crear desde ahí (vistas, tableros, avisos por tiempo).

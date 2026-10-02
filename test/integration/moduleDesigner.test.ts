@@ -168,7 +168,7 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     const expected = structuredClone(before)
     expected.modules.find(module => module.slug === 'ordenes')!.fields.push({ name: 'folio', label: 'Folio', dataType: 'text' })
     expect(result.blueprint).toEqual(expected)
-    expect(result.patch).toEqual(patch)
+    expect(result.patch).toEqual({ ...patch, omissions: [] })
     const saved = await sessions.findSession(patchTenant, session.id)
     expect(saved.messages.at(-1)).toMatchObject({ mode: 'patch', patch, blueprintVersion: saved.version, blueprint: expected })
     const providerPrompt = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body).messages[1].content)
@@ -472,5 +472,22 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     const ledger = await admin`SELECT kind, credits FROM ai_credit_ledger WHERE session_id = ${session.id}`
     expect(ledger).toHaveLength(2)
     expect(ledger).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'generate', credits: 2 }), expect.objectContaining({ kind: 'refund', credits: 2 })]))
+  })
+
+  it('ERD-149: API e historial comunican omisiones declaradas y cobertura con el cobro habitual', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal('Prospectos', 'prospectos')
+    design.modules.at(-1)!.fields.push({ name: 'demo_149', label: 'Demo', dataType: 'date' }, { name: 'llamada_149', label: 'Llamada', dataType: 'date' })
+    aiReply({ message: 'CRM', explanation: 'CRM\n### ¿Por qué?\n- …', omissions: [{ item: 'Días sin contacto', reason: 'No hay diferencias de fechas.' }], blueprint: design })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'En Prospectos: Días sin contacto y Total de seguimientos (calculados).')
+    expect(result.warnings.filter(w => w.includes('Días sin contacto'))).toHaveLength(1)
+    expect(result.warnings.some(w => w.includes('Total de seguimientos'))).toBe(true)
+    expect(result.explanation).not.toContain('- …')
+    const saved = await sessions.findSession(tenantId, session.id)
+    expect(saved.messages.at(-1)?.warnings).toEqual(result.warnings)
+    expect(saved.messages.at(-1)?.content).toContain('No hay diferencias de fechas')
+    expect(saved.creditsConsumed).toBe(2)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

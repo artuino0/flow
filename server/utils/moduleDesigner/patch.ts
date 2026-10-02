@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { blueprintFieldSchema, blueprintModuleSchema, blueprintSchema, type Blueprint } from '~/server/utils/blueprint/schema'
 import { stateWorkflowSchema } from '~/server/utils/stateWorkflow'
+import { designerOmissionsSchema } from './coverage'
 
 const slug = z.string().trim().min(1)
 const associationSchema = blueprintSchema.shape.associations.element
@@ -27,6 +28,7 @@ export const designerOperationSchema = z.discriminatedUnion('op', [
 export const designerPatchSchema = z.object({
   message: z.string().trim().min(1).max(1000),
   explanation: z.string().trim().max(10000).optional(),
+  omissions: designerOmissionsSchema,
   mode: z.literal('patch'),
   operations: z.array(designerOperationSchema).min(1).max(100)
 }).strict()
