@@ -4,7 +4,7 @@
 // usuario), solo cambia moduleKind y los textos. Sin mock propio en el .pen
 // para "Catálogos" - reusa el diseño real de Screen/Listado Módulos, ver
 // comentario largo en components/ModuleWizard.vue.
-definePageMeta({ layout: 'default' })
+definePageMeta({ darkReady: true, layout: 'default' })
 </script>
 
 <template>

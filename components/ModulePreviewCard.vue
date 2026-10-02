@@ -36,7 +36,7 @@ const realFieldCount = computed(() => props.fields.filter((f) => f.name !== 'id'
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
       <div class="flex items-center gap-2">
         <Eye class="h-[15px] w-[15px] text-brand-blue" :stroke-width="1.75" />

@@ -3,7 +3,7 @@
 // extrajo a components/ModuleWizard.vue (reusado tal cual por
 // pages/catalogos/nuevo.vue) - este archivo solo fija los parametros propios
 // de "Módulos" (basePath, moduleKind='hecho', textos).
-definePageMeta({ layout: 'default', fullBleed: true })
+definePageMeta({ darkReady: true, layout: 'default', fullBleed: true })
 </script>
 
 <template>

@@ -95,7 +95,7 @@ async function copySnippet(key: keyof typeof snippets.value) {
         </div>
         <div class="flex flex-col gap-3 p-[18px]">
           <p class="text-xs text-brand-text-secondary">{{ examples.find(example => example.key === activeExample)?.title }} en {{ entityName }}.</p>
-          <pre class="min-w-0 overflow-x-auto rounded-md bg-[#172B4D] p-4 text-[11px] leading-5 text-[#D9E7F5]"><code>{{ snippets[activeExample] }}</code></pre>
+          <pre class="min-w-0 overflow-x-auto rounded-md bg-brand-module-code-bg p-4 text-[11px] leading-5 text-brand-module-code-text"><code>{{ snippets[activeExample] }}</code></pre>
           <p class="text-[11px] text-brand-text-muted">Sustituye &lt;TU_API_KEY&gt; y {id} por tus valores antes de ejecutar.</p>
         </div>
       </section>

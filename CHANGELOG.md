@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.137.0] - 2026-10-02
+#### [feature]
+- [ERD-164](https://dydasoftware.atlassian.net/browse/ERD-164) - Modo oscuro, segunda fase (bloque C): los módulos y catálogos (listado, asistente de nuevo módulo y el editor con todas sus pestañas: información, campos, relaciones, diseño del listado y del detalle, flujo de estados, etiquetas, menú y API) y el chat (conversaciones, burbujas propias y ajenas, adjuntos, estados de reconexión, ventanas flotantes y el diálogo de eliminar) ahora también se ven en oscuro. Los colores que eliges tú o tu organización para opciones, estados y etiquetas se conservan tal cual, y el papel de las etiquetas, los logos y las impresiones siguen siempre en claro. En claro todo se ve igual que antes.
+
 ### [0.136.0] - 2026-10-02
 #### [feature]
 - [ERD-163](https://dydasoftware.atlassian.net/browse/ERD-163) - Modo oscuro, segunda fase (bloque B): Ajustes (sus nueve secciones, incluidos perfil, seguridad y sesiones, plan y consumo, identidad, API e integraciones y notificaciones), Mi cuenta, Organización, Usuarios y su detalle, la matriz de Roles y permisos, los planes de plataforma y la importación de registros ahora también se ven en oscuro. El código QR de seguridad sigue sobre fondo blanco para poder escanearse, y las vistas previas de reportes y correos y los logos de los clientes se mantienen en claro. En claro todo se ve igual que antes.

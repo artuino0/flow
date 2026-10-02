@@ -26,9 +26,9 @@ function preview(item: ChatConversation) {
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-1 flex-col bg-white">
+  <section class="flex min-h-0 flex-1 flex-col bg-brand-surface">
     <div class="px-4 pb-3 pt-4">
-      <div class="flex h-10 items-center gap-2 rounded border border-brand-border bg-white px-3 focus-within:border-brand-blue">
+      <div class="flex h-10 items-center gap-2 rounded border border-brand-border bg-brand-surface px-3 focus-within:border-brand-blue">
         <Search class="h-4 w-4 text-brand-text-muted" :stroke-width="1.8" />
         <input v-model="query" class="min-w-0 flex-1 bg-transparent text-sm text-brand-text outline-none placeholder:text-brand-text-muted" placeholder="Buscar conversaciones" />
         <button v-if="query" type="button" aria-label="Limpiar búsqueda" @click="query = ''"><X class="h-3.5 w-3.5 text-brand-text-muted" /></button>
@@ -47,7 +47,7 @@ function preview(item: ChatConversation) {
       </div>
     </div>
     <div v-else class="min-h-0 flex-1 overflow-y-auto">
-      <button v-for="item in filtered" :key="item.id" type="button" class="group relative flex w-full gap-3 border-b border-brand-border-light border-l-4 px-4 py-3 text-left hover:bg-brand-bg" :class="[selectedId === item.id ? 'border-l-brand-blue bg-brand-sidebar-active-bg' : 'border-l-transparent bg-white', menuId === item.id ? 'z-30' : 'z-0']" @click="emit('select', item.id)">
+      <button v-for="item in filtered" :key="item.id" type="button" class="group relative flex w-full gap-3 border-b border-brand-border-light border-l-4 px-4 py-3 text-left hover:bg-brand-bg" :class="[selectedId === item.id ? 'border-l-brand-blue bg-brand-sidebar-active-bg' : 'border-l-transparent bg-brand-surface', menuId === item.id ? 'z-30' : 'z-0']" @click="emit('select', item.id)">
         <ChatAvatar :name="item.title" :group="item.type === 'group'" :online="Boolean(other(item) && presence[other(item)!.id])" />
         <span class="min-w-0 flex-1 pr-12">
           <span class="block truncate text-sm" :class="selectedId === item.id ? 'font-bold text-brand-blue' : 'font-semibold text-brand-text'">{{ item.title }}</span>
@@ -57,11 +57,11 @@ function preview(item: ChatConversation) {
         </span>
         <span class="absolute right-9 top-3 flex h-10 flex-col items-end gap-1" :class="item.unreadCount ? 'justify-start' : 'justify-center'">
           <span class="shrink-0 text-[11px] text-brand-text-muted">{{ formatTime(item.lastMessageAt) }}</span>
-          <span v-if="item.unreadCount" class="flex min-w-[20px] items-center justify-center rounded-full bg-brand-orange px-1.5 py-0.5 text-[10px] font-bold text-white">{{ item.unreadCount > 99 ? '99+' : item.unreadCount }}</span>
+          <span v-if="item.unreadCount" class="flex min-w-[20px] items-center justify-center rounded-full bg-brand-orange px-1.5 py-0.5 text-[10px] font-bold text-brand-primary-fg">{{ item.unreadCount > 99 ? '99+' : item.unreadCount }}</span>
         </span>
         <span class="absolute right-1 top-1/2 -translate-y-1/2">
-          <span class="flex h-7 w-7 items-center justify-center rounded opacity-0 hover:bg-white group-hover:opacity-100" @click.stop="menuId = menuId === item.id ? null : item.id"><EllipsisVertical class="h-4 w-4 text-brand-text-secondary" /></span>
-          <span v-if="menuId === item.id" class="absolute top-8 right-0 z-50 w-44 rounded-lg border border-brand-border-light bg-white p-1.5 shadow-[0_8px_24px_#33475B22]">
+          <span class="flex h-7 w-7 items-center justify-center rounded opacity-0 hover:bg-brand-surface group-hover:opacity-100" @click.stop="menuId = menuId === item.id ? null : item.id"><EllipsisVertical class="h-4 w-4 text-brand-text-secondary" /></span>
+          <span v-if="menuId === item.id" class="absolute top-8 right-0 z-50 w-44 rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_8px_24px_rgb(var(--brand-shadow)/0.13333333333333333)]">
             <span class="flex rounded px-3 py-2 text-xs font-medium text-brand-text hover:bg-brand-bg" @click.stop="emit('float', item.id); menuId = null">Abrir como burbuja</span>
             <span class="flex rounded px-3 py-2 text-xs font-medium text-brand-text hover:bg-brand-bg" @click.stop="emit('archive', item.id, !archived); menuId = null">{{ archived ? 'Desarchivar' : 'Archivar conversación' }}</span>
           </span>
@@ -70,3 +70,9 @@ function preview(item: ChatConversation) {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

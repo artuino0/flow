@@ -39,7 +39,7 @@ import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
 import type { BoardConfig, CalendarConfig, DetailLayout, EntityFieldMeta, EntityMeta, InverseRelation, ListLayout } from '~/composables/useEntityFields'
 import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/utils/labelTemplates'
 
-definePageMeta({ layout: 'default', fullBleed: true })
+definePageMeta({ darkReady: true, layout: 'default', fullBleed: true })
 
 interface ModuleDetail {
   id: string
@@ -361,13 +361,13 @@ async function onSaveListLayout() {
       <template v-if="step === 'basica'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
           <div class="flex flex-col gap-5">
-            <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+            <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
               <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
                 <div class="flex flex-col gap-1"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Información del módulo</h2><ModuleTourHelpButton tab="info" /></div><p class="text-sm text-brand-text-secondary">Ajusta el nombre, la descripción y la disponibilidad del módulo.</p></div>
                 <button
                   type="button"
                   :disabled="saving || !name || !!currentModule.deletedAt"
-                  class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
                   data-tour="edit-info-save"
                   @click="onSave"
                 >
@@ -452,7 +452,7 @@ async function onSaveListLayout() {
                     :disabled="!!currentModule.deletedAt"
                     @click="isActive = !isActive"
                   >
-                    <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+                    <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
                   </button>
                 </div>
               </div>
@@ -470,7 +470,7 @@ async function onSaveListLayout() {
                  (DELETE /api/entities/:id, bloqueado con 409 si el modulo
                  tiene records, HU-ERD-66), ahora disponible tambien desde
                  aca, no solo desde el listado. -->
-            <div class="flex flex-col rounded-lg border border-brand-error-text/30 bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+            <div class="flex flex-col rounded-lg border border-brand-error-text/30 bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
               <div class="border-b border-brand-error-text/30 p-5">
                 <h2 class="text-[15px] font-bold text-brand-error-text">Zona de peligro</h2>
               </div>
@@ -520,7 +520,7 @@ async function onSaveListLayout() {
               <button
                 type="button"
                 :disabled="savingDetailLayout"
-                class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+                class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
                 data-tour="edit-detail-save"
                 @click="onSaveDetailLayout"
               >
@@ -552,7 +552,7 @@ async function onSaveListLayout() {
             <button
               type="button"
               :disabled="savingListLayout"
-              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               data-tour="edit-list-save"
               @click="onSaveListLayout"
             >
@@ -584,7 +584,7 @@ async function onSaveListLayout() {
             <button
             type="button"
             :disabled="savingLabelConfig"
-            class="shrink-0 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="shrink-0 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             data-tour="edit-labels-save"
             @click="onSaveLabelConfig"
           >
@@ -597,7 +597,7 @@ async function onSaveListLayout() {
       <template v-else-if="step === 'navegacion'">
         <div data-tour="edit-menu-context">
         <ModuleNavigationEditor v-if="currentModule.moduleKind === 'hecho'" :entity-id="currentModule.id" :entity-name="currentModule.name" />
-        <section v-else class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <section v-else class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
           <div class="border-b border-brand-border-light p-5"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ubicación en el menú</h2><ModuleTourHelpButton tab="menu" /></div></div>
           <p class="p-5 text-sm text-brand-text-secondary">Los catálogos no aparecen en el menú operativo. Se consultan desde los selectores de los módulos según los permisos del rol.</p>
         </section>
@@ -610,3 +610,9 @@ async function onSaveListLayout() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

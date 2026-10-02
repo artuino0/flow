@@ -116,7 +116,7 @@ function toggleActivity() {
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
         <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ficha del registro</h2><ModuleTourHelpButton tab="detail" /></div>
@@ -143,7 +143,7 @@ function toggleActivity() {
         >
           <span v-if="dropIndicator?.section === 'properties' && dropIndicator.index === index" class="absolute inset-x-0 h-0.5 rounded-full bg-brand-orange" :class="dropIndicator.position === 'before' ? 'top-0' : 'bottom-0'" />
           <GripVertical class="h-4 w-4 shrink-0 cursor-grab text-brand-text-muted active:cursor-grabbing" :stroke-width="1.75" />
-          <button type="button" role="checkbox" :aria-checked="prop.visible" :aria-label="`Mostrar ${fieldMeta(prop.name)?.label ?? prop.name}`" class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border" :class="prop.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'" @click="togglePropertyVisible(prop.name)"><Check v-if="prop.visible" class="h-3 w-3 text-white" :stroke-width="3" /></button>
+          <button type="button" role="checkbox" :aria-checked="prop.visible" :aria-label="`Mostrar ${fieldMeta(prop.name)?.label ?? prop.name}`" class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border" :class="prop.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'" @click="togglePropertyVisible(prop.name)"><Check v-if="prop.visible" class="h-3 w-3 text-brand-primary-fg" :stroke-width="3" /></button>
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ fieldMeta(prop.name)?.label ?? prop.name }}</span>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">
             {{ fieldTypeLabel(fieldMeta(prop.name)?.dataType) }}
@@ -169,18 +169,18 @@ function toggleActivity() {
         >
           <span v-if="dropIndicator?.section === 'relations' && dropIndicator.index === index" class="absolute inset-x-0 h-0.5 rounded-full bg-brand-orange" :class="dropIndicator.position === 'before' ? 'top-0' : 'bottom-0'" />
           <GripVertical class="h-4 w-4 shrink-0 cursor-grab text-brand-text-muted active:cursor-grabbing" :stroke-width="1.75" />
-          <button type="button" role="checkbox" :aria-checked="rel.visible" :aria-label="`Mostrar ${rel.entitySlug}`" class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border" :class="rel.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'" @click="toggleRelationVisible(rel.entitySlug, rel.fieldName)"><Check v-if="rel.visible" class="h-3 w-3 text-white" :stroke-width="3" /></button>
+          <button type="button" role="checkbox" :aria-checked="rel.visible" :aria-label="`Mostrar ${rel.entitySlug}`" class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] border" :class="rel.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'" @click="toggleRelationVisible(rel.entitySlug, rel.fieldName)"><Check v-if="rel.visible" class="h-3 w-3 text-brand-primary-fg" :stroke-width="3" /></button>
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">
             {{ relMeta(rel.entitySlug, rel.fieldName)?.entityName ?? rel.entitySlug }}
             <span class="text-brand-text-muted">({{ relMeta(rel.entitySlug, rel.fieldName)?.fieldLabel ?? rel.fieldName }})</span>
           </span>
-          <button type="button" role="switch" :aria-checked="Boolean(rel.editable)" class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold" :class="rel.editable ? 'border-brand-orange bg-brand-orange text-white' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleEditable(rel)">{{ rel.editable ? 'Editable' : 'Solo lectura' }}</button>
+          <button type="button" role="switch" :aria-checked="Boolean(rel.editable)" class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold" :class="rel.editable ? 'border-brand-orange bg-brand-orange text-brand-primary-fg' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleEditable(rel)">{{ rel.editable ? 'Editable' : 'Solo lectura' }}</button>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">Tabla</span>
         </div>
         <div v-if="rel.editable" class="-mt-0.5 mb-1 ml-[52px] flex flex-wrap items-center gap-1.5">
           <span class="text-xs text-brand-text-muted">Totales al pie:</span>
           <span v-if="!numericFields(rel.entitySlug).length" class="text-xs text-brand-text-muted">este módulo no tiene campos numéricos.</span>
-          <button v-for="f in numericFields(rel.entitySlug)" :key="f.name" type="button" role="checkbox" :aria-checked="(rel.totals ?? []).includes(f.name)" class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="(rel.totals ?? []).includes(f.name) ? 'border-brand-orange bg-brand-orange text-white' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleTotal(rel, f.name)">{{ f.label }}</button>
+          <button v-for="f in numericFields(rel.entitySlug)" :key="f.name" type="button" role="checkbox" :aria-checked="(rel.totals ?? []).includes(f.name)" class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="(rel.totals ?? []).includes(f.name) ? 'border-brand-orange bg-brand-orange text-brand-primary-fg' : 'border-brand-border text-brand-text-secondary hover:bg-brand-bg'" @click="toggleTotal(rel, f.name)">{{ f.label }}</button>
         </div>
         </template>
       </div>
@@ -196,9 +196,15 @@ function toggleActivity() {
           :class="modelValue.showActivity ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
           @click="toggleActivity"
         >
-          <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+          <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
         </button>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

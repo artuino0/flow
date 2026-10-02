@@ -2,7 +2,7 @@
 import { Archive, MessageCircle, Plus, RotateCw } from '@lucide/vue'
 import type { ChatPerson } from '~/utils/chat'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ darkReady: true, layout: 'default' })
 const chat = useChat()
 const { user } = useAuth()
 const route = useRoute()
@@ -54,15 +54,15 @@ async function send(body: string, reply: string | null, files: string[], record:
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white">
-    <div v-if="chat.realtimeState.value.reconnecting" class="flex h-9 shrink-0 items-center justify-center gap-2 bg-[#FFF4E5] px-4 text-xs font-semibold text-[#8A5D00]"><RotateCw class="h-3.5 w-3.5 animate-spin" /> Reconectando el chat. Tus mensajes guardados siguen disponibles.</div>
+  <div class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-brand-surface">
+    <div v-if="chat.realtimeState.value.reconnecting" class="flex h-9 shrink-0 items-center justify-center gap-2 bg-brand-chat-warning-bg px-4 text-xs font-semibold text-brand-chat-warning-text"><RotateCw class="h-3.5 w-3.5 animate-spin" /> Reconectando el chat. Tus mensajes guardados siguen disponibles.</div>
     <div v-if="chat.state.value.ready && !chat.canAccess.value" class="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"><span class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-bg"><MessageCircle class="h-7 w-7 text-brand-text-muted" /></span><h1 class="text-lg font-bold text-brand-text">Chat no disponible</h1><p class="max-w-sm text-sm text-brand-text-muted">Tu rol no tiene acceso al chat. Pide a un administrador que revise tus permisos.</p></div>
     <template v-else>
       <div class="flex min-h-0 flex-1">
         <aside class="flex w-full shrink-0 flex-col border-r border-brand-border-light md:w-[365px]" :class="current ? 'hidden md:flex' : 'flex'">
-          <header class="flex h-[68px] shrink-0 items-center justify-between border-b border-brand-border-light bg-white px-5">
+          <header class="flex h-[68px] shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-5">
             <div><h1 class="text-xl font-bold text-brand-text">Chat</h1></div>
-            <button v-if="chat.state.value.permissions?.effective.canStartDirect || chat.state.value.permissions?.effective.canCreateGroups" class="flex items-center gap-2 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="openNew"><Plus class="h-4 w-4" /> Nuevo chat</button>
+            <button v-if="chat.state.value.permissions?.effective.canStartDirect || chat.state.value.permissions?.effective.canCreateGroups" class="flex items-center gap-2 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="openNew"><Plus class="h-4 w-4" /> Nuevo chat</button>
           </header>
           <div class="flex h-[45px] shrink-0 border-b border-brand-border-light px-4" role="tablist">
             <button class="flex flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-semibold" :class="tab === 'recent' ? 'border-brand-orange text-brand-text' : 'border-transparent text-brand-text-muted'" @click="tab = 'recent'"><MessageCircle class="h-3.5 w-3.5" /> Recientes</button>

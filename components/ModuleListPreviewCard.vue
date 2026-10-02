@@ -115,7 +115,7 @@ function onSort(value: { sortBy: string; sortDir: 'asc' | 'desc' }) {
 </script>
 
 <template>
-  <div class="flex min-w-0 flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+  <div class="flex min-w-0 flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
       <h2 class="text-[15px] font-bold text-brand-text">{{ activeView === 'table' ? 'Vista previa en vivo' : activeView === 'board' ? 'Vista previa del tablero' : 'Vista previa del calendario' }}</h2>
       <p class="text-sm text-brand-text-secondary">Así se verá el listado de {{ entityName || 'este módulo' }}</p>

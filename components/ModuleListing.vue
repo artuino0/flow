@@ -142,7 +142,7 @@ async function onRestore(module: ModuleRow) {
       <template #actions>
         <NuxtLink to="/organizacion" class="flex h-[35px] items-center rounded border border-brand-border px-4 text-sm font-semibold text-brand-text hover:bg-brand-bg">Organizar menú</NuxtLink>
         <NuxtLink v-slot="{ href, navigate }" custom :to="basePath + '/nuevo'">
-          <a :href="href ?? undefined" :data-tour="moduleKind === 'hecho' ? 'manual-create' : undefined" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
+          <a :href="href ?? undefined" :data-tour="moduleKind === 'hecho' ? 'manual-create' : undefined" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="onCreateClick($event, navigate)">
             <Blocks class="h-4 w-4" :stroke-width="1.75" />
             {{ createLabel }}
           </a>
@@ -183,7 +183,7 @@ async function onRestore(module: ModuleRow) {
         <NuxtLink v-slot="{ href, navigate }" custom :to="`${basePath}/nuevo`">
           <a
             :href="href ?? undefined"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
             @click="onCreateClick($event, navigate)"
           >
             <Plus class="h-4 w-4" :stroke-width="1.75" />
@@ -193,7 +193,7 @@ async function onRestore(module: ModuleRow) {
       </div>
       <p v-else-if="filteredModules.length === 0" class="text-sm text-brand-text-muted">{{ showDeleted ? 'No hay módulos borrados' : `Ningún ${noun} coincide con "${search}".` }}</p>
 
-      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
         <table class="min-w-full text-sm">
           <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
@@ -271,3 +271,9 @@ async function onRestore(module: ModuleRow) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { compileVueComponent } from '../helpers/vueComponent'
 import { brandColors, darkTokens, lightTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight, createThemeController, normalizeThemeMode, resolveTheme, themeBootstrap } from '../../utils/theme'
-import { themeContrasts } from '../helpers/themeContrast'
+import { isLabelContrast, themeContrasts } from '../helpers/themeContrast'
 import baseline from '../fixtures/themeLight161.json'
 
 const apps: App[] = []
@@ -66,7 +66,8 @@ describe('contrato de tokens y alcance de HU-161', () => {
       'light:pink-text/pink-bg': 4.400, 'light:gold-text/gold-bg': 4.388,
       'dark:text-muted/surface': 4.187, 'dark:border/surface': 1.597
     }
-    const results = themeContrasts()
+    // HU-164 autoriza aparte los claros heredados del editor; su lista/razones y AA oscuro se congelan en theme164.
+    const results = themeContrasts().filter(result => !isLabelContrast(result))
     expect(results.filter(result => result.ratio < result.minimum).map(result => result.id).sort()).toEqual(Object.keys(exceptions).sort())
     for (const result of results) {
       const known = exceptions[result.id as keyof typeof exceptions]

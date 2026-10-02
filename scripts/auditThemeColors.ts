@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-/** Lista cerrada: cascarón HU-161, registros HU-162 y ajustes/administración HU-163. */
+/** Lista cerrada: cascarón HU-161, registros HU-162, ajustes HU-163 y módulos/chat HU-164. */
 export const migratedThemeFiles = [
   'app.vue', 'assets/css/main.css', 'layouts/default.vue', 'pages/index.vue',
   'components/AppNav.vue', 'components/AppNavEntity.vue', 'components/AppNavGroup.vue', 'components/AppNavTooltip.vue',
@@ -24,7 +24,14 @@ export const migratedThemeFiles = [
   'components/SettingsProfile.vue', 'components/SettingsSessions.vue', 'components/SettingsApiKeys.vue',
   'components/SettingsBillingSummary.vue', 'components/SettingsEmailAccordion.vue',
   'components/SettingsFiscalModuleMapping.vue', 'components/SettingsNotificationGroups.vue',
-  'components/AgentUsageTable.vue', 'components/IconPicker.vue', 'components/ModuleTourHelpButton.vue'
+  'components/AgentUsageTable.vue', 'components/IconPicker.vue', 'components/ModuleTourHelpButton.vue',
+  'pages/modulos/index.vue', 'pages/modulos/nuevo.vue', 'pages/modulos/[id]/editar.vue', 'pages/catalogos/index.vue', 'pages/catalogos/nuevo.vue', 'pages/chat/index.vue',
+  'components/ModuleListing.vue', 'components/ModuleWizard.vue', 'components/ModuleFieldsCard.vue',
+  'components/ModulePreviewCard.vue', 'components/ModuleDetailLayoutCard.vue', 'components/ModuleListLayoutCard.vue',
+  'components/ModuleListPreviewCard.vue', 'components/ModuleStateWorkflowCard.vue', 'components/ModuleRelationsCard.vue',
+  'components/ModuleNavigationEditor.vue', 'components/ModuleApiDocs.vue', 'components/ModuleLabelEditor.vue', 'components/WorkflowNotificationRecipients.vue',
+  'components/ChatAvatar.vue', 'components/ChatConversationList.vue', 'components/ChatThread.vue',
+  'components/ChatFloatingDock.vue', 'components/ChatGifPicker.vue', 'components/ChatGroupEditModal.vue', 'components/ChatNewConversationModal.vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.

@@ -172,7 +172,7 @@ function otherSide(relation: RelationDefinition) {
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div class="flex items-center justify-between border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
         <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Relaciones</h2><ModuleTourHelpButton tab="relations" /></div>
@@ -181,7 +181,7 @@ function otherSide(relation: RelationDefinition) {
       <button
         type="button"
         :disabled="otherEntities.length === 0"
-        class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+        class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         data-tour="edit-relations-add"
         @click="openForm"
       >
@@ -218,7 +218,7 @@ function otherSide(relation: RelationDefinition) {
         <button
           type="button"
           :disabled="saving || !formName.trim()"
-          class="rounded bg-brand-orange px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="rounded bg-brand-orange px-3.5 py-1.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="onCreate"
         >
           {{ saving ? 'Creando...' : 'Crear relación' }}
@@ -264,7 +264,7 @@ function otherSide(relation: RelationDefinition) {
             <button
               type="button"
               :disabled="renaming || !renameValue.trim()"
-              class="rounded bg-brand-orange px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded bg-brand-orange px-2.5 py-1 text-xs font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="confirmRename(relation)"
             >
               {{ renaming ? 'Guardando...' : 'Guardar' }}
@@ -292,3 +292,9 @@ function otherSide(relation: RelationDefinition) {
     <p v-if="deleteError" class="mx-5 mb-4 text-sm text-brand-error-text">{{ deleteError }}</p>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

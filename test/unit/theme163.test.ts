@@ -7,6 +7,7 @@ import { auditThemeColors, migratedThemeFiles } from '../../scripts/auditThemeCo
 import { darkTokens, lightTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight } from '../../utils/theme'
 import baseline from '../fixtures/themeBaseline163.json'
+import baseline164 from '../fixtures/themeBaseline164.json'
 import * as flowApps from '../../utils/flowApps'
 import * as capabilities from '../../utils/flowCapabilities'
 import * as planConcepts from '../../utils/planConcepts'
@@ -90,14 +91,14 @@ describe('contratos HU-163', () => {
   it('conserva absolutamente todos los tokens anteriores y define nuevos claros exactos', () => {
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens]).toBe(value)
     for (const [name, value] of Object.entries(added)) { expect(lightTokens[name as keyof typeof lightTokens]).toBe(value); expect(darkTokens[name as keyof typeof lightTokens]).toMatch(/^#[\dA-F]{6}$/) }
-    expect(Object.keys(lightTokens).length - Object.keys(baseline.light).length).toBe(17)
+    expect(Object.keys(baseline164.light).length - Object.keys(baseline.light).length).toBe(17)
     const css = readFileSync('assets/css/theme.css', 'utf8')
     for (const [name, value] of Object.entries(added)) expect(css).toContain(`--brand-${name}: ${rgbChannels(value)} !important;`)
   })
   it('audita el alcance completo y mantiene protegidas las rutas ajenas', () => {
     for (const file of routes) { expect(migratedThemeFiles).toContain(file); expect(readFileSync(file, 'utf8')).toContain('darkReady: true') }
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
-    for (const file of ['pages/modulos/index.vue', 'pages/catalogos/index.vue', 'pages/chat/index.vue', 'pages/disenador.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    for (const file of ['pages/disenador.vue', 'pages/facturacion/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
     expect(contentNeedsLight({})).toBe(true)
     expect(auditThemeColors()).toEqual([])
   })

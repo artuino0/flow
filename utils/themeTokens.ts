@@ -30,7 +30,18 @@ export const lightTokens = {
   'billing-sites': '#36B9D1', 'billing-docs': '#9BDDED', 'billing-history': '#DFE8EF',
   'billing-warning-border': '#F4D58D', 'billing-warning-bg': '#FFF4D6', 'billing-warning-text': '#805800',
   'billing-error-border': '#F0B7AD', 'billing-error-bg': '#FDE7E3', 'billing-error-text': '#A83420',
-  'billing-info-border': '#BEE4EC', 'billing-info-bg': '#EAF7FA', 'billing-info-text': '#086F83'
+  'billing-info-border': '#BEE4EC', 'billing-info-bg': '#EAF7FA', 'billing-info-text': '#086F83',
+  'recipient-text': '#006F86', 'recipient-role': '#6534B0',
+  'module-code-bg': '#172B4D', 'module-code-text': '#D9E7F5',
+  'chat-own-border': '#B7E7EF', 'chat-warning-bg': '#FFF4E5',
+  'chat-warning-text': '#8A5D00', 'chat-warning-border': '#C58B2A',
+  'label-muted': '#8BA0B5', 'label-heading': '#16324F', 'label-toggle-bg': '#B9C7D3',
+  'label-toggle-active': '#FF765B', 'label-label': '#38536E', 'label-control-border': '#CBD9E5',
+  'label-control-text': '#334E68', 'label-focus': '#0097B2', 'label-divider': '#E6EDF3',
+  'label-section': '#294866', 'label-secondary': '#52718F', 'label-selected-bg': '#E7F5F7',
+  'label-selected-text': '#007F99', 'label-icon': '#5D7993', 'label-stage': '#F1F6F8',
+  'label-paper-border': '#BCCBD7', 'label-ink': '#183651', 'label-shadow': '#183651',
+  'label-paper-muted': '#66829D', 'label-paper-separator': '#B5C2CC'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -65,7 +76,20 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'billing-sites': '#4DD0E1', 'billing-docs': '#9BDDED', 'billing-history': '#3A4A5E',
   'billing-warning-border': '#F5B94D', 'billing-warning-bg': '#402D0A', 'billing-warning-text': '#F5B94D',
   'billing-error-border': '#FF8A76', 'billing-error-bg': '#3D1712', 'billing-error-text': '#FF8A76',
-  'billing-info-border': '#3FC3DE', 'billing-info-bg': '#0F2E36', 'billing-info-text': '#4DD0E1'
+  'billing-info-border': '#3FC3DE', 'billing-info-bg': '#0F2E36', 'billing-info-text': '#4DD0E1',
+  // HU-164: claros originales de destinatarios, ejemplo API y estados del chat.
+  'recipient-text': '#4DD0E1', 'recipient-role': '#C4A7FF',
+  'module-code-bg': '#141B29', 'module-code-text': '#F0F4F8',
+  'chat-own-border': '#3FC3DE', 'chat-warning-bg': '#402D0A',
+  'chat-warning-text': '#F5B94D', 'chat-warning-border': '#F5B94D',
+  // HU-164: claros exactos del editor; déficits claros heredados autorizados y auditados aparte.
+  'label-muted': '#9FB3C8', 'label-heading': '#F0F4F8', 'label-toggle-bg': '#7A8CA0',
+  'label-toggle-active': '#FF8F6B', 'label-label': '#9FB3C8', 'label-control-border': '#7A8CA0',
+  'label-control-text': '#F0F4F8', 'label-focus': '#3FC3DE', 'label-divider': '#2C374A',
+  'label-section': '#F0F4F8', 'label-secondary': '#9FB3C8', 'label-selected-bg': '#0F3A44',
+  'label-selected-text': '#4DD0E1', 'label-icon': '#9FB3C8', 'label-stage': '#141B29',
+  'label-paper-border': '#3A4A5E', 'label-ink': '#F0F4F8', 'label-shadow': '#000000',
+  'label-paper-muted': '#9FB3C8', 'label-paper-separator': '#9FB3C8'
 }
 
 export function rgbChannels(hex: string): string {

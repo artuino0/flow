@@ -43,8 +43,8 @@ async function save() {
 }
 </script>
 <template>
-  <section class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5"><div class="flex flex-col gap-1"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ubicación en el menú</h2><ModuleTourHelpButton tab="menu" /></div><p class="text-sm text-brand-text-secondary">Agrupa {{ entityName }} dentro de un módulo funcional, por ejemplo Empaque y embarque.</p></div><button v-if="data && !error" type="button" :disabled="saving" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" data-tour="edit-menu-save" @click="save">{{ saving ? 'Guardando…' : 'Guardar ubicación' }}</button></div>
+  <section class="flex max-w-2xl flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5"><div class="flex flex-col gap-1"><div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Ubicación en el menú</h2><ModuleTourHelpButton tab="menu" /></div><p class="text-sm text-brand-text-secondary">Agrupa {{ entityName }} dentro de un módulo funcional, por ejemplo Empaque y embarque.</p></div><button v-if="data && !error" type="button" :disabled="saving" class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg disabled:opacity-50" data-tour="edit-menu-save" @click="save">{{ saving ? 'Guardando…' : 'Guardar ubicación' }}</button></div>
     <div class="space-y-5 p-5">
       <p v-if="error" role="alert" class="text-sm text-brand-error-text">No se pudo cargar la configuración del menú.</p>
       <template v-else-if="data">
@@ -60,3 +60,9 @@ async function save() {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

@@ -224,7 +224,7 @@ async function onContinue() {
 
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">1</span>
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-brand-primary-fg">1</span>
           <span class="text-sm font-bold text-brand-text">Información básica</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
@@ -245,7 +245,7 @@ async function onContinue() {
       </div>
 
       <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <div :data-tour="moduleKind === 'hecho' ? 'manual-basic' : undefined" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+        <div :data-tour="moduleKind === 'hecho' ? 'manual-basic' : undefined" class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
           <div class="border-b border-brand-border-light p-5">
             <h2 class="text-[15px] font-bold text-brand-text">Información básica</h2>
           </div>
@@ -316,7 +316,7 @@ async function onContinue() {
             <button
               type="button"
               :disabled="!name || !slug || creating"
-              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               @click="onContinue"
             >
               {{ creating ? 'Creando...' : 'Continuar' }}
@@ -347,7 +347,7 @@ async function onContinue() {
           <NuxtLink :to="basePath" class="rounded border border-brand-border px-4 py-2.5 text-sm font-semibold text-brand-text hover:bg-brand-bg">Cancelar</NuxtLink>
           <button
             type="button"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
             :data-tour="moduleKind === 'hecho' ? 'manual-fields-continue' : undefined"
             @click="step = 'detalle'"
           >
@@ -359,14 +359,14 @@ async function onContinue() {
 
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Información básica</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">2</span>
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-brand-primary-fg">2</span>
           <span class="text-sm font-bold text-brand-text">Campos</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
@@ -406,7 +406,7 @@ async function onContinue() {
           <button
             type="button"
             :disabled="savingDetailLayout"
-            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             :data-tour="moduleKind === 'hecho' ? 'manual-detail-save' : undefined"
             @click="onSaveDetailLayout"
           >
@@ -420,21 +420,21 @@ async function onContinue() {
 
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Información básica</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Campos</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">3</span>
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-brand-primary-fg">3</span>
           <span class="text-sm font-bold text-brand-text">Diseño del detalle</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
@@ -455,28 +455,28 @@ async function onContinue() {
 
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Información básica</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Campos</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-white">
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-success-text text-brand-primary-fg">
             <Check class="h-3.5 w-3.5" :stroke-width="2.5" />
           </span>
           <span class="text-sm font-bold text-brand-text">Diseño del detalle</span>
         </div>
         <div class="h-px flex-1 max-w-[80px] bg-brand-border" />
         <div class="flex items-center gap-2">
-          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-white">4</span>
+          <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-brand-orange text-[13px] font-bold text-brand-primary-fg">4</span>
           <span class="text-sm font-bold text-brand-text">Diseño del listado</span>
         </div>
       </div>
@@ -488,7 +488,7 @@ async function onContinue() {
             <button
               type="button"
               :disabled="savingListLayout"
-              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+              class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
               :data-tour="moduleKind === 'hecho' ? 'manual-list-save' : undefined"
               @click="onSaveListLayout"
             >
@@ -505,3 +505,9 @@ async function onContinue() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

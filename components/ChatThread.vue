@@ -170,7 +170,7 @@ function attach(event: Event) {
 
 <template>
   <section class="relative flex min-h-0 flex-1 flex-col bg-brand-bg">
-    <header class="flex h-[68px] shrink-0 items-center justify-between border-b border-brand-border-light bg-white px-4 sm:px-5">
+    <header class="flex h-[68px] shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-4 sm:px-5">
       <div class="flex min-w-0 items-center gap-3">
         <button type="button" class="flex h-8 w-8 items-center justify-center rounded hover:bg-brand-bg md:hidden" aria-label="Volver" @click="emit('back')"><ArrowLeft class="h-4 w-4 text-brand-text-secondary" /></button>
         <ChatAvatar :name="conversation.title" :group="conversation.type === 'group'" :online="online" size="sm" />
@@ -181,7 +181,7 @@ function attach(event: Event) {
       </div>
       <div class="relative">
         <button type="button" class="flex h-8 w-8 items-center justify-center rounded hover:bg-brand-bg" aria-label="Opciones" @click="menuOpen = !menuOpen"><MoreHorizontal class="h-5 w-5 text-brand-text-secondary" /></button>
-        <div v-if="menuOpen" class="absolute right-0 top-9 z-30 w-48 rounded-lg border border-brand-border-light bg-white p-1.5 shadow-[0_8px_24px_#33475B22]">
+        <div v-if="menuOpen" class="absolute right-0 top-9 z-30 w-48 rounded-lg border border-brand-border-light bg-brand-surface p-1.5 shadow-[0_8px_24px_rgb(var(--brand-shadow)/0.13333333333333333)]">
           <button v-if="!compact" type="button" class="flex w-full rounded px-3 py-2 text-left text-xs font-medium text-brand-text hover:bg-brand-bg" @click="emit('float'); menuOpen = false">Abrir como burbuja</button>
           <button v-if="conversation.type === 'group' && conversation.canManage" type="button" class="flex w-full rounded px-3 py-2 text-left text-xs font-medium text-brand-text hover:bg-brand-bg" @click="emit('manage'); menuOpen = false">Editar grupo</button>
           <button type="button" class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs font-medium text-brand-text hover:bg-brand-bg" @click="emit('archive'); menuOpen = false"><Archive class="h-3.5 w-3.5" /> Archivar conversación</button>
@@ -202,18 +202,18 @@ function attach(event: Event) {
           <ChatAvatar v-if="message.sender?.id !== currentUserId" :name="message.sender?.name || 'Usuario'" size="sm" />
           <div class="relative max-w-[78%]">
             <p v-if="conversation.type === 'group' && message.sender?.id !== currentUserId" class="mb-1 px-1 text-[11px] font-semibold text-brand-text-secondary">{{ message.sender?.name }}</p>
-            <div class="rounded-lg border px-3 py-2 shadow-[0_1px_2px_#33475B0D]" :class="message.sender?.id === currentUserId ? 'border-[#B7E7EF] bg-[#EAF7F9]' : 'border-brand-border-light bg-white'">
-              <div v-if="message.replyTo" class="mb-2 rounded border-l-2 border-brand-blue bg-white/60 px-2 py-1 text-[11px] text-brand-text-muted"><b class="text-brand-text-secondary">{{ message.replyTo.senderName }}</b><p class="truncate">{{ message.replyTo.body }}</p></div>
+            <div class="rounded-lg border px-3 py-2 shadow-[0_1px_2px_rgb(var(--brand-shadow)/0.050980392156862744)]" :class="message.sender?.id === currentUserId ? 'chat-own-message border-brand-chat-own-border bg-brand-help-bg' : 'border-brand-border-light bg-brand-surface'">
+              <div v-if="message.replyTo" class="mb-2 rounded border-l-2 border-brand-blue bg-brand-surface/60 px-2 py-1 text-[11px] text-brand-text-muted"><b class="text-brand-text-secondary">{{ message.replyTo.senderName }}</b><p class="truncate">{{ message.replyTo.body }}</p></div>
               <p v-if="message.deletedAt" class="text-xs italic text-brand-text-muted">Mensaje eliminado</p>
               <p v-else class="whitespace-pre-wrap break-words text-[13px] leading-5 text-brand-text">{{ message.body }}</p>
               <img v-if="message.gifUrl" :src="message.gifUrl" alt="GIF compartido" class="mt-2 max-h-56 max-w-full rounded object-contain" loading="lazy" />
-              <NuxtLink v-if="message.sharedRecord && 'entitySlug' in message.sharedRecord" :to="message.sharedRecord.url" class="mt-2 block rounded border border-brand-border-light bg-white px-3 py-2 text-xs hover:border-brand-blue"><span class="block font-semibold text-brand-blue">Registro compartido</span><span class="mt-0.5 block truncate text-brand-text">{{ message.sharedRecord.label }}</span><span class="mt-0.5 block text-[10px] text-brand-text-muted">Abrir en Flow</span></NuxtLink>
+              <NuxtLink v-if="message.sharedRecord && 'entitySlug' in message.sharedRecord" :to="message.sharedRecord.url" class="mt-2 block rounded border border-brand-border-light bg-brand-surface px-3 py-2 text-xs hover:border-brand-blue"><span class="block font-semibold text-brand-blue">Registro compartido</span><span class="mt-0.5 block truncate text-brand-text">{{ message.sharedRecord.label }}</span><span class="mt-0.5 block text-[10px] text-brand-text-muted">Abrir en Flow</span></NuxtLink>
               <div v-else-if="message.sharedRecord && 'unavailable' in message.sharedRecord" class="mt-2 rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-xs text-brand-text-muted">Registro compartido · sin acceso</div>
-              <a v-for="file in message.attachments" :key="file.id" :href="file.url" target="_blank" class="mt-2 flex items-center gap-2 rounded border border-brand-border-light bg-white px-2.5 py-2 text-xs font-medium text-brand-blue hover:bg-brand-bg"><FileText class="h-4 w-4" /><span class="min-w-0 flex-1 truncate">{{ file.fileName }}</span><Download class="h-3.5 w-3.5" /></a>
+              <a v-for="file in message.attachments" :key="file.id" :href="file.url" target="_blank" class="mt-2 flex items-center gap-2 rounded border border-brand-border-light bg-brand-surface px-2.5 py-2 text-xs font-medium text-brand-blue hover:bg-brand-bg"><FileText class="h-4 w-4" /><span class="min-w-0 flex-1 truncate">{{ file.fileName }}</span><Download class="h-3.5 w-3.5" /></a>
               <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-brand-text-muted"><span v-if="message.editedAt">editado ·</span><span>{{ time(message.createdAt) }}</span><CheckCheck v-if="message.sender?.id === currentUserId && message.readCount" class="h-3 w-3 text-brand-blue" /><Check v-else-if="message.sender?.id === currentUserId" class="h-3 w-3" /></div>
             </div>
-            <button v-if="!message.deletedAt" type="button" class="absolute top-1 flex h-7 w-7 items-center justify-center rounded-full border border-brand-border-light bg-white opacity-0 shadow-sm group-hover:opacity-100" :class="message.sender?.id === currentUserId ? '-left-9' : '-right-9'" @click="messageMenuId = messageMenuId === message.id ? null : message.id"><MoreHorizontal class="h-3.5 w-3.5 text-brand-text-secondary" /></button>
-            <div v-if="messageMenuId === message.id" class="absolute top-9 z-20 w-36 rounded-lg border border-brand-border-light bg-white p-1 shadow-[0_8px_20px_#33475B22]" :class="message.sender?.id === currentUserId ? 'right-0' : 'left-0'">
+            <button v-if="!message.deletedAt" type="button" class="absolute top-1 flex h-7 w-7 items-center justify-center rounded-full border border-brand-border-light bg-brand-surface opacity-0 shadow-sm group-hover:opacity-100" :class="message.sender?.id === currentUserId ? '-left-9' : '-right-9'" @click="messageMenuId = messageMenuId === message.id ? null : message.id"><MoreHorizontal class="h-3.5 w-3.5 text-brand-text-secondary" /></button>
+            <div v-if="messageMenuId === message.id" class="absolute top-9 z-20 w-36 rounded-lg border border-brand-border-light bg-brand-surface p-1 shadow-[0_8px_20px_rgb(var(--brand-shadow)/0.13333333333333333)]" :class="message.sender?.id === currentUserId ? 'right-0' : 'left-0'">
               <button class="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-brand-text hover:bg-brand-bg" @click="startReply(message)"><Reply class="h-3.5 w-3.5" /> Responder</button>
               <button v-if="message.sender?.id === currentUserId" class="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-brand-text hover:bg-brand-bg" @click="startEdit(message)"><Pencil class="h-3.5 w-3.5" /> Editar</button>
               <button v-if="message.sender?.id === currentUserId" class="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-brand-error-text hover:bg-brand-bg" @click="deleteTarget = message; messageMenuId = null"><Trash2 class="h-3.5 w-3.5" /> Eliminar</button>
@@ -223,9 +223,9 @@ function attach(event: Event) {
       </template>
     </div>
 
-    <footer class="shrink-0 border-t border-brand-border-light bg-white">
-      <div v-if="!canSend" class="flex items-center gap-2 bg-[#FFF4E5] px-4 py-3 text-xs font-semibold text-[#8A5D00]">
-        <span class="flex h-5 w-5 items-center justify-center rounded-full border border-[#C58B2A] text-[11px]">!</span>
+    <footer class="shrink-0 border-t border-brand-border-light bg-brand-surface">
+      <div v-if="!canSend" class="flex items-center gap-2 bg-brand-chat-warning-bg px-4 py-3 text-xs font-semibold text-brand-chat-warning-text">
+        <span class="flex h-5 w-5 items-center justify-center rounded-full border border-brand-chat-warning-border text-[11px]">!</span>
         <span>{{ sendBlockedReason || 'No puedes enviar mensajes en esta conversación.' }}</span>
       </div>
       <template v-else>
@@ -238,8 +238,8 @@ function attach(event: Event) {
       <div v-if="selectedGif" class="flex items-center gap-2 px-4 pt-3 text-xs"><img :src="selectedGif.url" alt="GIF seleccionado" class="h-12 w-16 rounded object-cover" /><span class="flex-1 truncate text-brand-text">GIF seleccionado</span><button type="button" aria-label="Quitar GIF" @click="selectedGif = null"><X class="h-3.5 w-3.5 text-brand-text-muted" /></button></div>
       <div class="relative flex items-end gap-2 p-3 sm:px-4">
         <div class="relative min-w-0 flex-1">
-          <textarea ref="textarea" v-model="body" rows="1" class="block max-h-28 min-h-10 w-full resize-none rounded-lg border border-brand-border bg-white px-3 py-2.5 text-[13px] text-brand-text outline-none placeholder:text-brand-text-muted focus:border-brand-blue" placeholder="Escribe un mensaje..." @input="onInput" @keydown.enter.exact.prevent="submit" />
-          <div v-if="mentionOpen" class="absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden rounded-lg border border-brand-border-light bg-white shadow-[0_8px_24px_#33475B22]">
+          <textarea ref="textarea" v-model="body" rows="1" class="block max-h-28 min-h-10 w-full resize-none rounded-lg border border-brand-border bg-brand-surface px-3 py-2.5 text-[13px] text-brand-text outline-none placeholder:text-brand-text-muted focus:border-brand-blue" placeholder="Escribe un mensaje..." @input="onInput" @keydown.enter.exact.prevent="submit" />
+          <div v-if="mentionOpen" class="absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_8px_24px_rgb(var(--brand-shadow)/0.13333333333333333)]">
             <p class="border-b border-brand-border-light px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Mencionar trabajador</p>
             <button v-for="person in mentionOptions" :key="person.id" type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-brand-bg" @click="insertMention(person)"><ChatAvatar :name="person.name" size="sm" /><span class="min-w-0"><span class="block truncate text-xs font-semibold text-brand-text">{{ person.name }}</span><span class="block truncate text-[11px] text-brand-text-muted">{{ person.email }}</span></span></button>
             <p v-if="!mentionOptions.length" class="px-3 py-3 text-xs text-brand-text-muted">No hay coincidencias.</p>
@@ -249,7 +249,7 @@ function attach(event: Event) {
           <label v-if="canAttach" class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg hover:text-brand-text" title="Adjuntar archivo"><input type="file" class="hidden" :disabled="uploading" @change="attach" /><LoaderCircle v-if="uploading" class="h-4 w-4 animate-spin" /><Paperclip v-else class="h-4 w-4" /></label>
           <div ref="emojiContainer" class="relative flex">
             <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg hover:text-brand-text" title="Emoji" @click="emojiOpen = !emojiOpen"><Smile class="h-4 w-4" /></button>
-            <div v-if="emojiOpen" class="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg border border-brand-border-light bg-white p-3 shadow-[0_8px_24px_#33475B22]">
+            <div v-if="emojiOpen" class="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg border border-brand-border-light bg-brand-surface p-3 shadow-[0_8px_24px_rgb(var(--brand-shadow)/0.13333333333333333)]">
               <p class="mb-2 text-[10px] font-bold uppercase tracking-wide text-brand-text-muted">Emojis</p>
               <div class="grid grid-cols-5 gap-2">
                 <button v-for="emoji in professionalEmojis" :key="emoji" type="button" class="flex h-8 w-8 items-center justify-center rounded text-lg hover:bg-brand-bg" @click="insertEmoji(emoji)">{{ emoji }}</button>
@@ -257,21 +257,28 @@ function attach(event: Event) {
             </div>
           </div>
           <div class="relative flex"><button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded text-brand-text-muted hover:bg-brand-bg hover:text-brand-text" title="GIF" @click="gifOpen = !gifOpen"><ImageIcon class="h-4 w-4" /></button><ChatGifPicker v-if="gifOpen" @select="selectGif" @close="gifOpen = false" /></div>
-          <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-brand-orange text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-40" :disabled="!body.trim() && !attachments.length && !sharedRecord && !selectedGif" aria-label="Enviar" @click="submit"><Send class="h-4 w-4" /></button>
+          <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-brand-orange text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-40" :disabled="!body.trim() && !attachments.length && !sharedRecord && !selectedGif" aria-label="Enviar" @click="submit"><Send class="h-4 w-4" /></button>
         </div>
       </div>
       </template>
     </footer>
 
     <Teleport to="body">
-      <div v-if="deleteTarget" class="fixed inset-0 z-[100] flex items-center justify-center bg-[#33475B80] p-4">
-        <div class="w-full max-w-sm rounded-lg bg-white shadow-xl"><div class="p-5"><h3 class="text-[15px] font-bold text-brand-text">Eliminar mensaje</h3><p class="mt-2 text-sm leading-5 text-brand-text-secondary">El mensaje dejará de verse para todos los participantes.</p></div><div class="flex justify-end gap-3 border-t border-brand-border-light p-4"><button class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text" @click="deleteTarget = null">Cancelar</button><button class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-white" @click="emit('delete', deleteTarget!.id); deleteTarget = null">Eliminar</button></div></div>
+      <div v-if="deleteTarget" data-theme-shell class="fixed inset-0 z-[100] flex items-center justify-center bg-brand-shadow/[0.5019607843137255] p-4">
+        <div class="w-full max-w-sm rounded-lg bg-brand-surface shadow-xl"><div class="p-5"><h3 class="text-[15px] font-bold text-brand-text">Eliminar mensaje</h3><p class="mt-2 text-sm leading-5 text-brand-text-secondary">El mensaje dejará de verse para todos los participantes.</p></div><div class="flex justify-end gap-3 border-t border-brand-border-light p-4"><button class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text" @click="deleteTarget = null">Cancelar</button><button class="rounded bg-brand-error-text px-4 py-2 text-sm font-semibold text-brand-error-fg" @click="emit('delete', deleteTarget!.id); deleteTarget = null">Eliminar</button></div></div>
       </div>
     </Teleport>
   </section>
 </template>
 
 <style scoped>
-.chat-message-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.chat-message-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--brand-scrollbar)) transparent; }
+/* Conservar text-muted claro; sobre la burbuja azul oscura usar el secundario AA.
+ * light-dark respeta también color-scheme:light de las rutas protegidas. */
+.chat-own-message .text-brand-text-muted { color: light-dark(rgb(var(--brand-text-muted)), rgb(var(--brand-text-secondary))); }
+
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
 </style>
 

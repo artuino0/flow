@@ -2,7 +2,7 @@
 // ERD-86: asistente "Crear catálogo" - mismo componente que "Crear módulo"
 // (components/ModuleWizard.vue), solo cambia moduleKind y los textos. Ver
 // comentario largo en server/db/schema.ts (entities.moduleKind).
-definePageMeta({ layout: 'default' })
+definePageMeta({ darkReady: true, layout: 'default' })
 </script>
 
 <template>

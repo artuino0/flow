@@ -274,7 +274,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
 
 <template>
   <div class="flex min-w-0 flex-col gap-4">
-    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
         <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Listado de registros</h2><ModuleTourHelpButton tab="list" /></div>
@@ -339,7 +339,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
     </div>
 
     <div class="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-2">
-      <div v-if="activeViewTab === 'table'" data-tour="edit-list-table" id="list-view-panel-table" role="tabpanel" aria-labelledby="list-view-tab-table" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+      <div v-if="activeViewTab === 'table'" data-tour="edit-list-table" id="list-view-panel-table" role="tabpanel" aria-labelledby="list-view-tab-table" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)] focus:outline-none">
         <div class="flex flex-col gap-1.5">
         <p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Columnas visibles</p>
         <p v-if="modelValue.columns.length === 0" class="text-xs text-brand-text-muted">Este módulo todavía no tiene campos.</p>
@@ -369,7 +369,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
             :class="col.visible ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
             @click="toggleColumnVisible(col.name)"
           >
-            <Check v-if="col.visible" class="h-3 w-3 text-white" :stroke-width="3" />
+            <Check v-if="col.visible" class="h-3 w-3 text-brand-primary-fg" :stroke-width="3" />
           </button>
 
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ fieldMeta(col.name)?.label ?? col.name }}</span>
@@ -443,7 +443,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
             :class="modelValue.filterFields.includes(f.name) ? 'border-brand-orange bg-brand-orange' : 'border-brand-border bg-brand-surface'"
             @click="toggleFilterField(f.name)"
           >
-            <Check v-if="modelValue.filterFields.includes(f.name)" class="h-3 w-3 text-white" :stroke-width="3" />
+            <Check v-if="modelValue.filterFields.includes(f.name)" class="h-3 w-3 text-brand-primary-fg" :stroke-width="3" />
           </button>
           <span class="min-w-0 flex-1 truncate text-sm text-brand-text">{{ f.label }}</span>
           <span class="shrink-0 rounded-full bg-brand-neutral-bg px-2 py-0.5 text-xs font-semibold text-brand-neutral-text">{{ fieldTypeLabel(f.dataType) }}</span>
@@ -483,13 +483,13 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         </div>
       </div>
 
-      <div v-if="activeViewTab === 'board' && boardConfig" id="list-view-panel-board" role="tabpanel" aria-labelledby="list-view-tab-board" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+      <div v-if="activeViewTab === 'board' && boardConfig" id="list-view-panel-board" role="tabpanel" aria-labelledby="list-view-tab-board" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)] focus:outline-none">
         <div class="flex items-start justify-between gap-4 rounded-lg border border-brand-border-light p-4">
           <div>
             <h3 id="kanban-view-title" class="text-sm font-bold text-brand-text">Vista Kanban</h3>
             <p id="kanban-view-description" class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Kanban para agregar esta vista y organizar registros en columnas según su estado.</p>
           </div>
-          <button type="button" role="switch" aria-labelledby="kanban-view-title" aria-describedby="kanban-view-description" :aria-checked="boardConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="boardConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateBoard({ enabled: !boardConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="boardConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+          <button type="button" role="switch" aria-labelledby="kanban-view-title" aria-describedby="kanban-view-description" :aria-checked="boardConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="boardConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateBoard({ enabled: !boardConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-brand-switch-thumb shadow transition-transform" :class="boardConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
         </div>
         <template v-if="boardConfig.enabled">
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Campo de columnas
@@ -498,7 +498,7 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Título de la tarjeta
             <select :value="boardConfig.titleField ?? ''" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ titleField: ($event.target as HTMLSelectElement).value || null })"><option value="" disabled>Selecciona un campo</option><option v-for="field in boardDisplayFields" :key="field.id" :value="field.name">{{ field.label }}</option></select>
           </label>
-          <div class="flex flex-col gap-1.5"><p class="text-xs font-semibold text-brand-text">Datos secundarios <span class="font-normal text-brand-text-muted">(máximo 3)</span></p><label v-for="field in boardDisplayFields.filter(field => field.name !== boardConfig?.titleField)" :key="field.id" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"><button type="button" :aria-label="`${boardConfig.secondaryFields.includes(field.name) ? 'Quitar' : 'Agregar'} ${field.label} como dato secundario`" :aria-pressed="boardConfig.secondaryFields.includes(field.name)" class="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue" :class="boardConfig.secondaryFields.includes(field.name) ? 'border-brand-blue bg-brand-blue' : 'border-brand-border'" @click="toggleBoardSecondary(field.name)"><Check v-if="boardConfig.secondaryFields.includes(field.name)" class="h-3 w-3 text-white" /></button><span class="truncate text-sm">{{ field.label }}</span></label></div>
+          <div class="flex flex-col gap-1.5"><p class="text-xs font-semibold text-brand-text">Datos secundarios <span class="font-normal text-brand-text-muted">(máximo 3)</span></p><label v-for="field in boardDisplayFields.filter(field => field.name !== boardConfig?.titleField)" :key="field.id" class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"><button type="button" :aria-label="`${boardConfig.secondaryFields.includes(field.name) ? 'Quitar' : 'Agregar'} ${field.label} como dato secundario`" :aria-pressed="boardConfig.secondaryFields.includes(field.name)" class="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue" :class="boardConfig.secondaryFields.includes(field.name) ? 'border-brand-blue bg-brand-blue' : 'border-brand-border'" @click="toggleBoardSecondary(field.name)"><Check v-if="boardConfig.secondaryFields.includes(field.name)" class="h-3 w-3 text-brand-primary-fg" /></button><span class="truncate text-sm">{{ field.label }}</span></label></div>
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Vista inicial de Tabla o Kanban
             <select :value="boardConfig.defaultView" class="rounded border border-brand-border px-3 py-2 text-sm font-normal" @change="updateBoard({ defaultView: ($event.target as HTMLSelectElement).value as 'table' | 'board' })"><option value="board">Tablero</option><option value="table">Tabla</option></select>
           </label>
@@ -506,13 +506,13 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
         <p v-else-if="boardStatusFields.length === 0" class="rounded bg-brand-warning-bg px-3 py-2 text-xs text-brand-warning-text">Crea un campo de tipo Selección para usarlo como columnas.</p>
       </div>
 
-      <div v-if="activeViewTab === 'calendar' && calendarConfig" id="list-view-panel-calendar" role="tabpanel" aria-labelledby="list-view-tab-calendar" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_#33475B14] focus:outline-none">
+      <div v-if="activeViewTab === 'calendar' && calendarConfig" id="list-view-panel-calendar" role="tabpanel" aria-labelledby="list-view-tab-calendar" class="flex min-w-0 flex-col gap-4 rounded-lg border border-brand-border-light bg-brand-surface p-5 shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)] focus:outline-none">
         <div class="flex items-start justify-between gap-4 rounded-lg border border-brand-border-light p-4">
           <div>
             <h3 id="calendar-view-title" class="text-sm font-bold text-brand-text">Vista Calendario</h3>
             <p id="calendar-view-description" class="mt-1 text-xs leading-5 text-brand-text-muted">Activa Calendario para agregar esta vista. Cuando está activo, el listado se abre en Calendario.</p>
           </div>
-          <button type="button" role="switch" aria-labelledby="calendar-view-title" aria-describedby="calendar-view-description" :aria-checked="calendarConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="calendarConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateCalendar({ enabled: !calendarConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="calendarConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
+          <button type="button" role="switch" aria-labelledby="calendar-view-title" aria-describedby="calendar-view-description" :aria-checked="calendarConfig.enabled" class="relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2" :class="calendarConfig.enabled ? 'bg-brand-blue' : 'bg-brand-border'" @click="updateCalendar({ enabled: !calendarConfig.enabled })"><span class="absolute left-0 top-0.5 h-5 w-5 rounded-full bg-brand-switch-thumb shadow transition-transform" :class="calendarConfig.enabled ? 'translate-x-5' : 'translate-x-0.5'" /></button>
         </div>
         <template v-if="calendarConfig.enabled">
           <label class="flex flex-col gap-1.5 text-xs font-semibold text-brand-text">Fecha de inicio
@@ -546,3 +546,9 @@ async function chooseLabelField(field: EntityFieldMeta, value: string | null) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* HU-164: controles nativos con el esquema del ámbito y el blanco claro original. */
+:where(input, select, textarea) { color-scheme: inherit; }
+:where(select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"])):not([class*="bg-"]) { background-color: rgb(var(--brand-surface)); }
+</style>

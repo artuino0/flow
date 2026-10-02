@@ -13,7 +13,7 @@ function attribute(node: ElementNode, name: string) {
   const prop = node.props.find(prop => prop.type === 6 && prop.name === name)
   return prop?.type === 6 ? prop.value?.content ?? '' : ''
 }
-const pattern = ['flex', 'flex-col', 'rounded-lg', 'border', 'border-brand-border-light', 'bg-brand-surface', 'shadow-[0_1px_3px_0_#33475B14]']
+const pattern = ['flex', 'flex-col', 'rounded-lg', 'border', 'border-brand-border-light', 'bg-brand-surface', 'shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]']
 
 describe('marco de edición y ayuda junto al título', () => {
   it('el encabezado del listado y los modos de vista pertenecen a una sola card', () => {
@@ -29,7 +29,7 @@ describe('marco de edición y ayuda junto al título', () => {
     const views = card.children.find(node => node.type === 1 && attribute(node, 'role') === 'tablist') as ElementNode
     expect(views).toBeDefined()
     expect(attribute(views, 'data-tour')).toBe('edit-list-views')
-    for (const token of ['border', 'rounded-lg', 'shadow-[0_1px_3px_0_#33475B14]']) expect(attribute(views, 'class').split(' ')).not.toContain(token)
+    for (const token of ['border', 'rounded-lg', 'shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]']) expect(attribute(views, 'class').split(' ')).not.toContain(token)
     expect(elements(views.children).filter(node => attribute(node, 'role') === 'tab')).toHaveLength(3)
     const wizard = readFileSync('components/ModuleWizard.vue', 'utf8')
     expect(wizard).toContain('<template #actions>')

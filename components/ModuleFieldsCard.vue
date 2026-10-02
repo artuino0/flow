@@ -340,13 +340,13 @@ async function confirmImpactModal() {
 </script>
 
 <template>
-  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+  <div class="flex flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
     <div data-tour="edit-fields-add" class="flex items-center justify-between border-b border-brand-border-light p-5">
       <div class="flex flex-col gap-1">
         <div class="flex items-center gap-2"><h2 class="text-[15px] font-bold text-brand-text">Campos del módulo</h2><ModuleTourHelpButton tab="fields" /></div>
         <p class="text-sm text-brand-text-secondary">{{ realFields.length }} campo{{ realFields.length === 1 ? '' : 's' }}</p>
       </div>
-      <button type="button" data-tour="manual-field-add" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover" @click="openCreate">
+      <button type="button" data-tour="manual-field-add" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="openCreate">
         <Plus class="h-[15px] w-[15px]" :stroke-width="2" />
         Agregar campo
       </button>

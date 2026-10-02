@@ -5,7 +5,7 @@
 // ERD-86: la logica se extrajo a components/ModuleListing.vue (reusado tal
 // cual por pages/catalogos/index.vue, pedido directo del usuario) - este
 // archivo solo fija los parametros propios de "Módulos" (moduleKind='hecho').
-definePageMeta({ layout: 'default', fullBleed: true })
+definePageMeta({ darkReady: true, layout: 'default', fullBleed: true })
 </script>
 
 <template>

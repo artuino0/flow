@@ -59,8 +59,8 @@ describe('contratos HU-162', () => {
     const index = readFileSync('pages/registros/[entity]/index.vue', 'utf8')
     expect(index).not.toContain('class="theme-light"')
     expect(readFileSync('components/RecordDetailView.vue', 'utf8')).not.toContain('<ActivityTimeline class="theme-light"')
-    // HU-163 migra ajustes e importación; módulos y catálogos siguen protegidos.
-    for (const file of ['pages/modulos/index.vue', 'pages/catalogos/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    // HU-164 migra módulos/catálogos; el diseñador de IA conserva protección.
+    expect(readFileSync('pages/disenador.vue', 'utf8')).not.toContain('darkReady: true')
     expect(readFileSync('components/PrintReportPage.vue', 'utf8')).toContain('theme-light')
   })
   it('usa los canales globales en calendario y el esquema nativo heredado', () => {
