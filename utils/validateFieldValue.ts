@@ -1,10 +1,12 @@
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
-// HU-ERD-23: validacion en cliente "espejo" de server/utils/dynamicSchema.ts
-// (HU-ERD-17). Mismas reglas (min/maxLength, pattern, min/max numerico,
-// integer, enum, min/max de fecha, forma de uuid para relation), para dar
-// feedback inmediato en el formulario - el servidor sigue siendo la unica
-// fuente de verdad (esto nunca reemplaza la revalidacion del backend).
+// Feedback local acotado; las reglas de formato y referencias las valida el servidor.
+export function normalizeClientText(value: string, rules: Record<string, unknown>): string {
+  let normalized = rules.trim === true ? value.trim() : value
+  if (rules.case === 'upper') normalized = normalized.toUpperCase()
+  if (rules.case === 'lower') normalized = normalized.toLowerCase()
+  return normalized
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface FieldValidationResult {
@@ -19,6 +21,7 @@ function isEmpty(value: unknown): boolean {
 export function validateFieldValue(field: EntityFieldMeta, rawValue: unknown): FieldValidationResult {
   const rules = field.validationRules ?? {}
 
+  if (field.dataType === 'text' && rawValue === '' && rules.notBlank === true) return { valid: false, error: 'Texto no vacío: Rechaza texto vacío o formado únicamente por espacios.' }
   if (isEmpty(rawValue)) {
     return field.isRequired
       ? { valid: false, error: `"${field.label}" es requerido` }
@@ -27,21 +30,13 @@ export function validateFieldValue(field: EntityFieldMeta, rawValue: unknown): F
 
   switch (field.dataType) {
     case 'text': {
-      if (Array.isArray(rules.enum) && rules.enum.length > 0) {
-        if (!rules.enum.includes(rawValue)) {
-          return { valid: false, error: `"${field.label}" debe ser uno de: ${rules.enum.join(', ')}` }
-        }
-        return { valid: true }
-      }
-      const s = String(rawValue)
+      const s = normalizeClientText(String(rawValue), rules)
+      if (rules.notBlank === true && !s.trim()) return { valid: false, error: 'Texto no vacío: Rechaza texto vacío o formado únicamente por espacios.' }
       if (typeof rules.minLength === 'number' && s.length < rules.minLength) {
-        return { valid: false, error: `"${field.label}" debe tener al menos ${rules.minLength} caracteres` }
+        return { valid: false, error: 'Longitud mínima: Cantidad mínima de caracteres.' }
       }
       if (typeof rules.maxLength === 'number' && s.length > rules.maxLength) {
-        return { valid: false, error: `"${field.label}" debe tener como maximo ${rules.maxLength} caracteres` }
-      }
-      if (typeof rules.pattern === 'string' && !new RegExp(rules.pattern).test(s)) {
-        return { valid: false, error: `"${field.label}" no tiene el formato esperado` }
+        return { valid: false, error: 'Longitud máxima: Cantidad máxima de caracteres.' }
       }
       return { valid: true }
     }

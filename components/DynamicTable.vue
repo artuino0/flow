@@ -146,6 +146,7 @@ async function onDelete(id: string) {
           <tr v-for="row in rows" :key="row.id" class="bg-brand-surface hover:bg-brand-bg">
             <td v-for="field in fields" :key="field.id" class="whitespace-nowrap px-4 py-3 text-brand-text">
               <DynamicFileValue v-if="field.dataType === 'file' && typeof row.customData[field.name] === 'string'" :file-id="String(row.customData[field.name])" compact />
+              <FieldDateValue v-else-if="field.dataType === 'date'" :value="row.customData[field.name]" :rules="field.validationRules" />
               <template v-else>{{ cellValue(field, row) }}</template>
             </td>
             <td 

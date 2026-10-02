@@ -123,6 +123,8 @@ async function findFieldInTenant(tx: Tx, tenantId: string, fieldId: string): Pro
 
 export interface EntityFieldImpact extends EntityFieldSummary {
   affectedRecords: number
+  hasValues: boolean
+  usedOptionValues: string[]
 }
 
 /**
@@ -157,7 +159,21 @@ export async function getEntityFieldImpact(tenantId: string, fieldId: string): P
       .from(records)
       .where(and(eq(records.entityId, current.entityId), recordNotDeleted, sql`${records.customData} ? ${current.name}`))
 
-    return { ...toSummary(current), affectedRecords }
+    const active = and(eq(records.entityId, current.entityId), eq(records.tenantId, tenantId), recordNotDeleted)
+    const [valued] = await tx.select({ id: records.id }).from(records).where(and(active,
+      sql`${records.customData}->${current.name} is not null and ${records.customData}->${current.name} <> 'null'::jsonb and ${records.customData}->${current.name} <> '""'::jsonb and ${records.customData}->${current.name} <> '[]'::jsonb`
+    )).limit(1)
+    const usedOptionValues: string[] = []
+    const configured = (current.validationRules as Record<string, unknown> | null)?.options
+    if (['select', 'multiselect'].includes(current.dataType) && Array.isArray(configured)) {
+      for (const option of configured as Array<{ value: string }>) {
+        const [used] = await tx.select({ id: records.id }).from(records).where(and(active,
+          sql`(${records.customData}->>${current.name} = ${option.value} or ${records.customData}->${current.name} @> ${JSON.stringify([option.value])}::jsonb)`
+        )).limit(1)
+        if (used) usedOptionValues.push(option.value)
+      }
+    }
+    return { ...toSummary(current), affectedRecords, hasValues: Boolean(valued), usedOptionValues }
   })
 }
 

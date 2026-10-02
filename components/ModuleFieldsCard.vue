@@ -55,18 +55,33 @@ const modalMode = ref<'create' | 'edit'>('create')
 const editingField = ref<EntityFieldMeta | null>(null)
 const saving = ref(false)
 const modalError = ref<string | null>(null)
+const usageLoading = ref(false)
+const fieldUsage = ref<{ hasValues: boolean; usedOptionValues: string[] } | null>(null)
+const validationImpact = ref<{ nonCompliantRecords: number; truncated: boolean } | null>(null)
 
 function openCreate() {
+  fieldUsage.value = null
+  usageLoading.value = false
   modalMode.value = 'create'
   editingField.value = null
   modalError.value = null
   modalOpen.value = true
 }
-function openEdit(field: EntityFieldMeta) {
+async function openEdit(field: EntityFieldMeta) {
   modalMode.value = 'edit'
   editingField.value = field
   modalError.value = null
   modalOpen.value = true
+  fieldUsage.value = null
+  usageLoading.value = true
+  try {
+    const usage = await $fetch<{ hasValues: boolean; usedOptionValues: string[] }>(`/api/entity-fields/${field.id}`)
+    if (editingField.value?.id === field.id) fieldUsage.value = usage
+  } catch (error) {
+    if (editingField.value?.id === field.id) modalError.value = (error as { data?: { statusMessage?: string } }).data?.statusMessage || 'No se pudo consultar el uso del campo. Cierra y vuelve a abrir para editarlo.'
+  } finally {
+    if (editingField.value?.id === field.id) usageLoading.value = false
+  }
 }
 function closeModal() {
   modalOpen.value = false
@@ -105,13 +120,15 @@ async function fetchAffectedRecords(fieldId: string): Promise<number> {
 }
 
 async function submitFieldUpdate(fieldId: string, draft: FieldDraft) {
-  await $fetch(`/api/entity-fields/${fieldId}`, {
+  const response = await $fetch<{ validationImpact?: { nonCompliantRecords: number; truncated: boolean } }>(`/api/entity-fields/${fieldId}`, {
     method: 'PUT',
     body: { label: draft.label, dataType: draft.dataType, validationRules: draft.validationRules, isRequired: draft.isRequired }
   })
+  validationImpact.value = response.validationImpact && response.validationImpact.nonCompliantRecords > 0 ? response.validationImpact : null
 }
 
 async function onSubmit(draft: FieldDraft) {
+  if (usageLoading.value || (modalMode.value === 'edit' && !fieldUsage.value)) return
   modalError.value = null
 
   if (modalMode.value === 'edit' && editingField.value && metadataShapeChanged(editingField.value, draft)) {
@@ -338,6 +355,9 @@ async function confirmImpactModal() {
     <p v-if="deleteError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">
       {{ deleteError }}
     </p>
+    <p v-if="validationImpact" role="status" class="mx-5 mt-4 rounded border border-brand-border bg-brand-bg px-3 py-2 text-sm text-brand-warning-text">
+      {{ validationImpact.nonCompliantRecords }} registros existentes no cumplen la nueva regla; se conservan sin cambios y se validarán al editarlos<span v-if="validationImpact.truncated"> (conteo truncado)</span>.
+    </p>
     <p v-if="reorderError" class="mx-5 mt-4 rounded border border-brand-error-text bg-brand-error-bg px-3 py-2 text-sm text-brand-error-text">
       {{ reorderError }}
     </p>
@@ -416,6 +436,10 @@ async function confirmImpactModal() {
       :error="modalError"
       :existing-fields="realFields"
       :entity-id="entityId"
+      :has-values="fieldUsage?.hasValues"
+      :used-option-values="fieldUsage?.usedOptionValues"
+      :loading-usage="usageLoading"
+      :usage-unavailable="modalMode === 'edit' && !fieldUsage && !usageLoading"
       @close="closeModal"
       @submit="onSubmit"
     />

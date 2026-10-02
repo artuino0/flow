@@ -10,23 +10,28 @@ import { slugifyIdentifier } from '~/utils/slugify'
 import { OPTION_COLORS, colorDotClass } from '~/utils/optionColors'
 import { designerFieldFormSource } from '~/utils/designerFieldForm'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
+import * as catalogUtils from '~/utils/fieldValidationCatalog'
+import { describeFieldValidations } from '~/server/utils/fieldValidations/registry'
+import { compileVueComponent } from '../helpers/vueComponent'
 
 const require = createRequire(import.meta.url)
 const descriptor = parse(readFileSync('components/FieldFormModal.vue', 'utf8')).descriptor
 const compiled = compileScript(descriptor, { id: 'field-form-151', inlineTemplate: true })
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
 const apps: App[] = []
-const fetch = vi.fn(async (url: string) => url === '/api/entities' ? { entities: [{ id: 'real', slug: 'real', name: 'Real' }] } : { fields: [] })
+const fetch = vi.fn(async (url: string) => url === '/api/field-validations' ? describeFieldValidations() : url === '/api/entities' ? { entities: [{ id: 'real', slug: 'real', name: 'Real' }] } : { fields: [] })
 const confirm = vi.fn(async () => true)
 function mount(overrides: Record<string, unknown> = {}) {
   const exports: { default?: Component } = {}
-  const loader = (id: string) => id === '~/utils/calcExpression' ? { collectFieldRefs, parseExpression } : require(id)
+  const parameter = compileVueComponent('components/FieldValidationParameter.vue', { '~/utils/fieldValidationCatalog': catalogUtils })
+  const loader = (id: string) => id === '~/utils/calcExpression' ? { collectFieldRefs, parseExpression } : id === '~/utils/optionColors' ? { OPTION_COLORS, colorDotClass } : id === '~/utils/fieldValidationCatalog' ? catalogUtils : id === '~/components/FieldValidationParameter.vue' ? { default: parameter } : require(id)
   new Function('require', 'exports', 'useConfirm', '$fetch', 'slugifyIdentifier', 'OPTION_COLORS', 'colorDotClass', code)(loader, exports, () => ({ confirm, dialog: ref(null) }), fetch, slugifyIdentifier, OPTION_COLORS, colorDotClass)
-  const props = reactive({ open: false, mode: 'create', ...overrides })
+  const props = reactive({ open: false, mode: 'create', hasValues: false, ...overrides })
   const submit = vi.fn()
   const close = vi.fn(() => { props.open = false })
   const host = document.createElement('div'); document.body.append(host)
   const app = createApp({ render: () => h(exports.default!, { ...props, onSubmit: submit, onClose: close }) })
+  app.component('FieldValidationParameter', parameter)
   app.mount(host); apps.push(app)
   return { host, props, submit, close }
 }
@@ -61,10 +66,12 @@ describe('FieldFormModal en diseñador y editor original', () => {
     expect(button(host, 'precio').title).toBe('Precio')
     button(host, 'Agregar campo').click(); await nextTick()
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { calculation: { kind: 'expression', expression: 'precio * 2' } } }))
+    button(host, 'Cambiar').click(); await nextTick()
     button(host, 'Relación').click(); await nextTick()
     expect([...host.querySelectorAll('option')].map(item => item.value)).toContain('clientes')
+    button(host, 'Cambiar').click(); await nextTick()
     button(host, 'Tabla').click(); await nextTick()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch.mock.calls.every(([url]) => url === '/api/field-validations')).toBe(true)
   })
   it('ofrece copyFrom y prefijos de módulos propuestos sin API', async () => {
     const { host, props } = mount({ fieldSource: source, entityId: 'ventas', existingFields: source.fieldsByEntity.ventas,
@@ -74,12 +81,13 @@ describe('FieldFormModal en diseñador y editor original', () => {
       ] } } })
     await open(props)
     expect([...host.querySelectorAll('option')].map(item => item.value)).toContain('clientes.nombre')
+    button(host, 'Cambiar').click(); await nextTick()
     button(host, 'Incremental').click(); await nextTick()
     button(host, 'Con prefijo de relación').click(); await nextTick()
     const picker = [...host.querySelectorAll('select')].find(item => [...item.options].some(option => option.value === 'cliente'))!
     picker.value = 'cliente'; picker.dispatchEvent(new Event('change', { bubbles: true })); await nextTick()
     expect([...host.querySelectorAll('option')].map(item => item.value)).toContain('nombre')
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch.mock.calls.every(([url]) => url === '/api/field-validations')).toBe(true)
   })
   it('resuelve acumulados hacia módulos propuestos y sus campos numéricos', async () => {
     const { host, props, submit } = mount({ fieldSource: source, entityId: 'clientes', existingFields: source.fieldsByEntity.clientes,
@@ -88,7 +96,7 @@ describe('FieldFormModal en diseñador y editor original', () => {
     expect([...host.querySelectorAll('option')].map(item => item.value)).toEqual(expect.arrayContaining(['ventas', 'cliente', 'precio']))
     button(host, 'Agregar campo').click(); await nextTick()
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { calculation: { kind: 'rollup', sourceEntity: 'ventas', relationField: 'cliente', aggregate: 'sum', valueField: 'precio' } } }))
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch.mock.calls.every(([url]) => url === '/api/field-validations')).toBe(true)
   })
   it('permite editar propuestas y conserva reglas sin control visual', async () => {
     const { host, props, submit } = mount({ fieldSource: source, mode: 'edit', allowSchemaEditing: true, initialField: { name: 'codigo', label: 'Código', dataType: 'text', isRequired: true, validationRules: { format: 'lettersOnly', minLength: 2 } } })

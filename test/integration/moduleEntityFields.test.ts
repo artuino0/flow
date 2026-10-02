@@ -408,6 +408,21 @@ describe('moduleEntityFields - incremental (Postgres real)', () => {
 })
 
 describe('HU-ERD-152: tipo bloqueado e impacto aislado por organización', () => {
+  it('HU-153: lectura solo informa hasValues/opciones configuradas en uso, aislada por tenant y RLS', async () => {
+    const { getEntityFieldImpact } = await import('../../server/utils/moduleEntityFields')
+    const field = await createEntityField(TENANT_A, entityA, { name: 'uso153', label: 'Uso', dataType: 'multiselect', validationRules: { options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] }, isRequired: false })
+    const impact = (tenant: string) => withRecordActor(actors.get(tenant)!, () => getEntityFieldImpact(tenant, field.id))
+    expect(await impact(TENANT_A)).toMatchObject({ hasValues: false, usedOptionValues: [] })
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"uso153":null}'), (${TENANT_A}, ${entityA}, '{"uso153":[]}'), (${TENANT_A}, ${entityA}, '{"uso153":""}')`
+    expect(await impact(TENANT_A)).toMatchObject({ hasValues: false, usedOptionValues: [] })
+    await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${entityA}, '{"uso153":["a"]}')`
+    await admin`insert into records (tenant_id, entity_id, custom_data, deleted_at) values (${TENANT_A}, ${entityA}, '{"uso153":["b"]}', now())`
+    const result = await impact(TENANT_A)
+    expect(result).toMatchObject({ hasValues: true, usedOptionValues: ['a'] })
+    expect(result).not.toHaveProperty('customData')
+    expect(await impact(TENANT_B)).toBeNull()
+    expect(await withRecordActor({ userId: null, roleId: null }, () => getEntityFieldImpact(TENANT_A, field.id))).toMatchObject({ hasValues: false, usedOptionValues: [] })
+  })
   it('campo vacío cambia de tipo y limpia reglas anteriores', async () => {
     const field = await createEntityField(TENANT_A, entityA, { name: 'vacio152', label: 'Vacío', dataType: 'text', validationRules: { minLength: 2 }, isRequired: false })
     const result = await updateEntityField(TENANT_A, field.id, { dataType: 'number' }, null)

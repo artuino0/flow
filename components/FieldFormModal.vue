@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FieldValidationParameter from '~/components/FieldValidationParameter.vue'
+import { loadFieldValidationCatalog, parameterError, STRUCTURAL_RULES, type FieldValidationCatalog } from '~/utils/fieldValidationCatalog'
 import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // HU-ERD-70: modal "Agregar/Editar campo" - sigue Screen/Editor de Campos -
 // Agregar Campo del .pen (revisado con las herramientas de Pencil): nombre
@@ -39,8 +41,9 @@ import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // "Semántica de copia") y si quedan editables despues de copiar - eso es
 // justamente el alcance literal de esta HU, no la relación 1:N completa.
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { OPTION_COLORS, colorDotClass } from '~/utils/optionColors'
 import type { FieldFormSource } from '~/utils/designerFieldForm'
-import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
+import { Braces, Calendar, Check, ChevronDown, CircleDollarSign, GripVertical, Hash, Link2, List, ListOrdered, LockKeyhole, Paperclip, Plus, Table2, ToggleLeft, Type as TypeIcon, UserRound, X } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
 export interface FieldDraft {
@@ -70,6 +73,10 @@ const props = defineProps<{
   fieldSource?: FieldFormSource
   readOnly?: boolean
   allowSchemaEditing?: boolean
+  hasValues?: boolean
+  usedOptionValues?: string[]
+  loadingUsage?: boolean
+  usageUnavailable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -120,8 +127,6 @@ const TABLE_COLUMN_TYPES: Array<{ value: string; label: string }> = [
   { value: 'relation', label: 'Relación' }
 ]
 
-const MONEY_CURRENCIES = ['MXN', 'USD', 'EUR', 'CAD', 'GBP', 'BRL', 'ARS', 'COP', 'CLP', 'PEN', 'GTQ']
-
 interface OptionDraft {
   label: string
   value: string
@@ -165,16 +170,7 @@ const form = reactive({
   userUnique: false,
   userRoles: '',
   userDefaultCurrent: false,
-  minLength: null as number | null,
-  maxLength: null as number | null,
-  min: null as number | null,
-  max: null as number | null,
-  integer: false,
-  currency: 'tenant',
-  currencyDecimals: 2,
-  allowNegative: false,
-  dateMin: '',
-  dateMax: '',
+  catalogRules: {} as Record<string, unknown>,
   options: [] as OptionDraft[],
   columns: [] as ColumnDraft[],
   // HU-ERD-74: entidad destino de un campo "Relación" de nivel superior -
@@ -340,6 +336,68 @@ function copyFromOptions(currentColumnName: string): CopyFromOption[] {
   return opts
 }
 
+
+const typePickerOpen = ref(true)
+const typeChangeNotice = ref(false)
+const typeLocked = computed(() => !props.fieldSource && props.mode === 'edit' && (props.hasValues !== false || props.loadingUsage))
+const chosenType = computed(() => TYPE_OPTIONS.find(t => t.value === (form.dataType === 'multiselect' ? 'select' : form.dataType)) ?? TYPE_OPTIONS[0])
+function optionInUse(option: OptionDraft | undefined): boolean { return Boolean(option && !props.fieldSource && props.usedOptionValues?.includes(option.value)) }
+function reopenTypes() {
+  if (typeLocked.value || props.readOnly) return
+  typeChangeNotice.value = props.mode === 'edit'
+  typePickerOpen.value = true
+  void nextTick(() => dialogElement.value?.querySelector<HTMLElement>('[data-type-grid] button')?.focus())
+}
+function changeSelectionType(value: string) {
+  if (typeLocked.value || props.readOnly || form.dataType === value) return
+  typeChangeNotice.value = props.mode === 'edit'
+  form.catalogRules = {}
+  form.dataType = value
+}
+const catalog = ref<FieldValidationCatalog | null>(null)
+const catalogError = ref('')
+const catalogLoading = ref(false)
+async function ensureCatalogLoaded() {
+  catalogLoading.value = true
+  catalogError.value = ''
+  try { catalog.value = await loadFieldValidationCatalog(() => $fetch<FieldValidationCatalog>('/api/field-validations')) }
+  catch { catalogError.value = 'No se pudo cargar el catálogo de validaciones. Intenta de nuevo.' }
+  finally { catalogLoading.value = false }
+}
+const applicableRules = computed(() => catalog.value?.validations.filter(r => r.types.includes(form.dataType) && !STRUCTURAL_RULES.has(r.id) && r.id !== 'display') ?? [])
+const selectedRules = computed(() => applicableRules.value.filter(r => r.id in form.catalogRules))
+const availableRules = computed(() => applicableRules.value.filter(r => !(r.id in form.catalogRules)))
+const dateFields = computed(() => (props.existingFields ?? []).filter(f => f.dataType === 'date' && f.name !== form.name))
+const displayCapability = computed(() => catalog.value?.validations.find(r => r.id === 'display'))
+const ruleErrors = computed(() => Object.fromEntries(selectedRules.value.map(r => [r.id, parameterError(r.parameters[form.dataType], form.catalogRules[r.id])])))
+function addValidation(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const rule = availableRules.value.find(r => r.id === select.value)
+  if (rule) {
+    const p = rule.parameters[form.dataType]
+    form.catalogRules[rule.id] = JSON.parse(JSON.stringify(p.default ?? p.example))
+    if (rule.id === 'after' || rule.id === 'before') form.catalogRules[rule.id] = dateFields.value[0]?.name ?? ''
+    void nextTick(() => dialogElement.value?.querySelector<HTMLElement>(`#validation-${rule.id}`)?.focus())
+  }
+  select.value = ''
+}
+function removeValidation(id: string) {
+  delete form.catalogRules[id]
+  void nextTick(() => dialogElement.value?.querySelector<HTMLElement>('#add-validation')?.focus())
+}
+function ruleChoices(id: string) {
+  if (id === 'after' || id === 'before') return dateFields.value.map(f => ({ value: f.name, label: f.label }))
+  if (id === 'format') return catalog.value?.formats.map(f => ({ value: f.id, label: f.label }))
+  if (id === 'allowedTypes') return catalog.value?.file.types.map(f => ({ value: f.id, label: f.label }))
+  if (id === 'default' && ['select', 'multiselect'].includes(form.dataType)) return form.options.map(o => ({ value: o.value, label: o.label }))
+  return undefined
+}
+const eligibleFields = computed(() => (relatedFieldsByEntity.value[form.relationEntity] ?? []).filter(f => f.name !== 'id' && !['relation', 'file', 'tabla', 'json', 'user', 'multiselect'].includes(f.dataType)).map(f => ({ value: f.name, label: f.label })))
+watch(() => [form.relationEntity, 'eligibleFilter' in form.catalogRules] as const, ([slug, eligible]) => { if (slug && eligible) void ensureRelatedFieldsLoaded(slug) })
+function ruleExample(id: string): string {
+  if (id === 'format') return catalog.value?.formats.find(f => f.id === form.catalogRules.format)?.example ?? ''
+  return JSON.stringify(applicableRules.value.find(r => r.id === id)?.parameters[form.dataType]?.example) ?? ''
+}
 watch(
   () => [props.open, props.initialField] as const,
   ([open, field]) => {
@@ -355,16 +413,10 @@ watch(
     form.userUnique = rules.unique === true
     form.userRoles = Array.isArray(rules.roles) ? rules.roles.join(', ') : ''
     form.userDefaultCurrent = rules.defaultCurrentUser === true
-    form.minLength = typeof rules.minLength === 'number' ? rules.minLength : null
-    form.maxLength = typeof rules.maxLength === 'number' ? rules.maxLength : null
-    form.min = typeof rules.min === 'number' ? rules.min : null
-    form.max = typeof rules.max === 'number' ? rules.max : null
-    form.integer = rules.integer === true
-    form.currency = typeof rules.currency === 'string' ? rules.currency : 'tenant'
-    form.currencyDecimals = typeof rules.decimals === 'number' ? rules.decimals : 2
-    form.allowNegative = rules.allowNegative === true
-    form.dateMin = typeof rules.min === 'string' ? rules.min : ''
-    form.dateMax = typeof rules.max === 'string' ? rules.max : ''
+    form.catalogRules = Object.fromEntries(Object.entries(JSON.parse(JSON.stringify(rules)) as Record<string, unknown>).filter(([id]) => !STRUCTURAL_RULES.has(id)))
+    typePickerOpen.value = !field
+    typeChangeNotice.value = false
+    void ensureCatalogLoaded()
     form.relationEntity = typeof rules.relationEntity === 'string' ? rules.relationEntity : ''
     const calculation = rules.calculation as Record<string, unknown> | undefined
     form.calculationMode = calculation?.kind === 'formula' || calculation?.kind === 'rollup' || calculation?.kind === 'expression' ? calculation.kind : 'manual'
@@ -449,6 +501,11 @@ function onFieldNameInput(value: string) {
 }
 
 function selectDataType(value: string) {
+  if (props.readOnly || typeLocked.value) return
+  typePickerOpen.value = false
+  void nextTick(() => dialogElement.value?.querySelector<HTMLElement>('[data-change-type]')?.focus())
+  const next = value === 'select' && form.dataType === 'multiselect' ? 'multiselect' : value
+  if (next !== form.dataType) form.catalogRules = {}
   if (value !== 'number' && value !== 'currency') form.calculationMode = 'manual'
   if (value === 'select') {
     // Conserva select/multiselect si ya estaba en ese tipo (el toggle de
@@ -477,6 +534,7 @@ function addOption() {
   form.options.push({ label: '', value: '', color: 'neutral', valueTouched: false })
 }
 function removeOption(index: number) {
+  if (optionInUse(form.options[index])) return
   form.options.splice(index, 1)
 }
 function moveOption(index: number, dir: -1 | 1) {
@@ -490,6 +548,7 @@ function onOptionLabelInput(opt: OptionDraft, value: string) {
   if (!opt.valueTouched) opt.value = slugifyIdentifier(value)
 }
 function onOptionValueInput(opt: OptionDraft, value: string) {
+  if (optionInUse(opt)) return
   opt.valueTouched = true
   opt.value = value
 }
@@ -534,38 +593,16 @@ function onColumnReadonlyToggle(col: ColumnDraft, value: boolean) {
 
 function validationRulesForSubmit(): Record<string, unknown> {
   switch (form.dataType) {
-    case 'text': {
-      const rules: Record<string, unknown> = {}
-      if (form.minLength !== null) rules.minLength = form.minLength
-      if (form.maxLength !== null) rules.maxLength = form.maxLength
-      return rules
-    }
-    case 'number': {
-      const rules: Record<string, unknown> = {}
-      if (form.min !== null) rules.min = form.min
-      if (form.max !== null) rules.max = form.max
-      if (form.integer) rules.integer = true
-      const calculation = buildCalculation()
-      if (calculation) rules.calculation = calculation
-      return rules
-    }
+    case 'text':
+    case 'date':
+    case 'boolean':
+    case 'file':
+    case 'json':
+      return {}
+    case 'number':
     case 'currency': {
-      const rules: Record<string, unknown> = {
-        currency: form.currency,
-        decimals: form.currencyDecimals,
-        allowNegative: form.allowNegative
-      }
-      if (form.min !== null) rules.min = form.min
-      if (form.max !== null) rules.max = form.max
       const calculation = buildCalculation()
-      if (calculation) rules.calculation = calculation
-      return rules
-    }
-    case 'date': {
-      const rules: Record<string, unknown> = {}
-      if (form.dateMin) rules.min = form.dateMin
-      if (form.dateMax) rules.max = form.dateMax
-      return rules
+      return calculation ? { calculation } : {}
     }
     case 'relation':
       return form.relationEntity ? { relationEntity: form.relationEntity } : {}
@@ -670,6 +707,7 @@ const calculationValid = computed(() => {
 })
 
 const canSubmit = computed(() => {
+  if (props.loadingUsage || props.usageUnavailable || Object.values(ruleErrors.value).some(Boolean)) return false
   if (form.name.length === 0 || nameError.value || form.label.length === 0 || !calculationValid.value) return false
   if (form.dataType === 'select' || form.dataType === 'multiselect') return optionsValid.value
   if (form.dataType === 'tabla') return columnsValid.value
@@ -677,19 +715,13 @@ const canSubmit = computed(() => {
   return true
 })
 
-function unrepresentedRules(): Record<string, unknown> {
-  const controlled = new Set(['minLength', 'maxLength', 'min', 'max', 'integer', 'currency', 'decimals', 'allowNegative', 'calculation', 'relationEntity', 'multiple', 'unique', 'roles', 'defaultCurrentUser', 'options', 'columns', 'digits', 'prefix', 'prefixSource'])
-  return Object.fromEntries(Object.entries(props.initialField?.validationRules ?? {}).filter(([key]) => !controlled.has(key)))
-}
 function onSubmit() {
   if (props.readOnly || !canSubmit.value) return
   emit('submit', {
     name: form.name,
     label: form.label,
     dataType: form.dataType,
-    validationRules: props.fieldSource && props.initialField?.dataType === form.dataType
-      ? { ...unrepresentedRules(), ...validationRulesForSubmit() }
-      : validationRulesForSubmit(),
+    validationRules: { ...form.catalogRules, ...validationRulesForSubmit() },
     isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired,
     isOwnerField: form.dataType === 'user' && form.isOwnerField
   })
@@ -700,7 +732,6 @@ let returnFocus: HTMLElement | null = null
 const baseline = ref('')
 const closing = ref(false)
 watch(() => props.open, async open => {
-  if (!props.fieldSource) return
   if (open) {
     returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     baseline.value = JSON.stringify(form)
@@ -712,8 +743,8 @@ watch(() => props.open, async open => {
   }
 }, { flush: 'post' })
 async function requestClose() {
-  if ((props.fieldSource && props.saving) || closing.value) return
-  if (props.fieldSource && !props.readOnly && JSON.stringify(form) !== baseline.value) {
+  if (props.saving || closing.value) return
+  if (!props.readOnly && JSON.stringify(form) !== baseline.value) {
     closing.value = true
     const accepted = await confirmDiscard({ title: 'Descartar cambios del campo', message: 'Hay cambios sin guardar. ¿Quieres descartarlos?', confirmLabel: 'Descartar', destructive: true })
     closing.value = false
@@ -722,7 +753,7 @@ async function requestClose() {
   emit('close')
 }
 function onDialogKeydown(event: KeyboardEvent) {
-  if (!props.fieldSource || discardDialog.value) return
+  if (discardDialog.value) return
   if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void requestClose() }
   if (event.key !== 'Tab') return
   const items = Array.from(dialogElement.value?.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex="0"]') ?? [])
@@ -731,7 +762,7 @@ function onDialogKeydown(event: KeyboardEvent) {
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
 }
-onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus() })
+onBeforeUnmount(() => { if (props.open) returnFocus?.focus() })
 </script>
 
 <template>
@@ -748,7 +779,7 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
       </div>
 
       <p v-if="readOnly" class="px-5 pt-5 text-sm text-brand-text-secondary">Este campo ya existe; los campos existentes no se pueden cambiar desde el diseñador</p>
-      <fieldset :disabled="readOnly || (fieldSource && saving)" class="flex min-w-0 flex-col gap-5 border-0 p-5">
+      <fieldset :disabled="readOnly || saving || loadingUsage || usageUnavailable" class="flex min-w-0 flex-col gap-5 border-0 p-5">
         <!-- Pedido por el usuario (2026-09-01): el primer campo a escribir
              debe ser el nombre visible del campo, no el nombre tecnico - la
              logica de auto-generado (onFieldLabelInput -> slugifyIdentifier,
@@ -785,7 +816,7 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
 
         <div class="flex flex-col gap-2">
           <p class="text-[13px] font-semibold text-brand-text">Tipo de dato</p>
-          <div :data-tour="mode === 'create' ? 'manual-field-type' : undefined" class="grid grid-cols-3 gap-2.5">
+          <div v-if="typePickerOpen && !typeLocked" data-type-grid :data-tour="mode === 'create' ? 'manual-field-type' : undefined" class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             <button
               v-for="opt in TYPE_OPTIONS"
               :key="opt.value"
@@ -820,6 +851,15 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
               >{{ opt.label }}</span>
             </button>
           </div>
+          <div v-else class="flex items-center gap-3 rounded border border-brand-border bg-brand-bg p-3">
+            <component :is="chosenType.icon" class="h-5 w-5 shrink-0 text-brand-blue" />
+            <div class="min-w-0 flex-1"><p class="text-sm font-semibold text-brand-text">{{ form.dataType === 'multiselect' ? 'Multiselect' : chosenType.label }}</p><p class="text-xs text-brand-text-muted">{{ form.dataType === 'date' ? 'Fecha de calendario' : `Campo de tipo ${chosenType.label.toLowerCase()}` }}</p></div>
+            <button v-if="!typeLocked && !readOnly" data-change-type type="button" class="rounded px-2 py-1 text-sm font-semibold text-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="reopenTypes">Cambiar</button>
+          </div>
+          <p v-if="loadingUsage" role="status" class="text-xs text-brand-text-muted">Consultando uso del campo…</p>
+          <p v-else-if="usageUnavailable" class="text-xs text-brand-error-text">No se pudo comprobar el uso del campo.</p>
+          <p v-else-if="typeLocked" class="flex items-center gap-1.5 text-xs text-brand-text-muted"><LockKeyhole class="h-3.5 w-3.5" />Este campo ya tiene datos; el tipo no se puede cambiar</p>
+          <p v-if="typeChangeNotice" role="status" class="text-xs text-brand-warning-text">Al cambiar de tipo, las reglas del tipo anterior se descartarán.</p>
         </div>
 
         <!-- Pedido directo del usuario (2026-09-04): un campo Incremental es
@@ -898,78 +938,31 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
           <label class="flex items-center gap-2 text-sm"><input v-model="form.userDefaultCurrent" type="checkbox">Usuario actual al crear</label>
           <label class="text-sm">Roles permitidos (nombres o ID, separados por coma)<input v-model="form.userRoles" class="mt-1 w-full rounded border border-brand-border px-3 py-2" placeholder="Doctor, Técnico"></label>
         </div>
-        <div v-if="form.dataType === 'text'" class="flex flex-col gap-2">
-          <p class="text-[13px] font-semibold text-brand-text">Reglas de validación</p>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Longitud mínima</label>
-              <input v-model.number="form.minLength" type="number" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+        <div class="flex flex-col gap-2" data-validations>
+          <label for="add-validation" class="text-[13px] font-semibold text-brand-text">Validaciones</label>
+          <select id="add-validation" aria-label="Agregar validación" :disabled="catalogLoading || !availableRules.length" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="addValidation">
+            <option value="">{{ catalogLoading ? 'Cargando validaciones…' : 'Agregar validación' }}</option>
+            <option v-for="rule in availableRules" :key="rule.id" :value="rule.id">{{ rule.label }}</option>
+          </select>
+          <p v-if="catalogError" role="alert" class="text-xs text-brand-error-text">{{ catalogError }} <button type="button" class="underline" @click="ensureCatalogLoaded">Reintentar</button></p>
+          <div v-for="rule in selectedRules" :key="rule.id" :data-validation="rule.id" class="flex flex-col gap-1 border-b border-brand-border-light py-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <label :for="`validation-${rule.id}`" class="min-w-[120px] flex-1 text-xs font-semibold text-brand-text">{{ rule.label }}</label>
+              <div class="min-w-0 flex-[2]" :class="ruleErrors[rule.id] ? 'rounded ring-1 ring-brand-error-text' : ''">
+                <FieldValidationParameter :id="`validation-${rule.id}`" :label="rule.label" :parameter="rule.parameters[form.dataType]" v-model="form.catalogRules[rule.id]" :choices="ruleChoices(rule.id)" :object-fields="rule.id === 'eligibleFilter' ? eligibleFields : undefined" :invalid="Boolean(ruleErrors[rule.id])" :date="form.dataType === 'date' && ['min', 'max', 'default'].includes(rule.id)" />
+              </div>
+              <button type="button" :aria-label="`Quitar ${rule.label}`" class="rounded p-1 text-brand-text-muted hover:text-brand-error-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="removeValidation(rule.id)"><X class="h-4 w-4" /></button>
             </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Longitud máxima</label>
-              <input v-model.number="form.maxLength" type="number" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-            </div>
+            <p class="text-xs text-brand-text-muted">{{ rule.description }} <span v-if="ruleExample(rule.id)">Ejemplo: {{ ruleExample(rule.id) }}</span></p>
+            <p v-if="ruleErrors[rule.id]" :id="`validation-${rule.id}-error`" role="alert" class="text-xs text-brand-error-text">{{ ruleErrors[rule.id] }}</p>
           </div>
         </div>
-
-        <div v-else-if="form.dataType === 'number'" class="flex flex-col gap-3">
-          <p class="text-[13px] font-semibold text-brand-text">Reglas de validación</p>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Valor mínimo</label>
-              <input v-model.number="form.min" type="number" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Valor máximo</label>
-              <input v-model.number="form.max" type="number" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-            </div>
-          </div>
-          <label class="flex items-center gap-2 text-sm text-brand-text">
-            <input v-model="form.integer" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
-            Solo permitir números enteros
-          </label>
-        </div>
-
-        <div v-else-if="form.dataType === 'currency'" class="flex flex-col gap-3">
-          <div>
-            <p class="text-[13px] font-semibold text-brand-text">Formato monetario</p>
-            <p class="mt-0.5 text-xs text-brand-text-muted">Se mostrará con símbolo, separadores y centavos en formularios, listados y reportes.</p>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Moneda</label>
-              <select v-model="form.currency" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
-                <option value="tenant">Predeterminada de la empresa</option>
-                <option v-for="code in MONEY_CURRENCIES" :key="code" :value="code">{{ code }}</option>
-              </select>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Decimales</label>
-              <select v-model.number="form.currencyDecimals" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
-                <option :value="0">Sin decimales</option><option :value="2">2 decimales</option><option :value="3">3 decimales</option><option :value="4">4 decimales</option>
-              </select>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5"><label class="text-[13px] font-semibold text-brand-text">Monto mínimo</label><input v-model.number="form.min" type="number" step="any" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" /></div>
-            <div class="flex flex-col gap-1.5"><label class="text-[13px] font-semibold text-brand-text">Monto máximo</label><input v-model.number="form.max" type="number" step="any" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" /></div>
-          </div>
-          <label class="flex items-center gap-2 text-sm text-brand-text"><input v-model="form.allowNegative" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />Permitir montos negativos</label>
-          <div class="rounded border border-brand-border-light bg-brand-bg px-3 py-2 text-sm text-brand-text-secondary">Vista previa: {{ new Intl.NumberFormat('es-MX', { style: 'currency', currency: form.currency === 'tenant' ? 'MXN' : form.currency, minimumFractionDigits: form.currencyDecimals, maximumFractionDigits: form.currencyDecimals }).format(1250.5) }}</div>
-        </div>
-
-        <div v-else-if="form.dataType === 'date'" class="flex flex-col gap-2">
-          <p class="text-[13px] font-semibold text-brand-text">Reglas de validación</p>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Fecha mínima</label>
-              <input v-model="form.dateMin" type="date" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[13px] font-semibold text-brand-text">Fecha máxima</label>
-              <input v-model="form.dateMax" type="date" class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
-            </div>
-          </div>
+        <div v-if="form.dataType === 'date' && displayCapability" class="flex flex-col gap-1.5">
+          <label for="date-display" class="text-[13px] font-semibold text-brand-text">{{ displayCapability.label }}</label>
+          <select id="date-display" :value="form.catalogRules.display ?? 'absolute'" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.display = ($event.target as HTMLSelectElement).value">
+            <option v-for="value in displayCapability.parameters.date.values" :key="value" :value="value">{{ value === 'relative' ? 'Fecha relativa' : value === 'both' ? 'Relativa y exacta' : 'Fecha exacta' }}</option>
+          </select>
+          <p class="text-xs text-brand-text-muted">{{ displayCapability.description }}</p>
         </div>
 
         <!-- HU-ERD-74: entidad destino de un campo Relación - antes de esta
@@ -977,7 +970,7 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
              apuntaba (solo exigia forma de uuid). Opcional: un campo relation
              sin esto sigue guardando/validando igual, solo no participa de
              las "relaciones inversas" en Diseño del Detalle de otra entidad. -->
-        <div v-else-if="form.dataType === 'relation'" class="flex flex-col gap-1.5">
+        <div v-if="form.dataType === 'relation'" class="flex flex-col gap-1.5">
           <label class="text-[13px] font-semibold text-brand-text">Entidad relacionada</label>
           <select
             v-model="form.relationEntity"
@@ -1002,7 +995,8 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
               type="button"
               class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
               :class="form.dataType === 'select' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
-              @click="form.dataType = 'select'"
+              :disabled="typeLocked"
+              @click="changeSelectionType('select')"
             >
               Selección única
             </button>
@@ -1010,14 +1004,15 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
               type="button"
               class="flex-1 rounded px-3 py-1.5 text-[13px] font-semibold"
               :class="form.dataType === 'multiselect' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-text-secondary'"
-              @click="form.dataType = 'multiselect'"
+              :disabled="typeLocked"
+              @click="changeSelectionType('multiselect')"
             >
               Selección múltiple
             </button>
           </div>
 
           <div class="flex flex-col gap-2">
-            <div v-for="(opt, index) in form.options" :key="index" :class="fieldSource ? 'flex-wrap' : ''" class="flex items-center gap-2">
+            <div v-for="(opt, index) in form.options" :key="index" class="flex flex-wrap items-center gap-2">
               <GripVertical class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
               <span class="h-4 w-4 shrink-0 rounded-full" :class="colorDotClass(opt.color)" />
               <select
@@ -1037,6 +1032,8 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
               <input
                 type="text"
                 :value="opt.value"
+                :disabled="optionInUse(opt)"
+                :aria-label="`Valor interno de ${opt.label}`"
                 placeholder="valor"
                 class="w-[100px] shrink-0 rounded border border-brand-border px-2 py-[7px] font-mono text-xs text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 @input="onOptionValueInput(opt, ($event.target as HTMLInputElement).value)"
@@ -1049,7 +1046,8 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
                   <ChevronDown class="h-3.5 w-3.5" :stroke-width="1.75" />
                 </button>
               </div>
-              <button type="button" title="Quitar opción" class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-text-muted hover:bg-brand-error-bg hover:text-brand-error-text" @click="removeOption(index)">
+              <LockKeyhole v-if="optionInUse(opt)" class="h-4 w-4 text-brand-text-muted" aria-label="Opción en uso" />
+              <button type="button" :disabled="optionInUse(opt)" :title="optionInUse(opt) ? 'Opción en uso: no se puede quitar' : 'Quitar opción'" class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-text-muted hover:bg-brand-error-bg hover:text-brand-error-text" @click="removeOption(index)">
                 <X class="h-3.5 w-3.5" :stroke-width="1.75" />
               </button>
             </div>
@@ -1074,7 +1072,7 @@ onBeforeUnmount(() => { if (props.fieldSource && props.open) returnFocus?.focus(
 
           <div class="flex flex-col gap-3">
             <div v-for="(col, index) in form.columns" :key="index" class="flex flex-col gap-2 rounded border border-brand-border-light p-3">
-              <div :class="fieldSource ? 'flex-wrap' : ''" class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <GripVertical class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
                 <input
                   type="text"

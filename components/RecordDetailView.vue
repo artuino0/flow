@@ -439,6 +439,7 @@ async function changeState(to: string, label?: string) {
             <dt class="text-[11px] font-semibold leading-4 text-brand-text-secondary">{{ field.label }}</dt>
             <dd class="break-words text-[13px] font-medium leading-[18px] text-brand-text">
               <DynamicFileValue v-if="field.dataType === 'file' && typeof record?.customData[field.name] === 'string'" :file-id="String(record?.customData[field.name])" />
+              <FieldDateValue v-else-if="record && field.dataType === 'date'" :value="record.customData[field.name]" :rules="field.validationRules" />
               <template v-else>{{ record ? formatValue(field, record.customData[field.name]) : '—' }}</template>
             </dd>
           </div>

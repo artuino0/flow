@@ -242,8 +242,10 @@ function openRecord(recordId: string) {
             <div class="card-top">
               <div class="card-title-copy">
                 <DynamicFileValue v-if="config.titleField && isFileField(config.titleField) && fileId(record, config.titleField)" :file-id="fileId(record, config.titleField)" compact />
+                <FieldDateValue v-else-if="config.titleField && fieldsByName.get(config.titleField)?.dataType === 'date'" :value="record.customData[config.titleField]" :rules="fieldsByName.get(config.titleField)?.validationRules" />
                 <strong v-else>{{ config.titleField ? displayValue(record, config.titleField) : record.id.slice(0, 8) }}</strong>
                 <DynamicFileValue v-if="config.secondaryFields[0] && isFileField(config.secondaryFields[0]) && fileId(record, config.secondaryFields[0])" :file-id="fileId(record, config.secondaryFields[0])" compact />
+                <FieldDateValue v-else-if="config.secondaryFields[0] && fieldsByName.get(config.secondaryFields[0])?.dataType === 'date'" :value="record.customData[config.secondaryFields[0]]" :rules="fieldsByName.get(config.secondaryFields[0])?.validationRules" />
                 <span v-else-if="config.secondaryFields[0]">{{ displayValue(record, config.secondaryFields[0]) }}</span>
               </div>
               <button type="button" class="card-menu" aria-label="Acciones del registro" @click.stop>
@@ -255,7 +257,7 @@ function openRecord(recordId: string) {
               <div v-for="field in config.secondaryFields.slice(1, 3)" :key="field">
                 <component :is="fieldIcon(field)" :size="12" :stroke-width="1.75" />
                 <dt class="sr-only">{{ fieldLabel(field) }}</dt>
-                <dd><DynamicFileValue v-if="isFileField(field) && fileId(record, field)" :file-id="fileId(record, field)" compact /><template v-else>{{ displayValue(record, field) }}</template></dd>
+                <dd><DynamicFileValue v-if="isFileField(field) && fileId(record, field)" :file-id="fileId(record, field)" compact /><FieldDateValue v-else-if="fieldsByName.get(field)?.dataType === 'date'" :value="record.customData[field]" :rules="fieldsByName.get(field)?.validationRules" /><template v-else>{{ displayValue(record, field) }}</template></dd>
               </div>
             </dl>
 

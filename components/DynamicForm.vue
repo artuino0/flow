@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // HU-ERD-23: Form Builder dinamico - renderiza un input por cada entity_field
 // segun su dataType/validationRules, sin desarrollo especifico por formulario.
-// Tipos soportados: text (+ enum), number, boolean, date, json, tabla
+// Tipos soportados: text (catálogo guiado), number, boolean, date, json, tabla
 // (ERD-72, delegado a DynamicTableField.vue), select/multiselect (ERD-73,
 // delegado a DynamicSelectField.vue), relation (ERD-7/17, buscador con
 // autocomplete delegado a DynamicRelationField.vue - ver comentario largo
@@ -9,6 +9,7 @@
 // DynamicFileField.vue) - todos demasiado complejos (dropdown propio, chips,
 // autocomplete, subida de archivos) para vivir inline en este archivo.
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
+import { normalizeClientText } from '~/utils/validateFieldValue'
 import { resolveFieldValue } from '~/utils/fieldValue'
 
 const props = defineProps<{
@@ -127,23 +128,9 @@ defineExpose({ validateAll })
         <span v-if="field.isRequired" class="text-brand-error-text">*</span>
       </label>
 
-      <!-- text con enum -> select -->
-      <select
-        v-if="field.dataType === 'text' && Array.isArray(field.validationRules?.enum)"
-        :id="`field-${field.name}`"
-        :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
-        class="w-full rounded border px-3 py-[9px] text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
-        :value="displayValue(field.name)"
-        @change="onInput(field, ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="" disabled>Seleccionar...</option>
-        <option v-for="opt in (field.validationRules!.enum as string[])" :key="opt" :value="opt">{{ opt }}</option>
-      </select>
-
       <!-- text simple -->
       <input
-        v-else-if="field.dataType === 'text'"
+        v-if="field.dataType === 'text'"
         :id="`field-${field.name}`"
         type="text"
         :disabled="disabled || disabledFields?.includes(field.name) || (fixedValues && field.name in fixedValues)"
@@ -152,6 +139,7 @@ defineExpose({ validateAll })
         :class="errors[field.name] ? 'border-brand-error-text' : 'border-brand-border focus:border-brand-blue'"
         :value="displayValue(field.name)"
         @input="onInput(field, ($event.target as HTMLInputElement).value)"
+        @blur="field.dataType === 'text' && onInput(field, normalizeClientText(displayValue(field.name), field.validationRules))"
       />
 
       <!-- number -->
