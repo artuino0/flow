@@ -446,6 +446,26 @@ describe('diseñador de módulos (Postgres real, IA simulada)', () => {
     expect(result.message).not.toContain('Omití la asociación')
     expect(result.warningItems).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'auto', text: expect.stringContaining('Orden cliente') })]))
   })
+  it('ERD-160: la llamada de revisión mantiene el cobro habitual y persiste sus avisos', async () => {
+    await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
+    const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }
+    const design = await proposal('Prospectos', 'prospectos')
+    design.modules.at(-1)!.fields = [{ name: 'telefono_crm160', label: 'Teléfono', dataType: 'text' }]
+    const initialValidation = await (await import('../../server/utils/blueprint/validate')).validateBlueprint(tenantId, design)
+    expect(initialValidation.errors).toEqual([expect.objectContaining({ code: 'plan_limit' })])
+    aiReply({ message: 'CRM', blueprint: design })
+    aiReply({ message: 'Tablero preparado', mode: 'patch', operations: [{ op: 'addField', slug: 'prospectos', field: { name: 'etapa', label: 'Etapa', dataType: 'select', validationRules: { options: [{ value: 'nuevo', label: 'Nuevo' }, { value: 'ganado', label: 'Ganado' }] } } }] })
+    const result = await (await import('../../server/utils/moduleDesigner/generate')).generateDesign(tenantId, session.id, 'Embudo de Prospectos')
+    expect(result).toMatchObject({ review: { extraCall: true, adopted: true, autoFixes: 0 } })
+    expect(result.blueprint.modules.at(-1)!.fields.at(-1)?.dataType).toBe('select')
+    expect((await (await import('../../server/utils/blueprint/validate')).validateBlueprint(tenantId, result.blueprint)).errors).toEqual(initialValidation.errors)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const saved = await sessions.findSession(tenantId, session.id)
+    expect(saved.creditsConsumed).toBe(2)
+    expect(saved.messages.at(-1)?.warningItems).toEqual(result.warningItems)
+    expect(await admin`SELECT kind, credits, input_tokens, output_tokens FROM ai_credit_ledger WHERE session_id = ${session.id}`).toMatchObject([{ kind: 'generate', credits: 2, input_tokens: 100, output_tokens: 200 }])
+  })
+
   it('ERD-148: cobra el éxito degradado y entrega avisos al cliente y al historial', async () => {
     await admin`INSERT INTO ai_credit_packages (tenant_id, quantity, remaining, origin) VALUES (${tenantId}, 2, 2, 'manual')`
     const session = await sessions.createModuleDesignSession(tenantId, userId) as { id: string }

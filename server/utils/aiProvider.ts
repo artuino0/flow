@@ -238,7 +238,7 @@ export async function completeDesignerJson(params: AiCompletionParams): Promise<
   const apiKey = provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY
   if (!apiKey) throw new AiProviderNotConfiguredError(`AI_PROVIDER=${provider} requiere ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} en el archivo .env.`)
   const model = process.env.AI_DESIGNER_MODEL?.trim() || (provider === 'anthropic' ? process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5' : process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini')
-  const timeoutMs = getDesignerTimeoutMs()
+  const timeoutMs = Math.min(getDesignerTimeoutMs(), params.timeoutMs ?? getDesignerTimeoutMs())
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   // El presupuesto total (timeoutMs) cubre todos los intentos y sus esperas.

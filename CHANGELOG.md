@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.133.0] - 2026-10-02
+#### [feature]
+- [ERD-160](https://dydasoftware.atlassian.net/browse/ERD-160) - El diseñador de módulos con IA revisa su propio plano antes de mostrártelo para evitar estructuras sin sentido, como un catálogo que ningún campo usa o el mismo concepto repetido como catálogo y como Select (por ejemplo, las etapas de un embudo). Lo que se puede corregir con seguridad se corrige y se te avisa; si algo requiere criterio, la IA hace una única corrección dirigida y solo se adopta si el plano mejora. Además, el diseñador ahora sabe desde el primer intento que las etapas y estados van como Select o flujo de estados y que un catálogo solo se crea si algún campo lo usa. La revisión no cuesta créditos extra.
+
 ### [0.132.2] - 2026-10-02
 #### [bug]
 - [ERD-159](https://dydasoftware.atlassian.net/browse/ERD-159) - El diseñador de módulos con IA ya no llena el chat de avisos: los ajustes automáticos que no cambian el resultado (por ejemplo, asociaciones que ya existían como campo de relación) dejan de mostrarse, y el resto se agrupa por tema, con contador y plegado: «Quedó diferente a lo que pediste», «Todavía no disponible en Flow» (cálculos con fechas, avisos por tiempo, reglas entre módulos, dashboards propios), «Se configura en otra parte de Flow» (Automatización, Reportes, Tablero y las vistas del listado, que no se presentan como una pérdida) y «Te toca a ti». Los avisos repetidos de un mismo tema se funden en uno sin perder ningún elemento.

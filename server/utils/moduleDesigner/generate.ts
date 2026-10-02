@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
 import { moduleDesignSessions } from '~/server/db/schema'
-import { AiProviderUnavailableError, completeDesignerJson, type DesignerCompletion } from '~/server/utils/aiProvider'
+import { AiProviderUnavailableError, completeDesignerJson, getDesignerTimeoutMs, type DesignerCompletion } from '~/server/utils/aiProvider'
 import { exportBlueprint } from '~/server/utils/blueprint/export'
 import { validateBlueprint } from '~/server/utils/blueprint/validate'
 import { diffBlueprint } from '~/server/utils/blueprint/diff'
@@ -21,11 +21,12 @@ import type { Blueprint } from '~/server/utils/blueprint/schema'
 import type { BlueprintValidationError } from '~/server/utils/blueprint/validate'
 import { degradeDesignerFields } from './degrade'
 import { logger } from '~/server/utils/logger'
-import { designerCapabilityWarnings, designerCapabilityWarningItems, designerClassifiedWarningItem, DESIGNER_SCOPE_PROMPT } from './capabilities'
+import { designerCapabilityWarnings, designerCapabilityWarningItems, designerClassifiedWarningItem, designerStructureCriteriaPrompt, DESIGNER_SCOPE_PROMPT } from './capabilities'
 import { groupDesignerWarningItems, isDesignerAutoWarning, type DesignerWarningItem } from '~/utils/designerWarnings'
 import { degradeDesignerPatchFields, designerPatchFieldErrors } from './patchFields'
 import { designerValidationLog } from './validationLog'
 import { designerOmissionsSchema, safeDesignerOmissions, extractDesignerOmissions, designerOmissionWarnings, designerCoverageWarnings, type DesignerOmission } from './coverage'
+import { autoFixDesignerReview, reviewDesignerBlueprint, reviewDoesNotWorsen, reviewPatchInScope, type DesignerReviewSummary } from './review'
 
 export const WORKFLOW_EXAMPLE = `Ejemplo válido de encabezado, partidas y flujo (dentro de modules; agrega version, summary y associations al plano): [{"ref":"pedidos","action":"create","kind":"hecho","name":"Pedidos","slug":"pedidos","fields":[{"name":"folio","label":"Folio","dataType":"text"},{"name":"cliente","label":"Cliente","dataType":"text"},{"name":"estado","label":"Estado","dataType":"select","validationRules":{"options":[{"value":"recibido","label":"Recibido"},{"value":"confirmado","label":"Confirmado"}]}},{"name":"total","label":"Total","dataType":"currency","validationRules":{"calculation":{"kind":"rollup","aggregate":"sum","sourceEntity":"partidas-pedido","relationField":"pedido","valueField":"importe"}}}],"lines":[{"childRef":"partidas-pedido","relationField":"pedido","totals":["importe"]}],"workflow":{"enabled":true,"field":"estado","initial":"recibido","states":{"recibido":{"locked":false,"editableFields":[]},"confirmado":{"locked":true,"editableFields":[]}},"transitions":[{"from":"recibido","to":"confirmado","label":"Confirmar","roles":"all"}],"rules":[{"type":"required","mode":"block","when":{"to":"confirmado"},"fields":["cliente"],"message":"Captura el cliente"},{"type":"aggregate","mode":"block","when":{"to":"confirmado"},"lineEntity":"partidas-pedido","relationField":"pedido","aggregate":"count","operator":">=","value":1,"message":"Agrega al menos una partida"}]}},{"ref":"partidas-pedido","action":"create","kind":"hecho","name":"Partidas de pedido","slug":"partidas-pedido","fields":[{"name":"pedido","label":"Pedido","dataType":"relation","validationRules":{"relationEntity":"pedidos"}},{"name":"cantidad","label":"Cantidad","dataType":"number"},{"name":"precio","label":"Precio","dataType":"currency"},{"name":"importe","label":"Importe","dataType":"currency","validationRules":{"calculation":{"kind":"formula","operator":"multiply","leftField":"cantidad","rightField":"precio"}}}]}].`
 
@@ -41,6 +42,8 @@ En cada módulo o catálogo nuevo incluye "icon" con un nombre Lucide PascalCase
 Cada campo user ya representa un vínculo con Usuarios del Sistema. Un perfil de doctor se vincula al usuario exclusivamente con un campo user y validationRules.unique=true; nunca repitas ese vínculo mediante una asociación. No existen asociaciones de un módulo consigo mismo: sourceRef y targetRef siempre deben ser distintos.
 
 ${validationCapabilitiesPrompt()}
+
+${designerStructureCriteriaPrompt()}
 
 ${WORKFLOW_EXAMPLE}
 En ese ejemplo, Pedidos lleva "icon":"ShoppingCart" y Partidas de pedido lleva "icon":"ListOrdered".
@@ -71,6 +74,7 @@ export async function runDesignerGeneration(options: {
   contextMode?: 'full' | 'compact'
 }) {
   const { current, blueprint, conversation, instruction, validate } = options
+  const reviewDeadline = Date.now() + getDesignerTimeoutMs()
   const complete = options.complete ?? completeDesignerJson
   const trusted = trustedBlueprintStrings(current)
   const currentBlueprint = blueprint as Blueprint
@@ -208,6 +212,50 @@ export async function runDesignerGeneration(options: {
     }
   }
   const valid = Boolean(result?.normalized && errors.every(error => error.message.startsWith('Duplicado de')))
+  let review: DesignerReviewSummary | undefined
+  const reviewItems: DesignerWarningItem[] = []
+  if (valid && result?.normalized) {
+    const initialFindings = reviewDesignerBlueprint(result.normalized, current, instruction)
+    const fixed = await autoFixDesignerReview(result.normalized, current, instruction, validate)
+    if (fixed.validation) { fixed.validation.merges.push(...result.merges); result = fixed.validation; proposal = fixed.blueprint; appliedPatch = null }
+    review = { rules: [...new Set(initialFindings.map(finding => finding.rule))], autoFixes: fixed.warnings.length, extraCall: false, adopted: false }
+    reviewItems.push(...fixed.warnings.map(text => ({ kind: 'different' as const, text })))
+    const actionable = fixed.findings.filter(finding => finding.severity === 'warning' && !finding.fix)
+    const remainingMs = reviewDeadline - Date.now()
+    let unavailable = false
+    if (actionable.length && remainingMs > 0) {
+      review.extraCall = true
+      try {
+        const completion = await complete({ system: `${DESIGNER_SYSTEM_PROMPT}\nRevisión dirigida: responde exclusivamente en modo patch. Corrige solo findings: añade el Select de estado faltante o actualiza únicamente el campo indicado. No elimines módulos ni campos, no cambies tipos automáticamente, no modifiques otras piezas. Declara en omissions lo que no puedas resolver.`, prompt: JSON.stringify({ currentBlueprint: fixed.blueprint, findings: actionable }), timeoutMs: remainingMs })
+        usage.inputTokens += completion.inputTokens
+        usage.outputTokens += completion.outputTokens
+        usage.model = completion.model
+        const answer = extractDesignerOmissions(completion.value)
+        const parsed = designerPatchSchema.safeParse(answer)
+        if (Date.now() <= reviewDeadline && parsed.success && !containsUnsafeBlueprintText(answer, trusted) && reviewPatchInScope(parsed.data, actionable, fixed.blueprint)) {
+          const applied = applyDesignerPatch(fixed.blueprint, { ...parsed.data, omissions: safeDesignerOmissions(parsed.data.omissions) }, current)
+          if (applied.blueprint && !applied.errors.length && !containsUnsafeBlueprintText(applied.blueprint, trusted)) {
+            const checked = await validate(applied.blueprint)
+            const previousLimits = new Set(result!.errors.filter(error => error.code === 'plan_limit').map(error => `${error.path}:${error.message}`))
+            const safeErrors = checked.errors.every(error => error.code === 'plan_limit' && previousLimits.has(`${error.path}:${error.message}`))
+            if (checked.normalized && safeErrors && !checked.merges.length && reviewDoesNotWorsen(fixed.blueprint, checked.normalized, current, instruction)) {
+              checked.merges.push(...result!.merges)
+              result = checked
+              proposal = checked.normalized
+              appliedPatch = null
+              omissions.push(...safeDesignerOmissions(parsed.data.omissions))
+              review.adopted = true
+              reviewItems.push({ kind: 'different', text: 'Revisé la estructura y corregí los hallazgos del tablero o las copias de datos antes de proponértela.' })
+            }
+          }
+        }
+      } catch { unavailable = true }
+    }
+    const finalFindings = reviewDesignerBlueprint(result!.normalized!, current, instruction)
+    reviewItems.push(...finalFindings.map(finding => ({ kind: finding.severity === 'info' && !finding.fix ? 'info' as const : 'different' as const, text: finding.message })))
+    warnings.push(...reviewItems.map(item => item.text))
+    logger.info('designer_review', { rules: review.rules, autoFixes: review.autoFixes, extraCall: review.extraCall, adopted: review.adopted, discarded: review.extraCall && !review.adopted, unavailable })
+  }
   warnings.push(...capabilityWarnings)
   warnings.push(...designerOmissionWarnings(omissions))
   if (valid && result?.normalized) warnings.push(...designerCoverageWarnings(instruction, result.normalized, omissions, warnings))
@@ -215,11 +263,12 @@ export async function runDesignerGeneration(options: {
   if (automaticWarnings.length || silentIconAdjustments) logger.info('designer_validation', { autoAdjustments: automaticWarnings.length + silentIconAdjustments, types: [...new Set([...automaticWarnings.map(text => text.startsWith('Omití la asociación') ? 'redundant-association' : 'icon-normalization'), ...(silentIconAdjustments ? ['icon-normalization'] : [])])] })
   const omissionWarnings = designerOmissionWarnings(omissions)
   const warningItems = groupDesignerWarningItems([
-    ...warnings.filter(text => !capabilityWarnings.includes(text) && !omissionWarnings.includes(text)).map((text): DesignerWarningItem => ({ kind: isDesignerAutoWarning(text) ? 'auto' : 'different', text })),
+    ...warnings.filter(text => !capabilityWarnings.includes(text) && !omissionWarnings.includes(text) && !reviewItems.some(item => item.text === text)).map((text): DesignerWarningItem => ({ kind: isDesignerAutoWarning(text) ? 'auto' : 'different', text })),
+    ...reviewItems,
     ...designerCapabilityWarningItems(instruction),
     ...omissions.map(({ item, reason, kind }) => designerClassifiedWarningItem(kind ?? 'different', item, reason))
   ])
-  return { valid, result, message, explanation: limitDesignerExplanation(explanation || message), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings, warningItems }
+  return { valid, result, message, explanation: limitDesignerExplanation(explanation || message), errors, usage, firstValid, repairs, proposal, patch: appliedPatch, warnings, warningItems, review }
 }
 
 export async function generateDesign(tenantId: string, sessionId: string, instruction: string) {
@@ -266,7 +315,7 @@ export async function generateDesign(tenantId: string, sessionId: string, instru
     const credits = await aiCreditBalance(tenantId)
     const finalized = await finishAiCredits(tenantId, sessionId, allocations, usage, true, { blueprint: normalized, messages, version: session.version + 1 })
     if (!finalized) throw createError({ statusCode: 409, statusMessage: 'La generación venció y sus créditos ya fueron devueltos. Puedes volver a intentarlo.' })
-    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, warnings: generated.warnings, warningItems: generated.warningItems, diff, merges, credits }
+    return { message: chatMessage, explanation: finalExplanation, blueprint: normalized, patch: generated.patch, warnings: generated.warnings, warningItems: generated.warningItems, review: generated.review, diff, merges, credits }
   } catch (error) {
     await finishAiCredits(tenantId, sessionId, allocations, usage, false)
     // Proveedor saturado/caído tras los reintentos: 503 recuperable en vez de 500 genérico (HU-ERD-109b).

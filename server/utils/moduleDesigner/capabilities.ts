@@ -1,4 +1,11 @@
 import { designerWarningTopic, isUnavailableDesignerView, type DesignerWarningItem, type DesignerWarningKind } from '~/utils/designerWarnings'
+import { FIELD_VALIDATIONS } from '~/server/utils/fieldValidations/registry'
+
+/** El tipo de estado se toma del registro de opciones, sin otra lista de parámetros. */
+export function designerStructureCriteriaPrompt() {
+  const stateType = Object.keys(FIELD_VALIDATIONS.find(rule => rule.id === 'options')?.variants ?? {}).find(type => type === 'select')
+  return `Criterio de estructura: etapas, estados y estatus de un proceso se modelan como ${stateType ?? 'Select'} o flujo de estados, nunca como catálogo. Un catálogo nuevo solo se crea si algún campo relation lo va a usar. No dupliques el mismo concepto como catálogo y como Select. Si el usuario pide un catálogo que no se usa, decláralo en omissions y explica la representación elegida; si lo pide explícitamente independiente, consérvalo.`
+}
 
 // Nombres verificados en flowApps/AppNav, páginas y ModuleListLayoutCard; no son destinos inventados.
 export const DESIGNER_SCOPE_PROMPT = `El diseñador crea estructura, no configura el resto de Flow. Etiqueta elsewhere lo que se hace en otra sección existente: vistas Tabla, Kanban y Calendario en Editar módulo > Listado de registros; reportes en Reportes; avisos por eventos crear, actualizar o borrar en Automatización (navegación Flujos); el resumen operativo existente y sus accesos rápidos en Tablero. Tablero no es un editor de dashboards propios y no hay vistas guardadas con nombre: esas peticiones son unsupported. También son unsupported los avisos o disparadores programados por tiempo, los cálculos con fecha actual o entre fechas y las reglas condicionales entre módulos. No presentes elsewhere como pérdida ni uses «No quedó completo». No inventes secciones, rutas ni capacidades.`

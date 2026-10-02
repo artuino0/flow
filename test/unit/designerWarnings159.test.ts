@@ -84,16 +84,16 @@ describe('ERD-159: avisos del diseñador', () => {
     expect(designerCapabilityWarningItems('Avisos al crear registros y recordatorios programados por tiempo').map(item => item.kind)).toEqual(['unsupported', 'elsewhere'])
   })
 
-  it('cuenta los alias silenciosos de iconos sin añadir avisos ni cambiar el resultado', async () => {
+  it('cuenta alias silenciosos sin avisos de iconos y conserva la nota del catálogo huérfano', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       const blueprint: Blueprint = { ...empty, modules: [{ ref: 'clientes', slug: 'clientes', name: 'Clientes', action: 'create', kind: 'dimension', icon: 'shopping-cart', fields: [] }] }
       const result = await runDesignerGeneration({ current: empty, blueprint: empty, conversation: [], instruction: 'Clientes', complete: async () => ({ value: { message: 'CRM', blueprint }, model: 'simulado', inputTokens: 1, outputTokens: 1 }), validate: input => validateBlueprintAgainstSnapshot(input, empty) })
       expect(result.valid).toBe(true)
-      expect(result.warnings).toEqual([])
-      expect(result.warningItems).toEqual([])
+      expect(result.warnings).toEqual(['Creé «Clientes», pero ningún campo lo usa.'])
+      expect(result.warningItems).toEqual([{ kind: 'info', text: 'Creé «Clientes», pero ningún campo lo usa.' }])
       expect(result.result?.normalized?.modules[0]?.icon).toBe('ShoppingCart')
-      expect(log.mock.calls.map(call => JSON.parse(String(call[0])))).toEqual([expect.objectContaining({ level: 'info', autoAdjustments: 1, types: ['icon-normalization'] })])
+      expect(log.mock.calls.map(call => JSON.parse(String(call[0])))).toEqual([expect.objectContaining({ message: 'designer_review', level: 'info', rules: ['orphan-catalog'], autoFixes: 0, extraCall: false }), expect.objectContaining({ level: 'info', autoAdjustments: 1, types: ['icon-normalization'] })])
     } finally { log.mockRestore() }
   })
 
@@ -180,7 +180,7 @@ describe('ERD-159: avisos del diseñador', () => {
       expect(result.explanation).not.toMatch(/Omití|icono genérico|Ajuste automático/)
       expect(designerWarningGroups(result.warningItems).map(group => group.count)).toEqual([4, 1, 1])
       const logs = log.mock.calls.map(call => JSON.parse(String(call[0])))
-      expect(logs).toEqual([expect.objectContaining({ message: 'designer_validation', level: 'info', autoAdjustments: 3, types: ['icon-normalization', 'redundant-association'] })])
+      expect(logs).toEqual([expect.objectContaining({ message: 'designer_review', level: 'info', rules: [], autoFixes: 0, extraCall: false }), expect.objectContaining({ message: 'designer_validation', level: 'info', autoAdjustments: 3, types: ['icon-normalization', 'redundant-association'] })])
       expect(JSON.stringify(logs)).not.toContain('privado')
       expect(complete).toHaveBeenCalledTimes(1)
       expect(complete.mock.calls[0]![0].system).toContain('Nunca declares omitido algo ya cubierto')

@@ -1,4 +1,5 @@
 import type { DesignerWarningItem } from '~/utils/designerWarnings'
+import type { DesignerReviewSummary } from '~/server/utils/moduleDesigner/review'
 
 import type { Blueprint } from '~/server/utils/blueprint/schema'
 import type { DesignerDiff, DesignerPositions } from '~/utils/designerGraph'
@@ -16,7 +17,7 @@ export interface DesignerSession {
 }
 export interface CreditBalance { included: number | null; used: number; includedRemaining: number | null; packages: number }
 export interface DesignerValidation { normalized: Blueprint | null; errors: Array<{ path: string; message: string; code?: string }>; diff: DesignerDiff; merges: DesignerDiff['merges'] }
-export interface DesignerGeneration { message: string; explanation: string; blueprint: Blueprint; warnings?: string[]; warningItems?: DesignerWarningItem[]; diff: DesignerDiff; merges: DesignerDiff['merges']; credits: CreditBalance; session?: DesignerSession }
+export interface DesignerGeneration { message: string; explanation: string; blueprint: Blueprint; warnings?: string[]; warningItems?: DesignerWarningItem[]; review?: DesignerReviewSummary; diff: DesignerDiff; merges: DesignerDiff['merges']; credits: CreditBalance; session?: DesignerSession }
 export interface DesignerApply { modules: Array<{ id: string; slug: string }>; fields: Array<{ entityId: string; name: string }>; associations: string[]; layouts: string[]; workflows: string[] }
 export interface DesignerApplication { id: string; createdAt: string; userId: string | null; userName: string | null; summary: string; modules: number; fields: number; associations: number; undoneAt: string | null; canUndo: boolean; reason: string | null; warnings: string[] }
 export interface DesignerNavigation { layout: NavigationLayout; entities: Array<{ id: string; slug: string }> }
