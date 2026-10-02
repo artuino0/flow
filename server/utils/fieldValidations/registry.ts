@@ -46,7 +46,8 @@ function relativeDay(days: unknown, context: ValidationContext) {
 
 // Un id por capacidad. Los parámetros que dependen del tipo viven en variantes de esa misma capacidad.
 export const FIELD_VALIDATIONS: Capability[] = [
-  { id: 'display', label: 'Mostrar como', description: 'Presentación de Fecha: exacta, relativa o ambas; no modifica el valor, los filtros ni la validación.', variants: { date: variant(z.enum(['absolute', 'relative', 'both']).default('absolute'), 'relative', '2026-10-01') }, check: metadata },
+  { id: 'dateFormat', label: 'Formato de fecha', description: 'Fecha siempre visible: corta (01/10/2026), intermedia (1 oct 2026) o larga (1 de octubre de 2026); no modifica el dato guardado.', variants: { date: variant(z.enum(['short', 'medium', 'long']).default('short'), 'medium', '2026-10-01') }, check: metadata },
+  { id: 'showRelative', label: 'Mostrar tiempo relativo', description: 'Agrega junto a la fecha cuánto pasó o cuánto falta respecto a hoy, por ejemplo hace 12 días o en 1 mes.', variants: { date: variant(z.boolean().default(false), true, '2026-10-01') }, check: metadata },
   { id: 'minLength', label: 'Longitud mínima', description: 'Cantidad mínima de caracteres.', variants: { text: variant(count, 2, 'Ana') }, check: (v, p) => String(v).length >= Number(p) },
   { id: 'maxLength', label: 'Longitud máxima', description: 'Cantidad máxima de caracteres.', variants: { text: variant(count, 100, 'Ana') }, check: (v, p) => String(v).length <= Number(p) },
   { id: 'format', label: 'Formato guiado', description: 'Plantilla fija revisada; no admite expresiones personalizadas.', variants: { text: variant(z.enum(TEXT_FORMATS.map(f => f.id) as [string, ...string[]]), 'email', 'ana@example.com') }, check: (v, p) => validateTextFormat(String(p), String(v)) },

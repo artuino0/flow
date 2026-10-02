@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import FieldValidationParameter from '~/components/FieldValidationParameter.vue'
+import FieldDateValue from '~/components/FieldDateValue.vue'
+import { datePresentation, datePreviewDays, formattedFieldDate, type FieldDateFormat } from '~/utils/relativeDate'
 import { loadFieldValidationCatalog, parameterError, STRUCTURAL_RULES, type FieldValidationCatalog } from '~/utils/fieldValidationCatalog'
 import { collectFieldRefs, parseExpression } from '~/utils/calcExpression'
 // HU-ERD-70: modal "Agregar/Editar campo" - sigue Screen/Editor de Campos -
@@ -364,11 +366,33 @@ async function ensureCatalogLoaded() {
   catch { catalogError.value = 'No se pudo cargar el catálogo de validaciones. Intenta de nuevo.' }
   finally { catalogLoading.value = false }
 }
-const applicableRules = computed(() => catalog.value?.validations.filter(r => r.types.includes(form.dataType) && !STRUCTURAL_RULES.has(r.id) && r.id !== 'display') ?? [])
+const applicableRules = computed(() => catalog.value?.validations.filter(r => r.types.includes(form.dataType) && !STRUCTURAL_RULES.has(r.id) && !['dateFormat', 'showRelative'].includes(r.id)) ?? [])
 const selectedRules = computed(() => applicableRules.value.filter(r => r.id in form.catalogRules))
 const availableRules = computed(() => applicableRules.value.filter(r => !(r.id in form.catalogRules)))
 const dateFields = computed(() => (props.existingFields ?? []).filter(f => f.dataType === 'date' && f.name !== form.name))
-const displayCapability = computed(() => catalog.value?.validations.find(r => r.id === 'display'))
+const dateFormatCapability = computed(() => catalog.value?.validations.find(r => r.id === 'dateFormat'))
+const { user: dateUser } = useAuth()
+const previewNow = ref(new Date())
+const previewZone = computed(() => dateUser.value?.timezone ?? 'America/Mexico_City')
+const previewDays = computed(() => datePreviewDays(previewNow.value, previewZone.value))
+const presentation = computed(() => datePresentation(form.catalogRules))
+const dateFormatLabels: Record<string, string> = { short: 'Corta', medium: 'Intermedia', long: 'Larga' }
+const dateHelpOpen = ref(false)
+const dateHelpRoot = ref<HTMLElement | null>(null)
+const dateHelpButton = ref<HTMLButtonElement | null>(null)
+function closeDateHelp() {
+  if (!dateHelpOpen.value) return
+  dateHelpOpen.value = false
+  dateHelpButton.value?.focus()
+}
+function onDateHelpOutside(event: MouseEvent) {
+  if (event.target instanceof Node && !dateHelpRoot.value?.contains(event.target)) closeDateHelp()
+}
+watch(dateHelpOpen, open => {
+  if (open) document.addEventListener('click', onDateHelpOutside, true)
+  else document.removeEventListener('click', onDateHelpOutside, true)
+})
+watch(() => form.dataType, () => { dateHelpOpen.value = false })
 const ruleErrors = computed(() => Object.fromEntries(selectedRules.value.map(r => [r.id, parameterError(r.parameters[form.dataType], form.catalogRules[r.id])])))
 function addValidation(event: Event) {
   const select = event.target as HTMLSelectElement
@@ -414,6 +438,12 @@ watch(
     form.userRoles = Array.isArray(rules.roles) ? rules.roles.join(', ') : ''
     form.userDefaultCurrent = rules.defaultCurrentUser === true
     form.catalogRules = Object.fromEntries(Object.entries(JSON.parse(JSON.stringify(rules)) as Record<string, unknown>).filter(([id]) => !STRUCTURAL_RULES.has(id)))
+    if (form.dataType === 'date' && rules.display !== undefined) {
+      Object.assign(form.catalogRules, datePresentation(rules))
+      delete form.catalogRules.display
+    }
+    previewNow.value = new Date()
+    dateHelpOpen.value = false
     typePickerOpen.value = !field
     typeChangeNotice.value = false
     void ensureCatalogLoaded()
@@ -717,11 +747,16 @@ const canSubmit = computed(() => {
 
 function onSubmit() {
   if (props.readOnly || !canSubmit.value) return
+  const rules = { ...form.catalogRules, ...validationRulesForSubmit() }
+  if (form.dataType === 'date') {
+    Object.assign(rules, presentation.value)
+    delete rules.display
+  }
   emit('submit', {
     name: form.name,
     label: form.label,
     dataType: form.dataType,
-    validationRules: { ...form.catalogRules, ...validationRulesForSubmit() },
+    validationRules: rules,
     isRequired: (form.dataType === 'number' || form.dataType === 'currency') && form.calculationMode !== 'manual' ? false : form.isRequired,
     isOwnerField: form.dataType === 'user' && form.isOwnerField
   })
@@ -739,6 +774,7 @@ watch(() => props.open, async open => {
     dialogElement.value?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus()
   } else {
     await nextTick()
+    dateHelpOpen.value = false
     returnFocus?.focus()
   }
 }, { flush: 'post' })
@@ -754,6 +790,7 @@ async function requestClose() {
 }
 function onDialogKeydown(event: KeyboardEvent) {
   if (discardDialog.value) return
+  if (event.key === 'Escape' && dateHelpOpen.value) { event.preventDefault(); event.stopPropagation(); closeDateHelp(); return }
   if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void requestClose() }
   if (event.key !== 'Tab') return
   const items = Array.from(dialogElement.value?.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex="0"]') ?? [])
@@ -762,7 +799,7 @@ function onDialogKeydown(event: KeyboardEvent) {
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
 }
-onBeforeUnmount(() => { if (props.open) returnFocus?.focus() })
+onBeforeUnmount(() => { document.removeEventListener('click', onDateHelpOutside, true); if (props.open) returnFocus?.focus() })
 </script>
 
 <template>
@@ -957,12 +994,29 @@ onBeforeUnmount(() => { if (props.open) returnFocus?.focus() })
             <p v-if="ruleErrors[rule.id]" :id="`validation-${rule.id}-error`" role="alert" class="text-xs text-brand-error-text">{{ ruleErrors[rule.id] }}</p>
           </div>
         </div>
-        <div v-if="form.dataType === 'date' && displayCapability" class="flex flex-col gap-1.5">
-          <label for="date-display" class="text-[13px] font-semibold text-brand-text">{{ displayCapability.label }}</label>
-          <select id="date-display" :value="form.catalogRules.display ?? 'absolute'" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.display = ($event.target as HTMLSelectElement).value">
-            <option v-for="value in displayCapability.parameters.date.values" :key="value" :value="value">{{ value === 'relative' ? 'Fecha relativa' : value === 'both' ? 'Relativa y exacta' : 'Fecha exacta' }}</option>
+        <div v-if="form.dataType === 'date' && dateFormatCapability" class="flex flex-col gap-2">
+          <div ref="dateHelpRoot" class="relative flex items-center gap-2">
+            <h3 class="text-[13px] font-semibold text-brand-text">Presentación</h3>
+            <button ref="dateHelpButton" type="button" aria-label="Ayuda sobre presentación de fechas" :aria-expanded="dateHelpOpen" aria-controls="date-presentation-help" class="flex h-7 w-7 items-center justify-center rounded border border-brand-border text-sm text-brand-text-secondary hover:bg-brand-bg focus:outline-none focus:ring-1 focus:ring-brand-blue" @click="dateHelpOpen = !dateHelpOpen">?</button>
+            <div v-if="dateHelpOpen" id="date-presentation-help" role="note" class="absolute left-0 top-full z-10 mt-1 max-w-full rounded border border-brand-border bg-brand-surface p-3 text-sm text-brand-text shadow-lg">
+              El formato cambia solo cómo se ve la fecha; el dato guardado no cambia. El tiempo relativo agrega cuánto falta o cuánto pasó respecto a hoy (por ejemplo, «hace 12 días» o «en 1 mes») y se calcula al abrir la pantalla.
+            </div>
+          </div>
+          <label for="date-format" class="text-[13px] font-semibold text-brand-text">{{ dateFormatCapability.label }}</label>
+          <select id="date-format" :value="presentation.dateFormat" class="w-full rounded border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text focus:outline-none focus:ring-1 focus:ring-brand-blue" @change="form.catalogRules.dateFormat = ($event.target as HTMLSelectElement).value">
+            <option v-for="value in dateFormatCapability.parameters.date.values" :key="value" :value="value">{{ dateFormatLabels[value] }} · {{ formattedFieldDate(previewDays.today, value as FieldDateFormat, previewZone) }}</option>
           </select>
-          <p class="text-xs text-brand-text-muted">{{ displayCapability.description }}</p>
+          <div class="flex items-center justify-between gap-2">
+            <span id="date-show-relative-label" class="text-sm text-brand-text">Mostrar tiempo relativo</span>
+            <button id="date-show-relative" type="button" role="switch" aria-labelledby="date-show-relative-label" :aria-checked="presentation.showRelative" class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors focus:outline-none focus:ring-1 focus:ring-brand-blue" :class="presentation.showRelative ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'" @click="form.catalogRules.showRelative = !presentation.showRelative">
+              <span class="h-[18px] w-[18px] rounded-full bg-brand-surface shadow" />
+            </button>
+          </div>
+          <div data-date-preview class="flex flex-col gap-1 text-sm text-brand-text">
+            <p class="text-xs font-semibold text-brand-text-secondary">Vista previa</p>
+            <p><FieldDateValue :value="previewDays.past" :rules="presentation" :now="previewNow" :timezone="previewZone" /></p>
+            <p><FieldDateValue :value="previewDays.future" :rules="presentation" :now="previewNow" :timezone="previewZone" /></p>
+          </div>
         </div>
 
         <!-- HU-ERD-74: entidad destino de un campo Relación - antes de esta

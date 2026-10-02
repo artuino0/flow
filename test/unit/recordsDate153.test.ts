@@ -49,7 +49,7 @@ describe('Fecha de registros en las tres vistas reales', () => {
     app.mount(host); apps.push(app)
     await nextTick()
     expect(host.textContent).toContain('hace 12 días')
-    expect(host.querySelector('[title*="19 sep"]')).not.toBeNull()
+    expect(host.querySelector('[title*="19 de septiembre"]')).not.toBeNull()
     expect(row.customData.fecha).toBe('2026-09-19')
     // Prop reactiva real mediante un remount con el mismo registro.
     app.unmount(); apps.pop(); fields[0].validationRules.display = 'both'
@@ -57,7 +57,21 @@ describe('Fecha de registros en las tres vistas reales', () => {
     next.component('FieldDateValue', frozenDate)
     for (const tag of ['NuxtLink', 'RecordAssociationsPanel', 'RecordActivityTimeline', 'DynamicFileValue', 'RecordLinesTable', 'DynamicForm']) next.component(tag, { render: () => null })
     next.mount(host); apps.push(next); await nextTick()
-    expect(host.textContent).toContain('hace 12 días (19 sep')
+    expect(host.textContent).toContain('19/09/2026 · hace 12 días')
     expect(row.customData.fecha).toBe('2026-09-19')
+    for (const format of ['short', 'medium', 'long'] as const) for (const showRelative of [true, false]) {
+      apps.pop()!.unmount()
+      fields[0].validationRules = { dateFormat: format, showRelative }
+      // También ejercita el título del Kanban con un campo Fecha.
+      board.config.titleField = 'fecha'
+      const rendered = createApp({ render: () => h(component, props) })
+      rendered.component('FieldDateValue', frozenDate)
+      for (const tag of ['NuxtLink', 'RecordAssociationsPanel', 'RecordActivityTimeline', 'DynamicFileValue', 'RecordLinesTable', 'DynamicForm']) rendered.component(tag, { render: () => null })
+      rendered.mount(host); apps.push(rendered); await nextTick()
+      expect(host.textContent).toContain(relativeDates.formattedFieldDate(row.customData.fecha, format))
+      expect(host.textContent!.includes('hace 12 días')).toBe(showRelative)
+      expect(host.querySelector('[aria-label*="19 de septiembre de 2026"]')).not.toBeNull()
+      expect(row.customData).toEqual({ fecha: '2026-09-19' })
+    }
   })
 })

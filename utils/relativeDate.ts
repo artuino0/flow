@@ -37,3 +37,40 @@ export function exactFieldDate(value: string | Date, timezone = 'America/Mexico_
   const dateOnly = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
   return new Intl.DateTimeFormat('es-MX', { timeZone: dateOnly ? 'UTC' : timezone, dateStyle: 'medium', ...(dateOnly ? {} : { timeStyle: 'short' as const }) }).format(dateOnly ? new Date(day * 86400000) : new Date(value))
 }
+
+export type FieldDateFormat = 'short' | 'medium' | 'long'
+
+/** Lee metadata local heredada; los consumidores nunca modifican las reglas. */
+export function datePresentation(rules: Record<string, unknown> = {}): { dateFormat: FieldDateFormat; showRelative: boolean } {
+  return {
+    dateFormat: rules.dateFormat === 'medium' || rules.dateFormat === 'long' ? rules.dateFormat : 'short',
+    showRelative: typeof rules.showRelative === 'boolean' ? rules.showRelative : rules.display === 'both' || rules.display === 'relative'
+  }
+}
+
+/** Salida es-MX estable: elimina puntos de abreviaturas y separadores de Intl. */
+export function formattedFieldDate(value: string | Date, format: FieldDateFormat = 'short', timezone = 'America/Mexico_City'): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !Number.isFinite(civilDay(value.slice(0, 10), 'UTC'))) return 'Fecha inválida'
+  const day = civilDay(value, timezone)
+  if (!Number.isFinite(day)) return 'Fecha inválida'
+  const dateOnly = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const date = dateOnly ? new Date(day * 86400000) : new Date(value)
+  const parts = new Intl.DateTimeFormat('es-MX', {
+    timeZone: dateOnly ? 'UTC' : timezone,
+    year: 'numeric', month: format === 'short' ? '2-digit' : format === 'medium' ? 'short' : 'long',
+    day: format === 'short' ? '2-digit' : 'numeric',
+    ...(dateOnly ? {} : { hour: '2-digit' as const, minute: '2-digit' as const, hourCycle: 'h23' as const })
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? ''
+  const month = part('month').replace(/\./g, '')
+  const text = format === 'short' ? `${part('day')}/${month}/${part('year')}`
+    : format === 'medium' ? `${part('day')} ${month} ${part('year')}` : `${part('day')} de ${month} de ${part('year')}`
+  return dateOnly ? text : `${text}${format === 'short' ? ' ' : ', '}${part('hour')}:${part('minute')}`
+}
+
+/** Ejemplos calculados al abrir el modal, sobre días civiles de la organización. */
+export function datePreviewDays(now: Date, timezone: string): { today: string; past: string; future: string } {
+  const day = civilDay(now, timezone)
+  const iso = (offset: number) => new Date((day + offset) * 86400000).toISOString().slice(0, 10)
+  return { today: iso(0), past: iso(-12), future: iso(30) }
+}

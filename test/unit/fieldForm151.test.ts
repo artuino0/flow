@@ -14,6 +14,9 @@ import * as catalogUtils from '~/utils/fieldValidationCatalog'
 import { describeFieldValidations } from '~/server/utils/fieldValidations/registry'
 import { compileVueComponent } from '../helpers/vueComponent'
 
+import * as relativeDates from '~/utils/relativeDate'
+import * as fieldValueFormat from '~/utils/fieldValueFormat'
+const dateComponent = compileVueComponent('components/FieldDateValue.vue', { '~/utils/relativeDate': relativeDates, '~/utils/fieldValueFormat': fieldValueFormat }, { useAuth: () => ({ user: ref({ timezone: 'America/Mexico_City' }) }) })
 const require = createRequire(import.meta.url)
 const descriptor = parse(readFileSync('components/FieldFormModal.vue', 'utf8')).descriptor
 const compiled = compileScript(descriptor, { id: 'field-form-151', inlineTemplate: true })
@@ -24,8 +27,8 @@ const confirm = vi.fn(async () => true)
 function mount(overrides: Record<string, unknown> = {}) {
   const exports: { default?: Component } = {}
   const parameter = compileVueComponent('components/FieldValidationParameter.vue', { '~/utils/fieldValidationCatalog': catalogUtils })
-  const loader = (id: string) => id === '~/utils/calcExpression' ? { collectFieldRefs, parseExpression } : id === '~/utils/optionColors' ? { OPTION_COLORS, colorDotClass } : id === '~/utils/fieldValidationCatalog' ? catalogUtils : id === '~/components/FieldValidationParameter.vue' ? { default: parameter } : require(id)
-  new Function('require', 'exports', 'useConfirm', '$fetch', 'slugifyIdentifier', 'OPTION_COLORS', 'colorDotClass', code)(loader, exports, () => ({ confirm, dialog: ref(null) }), fetch, slugifyIdentifier, OPTION_COLORS, colorDotClass)
+  const loader = (id: string) => id === '~/utils/relativeDate' ? relativeDates : id === '~/components/FieldDateValue.vue' ? { default: dateComponent } : id === '~/utils/calcExpression' ? { collectFieldRefs, parseExpression } : id === '~/utils/optionColors' ? { OPTION_COLORS, colorDotClass } : id === '~/utils/fieldValidationCatalog' ? catalogUtils : id === '~/components/FieldValidationParameter.vue' ? { default: parameter } : require(id)
+  new Function('require', 'exports', 'useConfirm', '$fetch', 'slugifyIdentifier', 'OPTION_COLORS', 'colorDotClass', 'useAuth', code)(loader, exports, () => ({ confirm, dialog: ref(null) }), fetch, slugifyIdentifier, OPTION_COLORS, colorDotClass, () => ({ user: ref({ timezone: 'America/Mexico_City' }) }))
   const props = reactive({ open: false, mode: 'create', hasValues: false, ...overrides })
   const submit = vi.fn()
   const close = vi.fn(() => { props.open = false })

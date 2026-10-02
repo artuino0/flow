@@ -15,11 +15,13 @@ const apps: App[] = []
 const parameter = compileVueComponent('components/FieldValidationParameter.vue', { '~/utils/fieldValidationCatalog': catalogUtils })
 const confirm = vi.fn(async () => true)
 const fetcher = vi.fn(async () => describeFieldValidations())
+const dateComponent = compileVueComponent('components/FieldDateValue.vue', { '~/utils/relativeDate': relativeDate, '~/utils/fieldValueFormat': fieldValueFormat }, { useAuth: () => ({ user: ref({ timezone: 'America/Mexico_City' }) }) })
 const modal = compileVueComponent('components/FieldFormModal.vue', {
   '~/utils/calcExpression': calcExpression, '~/utils/fieldValidationCatalog': catalogUtils,
   '~/utils/optionColors': { OPTION_COLORS, colorDotClass },
-  '~/components/FieldValidationParameter.vue': { default: parameter }
-}, { $fetch: fetcher, slugifyIdentifier, OPTION_COLORS, colorDotClass, useConfirm: () => ({ confirm, dialog: ref(null) }) })
+  '~/components/FieldValidationParameter.vue': { default: parameter },
+  '~/components/FieldDateValue.vue': { default: dateComponent }, '~/utils/relativeDate': relativeDate
+}, { useAuth: () => ({ user: ref({ timezone: 'America/Mexico_City' }) }), $fetch: fetcher, slugifyIdentifier, OPTION_COLORS, colorDotClass, useConfirm: () => ({ confirm, dialog: ref(null) }) })
 function mount(overrides: Record<string, unknown> = {}) {
   const props = reactive({ open: false, mode: 'create', hasValues: false, ...overrides })
   const submit = vi.fn(); const close = vi.fn()
@@ -41,6 +43,37 @@ async function change(host: HTMLElement, id: string, value: string, event = 'cha
 const initial = (type = 'text', rules: Record<string, unknown> = {}) => ({ name: 'valor', label: 'Valor', dataType: type, isRequired: false, validationRules: rules })
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.clearAllMocks() })
 describe('Modal HU-153 real', () => {
+  it.each([false, true])('vista previa en vivo y popover accesible, diseñador=%s', async designer => {
+    const { host, props, close } = mount({ mode: 'edit', initialField: initial('date'), ...(designer ? { fieldSource: { entities: [], fieldsByEntity: {} } } : {}) })
+    await open(props)
+    const choices = [...host.querySelector<HTMLSelectElement>('#date-format')!.options]
+    const days = relativeDate.datePreviewDays(new Date(), 'America/Mexico_City')
+    expect(choices.map(o => o.text)).toEqual(['short', 'medium', 'long'].map(format => `${({ short: 'Corta', medium: 'Intermedia', long: 'Larga' })[format]} · ${relativeDate.formattedFieldDate(days.today, format as relativeDate.FieldDateFormat)}`))
+    for (const format of ['short', 'medium', 'long'] as const) {
+      await change(host, '#date-format', format)
+      const preview = host.querySelector('[data-date-preview]')!
+      expect(preview.textContent).toContain(relativeDate.formattedFieldDate(days.past, format))
+      expect(preview.textContent).toContain(relativeDate.formattedFieldDate(days.future, format))
+      expect(preview.textContent).not.toContain('hace 12 días')
+      host.querySelector<HTMLButtonElement>('#date-show-relative')!.click(); await flush()
+      expect(preview.textContent).toContain('hace 12 días'); expect(preview.textContent).toContain('en 1 mes')
+      expect(preview.querySelector('span')!.getAttribute('aria-label')).toContain(relativeDate.formattedFieldDate(days.past, 'long'))
+      host.querySelector<HTMLButtonElement>('#date-show-relative')!.click(); await flush()
+    }
+    const help = host.querySelector<HTMLButtonElement>('[aria-controls="date-presentation-help"]')!
+    help.focus(); help.click(); await flush()
+    expect(help.getAttribute('aria-expanded')).toBe('true')
+    expect(host.querySelector('#date-presentation-help')!.textContent).toContain('el dato guardado no cambia')
+    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush()
+    expect(help.getAttribute('aria-expanded')).toBe('false'); expect(document.activeElement).toBe(help); expect(close).not.toHaveBeenCalled()
+    help.click(); await flush(); document.body.click(); await flush()
+    expect(host.querySelector('#date-presentation-help')).toBeNull(); expect(document.activeElement).toBe(help)
+  })
+  it.each(['absolute', 'both', 'relative'])('convierte %s heredado al guardar sin display', async display => {
+    const { host, props, submit } = mount({ mode: 'edit', initialField: initial('date', { display }) })
+    await open(props); await click(host, 'Guardar campo')
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { dateFormat: 'short', showRelative: display !== 'absolute' } }))
+  })
   it('en create el tipo se elige libremente y colapsa; defaults, booleanos y límites vienen del catálogo', async () => {
     const { host, props } = mount(); await open(props)
     expect(host.querySelector('[data-type-grid]')).not.toBeNull()
@@ -102,7 +135,7 @@ describe('Modal HU-153 real', () => {
     await click(host, 'Agregar campo')
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { minLength: 3 } }))
   })
-  it('after/before solo ofrecen otras Fechas propias y display se guarda desde el catálogo en diseñador', async () => {
+  it('after/before solo ofrecen otras Fechas propias y presentación se guarda desde el catálogo en diseñador', async () => {
     const own = [initial('date'), { ...initial('date'), id: 'inicio', name: 'inicio', label: 'Inicio' }, { ...initial('text'), id: 'texto', name: 'texto' }]
     const { host, props, submit } = mount({ mode: 'edit', initialField: initial('date'), fieldSource: { entities: [], fieldsByEntity: {} }, existingFields: own, hasValues: true })
     await open(props)
@@ -110,9 +143,10 @@ describe('Modal HU-153 real', () => {
     expect([...host.querySelector<HTMLSelectElement>('#validation-after')!.options].map(o => o.value)).toEqual(['', 'inicio'])
     await change(host, '#add-validation', 'before')
     expect([...host.querySelector<HTMLSelectElement>('#validation-before')!.options].map(o => o.value)).toEqual(['', 'inicio'])
-    await change(host, '#date-display', 'both')
+    await change(host, '#date-format', 'medium')
+    host.querySelector<HTMLButtonElement>('#date-show-relative')!.click(); await flush()
     await click(host, 'Guardar campo')
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { after: 'inicio', before: 'inicio', display: 'both' } }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ validationRules: { after: 'inicio', before: 'inicio', dateFormat: 'medium', showRelative: true } }))
     expect(host.textContent).not.toContain('Este campo ya tiene datos')
   })
   it('conserva reglas desconocidas para que el servidor decida; muestra su error claro', async () => {
@@ -123,14 +157,26 @@ describe('Modal HU-153 real', () => {
   })
 })
 describe('Presentación compartida en vistas de registros', () => {
+  it('sin configuración conserva presentación previa y siempre ofrece la fecha larga accesible', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const props = reactive({ value: '2026-10-01T20:30:00Z' as unknown, rules: {} })
+    const app = createApp({ render: () => h(dateComponent, props) }); app.mount(host); apps.push(app)
+    expect(host.textContent).toBe(fieldValueFormat.formatDate(String(props.value)))
+    expect(host.querySelector('span')!.title).toBe('1 de octubre de 2026, 14:30')
+    props.value = ''; await flush(); expect(host.textContent).toBe('—')
+    props.value = '2026-02-30'; props.rules = { dateFormat: 'short', showRelative: true }; await flush()
+    expect(host.textContent).toBe('Fecha inválida')
+    expect(host.querySelector('span')!.getAttribute('aria-label')).toBe('Fecha inválida')
+    props.value = '2026-02-30T14:30:00Z'; await flush(); expect(host.textContent).toBe('Fecha inválida')
+  })
   it('renderiza relativa con fecha exacta accesible, both y absolute, sin temporizador', async () => {
     const date = compileVueComponent('components/FieldDateValue.vue', { '~/utils/relativeDate': relativeDate, '~/utils/fieldValueFormat': fieldValueFormat }, { useAuth: () => ({ user: ref({ timezone: 'America/Mexico_City' }) }) })
     const props = reactive({ value: '2026-09-19', rules: { display: 'relative' }, now: new Date('2026-10-01T18:00:00Z') })
     const host = document.createElement('div'); document.body.append(host)
     const app = createApp({ render: () => h(date, props) }); app.mount(host); apps.push(app)
-    expect(host.textContent).toBe('hace 12 días'); expect(host.querySelector('span')!.title).toContain('19 sep')
-    expect(host.querySelector('span')!.getAttribute('aria-label')).toContain('19 sep')
-    props.rules.display = 'both'; await flush(); expect(host.textContent).toContain('hace 12 días (19 sep')
+    expect(host.textContent).toBe('19/09/2026 · hace 12 días'); expect(host.querySelector('span')!.title).toContain('19 de septiembre de 2026')
+    expect(host.querySelector('span')!.getAttribute('aria-label')).toContain('19 de septiembre de 2026')
+    props.rules.display = 'both'; await flush(); expect(host.textContent).toContain('19/09/2026 · hace 12 días')
     props.rules.display = 'absolute'; await flush(); expect(host.textContent).not.toContain('hace')
     for (const file of ['DynamicTable', 'RecordDetailView', 'RecordKanbanBoard']) expect(readFileSync(`components/${file}.vue`, 'utf8')).toContain('<FieldDateValue')
     expect(readFileSync('components/DynamicForm.vue', 'utf8')).not.toContain('FieldDateValue')

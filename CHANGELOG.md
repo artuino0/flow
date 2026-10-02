@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.132.0] - 2026-10-02
+#### [feature]
+- [ERD-157](https://dydasoftware.atlassian.net/browse/ERD-157) - Los campos de fecha siempre muestran la fecha y en el modal del campo se elige cómo verla: formato corto (02/10/2026), intermedio (2 oct 2026) o largo (2 de octubre de 2026), con o sin hora, y un interruptor «Mostrar tiempo relativo» que agrega junto a la fecha «hace 12 días» o «en 1 mes». El modal muestra una vista previa en vivo y un «?» con una explicación corta. Reemplaza la opción «Mostrar como» de la versión anterior. Los campos sin configurar se ven igual que antes.
+
 ### [0.131.0] - 2026-10-02
 #### [feature]
 - [ERD-153](https://dydasoftware.atlassian.net/browse/ERD-153) - El modal de campos se ve más limpio y trae las validaciones nuevas: al elegir el tipo de campo la lista de tipos se cierra y queda solo el elegido con «Cambiar»; las validaciones se agregan desde un único desplegable y se ven como filas compactas con su parámetro y ejemplo; un campo que ya tiene datos no cambia de tipo (con candado y explicación) y en un Select con datos se pueden agregar opciones, mientras las que están en uso quedan protegidas; al endurecer una regla en un campo con datos se avisa cuántos registros ya no cumplen, sin bloquear el guardado. Los campos de fecha pueden mostrarse como «hace 12 días», «dentro de 3 días» o «en 1 mes» (o ambas formas con la fecha exacta) en listados, detalle y tarjetas del Kanban, con una opción «Mostrar como» por campo.
