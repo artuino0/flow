@@ -1,0 +1,42 @@
+{
+  "trigger-activation": [
+    "#E35432",
+    "#FFAD8F"
+  ],
+  "trigger-hover-border": [
+    "#A8CBD4",
+    "#3FC3DE"
+  ],
+  "trigger-decision-border": [
+    "#D8C7F0",
+    "#C4A7FF"
+  ],
+  "trigger-yes-line": [
+    "#A9DCC2",
+    "#4ADE94"
+  ],
+  "trigger-yes-bg": [
+    "#E6F7EE",
+    "#123D2A"
+  ],
+  "trigger-no-line": [
+    "#E8B8B8",
+    "#FF8A76"
+  ],
+  "trigger-no-bg": [
+    "#FCE8E8",
+    "#3D1712"
+  ],
+  "trigger-no-text": [
+    "#C53030",
+    "#FF8A76"
+  ],
+  "report-picker-bg": [
+    "#F8FBFD",
+    "#141B29"
+  ],
+  "report-backdrop": [
+    "#1B2A33",
+    "#000000"
+  ]
+}

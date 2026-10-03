@@ -60,7 +60,19 @@ export const migratedThemeFiles = [
   // HU-168: editor; preview y miniaturas aislados localmente en claro.
   'pages/sites/[siteId]/pages/[pageId].vue',
   'components/SitesCodeEditor.client.vue', 'components/SitesEditorForms.vue',
-  'components/SitesAssetLibrary.vue', 'utils/sitesCodeTheme.ts'
+  'components/SitesAssetLibrary.vue', 'utils/sitesCodeTheme.ts',
+  // HU-170: cromo de Automatización/reportes. Page solo representa papel claro.
+  // Sheet/Preview conservan sus fuentes completas por contrato SHA de theme170,
+  // con excepciones cerradas por literal y cantidad para el documento claro.
+  'pages/triggers/index.vue', 'pages/triggers/[id]/editar.vue', 'pages/reportes/nuevo.vue',
+  'pages/registros/[entity]/reportes/nuevo.vue', 'pages/registros/[entity]/reportes/[id]/editar.vue',
+  'components/WorkflowActionNode.vue', 'components/WorkflowConditionRows.vue',
+  'components/WorkflowFieldValue.vue', 'components/WorkflowUpsertRecordConfig.vue',
+  'components/PrintReportPage.vue', 'components/PrintReportDesigner.vue',
+  'components/PrintReportFieldPicker.vue', 'components/PrintReportFieldTree.vue',
+  'components/PrintReportFilterSelect.vue', 'components/PrintReportLayoutControls.vue',
+  'components/PrintReportDataControls.vue', 'components/PrintReportParameterModal.vue',
+  'components/PrintReportSheet.vue', 'components/PrintReportPreview.vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.
@@ -78,7 +90,23 @@ export const themeColorExceptions: Record<string, Record<string, number>> = {
   'components/NotificationCenter.vue': { '#33475B22': 1 },
   'components/SidebarPlanUsage.vue': { '#33475b26': 1 },
   'components/DynamicTable.vue': { '#33475B14': 1 },
-  'components/RecordDetailView.vue': { '#33475B22': 1 }
+  'components/RecordDetailView.vue': { '#33475B22': 1 },
+  // HU-170: papel/salida imprimible siempre claros, incluidos sus avisos
+  // y marco de previsualización protegido. Una aparición adicional falla.
+  'components/PrintReportSheet.vue': {
+    '#2B2B2B': 2, '#fff': 1, '#23334220': 1, '#9A9A9A': 1,
+    '#1A1A1A': 4, '#666666': 3, '#8A8A8A': 3, '#3A3A3A': 1,
+    '#DCDCDC': 2, '#EAEAEA': 1, '#B8B8B8': 1, '#E4E4E4': 1,
+    '#1F1F1F': 2, '#CFCFCF': 3, '#EDEDED': 1, '#FFFFFF': 1,
+    '#FAFAFA': 1, '#F2F2F2': 1, '#B0B0B0': 1, '#9b351d': 1,
+    '#fff0e8': 1, 'background: white': 1
+  },
+  'components/PrintReportPreview.vue': {
+    '#e7ebee': 1, '#fff': 4, '#d5dde3': 1, '#213343': 2,
+    '#516f90': 3, '#cbd6e2': 2, '#33475b': 1, '#f0f4f6': 1,
+    '#0091ae': 2, '#FF7A59': 2, '#E66E50': 2, '#8DA1B5': 2,
+    '#EAF3F6': 1, 'background: white': 1
+  }
 }
 
 export function auditThemeSource(file: string, source: string): string[] {

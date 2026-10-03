@@ -32,7 +32,7 @@
 import { ChevronRight, CircleAlert, LoaderCircle, Save, Sparkles, SlidersHorizontal } from '@lucide/vue'
 import type { ReportQueryDsl, ReportResult } from '~/server/utils/reportQuery'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 type Step = 'idle' | 'generating' | 'preview' | 'error'
 const step = ref<Step>('idle')
@@ -100,9 +100,9 @@ async function onSave() {
   <div class="flex flex-col gap-5">
     <div class="flex items-center gap-1 text-[13px]">
       <span class="text-brand-text-secondary">Inicio</span>
-      <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
+      <ChevronRight class="h-[13px] w-[13px] text-brand-sites-muted" :stroke-width="2" />
       <span class="text-brand-text-secondary">Reportes</span>
-      <ChevronRight class="h-[13px] w-[13px] text-brand-text-muted" :stroke-width="2" />
+      <ChevronRight class="h-[13px] w-[13px] text-brand-sites-muted" :stroke-width="2" />
       <span class="font-bold text-brand-text">Nuevo reporte</span>
     </div>
 
@@ -116,7 +116,7 @@ async function onSave() {
       </div>
     </div>
 
-    <div class="flex max-w-[900px] flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div class="flex max-w-[900px] flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
       <div class="border-b border-brand-border-light p-5">
         <h2 class="text-[16px] font-bold text-brand-text">Descripción del reporte</h2>
       </div>
@@ -125,23 +125,23 @@ async function onSave() {
           v-model="description"
           rows="3"
           placeholder="Ej: Clientes con más de 3 pedidos en los últimos 30 días, agrupados por sucursal"
-          class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           :disabled="step === 'generating'"
         />
-        <p class="text-xs text-brand-text-muted">La IA interpreta tu descripción y arma el reporte por ti. No necesitas saber SQL.</p>
+        <p class="text-xs text-brand-sites-muted">La IA interpreta tu descripción y arma el reporte por ti. No necesitas saber SQL.</p>
       </div>
       <div class="flex items-center justify-between border-t border-brand-border-light p-5">
         <button
           type="button"
           :disabled="step === 'generating' || !description.trim()"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="onGenerate"
         >
           <Sparkles v-if="step !== 'generating'" class="h-4 w-4" :stroke-width="1.75" />
           <LoaderCircle v-else class="h-4 w-4 animate-spin" :stroke-width="1.75" />
           Generar previsualización
         </button>
-        <p v-if="step === 'generating'" class="flex items-center gap-1.5 text-sm text-brand-text-muted">
+        <p v-if="step === 'generating'" class="flex items-center gap-1.5 text-sm text-brand-sites-muted">
           <LoaderCircle class="h-4 w-4 animate-spin" :stroke-width="1.75" />
           Generando reporte...
         </p>
@@ -156,16 +156,16 @@ async function onSave() {
       </div>
     </div>
 
-    <div v-else-if="step === 'preview' && result && queryDsl" class="flex max-w-[900px] flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+    <div v-else-if="step === 'preview' && result && queryDsl" class="flex max-w-[900px] flex-col rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
       <div class="flex flex-col gap-1 border-b border-brand-border-light p-5">
         <div class="flex items-center justify-between">
           <h2 class="text-[16px] font-bold text-brand-text">Vista previa</h2>
           <span class="rounded-full bg-brand-neutral-bg px-2.5 py-1 text-xs font-semibold text-brand-neutral-text">Datos de muestra · {{ result.rows.length }} registro{{ result.rows.length === 1 ? '' : 's' }}</span>
         </div>
-        <p class="text-xs text-brand-text-muted">{{ queryDsl.title }}</p>
+        <p class="text-xs text-brand-sites-muted">{{ queryDsl.title }}</p>
       </div>
       <div class="flex flex-col gap-2 p-5">
-        <div v-if="result.rows.length === 0" class="text-sm text-brand-text-muted">La consulta no encontró datos para esa descripción todavía.</div>
+        <div v-if="result.rows.length === 0" class="text-sm text-brand-sites-muted">La consulta no encontró datos para esa descripción todavía.</div>
         <div v-else class="overflow-x-auto rounded border border-brand-border-light">
           <table class="min-w-full text-sm">
             <thead class="border-b border-brand-border-light bg-brand-bg">
@@ -180,17 +180,17 @@ async function onSave() {
             </tbody>
           </table>
         </div>
-        <p v-if="result.rows.length > 0" class="text-xs text-brand-text-muted">Mostrando {{ previewRows.length }} de {{ result.rows.length }} registros de la muestra</p>
+        <p v-if="result.rows.length > 0" class="text-xs text-brand-sites-muted">Mostrando {{ previewRows.length }} de {{ result.rows.length }} registros de la muestra</p>
       </div>
       <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="onDiscard">
+        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-control-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="onDiscard">
           <SlidersHorizontal class="h-4 w-4" :stroke-width="1.75" />
           Descartar
         </button>
         <button
           type="button"
           :disabled="saving"
-          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="flex items-center gap-1.5 rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="onSave"
         >
           <Save class="h-4 w-4" :stroke-width="1.75" />
@@ -200,3 +200,8 @@ async function onSave() {
     </div>
   </div>
 </template>
+
+<style scoped>
+textarea { background-color: rgb(var(--brand-surface)); color-scheme: inherit; }
+button:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
+</style>

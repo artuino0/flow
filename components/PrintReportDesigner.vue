@@ -501,24 +501,24 @@ function clearDetail() {
           <ArrowLeft class="h-4 w-4" :stroke-width="1.75" /> Volver a {{ baseEntityName }}
         </NuxtLink>
         <span class="h-6 w-px shrink-0 bg-brand-border-light" />
-        <input v-model="title" type="text" aria-label="Nombre del reporte" placeholder="Nombre del reporte" class="min-w-0 w-72 max-w-[35vw] bg-transparent text-base font-bold text-brand-text outline-none placeholder:text-brand-text-muted focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-blue/25" />
+        <input v-model="title" type="text" aria-label="Nombre del reporte" placeholder="Nombre del reporte" class="min-w-0 w-72 max-w-[35vw] bg-transparent text-base font-bold text-brand-text outline-none placeholder:text-brand-sites-muted focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-blue/25" />
         <span class="hidden max-w-48 truncate rounded-full bg-brand-neutral-bg px-2.5 py-1 text-xs font-semibold text-brand-text-secondary md:inline">{{ baseEntityName }}</span>
       </div>
       <div class="flex items-center gap-2">
         <span v-if="hasUnsavedChanges" class="hidden items-center gap-1.5 rounded-full bg-brand-warning-bg px-2.5 py-1 text-xs font-semibold text-brand-warning-text sm:inline-flex"><span class="h-1.5 w-1.5 rounded-full bg-brand-warning-text" />Cambios sin guardar</span>
         <span class="mx-1 hidden h-6 w-px bg-brand-border-light sm:block" />
-        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border px-3.5 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="onDiscard">Descartar</button>
-        <button type="button" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="onSave"><Save class="h-4 w-4" :stroke-width="1.75" />{{ saving ? 'Guardando...' : 'Guardar reporte' }}</button>
+        <button type="button" class="flex items-center gap-1.5 rounded border border-brand-control-border px-3.5 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="onDiscard">Descartar</button>
+        <button type="button" class="flex items-center gap-1.5 rounded bg-brand-orange px-3.5 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-60" :disabled="saving" @click="onSave"><Save class="h-4 w-4" :stroke-width="1.75" />{{ saving ? 'Guardando...' : 'Guardar reporte' }}</button>
       </div>
     </div>
     <div class="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-brand-border-light bg-brand-surface px-4 py-2.5 lg:px-8">
-      <label class="flex items-center gap-2 text-xs font-semibold text-brand-text-muted">Mostrar
-        <select v-model="mode" aria-label="Contenido del reporte" class="rounded border border-brand-border bg-white px-2.5 py-1.5 text-xs font-normal text-brand-text"><option value="detail">Detalle y totales</option><option value="summary">Solo grupos y totales</option></select>
+      <label class="flex items-center gap-2 text-xs font-semibold text-brand-sites-muted">Mostrar
+        <select v-model="mode" aria-label="Contenido del reporte" class="rounded border border-brand-control-border bg-brand-surface px-2.5 py-1.5 text-xs font-normal text-brand-text"><option value="detail">Detalle y totales</option><option value="summary">Solo grupos y totales</option></select>
       </label>
       <PrintReportLayoutControls v-model="layout" />
       <div class="flex items-center gap-2" role="group" aria-label="Zoom del lienzo">
-        <span class="text-xs font-semibold text-brand-text-muted">Zoom</span>
-        <div class="flex h-[36px] items-center rounded-md border border-brand-border bg-white focus-within:ring-2 focus-within:ring-brand-blue/25">
+        <span class="text-xs font-semibold text-brand-sites-muted">Zoom</span>
+        <div class="flex h-[36px] items-center rounded-md border border-brand-control-border bg-brand-surface focus-within:ring-2 focus-within:ring-brand-blue/25">
           <button type="button" class="flex h-full w-[34px] shrink-0 items-center justify-center rounded-l-[5px] text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none disabled:opacity-40" aria-label="Alejar lienzo" :disabled="currentZoom <= 50" @click="changeZoom(-25)"><ZoomOut class="h-4 w-4" :stroke-width="1.75" /></button>
           <span class="h-5 w-px shrink-0 bg-brand-border-light" />
           <ReportOptionSelect label="Zoom" label-hidden :model-value="String(currentZoom)" :options="[50, 75, 100, 125, 150].map(value => ({ value: String(value), label: `${value} %` }))" joined @update:model-value="setZoom(Number($event))" />
@@ -527,9 +527,9 @@ function clearDetail() {
         </div>
       </div>
       <div class="flex-1" />
-      <button type="button" class="rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" :aria-pressed="!previewVisible" @click="previewVisible = false">Diseñar estructura</button>
-      <button type="button" class="rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg disabled:opacity-50" :disabled="inlineLoading" @click="refreshInlinePreview()">{{ inlineLoading ? 'Consultando…' : 'Probar con datos' }}</button>
-      <button type="button" class="flex items-center gap-1.5 rounded border border-brand-border bg-white px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" @click="onPreview"><Eye class="h-3.5 w-3.5" :stroke-width="1.75" /> Vista previa</button>
+      <button type="button" class="rounded border border-brand-control-border bg-brand-surface px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" :aria-pressed="!previewVisible" @click="previewVisible = false">Diseñar estructura</button>
+      <button type="button" class="rounded border border-brand-control-border bg-brand-surface px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg disabled:opacity-50" :disabled="inlineLoading" @click="refreshInlinePreview()">{{ inlineLoading ? 'Consultando…' : 'Probar con datos' }}</button>
+      <button type="button" class="flex items-center gap-1.5 rounded border border-brand-control-border bg-brand-surface px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-bg" @click="onPreview"><Eye class="h-3.5 w-3.5" :stroke-width="1.75" /> Vista previa</button>
     </div>
     <p v-if="saveError" role="alert" class="text-sm text-brand-error-text">{{ saveError }}</p>
     <p v-if="legacyConverted" class="text-sm text-brand-text-secondary">Los filtros anteriores ahora se preguntarán al generar. Guarda para actualizar esta plantilla.</p>
@@ -541,10 +541,10 @@ function clearDetail() {
       <aside class="flex h-full min-h-0 flex-col border-r border-brand-border-light bg-brand-surface">
         <div class="shrink-0 border-b border-brand-border-light p-4">
           <h2 class="text-sm font-bold text-brand-text">Campos disponibles</h2>
-          <p class="mt-1 text-xs leading-5 text-brand-text-muted">Cada fila representa un registro de {{ baseEntityName }}.</p>
-          <div class="mt-3 flex items-center gap-2 rounded border border-brand-border bg-brand-bg px-2.5 py-1.5">
-            <Search class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
-            <input ref="fieldSearchInput" v-model="fieldSearch" type="search" aria-label="Buscar campos" placeholder="Buscar un campo…" class="min-w-0 w-full bg-transparent text-xs text-brand-text outline-none placeholder:text-brand-text-muted" />
+          <p class="mt-1 text-xs leading-5 text-brand-sites-muted">Cada fila representa un registro de {{ baseEntityName }}.</p>
+          <div class="mt-3 flex items-center gap-2 rounded border border-brand-control-border bg-brand-bg px-2.5 py-1.5">
+            <Search class="h-3.5 w-3.5 shrink-0 text-brand-sites-muted" :stroke-width="1.75" />
+            <input ref="fieldSearchInput" v-model="fieldSearch" type="search" aria-label="Buscar campos" placeholder="Buscar un campo…" class="min-w-0 w-full bg-transparent text-xs text-brand-text outline-none placeholder:text-brand-sites-muted" />
           </div>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-2">
@@ -555,7 +555,7 @@ function clearDetail() {
             <Table2 class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="truncate text-xs font-bold text-brand-text">{{ baseEntityName }}</span>
           </div>
-          <p v-if="treePending" class="p-2 text-xs text-brand-text-muted">Cargando campos...</p>
+          <p v-if="treePending" class="p-2 text-xs text-brand-sites-muted">Cargando campos...</p>
           <p v-else-if="treeError" class="p-2 text-xs text-brand-error-text">No se pudieron cargar los campos de esta entidad.</p>
           <PrintReportFieldTree
             v-else
@@ -576,7 +576,7 @@ function clearDetail() {
           <div v-else :style="{ zoom: resultZoom / 100 }"><PrintReportSheet :result="inlineResult" :generated-at="inlineDate" :layout="layout" :group-field-labels="groupBy.map(source => resolveSourceLabel(treeData?.fields ?? [], detail ?? undefined, source))" /></div>
         </div>
         <div v-else class="relative mx-auto flex min-h-full w-full max-w-[900px] items-start justify-center pb-20" aria-label="Lienzo del reporte" @dragover.prevent @drop="onCanvasDrop($event)">
-          <div class="flex w-full flex-col gap-4 rounded-sm border border-brand-border-light bg-white p-8 shadow-[0_4px_20px_#33475B33]" :style="{ aspectRatio: `${paperSize.width} / ${paperSize.height}`, zoom: structureZoom / 100 }">
+          <div class="theme-light report-design-paper flex w-full flex-col gap-4 rounded-sm border border-brand-border-light bg-brand-surface p-8 shadow-[0_4px_20px_rgb(var(--brand-shadow)/0.2)]" :style="{ aspectRatio: `${paperSize.width} / ${paperSize.height}`, zoom: structureZoom / 100 }">
             <div class="flex items-center gap-3 border-b border-brand-border-light pb-4">
               <img v-if="reportBranding?.hasLogo" :src="'/api/tenant/logo'" alt="" class="h-9 w-12 object-contain" />
               <p class="text-lg font-bold text-brand-text">{{ reportBranding?.name || 'Organización' }}</p>
@@ -600,7 +600,7 @@ function clearDetail() {
                     <Calculator v-if="col.kind !== 'detalle'" class="h-3 w-3 shrink-0" :stroke-width="1.75" />
                   </button>
                 </div>
-                <div v-if="columns.length" class="flex min-w-max border-b border-brand-border-light bg-white">
+                <div v-if="columns.length" class="flex min-w-max border-b border-brand-border-light bg-brand-surface">
                   <span v-for="col in columns" :key="col.key" class="min-w-28 flex-1 px-3.5 py-4 text-xs text-brand-text-muted">—</span>
                 </div>
                 <div v-if="columns.length && sumColumns.length" class="flex justify-end gap-5 bg-brand-bg px-5 py-3 text-xs font-bold text-brand-text"><span v-for="col in sumColumns" :key="col.key">{{ col.label }}: —</span></div>
@@ -623,41 +623,41 @@ function clearDetail() {
               <Table2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
               <span class="min-w-0 flex-1 text-[13px] font-bold text-brand-text">Columnas</span>
               <span class="text-xs font-semibold text-brand-blue">{{ columns.length }} columnas</span>
-              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted transition-transform" :class="activeSettingsSection === 'columns' ? '' : '-rotate-90'" :stroke-width="1.75" />
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-sites-muted transition-transform" :class="activeSettingsSection === 'columns' ? '' : '-rotate-90'" :stroke-width="1.75" />
             </button>
             <div v-if="activeSettingsSection === 'columns'" class="flex flex-col gap-2 px-4 pb-4">
-              <p class="text-xs leading-5 text-brand-text-muted">Arrastra para reordenar. Así se verán en el reporte.</p>
+              <p class="text-xs leading-5 text-brand-sites-muted">Arrastra para reordenar. Así se verán en el reporte.</p>
               <div role="listbox" aria-label="Columnas del reporte" class="flex flex-col gap-1.5">
                 <div v-for="col in columns" :key="col.key" role="option" tabindex="0" draggable="true" :aria-selected="selectedKey === col.key" class="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-xs text-brand-text outline-none hover:border-brand-blue/40 hover:bg-brand-blue-bg focus-visible:ring-2 focus-visible:ring-brand-blue/25" :class="selectedKey === col.key ? 'border-brand-blue bg-brand-blue-bg' : 'border-transparent bg-brand-bg'" @click="selectedKey = col.key" @keydown.enter="selectedKey = col.key" @dragstart="startColumnDrag($event, col.key)" @dragover.prevent @drop.stop="onCanvasDrop($event, col.key)">
-                  <GripVertical class="h-3.5 w-3.5 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+                  <GripVertical class="h-3.5 w-3.5 shrink-0 text-brand-sites-muted" :stroke-width="1.75" />
                   <span class="min-w-0 flex-1 truncate">{{ col.label }}</span>
                   <span v-if="col.kind === 'sumar'" class="rounded bg-brand-blue-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand-blue">Suma</span>
-                  <button type="button" :aria-label="`Quitar ${col.label}`" class="text-brand-text-muted hover:text-brand-error-text" @click.stop="removeColumn(col.key)"><X class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
+                  <button type="button" :aria-label="`Quitar ${col.label}`" class="text-brand-sites-muted hover:text-brand-error-text" @click.stop="removeColumn(col.key)"><X class="h-3.5 w-3.5" :stroke-width="1.75" /></button>
                 </div>
               </div>
               <button type="button" class="flex items-center gap-1.5 self-start py-1 text-xs font-semibold text-brand-blue hover:underline" @click="fieldSearch = ''; fieldSearchInput?.focus()"><Plus class="h-3.5 w-3.5" :stroke-width="1.75" /> Agregar columna</button>
         <div class="flex flex-col gap-4 border-t border-brand-border-light pt-4">
-          <p v-if="!selectedColumn" class="text-xs text-brand-text-muted">Selecciona una columna para configurar su encabezado y agregación.</p>
+          <p v-if="!selectedColumn" class="text-xs text-brand-sites-muted">Selecciona una columna para configurar su encabezado y agregación.</p>
 
           <template v-else>
             <div class="flex flex-wrap gap-2">
-              <button type="button" class="rounded border border-brand-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[0]?.key === selectedKey" @click="moveSelectedColumn(-1)">Mover a la izquierda</button>
-              <button type="button" class="rounded border border-brand-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[columns.length - 1]?.key === selectedKey" @click="moveSelectedColumn(1)">Mover a la derecha</button>
+              <button type="button" class="rounded border border-brand-control-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[0]?.key === selectedKey" @click="moveSelectedColumn(-1)">Mover a la izquierda</button>
+              <button type="button" class="rounded border border-brand-control-border px-2 py-1 text-xs disabled:opacity-40" :disabled="columns[columns.length - 1]?.key === selectedKey" @click="moveSelectedColumn(1)">Mover a la derecha</button>
             </div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-brand-text-muted">Columna</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-brand-sites-muted">Columna</p>
 
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-brand-text-secondary">Encabezado</label>
               <input
                 :value="selectedColumn.label"
                 type="text"
-                class="rounded border border-brand-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                class="rounded border border-brand-control-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 @input="updateLabel(selectedColumn, ($event.target as HTMLInputElement).value)"
               />
             </div>
 
             <div class="flex flex-col gap-1.5 border-t border-brand-border-light pt-3">
-              <p class="text-xs font-semibold uppercase tracking-wide text-brand-text-muted">Agregación</p>
+              <p class="text-xs font-semibold uppercase tracking-wide text-brand-sites-muted">Agregación</p>
               <label
                 v-for="opt in columnKindOptions(selectedColumn)"
                 :key="opt.value"
@@ -667,10 +667,10 @@ function clearDetail() {
                 <input type="radio" class="mt-0.5" :checked="selectedColumn.kind === opt.value" :disabled="opt.disabled" @change="setColumnKind(selectedColumn, opt.value)" />
                 <span class="flex flex-col">
                   <span class="text-sm font-semibold text-brand-text">{{ opt.label }}</span>
-                  <span class="text-xs text-brand-text-muted">{{ opt.description }}</span>
+                  <span class="text-xs text-brand-sites-muted">{{ opt.description }}</span>
                 </span>
               </label>
-              <p v-if="!isNumericFieldType(columnDataTypes[selectedColumn.key] ?? '')" class="flex items-center gap-1.5 text-xs text-brand-text-muted">
+              <p v-if="!isNumericFieldType(columnDataTypes[selectedColumn.key] ?? '')" class="flex items-center gap-1.5 text-xs text-brand-sites-muted">
                 <AlertTriangle class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
                 Solo los campos numéricos se pueden sumar o repartir.
               </p>
@@ -687,25 +687,25 @@ function clearDetail() {
                 />
                 <span>
                   <span class="block text-xs font-bold text-brand-text">Sumar o restar según otro campo</span>
-                  <span class="mt-0.5 block text-xs leading-5 text-brand-text-muted">La cantidad se captura positiva. El valor elegido define si entra, sale o no afecta el total.</span>
+                  <span class="mt-0.5 block text-xs leading-5 text-brand-sites-muted">La cantidad se captura positiva. El valor elegido define si entra, sale o no afecta el total.</span>
                 </span>
               </label>
 
               <template v-if="selectedColumn.signRule">
                 <label class="text-xs font-semibold text-brand-text-secondary">Campo que define el movimiento</label>
                 <select
-                  class="rounded border border-brand-border bg-white px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                  class="rounded border border-brand-control-border bg-brand-surface px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                   :value="conditionLeafKey(selectedColumn.signRule.source)"
                   @change="setSignField(selectedColumn, signCandidates(selectedColumn).find(leaf => conditionLeafKey(leaf) === ($event.target as HTMLSelectElement).value)!)"
                 >
                   <option v-for="leaf in signCandidates(selectedColumn)" :key="conditionLeafKey(leaf)" :value="conditionLeafKey(leaf)">{{ leaf.label }}</option>
                 </select>
 
-                <div class="flex flex-col divide-y divide-brand-border-light rounded border border-brand-border-light bg-white px-2.5">
+                <div class="flex flex-col divide-y divide-brand-border-light rounded border border-brand-border-light bg-brand-surface px-2.5">
                   <label v-for="option in signRuleLeaf(selectedColumn)?.options ?? []" :key="option.value" class="flex items-center gap-3 py-2">
                     <span class="min-w-0 flex-1 truncate text-xs font-semibold text-brand-text">{{ option.label }}</span>
                     <select
-                      class="w-28 rounded border border-brand-border bg-white px-2 py-1.5 text-xs text-brand-text"
+                      class="w-28 rounded border border-brand-control-border bg-brand-surface px-2 py-1.5 text-xs text-brand-text"
                       :value="selectedColumn.signRule.factors[option.value] ?? 0"
                       @change="setSignFactor(selectedColumn, option.value, Number(($event.target as HTMLSelectElement).value) as -1 | 0 | 1)"
                     >
@@ -717,7 +717,7 @@ function clearDetail() {
                 </div>
               </template>
 
-              <p v-else-if="!signCandidates(selectedColumn).length" class="flex items-center gap-1.5 text-xs text-brand-text-muted">
+              <p v-else-if="!signCandidates(selectedColumn).length" class="flex items-center gap-1.5 text-xs text-brand-sites-muted">
                 <FileWarning class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
                 Agrega un campo de selección o Sí/No en el mismo registro para definir el signo.
               </p>
@@ -727,7 +727,7 @@ function clearDetail() {
               <p class="text-xs font-bold text-brand-text">Repartir «{{ selectedColumn.label }}» por condición</p>
               <label class="text-xs font-semibold text-brand-text-secondary">Campo condición</label>
               <select
-                class="rounded border border-brand-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                class="rounded border border-brand-control-border px-2.5 py-1.5 text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
                 :value="conditionLeafKey(selectedColumn.conditionSource)"
                 @change="
                   setConditionField(
@@ -739,7 +739,7 @@ function clearDetail() {
                 <option value="" disabled>Elegí un campo booleano o de selección</option>
                 <option v-for="leaf in conditionCandidates(selectedColumn.source.side)" :key="conditionLeafKey(leaf)" :value="conditionLeafKey(leaf)">{{ leaf.label }}</option>
               </select>
-              <p v-if="conditionCandidates(selectedColumn.source.side).length === 0" class="flex items-center gap-1.5 text-xs text-brand-text-muted">
+              <p v-if="conditionCandidates(selectedColumn.source.side).length === 0" class="flex items-center gap-1.5 text-xs text-brand-sites-muted">
                 <FileWarning class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
                 Este lado del reporte no tiene campos booleanos ni de selección.
               </p>
@@ -758,11 +758,11 @@ function clearDetail() {
               <Calculator class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
               <span class="min-w-0 flex-1 text-[13px] font-bold text-brand-text">Cálculos y totales</span>
               <span class="text-xs font-semibold text-brand-blue">{{ groupBy.length ? 'Agrupado' : 'Sin agrupar' }}</span>
-              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted transition-transform" :class="activeSettingsSection === 'calculations' ? '' : '-rotate-90'" :stroke-width="1.75" />
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-sites-muted transition-transform" :class="activeSettingsSection === 'calculations' ? '' : '-rotate-90'" :stroke-width="1.75" />
             </button>
             <div v-if="activeSettingsSection === 'calculations'" class="flex flex-col gap-4 px-4 pb-4">
               <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Agrupar filas por</p><button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4 || !groupLevelLeaves().length" @click="addGroupLevel">+ Agregar</button></div>
+                <div class="flex items-center justify-between"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-sites-muted">Agrupar filas por</p><button type="button" class="text-xs font-semibold text-brand-blue hover:underline disabled:opacity-40" :disabled="groupBy.length >= 4 || !groupLevelLeaves().length" @click="addGroupLevel">+ Agregar</button></div>
                 <div v-for="(level, index) in groupBy" :key="index" class="flex items-center gap-2">
                   <ReportOptionSelect
                     class="min-w-0 flex-1"
@@ -775,11 +775,11 @@ function clearDetail() {
                     :options="groupLevelLeaves().map(leaf => ({ value: groupLevelOptionValue(leaf), label: groupLevelLabel(leaf) }))"
                     @update:model-value="updateGroupLevel(index, $event)"
                   />
-                  <button type="button" :aria-label="`Quitar agrupación ${index + 1}`" class="text-brand-text-muted hover:text-brand-error-text" @click="removeGroupLevel(index)"><Trash2 class="h-4 w-4" :stroke-width="1.75" /></button>
+                  <button type="button" :aria-label="`Quitar agrupación ${index + 1}`" class="text-brand-sites-muted hover:text-brand-error-text" @click="removeGroupLevel(index)"><Trash2 class="h-4 w-4" :stroke-width="1.75" /></button>
                 </div>
-                <p v-if="!groupBy.length" class="text-xs text-brand-text-muted">Sin agrupaciones.</p>
+                <p v-if="!groupBy.length" class="text-xs text-brand-sites-muted">Sin agrupaciones.</p>
               </div>
-              <div class="border-t border-brand-border-light pt-3"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-text-muted">Totales (sumar)</p><p class="mt-1.5 text-xs text-brand-text">{{ sumColumns.length ? sumColumns.map(col => col.label).join(' · ') : 'Sin columnas para sumar' }}</p></div>
+              <div class="border-t border-brand-border-light pt-3"><p class="text-[11px] font-bold uppercase tracking-wide text-brand-sites-muted">Totales (sumar)</p><p class="mt-1.5 text-xs text-brand-text">{{ sumColumns.length ? sumColumns.map(col => col.label).join(' · ') : 'Sin columnas para sumar' }}</p></div>
               <button v-if="detail" type="button" class="flex items-center gap-1.5 self-start text-xs font-semibold text-brand-blue hover:underline" @click="detailConfigOpen = true"><Settings2 class="h-3.5 w-3.5" :stroke-width="1.75" /> Configurar tabla relacionada</button>
             </div>
           </section>
@@ -789,11 +789,11 @@ function clearDetail() {
     </div>
 
     <!-- Modal "Configurar tabla relacionada" (ERD-88 #292 - agrupamiento + papelera) -->
-    <div v-if="detailConfigOpen && detail" class="fixed inset-0 z-30 flex items-center justify-center bg-black/30 p-4" @click.self="detailConfigOpen = false">
+    <div v-if="detailConfigOpen && detail" class="fixed inset-0 z-30 flex items-center justify-center bg-brand-modal-overlay/30 p-4" @click.self="detailConfigOpen = false">
       <div class="flex max-h-[85vh] w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-lg bg-brand-surface p-5 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-base font-bold text-brand-text">Config de tabla relacionada</h3>
-          <button type="button" class="text-brand-text-muted hover:text-brand-text" @click="detailConfigOpen = false">
+          <button type="button" class="text-brand-sites-muted hover:text-brand-text" @click="detailConfigOpen = false">
             <X class="h-4 w-4" :stroke-width="1.75" />
           </button>
         </div>
@@ -802,7 +802,7 @@ function clearDetail() {
         <button type="button" class="self-start text-sm text-brand-error-text underline" @click="clearDetail">Quitar tabla de detalle y sus campos del reporte</button>
 
         <div class="flex flex-col gap-2 border-b border-brand-border-light pb-4">
-          <p class="text-xs font-bold uppercase tracking-wide text-brand-text-muted">Datos</p>
+          <p class="text-xs font-bold uppercase tracking-wide text-brand-sites-muted">Datos</p>
           <label class="flex items-center justify-between gap-3 text-sm text-brand-text">
             Incluir registros eliminados de "{{ detailEntityName }}"
             <input v-model="detail.includeDeleted" type="checkbox" class="h-4 w-4" />
@@ -811,7 +811,7 @@ function clearDetail() {
             Incluir registros eliminados de "{{ baseEntityName }}"
             <input v-model="includeDeletedBase" type="checkbox" class="h-4 w-4" />
           </label>
-          <p class="flex items-center gap-1.5 text-xs text-brand-text-muted">
+          <p class="flex items-center gap-1.5 text-xs text-brand-sites-muted">
             <Ban class="h-3.5 w-3.5 shrink-0" :stroke-width="1.75" />
             Un registro eliminado se muestra atenuado ("· Eliminado") en la vista previa, no se descarta.
           </p>
@@ -822,3 +822,8 @@ function clearDetail() {
     </div>
   </div>
 </template>
+
+<style scoped>
+input, select { color-scheme: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
+</style>

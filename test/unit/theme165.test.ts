@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { compileVueComponent } from '../helpers/vueComponent'
 import baseline from '../fixtures/themeBaseline165.json'
+import nextBaseline from '../fixtures/themeBaseline167.json'
 import originals from '../fixtures/themeDesigner165.json'
 import { lightTokens, darkTokens, rgbChannels } from '../../utils/themeTokens'
 import { auditThemeColors, migratedThemeFiles } from '../../scripts/auditThemeColors'
@@ -66,7 +67,7 @@ afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.in
 describe('contratos HU-165', () => {
   it('congela todos los valores previos contra HEAD y conserva cada claro nuevo', () => {
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens]).toBe(value)
-    const newNames = Object.keys(lightTokens).filter(name => !(name in baseline.light) && !name.startsWith('resize-') && !name.startsWith('sites-'))
+    const newNames = Object.keys(nextBaseline.light).filter(name => !(name in baseline.light) && !name.startsWith('resize-'))
     expect(newNames.sort()).toEqual(Object.keys(originals).sort())
     for (const [name, values] of Object.entries(originals)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0])

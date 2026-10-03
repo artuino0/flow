@@ -20,7 +20,7 @@
 // al usuario unicamente.
 import { Settings2, Trash2, Zap } from '@lucide/vue'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 interface TriggerRow {
   id: string
@@ -189,20 +189,20 @@ async function onCreate() {
       @refresh="refresh"
     >
       <template #actions>
-        <button v-if="data?.length" type="button" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
+        <button v-if="data?.length" type="button" class="flex h-[35px] items-center gap-1.5 rounded bg-brand-orange px-4 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
           <Zap class="h-4 w-4" :stroke-width="1.75" />
           Nueva automatización
         </button>
       </template>
       <template #toolbar-left>
-        <select v-model="entityFilter" class="h-[30px] rounded border border-brand-border bg-brand-surface px-3 text-[13px] text-brand-text focus:outline-none">
+        <select v-model="entityFilter" class="h-[30px] rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] text-brand-text focus:outline-none">
           <option value="">Todos los módulos</option>
           <option v-for="e in entitiesData?.entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option>
         </select>
       </template>
     </ListPageHeader>
 
-    <p v-if="pending" class="text-sm text-brand-text-muted">Cargando...</p>
+    <p v-if="pending" class="text-sm text-brand-sites-muted">Cargando...</p>
     <p v-else-if="fetchError" class="text-sm text-brand-error-text">
       No se pudo cargar el listado de automatizaciones{{ fetchError.statusCode === 403 ? ' (requiere rol administrador)' : '' }}.
     </p>
@@ -218,11 +218,11 @@ async function onCreate() {
           </span>
           <h2 id="automation-empty-title" class="mt-5 text-xl font-bold text-brand-text">Aún no hay automatizaciones</h2>
           <p class="mt-2 text-sm leading-6 text-brand-text-secondary">Elige un módulo y un evento para ejecutar acciones automáticamente, como avisar a tu equipo o actualizar un registro.</p>
-          <button v-if="hasModules" type="button" class="mt-5 inline-flex h-10 items-center gap-2 rounded bg-brand-orange px-5 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
+          <button v-if="hasModules" type="button" class="mt-5 inline-flex h-10 items-center gap-2 rounded bg-brand-orange px-5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="openCreate">
             <Zap class="h-4 w-4" :stroke-width="1.75" />
             Crear la primera automatización
           </button>
-          <NuxtLink v-else to="/modulos/nuevo" class="mt-5 inline-flex h-10 items-center rounded bg-brand-orange px-5 text-sm font-semibold text-white hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Crear un módulo</NuxtLink>
+          <NuxtLink v-else to="/modulos/nuevo" class="mt-5 inline-flex h-10 items-center rounded bg-brand-orange px-5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Crear un módulo</NuxtLink>
         </div>
       </section>
       <section v-else-if="filteredTriggers.length === 0" class="flex min-h-[340px] flex-1 items-center justify-center px-4 py-12 text-center" aria-labelledby="automation-filter-empty-title">
@@ -230,11 +230,11 @@ async function onCreate() {
           <span class="flex h-14 w-14 items-center justify-center rounded-full bg-brand-blue-bg text-brand-text-secondary" aria-hidden="true"><Zap class="h-7 w-7" :stroke-width="1.5" /></span>
           <h2 id="automation-filter-empty-title" class="mt-4 text-lg font-bold text-brand-text">No hay resultados</h2>
           <p class="mt-2 text-sm leading-6 text-brand-text-secondary">{{ search.trim() ? `No encontramos automatizaciones para “${search.trim()}”${entityFilter ? ' en este módulo' : ''}.` : 'No hay automatizaciones en el módulo seleccionado.' }}</p>
-          <button type="button" class="mt-4 rounded border border-brand-border bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="clearFilters">Limpiar filtros</button>
+          <button type="button" class="mt-4 rounded border border-brand-control-border bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue" @click="clearFilters">Limpiar filtros</button>
         </div>
       </section>
 
-      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_#33475B14]">
+      <div v-else class="overflow-x-auto rounded-lg border border-brand-border-light bg-brand-surface shadow-[0_1px_3px_0_rgb(var(--brand-shadow)/0.0784313725490196)]">
         <table class="min-w-full text-sm">
           <thead class="border-b border-brand-border-light bg-brand-bg">
             <tr>
@@ -263,11 +263,14 @@ async function onCreate() {
               <td class="px-4 py-3">
                 <button
                   type="button"
+                  :aria-label="row.isActive ? 'Desactivar ' + row.name : 'Activar ' + row.name"
+                  role="switch"
+                  :aria-checked="row.isActive"
                   class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors"
-                  :class="row.isActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
+                  :class="row.isActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-control-border bg-brand-surface'"
                   @click="onToggleActive(row)"
                 >
-                  <span class="h-[18px] w-[18px] rounded-full bg-white shadow" />
+                  <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
                 </button>
               </td>
               <td class="px-4 py-3">
@@ -304,7 +307,7 @@ async function onCreate() {
       </div>
     </template>
 
-    <div v-if="showCreate" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="showCreate = false">
+    <div v-if="showCreate" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4" @click.self="showCreate = false">
       <div class="flex w-full max-w-[420px] flex-col rounded-lg bg-brand-surface shadow-xl">
         <div class="flex items-start justify-between border-b border-brand-border-light p-5">
           <div class="flex flex-col gap-0.5">
@@ -320,7 +323,7 @@ async function onCreate() {
               v-model="newName"
               type="text"
               placeholder="Ej. Notificar factura vencida"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
           </div>
           <div class="flex flex-col gap-1.5">
@@ -328,7 +331,7 @@ async function onCreate() {
             <select
               id="trigger-entity"
               v-model="newEntityId"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             >
               <option v-for="e in entitiesData?.entities ?? []" :key="e.id" :value="e.id">{{ e.name }}</option>
             </select>
@@ -338,7 +341,7 @@ async function onCreate() {
             <select
               id="trigger-event"
               v-model="newEvent"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             >
               <option value="on_create">Al crear</option>
               <option value="on_update">Al actualizar</option>
@@ -348,11 +351,11 @@ async function onCreate() {
           <p v-if="createError" class="text-sm text-brand-error-text">{{ createError }}</p>
         </div>
         <div class="flex items-center justify-end gap-3 border-t border-brand-border-light p-5">
-          <button type="button" class="rounded border border-brand-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="showCreate = false">Cancelar</button>
+          <button type="button" class="rounded border border-brand-control-border px-4 py-2 text-sm font-semibold text-brand-text hover:bg-brand-bg" @click="showCreate = false">Cancelar</button>
           <button
             type="button"
             :disabled="creating || !newName || !newEntityId"
-            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded bg-brand-orange px-4 py-2 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onCreate"
           >
             {{ creating ? 'Creando...' : 'Crear automatización' }}
@@ -362,3 +365,9 @@ async function onCreate() {
     </div>
   </div>
 </template>
+
+<style scoped>
+input, select { color-scheme: inherit; }
+input:not([type=checkbox]):not([type=radio]), select { background-color: rgb(var(--brand-surface)); }
+button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
+</style>

@@ -10,6 +10,35 @@ export function contrast(foreground: string, background: string) {
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
 }
 
+/** HU-170: superficies y estados que realmente usan triggers y cromo de reportes.
+ * Papel aislado en claro; no se atribuye AA oscuro a la tinta impresa.
+ */
+export const automationReportContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['trigger-activation', 'surface', 4.5], ['trigger-hover-border', 'surface', 3],
+  ['trigger-decision-border', 'surface', 3], ['trigger-yes-line', 'bg', 3],
+  ['trigger-no-line', 'bg', 3], ['success-text', 'trigger-yes-bg', 4.5],
+  ['trigger-no-text', 'trigger-no-bg', 4.5], ['trigger-no-text', 'surface', 4.5],
+  ['sites-muted', 'neutral-bg', 4.5], ['sites-muted', 'blue-bg', 4.5],
+  ['sites-muted', 'report-picker-bg', 4.5], ['text', 'report-picker-bg', 4.5],
+  ['text-secondary', 'report-picker-bg', 4.5], ['control-border', 'report-picker-bg', 3],
+  ['sites-muted', 'border-light', 4.5], ['accent-fg', 'blue', 4.5],
+  ['orange', 'surface', 4.5], ['orange', 'surface', 3], ['orange', 'bg', 3],
+  ['control-border', 'bg', 3], ['text', 'blue-bg', 4.5], ['text', 'neutral-bg', 4.5],
+  ['primary-fg', 'orange', 4.5], ['primary-fg', 'orange-hover', 4.5],
+  ['sites-muted', 'surface', 4.5], ['sites-muted', 'bg', 4.5],
+  ['text-secondary', 'surface', 4.5], ['text-secondary', 'bg', 4.5],
+  ['blue', 'blue-bg', 4.5], ['success-text', 'success-bg', 4.5],
+  ['error-text', 'error-bg', 4.5], ['warning-text', 'warning-bg', 4.5],
+  ['warning-text', 'surface', 4.5], ['purple-text', 'purple-bg', 4.5],
+  ['info-text', 'info-bg', 4.5], ['pink-text', 'pink-bg', 4.5],
+  ['control-border', 'surface', 3], ['blue', 'surface', 3]
+]
+// Una sección independiente permite congelar incluso los pares reutilizados
+// sin cambiar la pertenencia de las auditorías anteriores.
+export function isAutomationReportContrast(result: { id: string }) {
+  return result.id.includes(':automation-report:')
+}
+
 /** Lista cerrada del editor HU-164; sus déficits claros se autorizan aparte de los 17 originales. */
 export const labelContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
   ['label-muted', 'surface', 4.5], ['label-heading', 'surface', 4.5],
@@ -20,7 +49,8 @@ export const labelContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['label-control-border', 'surface', 3], ['label-focus', 'surface', 3],
   ['label-toggle-bg', 'surface', 3], ['label-toggle-active', 'surface', 3]
 ]
-export function isLabelContrast(result: { foreground: string; background: string }) {
+export function isLabelContrast(result: { foreground: string; background: string; id?: string }) {
+  if (result.id?.includes(':automation-report:')) return false
   return labelContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -29,7 +59,8 @@ export const resizeContrastPairs: [keyof typeof lightTokens, keyof typeof lightT
   ['blue', 'resize-hover', 3], ['blue', 'resize-bg', 3], ['blue', 'surface', 3],
   ['resize-mark', 'resize-hover', 3], ['resize-mark', 'resize-bg', 3]
 ]
-export function isResizeContrast(result: { foreground: string; background: string }) {
+export function isResizeContrast(result: { foreground: string; background: string; id?: string }) {
+  if (result.id?.includes(':automation-report:')) return false
   return result.foreground.startsWith('resize-') || result.background.startsWith('resize-')
 }
 
@@ -52,7 +83,8 @@ export const sitesContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['warning-text', 'surface', 4.5], ['designer-error-action', 'designer-error-bg', 4.5],
   ['text-secondary', 'designer-section-bg', 4.5], ['text-secondary', 'dashboard-soft', 4.5]
 ]
-export function isSitesContrast(result: { foreground: string; background: string }) {
+export function isSitesContrast(result: { foreground: string; background: string; id?: string }) {
+  if (result.id?.includes(':automation-report:')) return false
   return sitesContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -85,7 +117,8 @@ export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof ligh
   ['designer-minimap-existing', 'designer-minimap-section', 3], ['designer-minimap-new', 'designer-minimap-section', 3],
   ['designer-minimap-system', 'designer-minimap-section', 3]
 ]
-export function isDesignerContrast(result: { foreground: string; background: string }) {
+export function isDesignerContrast(result: { foreground: string; background: string; id?: string }) {
+  if (result.id?.includes(':automation-report:')) return false
   return designerContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
     // Contador y leyenda usan pares originales; su auditoría permanece en la sección general.
     && (result.foreground.startsWith('designer-') || result.background.startsWith('designer-'))
@@ -237,7 +270,8 @@ export const editorLightContrastPairs = editorContrastPairs.filter(([foreground,
   }
   return true
 })
-export function isEditorContrast(result: { foreground: string; background: string }) {
+export function isEditorContrast(result: { foreground: string; background: string; id?: string }) {
+  if (result.id?.includes(':automation-report:')) return false
   return result.foreground.startsWith('sites-editor-') || result.background.startsWith('sites-editor-')
 }
 
@@ -268,5 +302,8 @@ export function themeContrasts() {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:designer-label/designer-label-bg@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'designer-label-bg' as const, minimum: 4.5,
       ratio: compositeContrast(tokens['designer-label'], tokens['designer-label-bg'], tokens.bg, .92, section ? [tokens['designer-section-bg'], .8] : undefined) }
+  }))).concat((['light', 'dark'] as const).flatMap(theme => automationReportContrastPairs.map(([foreground, background, minimum]) => {
+    const tokens = theme === 'light' ? lightTokens : darkTokens
+    return { id: `${theme}:automation-report:${foreground}/${background}@${minimum}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
   })))
 }

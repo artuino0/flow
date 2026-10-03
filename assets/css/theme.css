@@ -263,6 +263,16 @@
   --brand-sites-editor-preview: 233 238 242;
   --brand-sites-editor-code-bg: 255 255 255;
   --brand-sites-editor-completion-text: 255 255 255;
+  --brand-trigger-activation: 227 84 50;
+  --brand-trigger-hover-border: 168 203 212;
+  --brand-trigger-decision-border: 216 199 240;
+  --brand-trigger-yes-line: 169 220 194;
+  --brand-trigger-yes-bg: 230 247 238;
+  --brand-trigger-no-line: 232 184 184;
+  --brand-trigger-no-bg: 252 232 232;
+  --brand-trigger-no-text: 197 48 48;
+  --brand-report-picker-bg: 248 251 253;
+  --brand-report-backdrop: 27 42 51;
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
@@ -529,6 +539,16 @@
   --brand-sites-editor-preview: 233 238 242;
   --brand-sites-editor-code-bg: 20 27 41;
   --brand-sites-editor-completion-text: 240 244 248;
+  --brand-trigger-activation: 255 173 143;
+  --brand-trigger-hover-border: 63 195 222;
+  --brand-trigger-decision-border: 196 167 255;
+  --brand-trigger-yes-line: 74 222 148;
+  --brand-trigger-yes-bg: 18 61 42;
+  --brand-trigger-no-line: 255 138 118;
+  --brand-trigger-no-bg: 61 23 18;
+  --brand-trigger-no-text: 255 138 118;
+  --brand-report-picker-bg: 20 27 41;
+  --brand-report-backdrop: 0 0 0;
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
@@ -795,6 +815,16 @@
   --brand-sites-editor-preview: 233 238 242;
   --brand-sites-editor-code-bg: 255 255 255;
   --brand-sites-editor-completion-text: 255 255 255;
+  --brand-trigger-activation: 227 84 50;
+  --brand-trigger-hover-border: 168 203 212;
+  --brand-trigger-decision-border: 216 199 240;
+  --brand-trigger-yes-line: 169 220 194;
+  --brand-trigger-yes-bg: 230 247 238;
+  --brand-trigger-no-line: 232 184 184;
+  --brand-trigger-no-bg: 252 232 232;
+  --brand-trigger-no-text: 197 48 48;
+  --brand-report-picker-bg: 248 251 253;
+  --brand-report-backdrop: 27 42 51;
   color-scheme: light;
   color: rgb(var(--brand-body-text));
 }
@@ -1063,6 +1093,16 @@
   --brand-sites-editor-preview: 233 238 242 !important;
   --brand-sites-editor-code-bg: 255 255 255 !important;
   --brand-sites-editor-completion-text: 255 255 255 !important;
+  --brand-trigger-activation: 227 84 50 !important;
+  --brand-trigger-hover-border: 168 203 212 !important;
+  --brand-trigger-decision-border: 216 199 240 !important;
+  --brand-trigger-yes-line: 169 220 194 !important;
+  --brand-trigger-yes-bg: 230 247 238 !important;
+  --brand-trigger-no-line: 232 184 184 !important;
+  --brand-trigger-no-bg: 252 232 232 !important;
+  --brand-trigger-no-text: 197 48 48 !important;
+  --brand-report-picker-bg: 248 251 253 !important;
+  --brand-report-backdrop: 27 42 51 !important;
     color-scheme: light !important;
   }
 }

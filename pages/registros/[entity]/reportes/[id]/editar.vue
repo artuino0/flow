@@ -4,7 +4,7 @@
 // la vista previa. Ambas entradas y la API de guardado exigen administrador.
 import type { PrintReportDsl } from '~/composables/usePrintReports'
 
-definePageMeta({ layout: 'default', editorFullscreen: true, fullBleed: true, middleware: 'report-admin' })
+definePageMeta({ layout: 'default', editorFullscreen: true, fullBleed: true, middleware: 'report-admin', darkReady: true })
 
 const route = useRoute()
 const slug = route.params.entity as string
@@ -24,7 +24,7 @@ const { data, pending, error } = await useFetch<PrintReportRecord>(`/api/print-r
 </script>
 
 <template>
-  <p v-if="pending" class="text-sm text-brand-text-muted">Cargando reporte...</p>
+  <p v-if="pending" class="text-sm text-brand-sites-muted">Cargando reporte...</p>
   <p v-else-if="error" class="text-sm text-brand-error-text">No se pudo cargar este reporte.</p>
   <PrintReportDesigner v-else-if="data" :entity-slug="slug" :report-id="id" :initial-title="data.title" :initial-dsl="data.dsl" />
 </template>

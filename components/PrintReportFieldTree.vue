@@ -120,7 +120,7 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
         @click="onLeafClick(node)"
         @dragstart="onLeafDragStart($event, node)"
       >
-        <GripVertical class="h-3 w-3 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+        <GripVertical class="h-3 w-3 shrink-0 text-brand-sites-muted" :stroke-width="1.75" />
         <span class="flex-1 truncate">{{ node.label }}</span>
         <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="[typeBadge(node.dataType).bg, typeBadge(node.dataType).text]">{{ typeBadge(node.dataType).label }}</span>
       </button>
@@ -129,7 +129,7 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
         <button
           type="button"
           class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm font-semibold hover:bg-brand-bg"
-          :class="isDisabledInverseBranch(node) ? 'cursor-not-allowed text-brand-text-muted' : 'text-brand-text'"
+          :class="isDisabledInverseBranch(node) ? 'cursor-not-allowed text-brand-sites-muted' : 'text-brand-text'"
           :disabled="isDisabledInverseBranch(node)"
           @click="onBranchClick(node)"
         >
@@ -137,11 +137,11 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
           <Link2 v-if="node.kind === 'forward'" class="h-3.5 w-3.5 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
           <Table2 v-else class="h-3.5 w-3.5 shrink-0 text-brand-blue" :stroke-width="1.75" />
           <span class="truncate">{{ node.entityName }}</span>
-          <span v-if="node.kind === 'forward'" class="ml-auto text-[10px] font-normal text-brand-text-muted">Un valor</span>
+          <span v-if="node.kind === 'forward'" class="ml-auto text-[10px] font-normal text-brand-sites-muted">Un valor</span>
           <span v-if="node.kind === 'inverse'" class="ml-auto shrink-0 rounded-full bg-brand-pink-bg px-1.5 py-0.5 text-[10px] font-bold text-brand-pink-text">1 : N</span>
         </button>
 
-        <button v-if="node.kind === 'inverse' && expanded[`${depth}-${node.fieldName}`] && !chosenDetailField" type="button" class="my-2 ml-4 rounded border border-brand-border px-3 py-2 text-xs text-brand-blue" @click="emit('select-detail-branch', node)">Usar {{ node.entityName }} como filas del reporte</button>
+        <button v-if="node.kind === 'inverse' && expanded[`${depth}-${node.fieldName}`] && !chosenDetailField" type="button" class="my-2 ml-4 rounded border border-brand-control-border px-3 py-2 text-xs text-brand-blue" @click="emit('select-detail-branch', node)">Usar {{ node.entityName }} como filas del reporte</button>
         <PrintReportFieldTree
           v-if="(expanded[`${depth}-${node.fieldName}`] || (search && node.kind === 'forward')) && !isDisabledInverseBranch(node) && (node.kind === 'forward' || !!chosenDetailField)"
           :nodes="node.children"
@@ -157,3 +157,7 @@ const visibleNodes = computed(() => props.nodes.filter((n) => n.type === 'leaf' 
     </li>
   </ul>
 </template>
+
+<style scoped>
+button:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
+</style>

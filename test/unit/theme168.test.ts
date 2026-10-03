@@ -21,6 +21,7 @@ import { buildPreviewDocument, joinSiteScript, splitSiteScript } from '../../uti
 import { auditThemeColors, auditThemeSource, migratedThemeFiles, themeColorExceptions } from '../../scripts/auditThemeColors'
 import { editorContrastPairs, isEditorContrast, themeContrasts } from '../helpers/themeContrast'
 import baseline from '../fixtures/themeBaseline168.json'
+import nextBaseline from '../fixtures/themeBaseline170.json'
 import colors from '../fixtures/themeEditor168.json'
 import deficits from '../fixtures/themeEditorDeficits168.json'
 
@@ -76,7 +77,7 @@ describe('contratos HU-168', () => {
   it('conserva los 214 tokens previos y los claros exactos del inventario/defaults', () => {
     expect(Object.keys(baseline.light)).toHaveLength(214)
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens], `${theme}:${name}`).toBe(value)
-    expect(Object.keys(lightTokens).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
+    expect(Object.keys(nextBaseline.light).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
     const css = readFileSync('assets/css/theme.css', 'utf8')
     for (const [name, values] of Object.entries(colors)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0]); expect(darkTokens[name as keyof typeof lightTokens]).toBe(values[1])

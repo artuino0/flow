@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.141.0] - 2026-10-03
+#### [feature]
+- [ERD-170](https://dydasoftware.atlassian.net/browse/ERD-170) - Modo oscuro, fase 3C: las pantallas de Automatización (lista de disparadores y su editor de reglas con condiciones y acciones) y el diseñador de reportes imprimibles (selector de campos, filtros, controles de datos y modal de parámetros) ahora siguen el tema oscuro. La hoja del reporte, la vista previa y la impresión se mantienen siempre claras, como el papel. En modo claro todo se ve igual que antes.
+
 ### [0.140.1] - 2026-10-02
 #### [bugfix]
 - [ERD-169](https://dydasoftware.atlassian.net/browse/ERD-169) - Sites: las pestañas de Páginas, Landing pages y Formularios (globales y de cada sitio) ya no están pegadas a la tabla; ahora hay una separación de 16 px entre ambas.

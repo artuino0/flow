@@ -85,20 +85,20 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .filter-select { position: relative; width: 100%; font-size: 14px; }
-.filter-select-trigger { width:100%; min-height:38px; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #CBD6E2; border-radius:4px; background:#fff; text-align:left; color:#8DA1B5; }
-.filter-select-trigger.expanded { outline:1px solid #FF7A59; border-color:#FF7A59; }
-.filter-select-trigger:disabled { background:#F5F8FA; cursor:not-allowed; }
-.filter-select-chip { color:#0091AE; background:#EAF3F6; padding:2px 7px; border-radius:3px; font-size:13px; overflow-wrap:anywhere; }
-.filter-select-popover { position:fixed; z-index:20; border:1px solid #CBD6E2; border-radius:4px; background:#fff; box-shadow:0 8px 20px #33475B33; overflow:hidden; display:flex; flex-direction:column; }
-.filter-select-search { display:flex; flex:none; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid #E5EAF0; color:#8DA1B5; }
-.filter-select-search input { width:100%; min-width:0; outline:none; font-size:13px; color:#33475B; }
+.filter-select-trigger { width:100%; min-height:38px; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid rgb(var(--brand-control-border)); border-radius:4px; background:rgb(var(--brand-surface)); text-align:left; color:rgb(var(--brand-sites-muted)); }
+.filter-select-trigger.expanded { outline:1px solid rgb(var(--brand-orange)); border-color:rgb(var(--brand-orange)); }
+.filter-select-trigger:disabled { background:rgb(var(--brand-bg)); cursor:not-allowed; }
+.filter-select-chip { color:rgb(var(--brand-blue)); background:rgb(var(--brand-blue-bg)); padding:2px 7px; border-radius:3px; font-size:13px; overflow-wrap:anywhere; }
+.filter-select-popover { position:fixed; z-index:20; border:1px solid rgb(var(--brand-control-border)); border-radius:4px; background:rgb(var(--brand-surface)); box-shadow:0 8px 20px rgb(var(--brand-shadow) / 0.2); overflow:hidden; display:flex; flex-direction:column; }
+.filter-select-search { display:flex; flex:none; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid rgb(var(--brand-border-light)); color:rgb(var(--brand-sites-muted)); }
+.filter-select-search input { width:100%; min-width:0; outline:none; font-size:13px; background:rgb(var(--brand-surface)); color:rgb(var(--brand-text)); }
 .filter-select-list { min-height:0; max-height:196px; overflow:auto; }
-.filter-select-list button { display:flex; gap:10px; align-items:center; width:100%; padding:9px 12px; text-align:left; color:#33475B; }
+.filter-select-list button { display:flex; gap:10px; align-items:center; width:100%; padding:9px 12px; text-align:left; color:rgb(var(--brand-text)); }
 .filter-option-label { flex:1; overflow-wrap:anywhere; }
-.filter-select-list button[aria-selected=true], .filter-select-list button:hover, .filter-select-list button:focus-visible { background:#EAF3F6; color:#0091AE; outline:none; }
-.filter-select-avatar { display:grid; place-items:center; flex:none; width:22px; height:22px; border-radius:50%; background:#E5EAF0; font-size:10px; }
-[aria-selected=true] .filter-select-avatar { background:#0091AE; color:#fff; }
-.filter-select-message { padding:10px 12px; font-size:12px; color:#8DA1B5; }
-.filter-select-error { color:#C7391F; }
-.filter-select-trigger:focus-visible { outline:2px solid #FF7A59; outline-offset:2px; }
+.filter-select-list button[aria-selected=true], .filter-select-list button:hover, .filter-select-list button:focus-visible { background:rgb(var(--brand-blue-bg)); color:rgb(var(--brand-blue)); outline:none; }
+.filter-select-avatar { display:grid; place-items:center; flex:none; width:22px; height:22px; border-radius:50%; background:rgb(var(--brand-border-light)); font-size:10px; }
+[aria-selected=true] .filter-select-avatar { background:rgb(var(--brand-blue)); color:rgb(var(--brand-accent-fg)); }
+.filter-select-message { padding:10px 12px; font-size:12px; color:rgb(var(--brand-sites-muted)); }
+.filter-select-error { color:rgb(var(--brand-error-text)); }
+.filter-select-trigger:focus-visible { outline:2px solid rgb(var(--brand-orange)); outline-offset:2px; }
 </style>

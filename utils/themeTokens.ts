@@ -176,7 +176,13 @@ export const lightTokens = {
   'sites-editor-bad-bracket': '#BB5555',
   'sites-editor-preview': '#E9EEF2',
   'sites-editor-code-bg': '#FFFFFF',
-  'sites-editor-completion-text': '#FFFFFF'
+  'sites-editor-completion-text': '#FFFFFF',
+  // HU-170: roles con claros exactos de Automatización y controles de reportes.
+  'trigger-activation': '#E35432', 'trigger-hover-border': '#A8CBD4',
+  'trigger-decision-border': '#D8C7F0', 'trigger-yes-line': '#A9DCC2',
+  'trigger-yes-bg': '#E6F7EE', 'trigger-no-line': '#E8B8B8',
+  'trigger-no-bg': '#FCE8E8', 'trigger-no-text': '#C53030',
+  'report-picker-bg': '#F8FBFD', 'report-backdrop': '#1B2A33'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -357,7 +363,12 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'sites-editor-bad-bracket': '#FF8A76',
   'sites-editor-preview': '#E9EEF2',
   'sites-editor-code-bg': '#141B29',
-  'sites-editor-completion-text': '#F0F4F8'
+  'sites-editor-completion-text': '#F0F4F8',
+  'trigger-activation': '#FFAD8F', 'trigger-hover-border': '#3FC3DE',
+  'trigger-decision-border': '#C4A7FF', 'trigger-yes-line': '#4ADE94',
+  'trigger-yes-bg': '#123D2A', 'trigger-no-line': '#FF8A76',
+  'trigger-no-bg': '#3D1712', 'trigger-no-text': '#FF8A76',
+  'report-picker-bg': '#141B29', 'report-backdrop': '#000000'
 }
 
 export function rgbChannels(hex: string): string {
