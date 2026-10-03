@@ -38,7 +38,8 @@ describe('regresión BUG-166', () => {
     for (const pair of pairs.filter(pair => pair.theme === 'dark')) expect(pair.ratio, pair.id).toBeGreaterThanOrEqual(3)
     const page = readFileSync('pages/disenador.vue', 'utf8')
     expect(page.match(/\.designer-handle\s*\{[^}]*\}/g)).toEqual(['.designer-handle { display: none; }'])
-    expect(readFileSync('pages/sites/[siteId]/pages/[pageId].vue', 'utf8')).not.toContain('darkReady: true')
+    // HU-168 migra Sites; el divisor sigue usando los mismos tokens y comportamiento.
+    expect(readFileSync('pages/sites/[siteId]/pages/[pageId].vue', 'utf8')).toContain('darkReady: true')
   })
 
   it('reduce brillo del minimapa y separa sus secciones de los nodos sin cambiar el claro', () => {

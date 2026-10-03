@@ -5,6 +5,8 @@ import { EditorView, keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { html } from '@codemirror/lang-html'
 import { css } from '@codemirror/lang-css'
+import { javascript } from '@codemirror/lang-javascript'
+import { sitesCodeBaseTheme, sitesCodeDarkTheme } from '~/utils/sitesCodeTheme'
 
 const props = defineProps<{
   modelValue: string
@@ -19,39 +21,14 @@ let applyingExternalValue = false
 let resizeObserver: ResizeObserver | null = null
 const languageCompartment = new Compartment()
 
-const flowTheme = EditorView.theme({
-  '&': {
-    height: '100%',
-    maxHeight: '100%',
-    backgroundColor: '#ffffff',
-    color: '#33475b',
-    fontSize: '13px'
-  },
-  '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': {
-    fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-    lineHeight: '1.65',
-    overflow: 'auto'
-  },
-  '.cm-content': { padding: '14px 0', caretColor: '#0091ae' },
-  '.cm-line': { padding: '0 18px 0 8px' },
-  '.cm-gutters': {
-    backgroundColor: '#f7f9fb',
-    color: '#8da1b5',
-    borderRight: '1px solid #e5eaf0',
-    paddingLeft: '6px'
-  },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: '#f0f7f9' },
-  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#ccebf1 !important' },
-  '.cm-cursor': { borderLeftColor: '#0091ae' },
-  '.cm-searchMatch': { backgroundColor: '#fff2c7', outline: '1px solid #e2b93b' },
-  '.cm-tooltip': { border: '1px solid #cbd6e2', borderRadius: '6px', overflow: 'hidden' }
-})
+const { resolved } = useTheme()
+const themeCompartment = new Compartment()
 
 function languageExtension(language: 'html' | 'css' | 'js') {
   if (language === 'html') return html({ autoCloseTags: true })
   if (language === 'css') return css()
-  return []
+  // JS era texto plano en claro; el parser instalado se activa solo en oscuro.
+  return resolved.value === 'dark' ? javascript() : []
 }
 
 onMounted(async () => {
@@ -65,7 +42,8 @@ onMounted(async () => {
         basicSetup,
         keymap.of([indentWithTab]),
         languageCompartment.of(languageExtension(props.language)),
-        flowTheme,
+        themeCompartment.of(resolved.value === 'dark' ? sitesCodeDarkTheme : []),
+        sitesCodeBaseTheme,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': props.ariaLabel }),
         EditorView.updateListener.of(update => {
@@ -78,6 +56,13 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(() => editor?.requestMeasure())
   resizeObserver.observe(host.value)
   requestAnimationFrame(() => editor?.requestMeasure())
+})
+
+watch(resolved, theme => {
+  editor?.dispatch({ effects: [
+    themeCompartment.reconfigure(theme === 'dark' ? sitesCodeDarkTheme : []),
+    languageCompartment.reconfigure(languageExtension(props.language))
+  ] })
 })
 
 watch(() => props.language, language => {
@@ -112,7 +97,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #fff;
+  background: rgb(var(--brand-surface));
 }
 .sites-code-editor :deep(.cm-editor) {
   height: 100% !important;
@@ -127,11 +112,11 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: #aebdca #f3f6f8;
+  scrollbar-color: rgb(var(--brand-sites-editor-code-scrollbar)) rgb(var(--brand-sites-editor-code-track));
 }
 .sites-code-editor :deep(.cm-scroller::-webkit-scrollbar) { width: 10px; height: 10px; }
-.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-track) { background: #f3f6f8; }
-.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-thumb) { border: 2px solid #f3f6f8; border-radius: 999px; background: #aebdca; }
-.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-thumb:hover) { background: #8298aa; }
+.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-track) { background: rgb(var(--brand-sites-editor-code-track)); }
+.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-thumb) { border: 2px solid rgb(var(--brand-sites-editor-code-track)); border-radius: 999px; background: rgb(var(--brand-sites-editor-code-scrollbar)); }
+.sites-code-editor :deep(.cm-scroller::-webkit-scrollbar-thumb:hover) { background: rgb(var(--brand-sites-editor-code-scrollbar-hover)); }
 </style>
 

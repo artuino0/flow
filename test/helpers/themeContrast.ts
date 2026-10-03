@@ -101,6 +101,146 @@ export function compositeContrast(foreground: string, overlay: string, backgroun
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
 }
 
+/** HU-168: déficits claros heredados autorizados, todos los oscuros nuevos exigen AA. */
+export const editorContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['text', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-meta', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-keyword', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-atom', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-literal', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-string', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-regexp', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-definition', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-local', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-type', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-class', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-special', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-property', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-comment', 'sites-editor-code-bg', 4.5],
+  ['sites-editor-syntax-invalid', 'sites-editor-code-bg', 4.5],
+  ['text', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-meta', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-keyword', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-atom', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-literal', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-string', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-regexp', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-definition', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-local', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-type', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-class', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-special', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-property', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-comment', 'sites-editor-active', 4.5],
+  ['sites-editor-syntax-invalid', 'sites-editor-active', 4.5],
+  ['text', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-meta', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-keyword', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-atom', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-literal', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-string', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-regexp', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-definition', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-local', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-type', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-class', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-special', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-property', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-comment', 'sites-editor-selection', 4.5],
+  ['sites-editor-syntax-invalid', 'sites-editor-selection', 4.5],
+  ['text', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-meta', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-keyword', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-atom', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-literal', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-string', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-regexp', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-definition', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-local', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-type', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-class', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-special', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-property', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-comment', 'sites-editor-search', 4.5],
+  ['sites-editor-syntax-invalid', 'sites-editor-search', 4.5],
+  ['sites-muted', 'sites-editor-gutter', 4.5],
+  ['blue', 'sites-editor-gutter', 3],
+  ['sites-muted', 'sites-editor-active', 4.5],
+  ['blue', 'sites-editor-active', 3],
+  ['blue', 'sites-editor-code-bg', 3],
+  ['sites-editor-match-bracket', 'sites-editor-code-bg', 3],
+  ['sites-editor-bad-bracket', 'sites-editor-code-bg', 3],
+  ['sites-editor-syntax-invalid', 'sites-editor-code-bg', 3],
+  ['sites-editor-match-bracket', 'sites-editor-active', 3],
+  ['sites-editor-bad-bracket', 'sites-editor-active', 3],
+  ['sites-editor-syntax-invalid', 'sites-editor-active', 3],
+  ['blue', 'sites-editor-selection', 3],
+  ['sites-editor-match-bracket', 'sites-editor-selection', 3],
+  ['sites-editor-bad-bracket', 'sites-editor-selection', 3],
+  ['sites-editor-syntax-invalid', 'sites-editor-selection', 3],
+  ['sites-editor-search-border', 'sites-editor-search', 3],
+  ['text', 'sites-editor-tooltip', 4.5],
+  ['text-secondary', 'sites-editor-tooltip', 4.5],
+  ['blue', 'sites-editor-tooltip', 4.5],
+  ['control-border', 'sites-editor-tooltip', 3],
+  ['text', 'sites-editor-search-panel', 4.5],
+  ['text-secondary', 'sites-editor-search-panel', 4.5],
+  ['blue', 'sites-editor-search-panel', 4.5],
+  ['control-border', 'sites-editor-search-panel', 3],
+  ['text', 'sites-editor-completion', 4.5],
+  ['text-secondary', 'sites-editor-completion', 4.5],
+  ['blue', 'sites-editor-completion', 4.5],
+  ['control-border', 'sites-editor-completion', 3],
+  ['text', 'sites-editor-completion-disabled', 4.5],
+  ['text-secondary', 'sites-editor-completion-disabled', 4.5],
+  ['blue', 'sites-editor-completion-disabled', 4.5],
+  ['control-border', 'sites-editor-completion-disabled', 3],
+  ['sites-editor-completion-text', 'sites-editor-completion', 4.5],
+  ['sites-editor-completion-text', 'sites-editor-completion-disabled', 4.5],
+  ['sites-editor-draft-text', 'surface', 4.5],
+  ['sites-editor-dirty-text', 'surface', 4.5],
+  ['sites-editor-icon', 'surface', 4.5],
+  ['sites-editor-tab', 'surface', 4.5],
+  ['sites-editor-link', 'surface', 4.5],
+  ['sites-editor-empty-icon', 'surface', 4.5],
+  ['sites-editor-draft-text', 'sites-editor-draft-bg', 4.5],
+  ['text', 'sites-editor-form-bg', 4.5],
+  ['text-secondary', 'sites-editor-form-bg', 4.5],
+  ['sites-muted', 'sites-editor-form-bg', 4.5],
+  ['text', 'sites-editor-field-bg', 4.5],
+  ['text-secondary', 'sites-editor-field-bg', 4.5],
+  ['sites-muted', 'sites-editor-field-bg', 4.5],
+  ['text', 'sites-editor-form-hover', 4.5],
+  ['text-secondary', 'sites-editor-form-hover', 4.5],
+  ['sites-muted', 'sites-editor-form-hover', 4.5],
+  ['text', 'sites-editor-warning-bg', 4.5],
+  ['text-secondary', 'sites-editor-warning-bg', 4.5],
+  ['sites-muted', 'sites-editor-warning-bg', 4.5],
+  ['sites-warning-text', 'sites-editor-warning-bg', 4.5],
+  ['sites-editor-hover-border', 'surface', 3],
+  ['sites-editor-form-border', 'surface', 3],
+  ['sites-editor-asset-focus', 'surface', 3],
+  ['sites-editor-code-scrollbar', 'sites-editor-code-track', 3],
+  ['sites-editor-code-scrollbar-hover', 'sites-editor-code-track', 3]
+]
+/** Solo combinaciones que el editor claro anterior realmente renderizaba.
+ * Los overrides exclusivos del oscuro (texto secundario/azul en autocompletado,
+ * bordes de panel, marca de gutter) se auditan en oscuro, sin atribuirles un
+ * déficit claro heredado que no existe en la interfaz anterior.
+ */
+export const editorLightContrastPairs = editorContrastPairs.filter(([foreground, background]) => {
+  if (background === 'sites-editor-completion' || background === 'sites-editor-completion-disabled') return foreground === 'sites-editor-completion-text'
+  if (background === 'sites-editor-search-panel') return foreground === 'text'
+  if (background === 'sites-editor-tooltip') return foreground === 'text' || foreground === 'control-border'
+  if (background === 'sites-editor-gutter' || background === 'sites-editor-active') {
+    if (foreground === 'blue' && background === 'sites-editor-gutter') return false
+  }
+  return true
+})
+export function isEditorContrast(result: { foreground: string; background: string }) {
+  return result.foreground.startsWith('sites-editor-') || result.background.startsWith('sites-editor-')
+}
+
 export function themeContrasts() {
   const pairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = []
   for (const background of ['bg', 'surface'] as const) {
@@ -118,11 +258,12 @@ export function themeContrasts() {
   pairs.push(['text-secondary', 'help-bg', 4.5], ['primary-fg', 'success-text', 4.5])
   pairs.push(...labelContrastPairs)
   pairs.push(...sitesContrastPairs)
+  pairs.push(...editorContrastPairs)
   pairs.push(...resizeContrastPairs.filter(([foreground, background]) => foreground.startsWith('resize-') || background.startsWith('resize-')))
   pairs.push(...designerContrastPairs.filter(([foreground, background]) => foreground.startsWith('designer-') || background.startsWith('designer-')))
-  return (['light', 'dark'] as const).flatMap(theme => pairs.map(([foreground, background, minimum]) => {
+  return (['light', 'dark'] as const).flatMap(theme => pairs.filter(([foreground, background]) => theme === 'dark' || !isEditorContrast({ foreground, background }) || editorLightContrastPairs.some(([f, b]) => f === foreground && b === background)).map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
-    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: background === 'designer-section-bg' && foreground.startsWith('designer-') ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
+    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: theme === 'light' && (foreground === 'sites-editor-match-bracket' || foreground === 'sites-editor-bad-bracket') && ['sites-editor-code-bg', 'sites-editor-active', 'sites-editor-selection'].includes(background) ? compositeContrast(tokens[background], tokens[foreground], tokens[background], foreground === 'sites-editor-match-bracket' ? 82 / 255 : 68 / 255) : background === 'designer-section-bg' && foreground.startsWith('designer-') ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
   }).concat([false, true].map(section => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:designer-label/designer-label-bg@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'designer-label-bg' as const, minimum: 4.5,

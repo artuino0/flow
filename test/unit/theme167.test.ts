@@ -9,6 +9,7 @@ import { lightTokens, darkTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight } from '../../utils/theme'
 import { isSitesContrast, sitesContrastPairs, themeContrasts } from '../helpers/themeContrast'
 import baseline from '../fixtures/themeBaseline167.json'
+import nextBaseline from '../fixtures/themeBaseline168.json'
 import originals from '../fixtures/themeSites167.json'
 import protectedFiles from '../fixtures/themeSitesProtected167.json'
 
@@ -79,7 +80,7 @@ describe('contratos HU-167', () => {
   it('protege los 192 tokens previos y cada claro nuevo exacto, con CSS completo', () => {
     expect(Object.keys(baseline.light)).toHaveLength(192)
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens], `${theme}:${name}`).toBe(value)
-    expect(Object.keys(lightTokens).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(originals).sort())
+    expect(Object.keys(nextBaseline.light).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(originals).sort())
     const css = readFileSync('assets/css/theme.css', 'utf8')
     for (const [name, values] of Object.entries(originals)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0]); expect(darkTokens[name as keyof typeof lightTokens]).toBe(values[1])
@@ -87,14 +88,14 @@ describe('contratos HU-167', () => {
       expect(css).toContain(`--brand-${name}: ${rgbChannels(values[0]!)} !important;`)
     }
   })
-  it('marca exactamente el alcance y conserva editor, públicos y contenido del cliente', () => {
+  it('marca exactamente su alcance y conserva públicos y contenido del cliente tras HU-168', () => {
     expect(routes).toHaveLength(17)
     for (const file of routes) { expect(readFileSync(file, 'utf8'), file).toContain('darkReady: true'); expect(migratedThemeFiles).toContain(file) }
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
     expect(contentNeedsLight({})).toBe(true)
-    for (const [file, hash] of Object.entries(protectedFiles)) expect(createHash('sha256').update(readFileSync(file)).digest('hex'), file).toBe(hash)
+    for (const [file, hash] of Object.entries(protectedFiles).filter(([file]) => file === 'utils/sitesEditorScript.ts' || file === 'server/utils/siteDomains.ts')) expect(createHash('sha256').update(readFileSync(file)).digest('hex'), file).toBe(hash)
     const editor = readFileSync('pages/sites/[siteId]/pages/[pageId].vue', 'utf8')
-    expect(editor).not.toContain('darkReady: true'); expect(editor).toContain('theme-light')
+    expect(editor).toContain('darkReady: true'); expect(editor).toContain('theme-light')
     expect(readFileSync('utils/sitesEditorScript.ts', 'utf8')).toContain(':root{color-scheme:light!important}')
     expect(readFileSync('server/utils/siteDomains.ts', 'utf8')).toContain('<meta name="color-scheme" content="light">')
   })

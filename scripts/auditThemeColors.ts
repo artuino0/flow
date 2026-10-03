@@ -56,7 +56,11 @@ export const migratedThemeFiles = [
   'components/SitesAnalyticsSummary.vue',
   'components/SitesDomainManager.vue',
   'components/SitesFormManager.vue',
-  'components/SitesPageManager.vue'
+  'components/SitesPageManager.vue',
+  // HU-168: editor; preview y miniaturas aislados localmente en claro.
+  'pages/sites/[siteId]/pages/[pageId].vue',
+  'components/SitesCodeEditor.client.vue', 'components/SitesEditorForms.vue',
+  'components/SitesAssetLibrary.vue', 'utils/sitesCodeTheme.ts'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.
