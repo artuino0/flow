@@ -1,5 +1,13 @@
 /* Generado por scripts/generateThemeCss.ts; fuente: utils/themeTokens.ts. */
 :root {
+  --brand-access-start: 0 145 174;
+  --brand-access-end: 33 51 67;
+  --brand-access-description: 220 234 240;
+  --brand-access-eyebrow: 114 215 231;
+  --brand-access-success-border: 167 243 208;
+  --brand-access-success-bg: 236 253 245;
+  --brand-access-success-text: 6 95 70;
+  --brand-access-error: 220 38 38;
   --brand-bg: 245 248 250;
   --brand-surface: 255 255 255;
   --brand-border: 203 214 226;
@@ -345,6 +353,14 @@
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
+  --brand-access-start: 15 58 68;
+  --brand-access-end: 20 27 41;
+  --brand-access-description: 220 234 240;
+  --brand-access-eyebrow: 114 215 231;
+  --brand-access-success-border: 74 222 148;
+  --brand-access-success-bg: 18 61 42;
+  --brand-access-success-text: 74 222 148;
+  --brand-access-error: 255 138 118;
   --brand-bg: 20 27 41;
   --brand-surface: 30 42 61;
   --brand-border: 58 74 94;
@@ -690,6 +706,14 @@
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
+  --brand-access-start: 0 145 174;
+  --brand-access-end: 33 51 67;
+  --brand-access-description: 220 234 240;
+  --brand-access-eyebrow: 114 215 231;
+  --brand-access-success-border: 167 243 208;
+  --brand-access-success-bg: 236 253 245;
+  --brand-access-success-text: 6 95 70;
+  --brand-access-error: 220 38 38;
   --brand-bg: 245 248 250;
   --brand-surface: 255 255 255;
   --brand-border: 203 214 226;
@@ -1037,6 +1061,14 @@
 }
 @media print {
   :root, :root[data-theme="dark"], .dark, .theme-light {
+  --brand-access-start: 0 145 174 !important;
+  --brand-access-end: 33 51 67 !important;
+  --brand-access-description: 220 234 240 !important;
+  --brand-access-eyebrow: 114 215 231 !important;
+  --brand-access-success-border: 167 243 208 !important;
+  --brand-access-success-bg: 236 253 245 !important;
+  --brand-access-success-text: 6 95 70 !important;
+  --brand-access-error: 220 38 38 !important;
   --brand-bg: 245 248 250 !important;
   --brand-surface: 255 255 255 !important;
   --brand-border: 203 214 226 !important;

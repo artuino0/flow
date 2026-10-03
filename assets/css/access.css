@@ -1,0 +1,30 @@
+/* HU-172: el CSS inicial respeta el tema aplicado en head, sin esperar mount. */
+.access-brand {
+  background: linear-gradient(200deg, rgb(var(--brand-access-start)) 0%, rgb(var(--brand-access-end)) 100%);
+}
+.access-page input, .access-page textarea, .access-page select {
+  color-scheme: inherit;
+}
+.access-page input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not(#slug) {
+  background-color: rgb(var(--brand-surface));
+}
+.access-page :is(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid rgb(var(--brand-blue));
+  outline-offset: 2px;
+}
+.access-page label:has(input[type='file']:focus-visible) {
+  outline: 2px solid rgb(var(--brand-blue));
+  outline-offset: 2px;
+}
+/* Solo oscuro: el autocompletado claro conserva la presentación del navegador. */
+:root[data-theme='dark'] .access-page input:-webkit-autofill,
+:root[data-theme='dark'] .access-page input:-webkit-autofill:hover,
+:root[data-theme='dark'] .access-page input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px rgb(var(--brand-surface)) inset !important;
+  -webkit-text-fill-color: rgb(var(--brand-text)) !important;
+  caret-color: rgb(var(--brand-blue));
+}
+:root[data-theme='dark'] .access-page input:autofill {
+  background-color: rgb(var(--brand-surface)) !important;
+  color: rgb(var(--brand-text)) !important;
+}

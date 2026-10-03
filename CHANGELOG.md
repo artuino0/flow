@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.143.0] - 2026-10-03
+#### [feature]
+- [ERD-172](https://dydasoftware.atlassian.net/browse/ERD-172) - Modo oscuro, fase 3B: las pantallas de acceso (inicio de sesión, registro, recuperar y restablecer contraseña, activar cuenta, verificar y confirmar correo, e invitación) ahora siguen el tema del dispositivo, también el autocompletado del navegador. Con esto todas las pantallas de la aplicación soportan modo oscuro; solo permanecen claros los documentos (factura impresa, etiquetas, reporte impreso), los correos y los sitios de tus clientes. En modo claro todo se ve igual que antes.
+
 ### [0.142.0] - 2026-10-03
 #### [feature]
 - [ERD-171](https://dydasoftware.atlassian.net/browse/ERD-171) - Modo oscuro, fase 3D: facturación (lista de facturas, emisión de CFDI y detalle de cada factura con sus estados) y la pantalla de elegir plan ahora siguen el tema oscuro. La factura impresa y el PDF se mantienen siempre claros, tal como el documento fiscal. En modo claro todo se ve igual que antes.

@@ -15,6 +15,7 @@ import * as planConcepts from '../../utils/planConcepts'
 import * as chattito from '../../utils/chattito'
 import * as onboarding from '../../utils/onboardingTours'
 import baseline from '../fixtures/themeBaseline171.json'
+import nextBaseline from '../fixtures/themeBaseline172.json'
 import colors from '../fixtures/themeBilling171.json'
 import deficits from '../fixtures/themeBillingDeficits171.json'
 import paper from '../fixtures/themeInvoicePaper171.json'
@@ -91,7 +92,7 @@ describe('contratos HU-171', () => {
   it('preserva los 273 tokens anteriores y los nuevos claros originales', () => {
     expect(Object.keys(baseline.light)).toHaveLength(273)
     for (const [mode, tokens] of Object.entries(baseline)) for (const [name, value] of Object.entries(tokens)) expect((mode === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens], `${mode}:${name}`).toBe(value)
-    expect(Object.keys(lightTokens).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
+    expect(Object.keys(nextBaseline.light).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
     const css = readFileSync('assets/css/theme.css', 'utf8')
     for (const [name, values] of Object.entries(colors)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0]); expect(darkTokens[name as keyof typeof lightTokens]).toBe(values[1])
@@ -117,10 +118,11 @@ describe('contratos HU-171', () => {
     for (const literal of Object.keys(themeColorExceptions[printFile]!)) expect(auditThemeSource(printFile, readFileSync(printFile, 'utf8') + `\n<p style="color:${literal}"/>`)).toHaveLength(1)
     expect(readFileSync('pages/facturacion-print/[id].vue', 'utf8')).not.toContain('darkReady: true')
   })
-  it('darkReady permite elegir plan sin layout y conserva impresión y acceso claros', () => {
+  it('darkReady permite elegir plan y acceso sin layout y conserva impresión clara', () => {
     expect(contentNeedsLight({ layout: false, darkReady: true })).toBe(false)
     expect(contentNeedsLight({ layout: false })).toBe(true)
-    for (const file of ['pages/login.vue', 'pages/registro.vue', 'pages/facturacion-print/[id].vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    for (const file of ['pages/login.vue', 'pages/registro.vue']) expect(readFileSync(file, 'utf8')).toContain('darkReady: true')
+    expect(readFileSync('pages/facturacion-print/[id].vue', 'utf8')).not.toContain('darkReady: true')
   })
   it.each(modes)('el app real aplica el aislamiento según metadata en %s', async mode => {
     setTheme(mode)

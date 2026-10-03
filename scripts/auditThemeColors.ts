@@ -3,6 +3,11 @@ import { pathToFileURL } from 'node:url'
 
 /** Lista cerrada: cascarón HU-161, registros HU-162, ajustes HU-163 y módulos/chat HU-164. */
 export const migratedThemeFiles = [
+  // HU-172: acceso temático; identidad de Flow en assets intactos.
+  'assets/css/access.css', 'pages/login.vue', 'pages/registro.vue',
+  'pages/registro-completo.vue', 'pages/recuperar.vue', 'pages/restablecer/[token].vue',
+  'pages/activar.vue', 'pages/verificar-correo.vue', 'pages/confirmar-correo.vue',
+  'pages/invitacion/[token].vue',
   'app.vue', 'assets/css/main.css', 'layouts/default.vue', 'pages/index.vue',
   'components/AppNav.vue', 'components/AppNavEntity.vue', 'components/AppNavGroup.vue', 'components/AppNavTooltip.vue',
   'components/ChattitoHelp.vue', 'components/ChattitoPanel.vue', 'components/ChattitoToggle.vue',

@@ -1,5 +1,25 @@
 import { darkTokens, lightTokens } from '../../utils/themeTokens'
 
+/** HU-172: pares efectivos de acceso, sin recolorear la identidad de Flow. */
+export const accessContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['tooltip-fg', 'access-start', 4.5], ['tooltip-fg', 'access-end', 4.5],
+  ['access-description', 'access-start', 4.5], ['access-description', 'access-end', 4.5],
+  ['tooltip-fg', 'plan-interval-bg', 4.5], ['access-eyebrow', 'plan-interval-bg', 4.5],
+  ['access-success-text', 'access-success-bg', 4.5], ['access-error', 'surface', 4.5],
+  ['text', 'surface', 4.5], ['body-text', 'surface', 4.5],
+  ['text-secondary', 'surface', 4.5], ['sites-muted', 'surface', 4.5],
+  ['sites-muted', 'bg', 4.5], ['blue', 'surface', 4.5], ['blue', 'blue-bg', 4.5],
+  ['text-secondary', 'blue-bg', 4.5], ['blue', 'bg', 3],
+  ['control-border', 'surface', 3], ['control-border', 'bg', 3], ['blue', 'surface', 3],
+  ['primary-fg', 'orange', 4.5], ['primary-fg', 'orange-hover', 4.5],
+  ['primary-fg', 'success-text', 4.5], ['success-text', 'surface', 4.5],
+  ['success-text', 'success-bg', 4.5], ['error-text', 'surface', 4.5],
+  ['error-text', 'error-bg', 4.5], ['warning-text', 'warning-bg', 4.5],
+]
+export function isAccessContrast(result: { id?: string }) {
+  return result.id?.includes(':access:') ?? false
+}
+
 export function contrast(foreground: string, background: string) {
   const luminance = (hex: string) => {
     const channels = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255)
@@ -121,7 +141,7 @@ export const labelContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['label-toggle-bg', 'surface', 3], ['label-toggle-active', 'surface', 3]
 ]
 export function isLabelContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result) || isAccessContrast(result)) return false
   return labelContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -131,7 +151,7 @@ export const resizeContrastPairs: [keyof typeof lightTokens, keyof typeof lightT
   ['resize-mark', 'resize-hover', 3], ['resize-mark', 'resize-bg', 3]
 ]
 export function isResizeContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result) || isAccessContrast(result)) return false
   return result.foreground.startsWith('resize-') || result.background.startsWith('resize-')
 }
 
@@ -155,7 +175,7 @@ export const sitesContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['text-secondary', 'designer-section-bg', 4.5], ['text-secondary', 'dashboard-soft', 4.5]
 ]
 export function isSitesContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result) || isAccessContrast(result)) return false
   return sitesContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -189,7 +209,7 @@ export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof ligh
   ['designer-minimap-system', 'designer-minimap-section', 3]
 ]
 export function isDesignerContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result) || isAccessContrast(result)) return false
   return designerContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
     // Contador y leyenda usan pares originales; su auditoría permanece en la sección general.
     && (result.foreground.startsWith('designer-') || result.background.startsWith('designer-'))
@@ -342,7 +362,7 @@ export const editorLightContrastPairs = editorContrastPairs.filter(([foreground,
   return true
 })
 export function isEditorContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result) || isAccessContrast(result)) return false
   return result.foreground.startsWith('sites-editor-') || result.background.startsWith('sites-editor-')
 }
 
@@ -379,5 +399,8 @@ export function themeContrasts() {
   }))).concat((['light', 'dark'] as const).flatMap(theme => billingContrastPairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:billing:${foreground}/${background}@${minimum}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
+  }))).concat((['light', 'dark'] as const).flatMap(theme => accessContrastPairs.map(([foreground, background, minimum]) => {
+    const tokens = theme === 'light' ? lightTokens : darkTokens
+    return { id: `${theme}:access:${foreground}/${background}@${minimum}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
   })))
 }

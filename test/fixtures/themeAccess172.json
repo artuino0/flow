@@ -1,0 +1,34 @@
+{
+  "access-start": [
+    "#0091AE",
+    "#0F3A44"
+  ],
+  "access-end": [
+    "#213343",
+    "#141B29"
+  ],
+  "access-description": [
+    "#DCEAF0",
+    "#DCEAF0"
+  ],
+  "access-eyebrow": [
+    "#72D7E7",
+    "#72D7E7"
+  ],
+  "access-success-border": [
+    "#A7F3D0",
+    "#4ADE94"
+  ],
+  "access-success-bg": [
+    "#ECFDF5",
+    "#123D2A"
+  ],
+  "access-success-text": [
+    "#065F46",
+    "#4ADE94"
+  ],
+  "access-error": [
+    "#DC2626",
+    "#FF8A76"
+  ]
+}

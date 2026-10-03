@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, CircleAlert, Copy, FileKey2, ShieldCheck, Upload } from '@lucide/vue'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, darkReady: true })
 useHead({ title: 'Activar instalación · Flow' })
 
 type LicenseStatus = { required: boolean; activated: boolean; reason?: string; requestCode?: string; customer?: string; expiresAt?: string }
@@ -58,8 +58,8 @@ async function activate() {
 </script>
 
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-brand-bg px-4 py-12">
-    <div class="w-full max-w-[500px] overflow-hidden rounded-lg border border-brand-border-light bg-white shadow-sm">
+  <main class="access-page flex min-h-screen items-center justify-center bg-brand-bg px-4 py-12">
+    <div class="w-full max-w-[500px] overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface shadow-sm">
       <div class="border-b border-brand-border-light px-7 py-6">
         <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-brand-blue-bg text-brand-blue">
           <ShieldCheck class="h-6 w-6" :stroke-width="1.75" />
@@ -84,8 +84,8 @@ async function activate() {
           </div>
           <p class="mt-2 text-[13px] text-brand-text-secondary">Compártelo con quien emite las licencias. No contiene datos de tus usuarios ni registros.</p>
           <div v-if="status?.requestCode" class="mt-3 flex items-stretch gap-2">
-            <textarea :value="status.requestCode" readonly rows="2" aria-label="Código de solicitud" class="min-w-0 flex-1 resize-none rounded border border-brand-border bg-brand-bg px-3 py-2 font-mono text-xs text-brand-text focus:outline-none" />
-            <button type="button" class="flex shrink-0 items-center gap-1.5 rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="copyRequest">
+            <textarea :value="status.requestCode" readonly rows="2" aria-label="Código de solicitud" class="min-w-0 flex-1 resize-none rounded border border-brand-control-border bg-brand-bg px-3 py-2 font-mono text-xs text-brand-text focus:outline-none" />
+            <button type="button" class="flex shrink-0 items-center gap-1.5 rounded border border-brand-control-border px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="copyRequest">
               <Check v-if="copied" class="h-4 w-4" /><Copy v-else class="h-4 w-4" />
               {{ copied ? 'Copiado' : 'Copiar' }}
             </button>
@@ -98,16 +98,16 @@ async function activate() {
             Carga el archivo de licencia
           </div>
           <p class="mt-2 text-[13px] text-brand-text-secondary">Al recibirlo, selecciónalo aquí. No hace falta reinstalar la aplicación.</p>
-          <label class="mt-3 flex cursor-pointer items-center gap-3 rounded border border-dashed border-brand-border px-4 py-3 hover:border-brand-blue hover:bg-brand-bg">
+          <label class="mt-3 flex cursor-pointer items-center gap-3 rounded border border-dashed border-brand-control-border px-4 py-3 hover:border-brand-blue hover:bg-brand-bg">
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-brand-blue-bg text-brand-blue"><FileKey2 class="h-5 w-5" :stroke-width="1.75" /></span>
             <span class="min-w-0 flex-1 truncate text-[13px] text-brand-text">{{ fileName || 'Seleccionar archivo .license' }}</span>
-            <Upload class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="1.75" />
+            <Upload class="h-4 w-4 shrink-0 text-brand-sites-muted" :stroke-width="1.75" />
             <input type="file" accept=".license,.json,application/json" class="sr-only" @change="selectFile" />
           </label>
         </section>
 
         <p v-if="errorMessage" role="alert" class="rounded bg-brand-error-bg px-3 py-2.5 text-[13px] text-brand-error-text">{{ errorMessage }}</p>
-        <button type="button" :disabled="!licenseText || loading" class="w-full rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60" @click="activate">
+        <button type="button" :disabled="!licenseText || loading" class="w-full rounded bg-brand-orange px-4 py-2.5 text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60" @click="activate">
           {{ loading ? 'Guardando...' : status?.activated ? 'Renovar licencia' : 'Activar instalación' }}
         </button>
       </div>

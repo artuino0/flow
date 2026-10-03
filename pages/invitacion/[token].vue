@@ -11,7 +11,7 @@
 // "app.erpdinamico.com/invitacion/8f3a2c91").
 import { CircleAlert, CircleCheck } from '@lucide/vue'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, darkReady: true })
 
 const route = useRoute()
 const token = computed(() => String(route.params.token ?? ''))
@@ -45,15 +45,15 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen font-sans">
+  <div class="access-page flex min-h-screen font-sans">
     <div
-      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
+      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
+      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-brand-switch-thumb/15">
         <img src="/brand/isotipo-white.png" alt="Flow" class="h-9 w-9 object-contain" />
       </div>
-      <h1 class="text-[28px] font-bold text-white">Flow</h1>
-      <p class="w-[340px] text-[15px] text-[#DCEAF0]">
+      <h1 class="text-[28px] font-bold text-brand-tooltip-fg">Flow</h1>
+      <p class="w-[340px] text-[15px] text-brand-access-description">
         Configura entidades, campos y relaciones sin escribir código.
       </p>
     </div>
@@ -67,7 +67,7 @@ async function onSubmit() {
         <p class="text-sm text-brand-text-secondary">Ya puedes iniciar sesión con tu correo y la contraseña que elegiste.</p>
         <NuxtLink
           to="/login"
-          class="mt-2 w-full rounded bg-brand-orange px-4 py-[9px] text-center text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          class="mt-2 w-full rounded bg-brand-orange px-4 py-[9px] text-center text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
         >
           Ir a iniciar sesión
         </NuxtLink>
@@ -91,7 +91,7 @@ async function onSubmit() {
             v-model="fullName"
             type="text"
             placeholder="María López"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -103,9 +103,9 @@ async function onSubmit() {
             type="password"
             required
             autocomplete="new-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
-          <p class="text-xs text-brand-text-muted">Al menos 8 caracteres, con letras y números.</p>
+          <p class="text-xs text-brand-sites-muted">Al menos 8 caracteres, con letras y números.</p>
         </div>
 
         <div class="flex flex-col gap-1.5">
@@ -116,14 +116,14 @@ async function onSubmit() {
             type="password"
             required
             autocomplete="new-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Activando...' : 'Activar cuenta' }}
         </button>

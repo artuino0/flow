@@ -11,7 +11,7 @@
 // así que se dibuja fijo, sin dropdown funcional.
 import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, darkReady: true })
 
 // HU-ERD-35: el registro público no existe en modo "dedicated" (un solo
 // cliente por deployment) - mismo gate que el backend (POST /api/auth/register
@@ -161,15 +161,15 @@ const brandText = computed(() => {
 </script>
 
 <template>
-  <div class="flex min-h-screen font-sans">
+  <div class="access-page flex min-h-screen font-sans">
     <div
-      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
+      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
+      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-brand-switch-thumb/15">
         <img src="/brand/isotipo-white.png" alt="Flow" class="h-9 w-9 object-contain" />
       </div>
-      <h1 class="text-[28px] font-bold text-white">Flow</h1>
-      <p class="w-[340px] text-[15px] text-[#DCEAF0]">{{ brandText }}</p>
+      <h1 class="text-[28px] font-bold text-brand-tooltip-fg">Flow</h1>
+      <p class="w-[340px] text-[15px] text-brand-access-description">{{ brandText }}</p>
     </div>
 
     <div class="flex flex-1 items-center justify-center bg-brand-surface px-4 py-10">
@@ -180,7 +180,7 @@ const brandText = computed(() => {
             <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
               >
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
@@ -188,7 +188,7 @@ const brandText = computed(() => {
               <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 1 de 5</p>
+          <p class="text-xs font-semibold text-brand-sites-muted">Paso 1 de 5</p>
         </div>
 
         <div>
@@ -209,7 +209,7 @@ const brandText = computed(() => {
             type="text"
             required
             placeholder="Artur Ramírez"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -222,7 +222,7 @@ const brandText = computed(() => {
             required
             autocomplete="username"
             placeholder="arturosistemas94@gmail.com"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -235,7 +235,7 @@ const brandText = computed(() => {
               type="password"
               required
               autocomplete="new-password"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
           </div>
           <div class="flex flex-col gap-1.5">
@@ -246,27 +246,27 @@ const brandText = computed(() => {
               type="password"
               required
               autocomplete="new-password"
-              class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
           </div>
         </div>
-        <p class="-mt-3 text-xs text-brand-text-muted">Al menos 8 caracteres, con letras y números.</p>
+        <p class="-mt-3 text-xs text-brand-sites-muted">Al menos 8 caracteres, con letras y números.</p>
 
         <label class="flex cursor-pointer items-start gap-2">
-          <input v-model="acceptedTerms" type="checkbox" class="mt-0.5 h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
+          <input v-model="acceptedTerms" type="checkbox" class="mt-0.5 h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange" />
           <span class="text-sm text-brand-text">Acepto los Términos y Condiciones y la Política de Privacidad</span>
         </label>
 
         <button
           type="button"
           :disabled="!canContinueStep1"
-          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
           @click="step = 2"
         >
           Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </button>
 
-        <p class="text-center text-[13px] text-brand-text-muted">
+        <p class="text-center text-[13px] text-brand-sites-muted">
           ¿Ya tienes cuenta? <NuxtLink to="/login" class="font-semibold text-brand-blue hover:underline">Iniciar sesión</NuxtLink>
         </p>
       </div>
@@ -278,7 +278,7 @@ const brandText = computed(() => {
             <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
               >
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
@@ -286,7 +286,7 @@ const brandText = computed(() => {
               <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 2 de 5</p>
+          <p class="text-xs font-semibold text-brand-sites-muted">Paso 2 de 5</p>
         </div>
 
         <div>
@@ -307,7 +307,7 @@ const brandText = computed(() => {
             type="text"
             required
             placeholder="Acme Corp"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -315,7 +315,7 @@ const brandText = computed(() => {
           <label for="slug" class="text-[13px] font-semibold text-brand-text">Subdominio de tu organización</label>
           <div
             class="flex items-center gap-2 rounded border px-3 py-[9px]"
-            :class="slugAvailable === false ? 'border-brand-error-text' : slugAvailable === true ? 'border-brand-success-text' : 'border-brand-border'"
+            :class="slugAvailable === false ? 'border-brand-error-text' : slugAvailable === true ? 'border-brand-success-text' : 'border-brand-control-border'"
           >
             <input
               id="slug"
@@ -323,10 +323,10 @@ const brandText = computed(() => {
               type="text"
               required
               placeholder="acme"
-              class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:ring-0"
+              class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-brand-text placeholder:text-brand-sites-muted focus:outline-none focus:ring-0"
               @input="onSlugInput"
             />
-            <span class="shrink-0 text-sm text-brand-text-muted">.erpdinamico.com</span>
+            <span class="shrink-0 text-sm text-brand-sites-muted">.erpdinamico.com</span>
             <CircleCheck v-if="slugAvailable === true" class="h-4 w-4 shrink-0 text-brand-success-text" :stroke-width="2" />
           </div>
           <p v-if="slugAvailable === true" class="flex items-center gap-1 text-xs font-medium text-brand-success-text">
@@ -345,7 +345,7 @@ const brandText = computed(() => {
               :key="opt.value"
               type="button"
               class="flex-1 rounded border px-2 py-2 text-[13px] font-semibold"
-              :class="teamSize === opt.value ? 'border-brand-blue bg-brand-blue-bg text-brand-blue' : 'border-brand-border text-brand-text-secondary'"
+              :class="teamSize === opt.value ? 'border-brand-blue bg-brand-blue-bg text-brand-blue' : 'border-brand-control-border text-brand-text-secondary'"
               @click="teamSize = opt.value"
             >
               {{ opt.label }}
@@ -356,7 +356,7 @@ const brandText = computed(() => {
         <div class="flex gap-3">
           <button
             type="button"
-            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-white"
+            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface"
             @click="step = 1"
           >
             <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
@@ -364,7 +364,7 @@ const brandText = computed(() => {
           <button
             type="button"
             :disabled="!canContinueStep2"
-            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="step = 3"
           >
             Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
@@ -379,7 +379,7 @@ const brandText = computed(() => {
             <template v-for="n in 5" :key="n">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-white' : n === step ? 'bg-brand-orange text-white' : 'border border-brand-border text-brand-text-muted'"
+                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
               >
                 <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
                 <span v-else>{{ n }}</span>
@@ -387,7 +387,7 @@ const brandText = computed(() => {
               <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
             </template>
           </div>
-          <p class="text-xs font-semibold text-brand-text-muted">Paso 3 de 5</p>
+          <p class="text-xs font-semibold text-brand-sites-muted">Paso 3 de 5</p>
         </div>
 
         <div>
@@ -406,13 +406,13 @@ const brandText = computed(() => {
               v-model="invitee.email"
               type="email"
               placeholder="maria.lopez@acme.com"
-              class="min-w-0 flex-1 rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="min-w-0 flex-1 rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
             <!-- Cosmetico: siempre "Miembro" (ver el comentario largo al inicio del archivo). -->
-            <span class="flex shrink-0 items-center gap-1 rounded border border-brand-border px-2.5 py-[9px] text-[13px] text-brand-text-secondary">
+            <span class="flex shrink-0 items-center gap-1 rounded border border-brand-control-border px-2.5 py-[9px] text-[13px] text-brand-text-secondary">
               Miembro <ChevronDown class="h-3.5 w-3.5" :stroke-width="2" />
             </span>
-            <button type="button" class="shrink-0 rounded p-1.5 text-brand-text-muted hover:bg-white" @click="removeInvitee(idx)">
+            <button type="button" class="shrink-0 rounded p-1.5 text-brand-sites-muted hover:bg-brand-surface" @click="removeInvitee(idx)">
               <X class="h-4 w-4" :stroke-width="2" />
             </button>
           </div>
@@ -426,7 +426,7 @@ const brandText = computed(() => {
           <button
             type="button"
             :disabled="loading"
-            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-60"
             @click="step = 2"
           >
             <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
@@ -434,14 +434,14 @@ const brandText = computed(() => {
           <button
             type="button"
             :disabled="loading"
-            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
             @click="onSubmit"
           >
             {{ loading ? 'Creando...' : 'Continuar' }} <ArrowRight v-if="!loading" class="h-4 w-4" :stroke-width="2" />
           </button>
         </div>
 
-        <button type="button" :disabled="loading" class="text-center text-[13px] text-brand-text-muted hover:underline disabled:cursor-not-allowed" @click="onSubmit">
+        <button type="button" :disabled="loading" class="text-center text-[13px] text-brand-sites-muted hover:underline disabled:cursor-not-allowed" @click="onSubmit">
           Omitir por ahora
         </button>
       </div>
@@ -456,18 +456,18 @@ const brandText = computed(() => {
           <p class="text-sm text-brand-text-secondary">Enviamos un enlace de un solo uso a {{ email }}. Vence en 24 horas.</p>
         </div>
 
-        <div class="rounded bg-white">
-          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+        <div class="rounded bg-brand-surface">
+          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Building2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Organización</span>
             <span class="text-sm font-semibold text-brand-text">{{ result.tenantName }}</span>
           </div>
-          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">URL</span>
             <span class="text-sm font-semibold text-brand-text">{{ result.slug }}.erpdinamico.com</span>
           </div>
-          <div class="flex items-center gap-3 border-b border-brand-border px-4 py-3">
+          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Users class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Equipo</span>
             <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones enviadas</span>
@@ -476,7 +476,7 @@ const brandText = computed(() => {
 
         <NuxtLink
           to="/confirmar-correo"
-          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover"
+          class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
         >
           Ver estado de mi correo <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </NuxtLink>

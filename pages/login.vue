@@ -5,7 +5,7 @@ import { Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
 import type { OrganizationOption } from '~/composables/useAuth'
 import { IDLE_RETURN_KEY, postLoginRoute, type IdleReturn } from '~/utils/returnToRoute'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, darkReady: true })
 
 const { login, loginWithTotp, selectOrganization, user } = useAuth()
 const route = useRoute()
@@ -152,15 +152,15 @@ const brandTagline = computed(() =>
 </script>
 
 <template>
-  <div class="flex min-h-screen font-sans">
+  <div class="access-page flex min-h-screen font-sans">
     <div
-      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 bg-[linear-gradient(200deg,#0091AE_0%,#213343_100%)] px-16 lg:flex"
+      class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
     >
-      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-white/15">
+      <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-brand-switch-thumb/15">
         <img src="/brand/isotipo-white.png" alt="Flow" class="h-9 w-9 object-contain" />
       </div>
-      <h1 class="text-[42px] font-bold text-white">Flow</h1>
-      <p class="w-[340px] text-[15px] text-[#DCEAF0]">
+      <h1 class="text-[42px] font-bold text-brand-tooltip-fg">Flow</h1>
+      <p class="w-[340px] text-[15px] text-brand-access-description">
         {{ brandTagline }}
       </p>
     </div>
@@ -191,7 +191,7 @@ const brandTagline = computed(() =>
             required
             autocomplete="username"
             placeholder="admin@acme.com"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
@@ -203,13 +203,13 @@ const brandTagline = computed(() =>
             type="password"
             required
             autocomplete="current-password"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
         <div class="flex items-center justify-between">
           <label class="flex cursor-pointer items-center gap-2">
-            <input v-model="remember" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-border text-brand-orange focus:ring-brand-orange" />
+            <input v-model="remember" type="checkbox" class="h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange" />
             <span class="text-sm text-brand-text">Recordarme</span>
           </label>
           <NuxtLink to="/recuperar" class="text-[13px] font-semibold text-brand-blue hover:underline">
@@ -220,19 +220,19 @@ const brandTagline = computed(() =>
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Ingresando...' : 'Iniciar sesión' }}
         </button>
 
-        <p class="text-center text-[13px] text-brand-text-muted">
+        <p class="text-center text-[13px] text-brand-sites-muted">
           ¿Problemas para ingresar? Contacta a tu administrador.
         </p>
 
         <!-- HU multi-organizacion (2026-09-04): el registro publico no existe en
              modo "dedicated" (HU-ERD-35, un solo cliente por deployment) - el link
              se oculta ahi, mismo criterio que el campo Organizacion de antes. -->
-        <p v-if="!isDedicated" class="text-center text-[13px] text-brand-text-muted">
+        <p v-if="!isDedicated" class="text-center text-[13px] text-brand-sites-muted">
           ¿No tienes cuenta?
           <NuxtLink to="/registro" class="font-semibold text-brand-blue hover:underline">Crea tu organización</NuxtLink>
         </p>
@@ -264,14 +264,14 @@ const brandTagline = computed(() =>
             required
             autofocus
             placeholder="000000"
-            class="w-full rounded border border-brand-border px-3 py-[9px] text-center text-lg font-semibold tracking-[0.3em] text-brand-text placeholder:tracking-normal placeholder:text-brand-text-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            class="w-full rounded border border-brand-control-border px-3 py-[9px] text-center text-lg font-semibold tracking-[0.3em] text-brand-text placeholder:tracking-normal placeholder:text-brand-sites-muted focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
         </div>
 
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Verificando...' : 'Verificar' }}
         </button>
@@ -305,14 +305,14 @@ const brandTagline = computed(() =>
           <div class="relative">
             <button
               type="button"
-              class="flex w-full items-center justify-between gap-2 rounded border border-brand-border bg-brand-surface px-3 py-[9px] text-left text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              class="flex w-full items-center justify-between gap-2 rounded border border-brand-control-border bg-brand-surface px-3 py-[9px] text-left text-sm text-brand-text focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
               @click="orgDropdownOpen ? (orgDropdownOpen = false) : openOrgDropdown()"
               @blur="scheduleCloseOrgDropdown"
             >
-              <span :class="selectedOrg ? 'text-brand-text' : 'text-brand-text-muted'">
+              <span :class="selectedOrg ? 'text-brand-text' : 'text-brand-sites-muted'">
                 {{ selectedOrg ? selectedOrg.tenantName : 'Selecciona una organización' }}
               </span>
-              <ChevronDown class="h-4 w-4 shrink-0 text-brand-text-muted" :stroke-width="2" />
+              <ChevronDown class="h-4 w-4 shrink-0 text-brand-sites-muted" :stroke-width="2" />
             </button>
 
             <div v-if="orgDropdownOpen" class="absolute z-10 mt-1 w-full overflow-hidden rounded border border-brand-border-light bg-brand-surface shadow-lg">
@@ -333,12 +333,12 @@ const brandTagline = computed(() =>
         <button
           type="submit"
           :disabled="!selectedTenantId || loading"
-          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-white hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Entrando...' : 'Continuar' }}
         </button>
 
-        <p class="text-center text-[13px] text-brand-text-muted">
+        <p class="text-center text-[13px] text-brand-sites-muted">
           ¿Problemas para ingresar? Contacta a tu administrador.
         </p>
       </form>

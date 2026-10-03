@@ -1,5 +1,9 @@
 /** HU-ERD-161: los valores claros conservan la paleta original. */
 export const lightTokens = {
+  'access-start': '#0091AE', 'access-end': '#213343',
+  'access-description': '#DCEAF0', 'access-eyebrow': '#72D7E7',
+  'access-success-border': '#A7F3D0', 'access-success-bg': '#ECFDF5',
+  'access-success-text': '#065F46', 'access-error': '#DC2626',
   bg: '#F5F8FA', surface: '#FFFFFF', border: '#CBD6E2', 'border-light': '#E5EAF0',
   text: '#33475B', 'text-secondary': '#516F90', 'text-muted': '#8DA1B5',
   orange: '#FF7A59', 'orange-hover': '#E66E50', blue: '#0091AE', 'blue-bg': '#EAF3F6',
@@ -255,6 +259,10 @@ export const lightTokens = {
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
+  'access-start': '#0F3A44', 'access-end': '#141B29',
+  'access-description': '#DCEAF0', 'access-eyebrow': '#72D7E7',
+  'access-success-border': '#4ADE94', 'access-success-bg': '#123D2A',
+  'access-success-text': '#4ADE94', 'access-error': '#FF8A76',
   bg: '#141B29', surface: '#1E2A3D', border: '#3A4A5E', 'border-light': '#2C374A',
   text: '#F0F4F8', 'text-secondary': '#9FB3C8', 'text-muted': '#7A8CA0',
   orange: '#FF8F6B', 'orange-hover': '#FFA184', blue: '#3FC3DE', 'blue-bg': '#0F3A44',
