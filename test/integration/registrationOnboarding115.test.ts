@@ -134,8 +134,8 @@ describe('registro, prueba y plantilla Agenda', () => {
       (select value from plan_limits where plan_id = (select id from plans where key = 'agenda') and concept = 'aiCredits') as ai_credits`
     expect(Number(limits!.modules)).toBe(2)
     expect(Number(limits!.ai_credits)).toBe(5)
-    const [board] = await admin`select board_config from entities where tenant_id = ${account.tenantId} and slug = 'agenda-citas'`
-    expect(board!.board_config).toMatchObject({ enabled: true, statusField: 'estado' })
+    const [calendar] = await admin`select calendar_config from entities where tenant_id = ${account.tenantId} and slug = 'agenda-citas'`
+    expect(calendar!.calendar_config).toMatchObject({ enabled: true, startDateField: 'fecha', startTimeField: 'hora', durationField: 'duracion_minutos', titleField: 'asunto', colorField: 'estado', groupByField: 'personal', defaultView: 'day' })
     const [owner] = await admin`select data_type, is_owner_field from entity_fields where entity_id = (select id from entities where tenant_id = ${account.tenantId} and slug = 'agenda-citas') and name = 'personal'`
     expect(owner).toMatchObject({ data_type: 'user', is_owner_field: true })
     const [personal] = await admin`select visibility from role_entity_permissions where role_id = (select id from roles where tenant_id = ${account.tenantId} and name = 'Personal') and entity_id = (select id from entities where tenant_id = ${account.tenantId} and slug = 'agenda-citas')`

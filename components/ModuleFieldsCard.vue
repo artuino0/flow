@@ -9,7 +9,7 @@
 // como en pages/modulos/[id]/editar.vue - Jira ERD-70 pide explicitamente
 // que "editar un modulo existente reuse el mismo componente".
 import { computed, ref } from 'vue'
-import { GripVertical, Pencil, Plus, Trash2 } from '@lucide/vue'
+import { GripVertical, LockKeyhole, Pencil, Plus, Trash2 } from '@lucide/vue'
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 import FieldFormModal, { type FieldDraft } from '~/components/FieldFormModal.vue'
 import FieldImpactWarningModal from '~/components/FieldImpactWarningModal.vue'
@@ -122,7 +122,7 @@ async function fetchAffectedRecords(fieldId: string): Promise<number> {
 async function submitFieldUpdate(fieldId: string, draft: FieldDraft) {
   const response = await $fetch<{ validationImpact?: { nonCompliantRecords: number; truncated: boolean } }>(`/api/entity-fields/${fieldId}`, {
     method: 'PUT',
-    body: { label: draft.label, dataType: draft.dataType, validationRules: draft.validationRules, isRequired: draft.isRequired }
+    body: editingField.value?.systemProtected ? { label: draft.label } : { label: draft.label, dataType: draft.dataType, validationRules: draft.validationRules, isRequired: draft.isRequired }
   })
   validationImpact.value = response.validationImpact && response.validationImpact.nonCompliantRecords > 0 ? response.validationImpact : null
 }
@@ -131,7 +131,7 @@ async function onSubmit(draft: FieldDraft) {
   if (usageLoading.value || (modalMode.value === 'edit' && !fieldUsage.value)) return
   modalError.value = null
 
-  if (modalMode.value === 'edit' && editingField.value && metadataShapeChanged(editingField.value, draft)) {
+  if (modalMode.value === 'edit' && editingField.value && !editingField.value.systemProtected && metadataShapeChanged(editingField.value, draft)) {
     const fieldId = editingField.value.id
     saving.value = true
     try {
@@ -403,6 +403,7 @@ async function confirmImpactModal() {
         <div class="flex min-w-0 flex-1 flex-col">
           <span class="truncate text-sm font-semibold text-brand-text">{{ field.label }}</span>
           <span class="truncate font-mono text-xs text-brand-text-muted">{{ field.name }}</span>
+          <span v-if="field.systemProtected" class="mt-1 flex items-center gap-1 text-xs text-brand-info-text"><LockKeyhole class="h-3 w-3" aria-hidden="true" />Campo núcleo protegido. Puedes cambiar su etiqueta.</span>
         </div>
         <span class="flex w-[110px] shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1" :class="badgeForField(field).bg">
           <component :is="badgeForField(field).icon" class="h-3 w-3" :class="badgeForField(field).text" :stroke-width="2" />
@@ -418,7 +419,7 @@ async function confirmImpactModal() {
           <button
             type="button"
             title="Eliminar"
-            :disabled="deletingId === field.id"
+            :disabled="field.systemProtected || deletingId === field.id"
             class="flex h-[26px] w-[26px] items-center justify-center rounded text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
             @click="onDelete(field)"
           >
@@ -432,6 +433,7 @@ async function confirmImpactModal() {
       :open="modalOpen"
       :mode="modalMode"
       :initial-field="editingField"
+      :schema-locked="editingField?.systemProtected"
       :saving="saving"
       :error="modalError"
       :existing-fields="realFields"

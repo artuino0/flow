@@ -1,4 +1,5 @@
 import { validationCapabilitiesPrompt } from '~/server/utils/fieldValidations/registry'
+import { AGENDA_BASE_PROMPT } from './capabilities'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { withTenant } from '~/server/db'
@@ -42,6 +43,7 @@ En cada módulo o catálogo nuevo incluye "icon" con un nombre Lucide PascalCase
 Cada campo user ya representa un vínculo con Usuarios del Sistema. Un perfil de doctor se vincula al usuario exclusivamente con un campo user y validationRules.unique=true; nunca repitas ese vínculo mediante una asociación. No existen asociaciones de un módulo consigo mismo: sourceRef y targetRef siempre deben ser distintos.
 
 ${validationCapabilitiesPrompt()}
+${AGENDA_BASE_PROMPT}
 
 ${designerStructureCriteriaPrompt()}
 
@@ -55,7 +57,7 @@ const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u0
 const words = (value: string) => new Set(normalize(value).split(/[^a-z0-9]+/).filter(word => word.length > 2))
 
 export function designerContext(current: Blueprint, instruction: string) {
-  const schema = current.modules.map(module => ({ name: module.name, singularName: module.singularName, slug: module.slug, kind: module.kind, fields: module.fields.map(field => ({ name: field.name, dataType: field.dataType, relationEntity: field.validationRules?.relationEntity })), relations: module.lines, hasWorkflow: Boolean(module.workflow) }))
+  const schema = current.modules.map(module => ({ name: module.name, singularName: module.singularName, slug: module.slug, kind: module.kind, systemTemplate: module.systemTemplate, fields: module.fields.map(field => ({ name: field.name, dataType: field.dataType, relationEntity: field.validationRules?.relationEntity })), relations: module.lines, hasWorkflow: Boolean(module.workflow) }))
   if (schema.length <= 60) return schema
   const terms = words(instruction)
   const rank = (module: typeof schema[number]) => [...words(`${module.name} ${module.singularName ?? ''} ${module.slug} ${module.fields.map(field => field.name).join(' ')}`)].filter(word => terms.has(word)).length

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { mentionsAgenda } from '~/utils/agendaBase'
 import type { ZodIssue } from 'zod'
 import { withTenant } from '~/server/db'
 import { roles } from '~/server/db/schema'
@@ -46,9 +47,14 @@ export function blueprintShapeErrors(input: unknown, issues: ZodIssue[]) {
   return invalidBlueprintShape(issues, input).errors
 }
 
-async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaited<ReturnType<typeof loadBlueprintTenant>>, knownRoles: Set<string>): Promise<BlueprintValidationResult> {
-  const { normalized, merges } = dedupeBlueprint(input, current)
+async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaited<ReturnType<typeof loadBlueprintTenant>>, knownRoles: Set<string>, exactCreates = false): Promise<BlueprintValidationResult> {
+  const { normalized, merges } = dedupeBlueprint(input, current, exactCreates)
   const errors: BlueprintValidationError[] = []
+  const agendaBase = current.modules.find(module => module.templateKey === 'agenda' && module.slug === 'agenda-citas')
+  const children = new Set(input.modules.flatMap(module => (module.lines ?? []).map(line => line.childRef)))
+  if (agendaBase && !exactCreates) for (const [index, module] of input.modules.entries()) {
+    if (module.action === 'create' && module.kind === 'hecho' && !children.has(module.ref) && mentionsAgenda(module.name, module.description)) errors.push({ path: `modules[${index}]`, code: 'agenda_base_exists', message: 'Esta organización ya tiene Citas base. Abre ese módulo o agrega allí tus campos y partidas; el diseñador no crea otra agenda de citas.' })
+  }
   const add = (path: string, message: string, code = 'reference') => errors.push(locateBlueprintError(normalized, { path, message, code }))
   const bySlug = new Map(current.modules.map(module => [module.slug, module]))
   const refs = new Map<string, Blueprint['modules'][number]>()
@@ -292,12 +298,12 @@ async function validateBlueprintAgainstCurrent(input: Blueprint, current: Awaite
   return { normalized, errors, merges, current, newFields: new Map(normalized.modules.map(module => [module.ref, module.fields.filter(field => !((current.fieldsById.get(bySlug.get(module.slug)?.id ?? '') ?? []).some(existing => existing.name === field.name)))])) }
 }
 
-export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, input: unknown): Promise<BlueprintValidationResult> {
+export async function validateBlueprintInTx(tx: BlueprintTx, tenantId: string, input: unknown, exactCreates = false): Promise<BlueprintValidationResult> {
   const shape = blueprintSchema.safeParse(input)
   if (!shape.success) return invalidBlueprintShape(shape.error.issues, input)
   const current = await loadBlueprintTenant(tx, tenantId)
   const knownRoles = new Set((await tx.select({ id: roles.id, name: roles.name }).from(roles).where(eq(roles.tenantId, tenantId))).flatMap(role => [role.id, role.name]))
-  return validateBlueprintAgainstCurrent(shape.data, current, knownRoles)
+  return validateBlueprintAgainstCurrent(shape.data, current, knownRoles, exactCreates)
 }
 
 /** Evaluación sin base de datos: materializa la misma forma que exportBlueprint carga del tenant. */
@@ -309,6 +315,7 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
   }))]))
   const modules = snapshot.modules.map(module => ({
     id: module.slug, slug: module.slug, moduleKind: module.kind, name: module.name,
+    templateKey: module.systemTemplate ?? null,
     singularName: module.singularName ?? null, description: module.description ?? null, icon: module.icon ?? null,
     detailLayout: module.detailLayout ?? null, workflowConfig: module.workflow ?? null, calendarConfig: module.calendarConfig ?? null
   }))
@@ -319,8 +326,8 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
   return validateBlueprintAgainstCurrent(shape.data, current, new Set((snapshot.roles ?? []).map(role => role.name)))
 }
 
-export async function validateBlueprint(tenantId: string, input: unknown): Promise<BlueprintValidationResult> {
-  const result = await withTenant(tenantId, tx => validateBlueprintInTx(tx, tenantId, input))
+export async function validateBlueprint(tenantId: string, input: unknown, exactCreates = false): Promise<BlueprintValidationResult> {
+  const result = await withTenant(tenantId, tx => validateBlueprintInTx(tx, tenantId, input, exactCreates))
   if (result.normalized) {
     const incoming = result.normalized.modules.filter(module => module.action === 'create' && module.kind === 'hecho').length
     if (incoming) {

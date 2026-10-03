@@ -36,6 +36,7 @@ export async function exportBlueprint(tenantId: string): Promise<Blueprint> {
           kind: module.moduleKind === 'dimension' ? 'dimension' as const : 'hecho' as const,
           name: module.name,
           slug: module.slug,
+          ...(module.templateKey === 'agenda' ? { systemTemplate: 'agenda' as const } : {}),
           ...(module.singularName ? { singularName: module.singularName } : {}),
           ...(module.icon ? { icon: module.icon } : {}),
           ...(module.description ? { description: module.description } : {}),

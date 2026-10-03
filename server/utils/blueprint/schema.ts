@@ -41,6 +41,7 @@ export const blueprintModuleSchema = z.object({
   // Una exportación contiene los campos actuales para dibujar el lienzo.
   // El validador exige que permanezcan idénticos y solo aplica los nuevos.
   snapshot: z.boolean().optional(),
+  systemTemplate: z.literal('agenda').optional(),
   detailLayout: detailLayoutSchema.optional(),
   calendarConfig: calendarConfigSchema.optional()
 }).strict()

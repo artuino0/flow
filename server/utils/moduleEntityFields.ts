@@ -7,6 +7,15 @@ import { db, withTenant } from '~/server/db'
 import { entities, entityFieldHistory, entityFields, records, tenants } from '~/server/db/schema'
 import { getValidationRulesSchema, invalidateEntitySchemaCache } from '~/server/utils/dynamicSchema'
 import { recordNotDeleted } from '~/server/utils/records'
+import { agendaCoreShapeChanged, isAgendaCoreField } from '~/utils/agendaBase'
+
+async function assertAgendaFieldChange(tx: Tx, tenantId: string, current: typeof entityFields.$inferSelect, input?: UpdateEntityFieldInput) {
+  const [entity] = await tx.select({ slug: entities.slug, templateKey: entities.templateKey }).from(entities)
+    .where(and(eq(entities.id, current.entityId), eq(entities.tenantId, tenantId))).limit(1)
+  if (entity && isAgendaCoreField(entity, current.name) && (!input || agendaCoreShapeChanged(current, input))) {
+    throw new ProtectedFieldError(`El campo «${current.label}» pertenece al núcleo de Citas y no se puede cambiar ni eliminar. Puedes editar su etiqueta; el vínculo de Cliente se configura desde Citas.`)
+  }
+}
 
 // HU-ERD-67: logica de "campos de un modulo" (entity_fields) como metadatos
 // administrables - mismo espiritu que moduleEntities.ts (ERD-66), separada de
@@ -472,6 +481,7 @@ export async function updateEntityField(
     await tx.execute(sql`select id from entity_fields where id = ${fieldId} for update`)
     current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return null
+    await assertAgendaFieldChange(tx, tenantId, current, input)
     const effectiveDataType = input.dataType ?? current.dataType
     const changedType = effectiveDataType !== current.dataType
     const activeRecords = and(eq(records.tenantId, tenantId), eq(records.entityId, current.entityId), recordNotDeleted)
@@ -585,6 +595,7 @@ export async function deleteEntityField(tenantId: string, fieldId: string, exist
   const run = async (tx: Tx) => {
     const current = await findFieldInTenant(tx, tenantId, fieldId)
     if (!current) return 'not-found'
+    await assertAgendaFieldChange(tx, tenantId, current)
     if (current.name === 'id') {
       throw new ProtectedFieldError('El campo "id" es un identificador reservado del sistema y no se puede eliminar.')
     }

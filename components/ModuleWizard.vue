@@ -31,6 +31,11 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const agendaOffer = useAgendaOffer()
+async function openAgenda(slug: string) {
+  agendaOffer.finish()
+  await router.push(`/registros/${slug}`)
+}
 const { user } = useAuth()
 
 const step = ref<'basica' | 'campos' | 'detalle' | 'listado'>('basica')
@@ -175,6 +180,7 @@ async function onSaveListLayout() {
 }
 
 async function onContinue() {
+  if (!await agendaOffer.ask(name.value, description.value)) return
   createError.value = null
   creating.value = true
   try {
@@ -202,6 +208,7 @@ async function onContinue() {
 </script>
 
 <template>
+  <AgendaBaseModal :open="agendaOffer.open.value" @close="agendaOffer.finish()" @decline="agendaOffer.finish(true)" @installed="openAgenda" />
   <div class="flex flex-col" :class="edgeHeader ? 'h-full min-w-0 overflow-y-auto bg-brand-bg' : 'gap-5'">
     <header :class="edgeHeader ? 'border-b border-brand-border-light bg-brand-surface px-7 py-5 max-sm:px-4' : ''">
     <div class="flex items-center gap-1 text-[13px]">

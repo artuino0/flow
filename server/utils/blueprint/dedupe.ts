@@ -38,12 +38,13 @@ function redirect(blueprint: Blueprint, aliases: Map<string, string>) {
   for (const role of blueprint.roles ?? []) for (const permission of role.permissions) permission.moduleRef = resolve(permission.moduleRef)
 }
 
-export function dedupeBlueprint(input: Blueprint, current: TenantShape): { normalized: Blueprint; merges: BlueprintMerge[] } {
+export function dedupeBlueprint(input: Blueprint, current: TenantShape, exactCreates = false): { normalized: Blueprint; merges: BlueprintMerge[] } {
   const normalized: Blueprint = structuredClone(input)
   const merges: BlueprintMerge[] = []
   const aliases = new Map<string, string>()
   for (const module of normalized.modules) {
     if (module.action !== 'create') continue
+    if (exactCreates) continue
     const proposedNames = new Set([module.name, module.singularName ?? ''].filter(Boolean).map(normalizeBlueprintName))
     const proposedFields = new Set(module.fields.map(field => normalizeBlueprintName(field.name)))
     const match = current.modules.find(existing => {

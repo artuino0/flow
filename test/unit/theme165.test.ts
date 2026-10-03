@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { compileVueComponent } from '../helpers/vueComponent'
+import { useAgendaOffer } from '../../composables/useAgendaOffer'
 import baseline from '../fixtures/themeBaseline165.json'
 import nextBaseline from '../fixtures/themeBaseline167.json'
 import originals from '../fixtures/themeDesigner165.json'
@@ -195,13 +196,14 @@ describe.each(['light', 'dark'] as const)('montajes del diseñador sin red: %s',
       throw new Error(`Petición no simulada: ${url}`)
     })
     vi.stubGlobal('$fetch', fetch)
-    const globals = { definePageMeta: vi.fn(), useHead: vi.fn(), useConfirm: () => ({ confirm: vi.fn(async () => true) }), usePanelWidth: () => ({ width: ref(360), startResize: vi.fn() }) }
+    const globals = { useAgendaOffer, definePageMeta: vi.fn(), useHead: vi.fn(), useConfirm: () => ({ confirm: vi.fn(async () => true) }), usePanelWidth: () => ({ width: ref(360), startResize: vi.fn() }) }
     const modal = defineComponent({ props: ['open', 'readOnly'], setup(props) { return () => h('div', { 'data-modal': 'field', 'data-open': String(props.open), 'data-readonly': String(props.readOnly) }) } })
     const component = compileVueComponent('pages/disenador.vue', { ...imports, '~/components/FieldFormModal.vue': { default: modal } }, globals)
+    const agendaModal = compileVueComponent('components/AgendaBaseModal.vue')
     const markdownComponent = compileVueComponent('components/MarkdownView.vue', imports)
     const canvas = defineComponent({ emits: ['select'], setup(_, { emit }) { return () => h('button', { 'data-canvas-select': true, onClick: () => emit('select', 'clientes') }, 'Seleccionar Clientes') } })
     const stub: Component = { setup(_, { slots }) { return () => h('div', {}, slots.default?.()) } }
-    const host = mount(component, {}, { DesignerCanvas: canvas, DesignerCanvasClient: canvas, ClientOnly: stub, NuxtLink: stub, ChattitoMessageAvatar: stub, MarkdownView: markdownComponent, PanelResizeHandle: stub, IconPicker: stub })
+    const host = mount(component, {}, { AgendaBaseModal: agendaModal, DesignerCanvas: canvas, DesignerCanvasClient: canvas, ClientOnly: stub, NuxtLink: stub, ChattitoMessageAvatar: stub, MarkdownView: markdownComponent, PanelResizeHandle: stub, IconPicker: stub })
     await flush(); await flush()
     expect(host.querySelector('.theme-light')).toBeNull()
     if (mode === 'empty') {

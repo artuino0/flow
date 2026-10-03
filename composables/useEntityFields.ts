@@ -3,6 +3,7 @@
 // GET /api/entities/:slug/fields (agregado como parte de esta HU).
 import type { LabelConfig } from '~/utils/labelTemplates'
 export interface EntityFieldMeta {
+  systemProtected?: boolean
   id: string
   name: string
   label: string

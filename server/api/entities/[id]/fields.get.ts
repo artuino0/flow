@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { isAgendaCoreField } from '~/utils/agendaBase'
 import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { entityFields, tenants } from '~/server/db/schema'
@@ -121,7 +122,7 @@ export default defineEventHandler(async (event) => {
       }
     : field)
 
-  const response = { entity, fields: [idField, ...responseFields], permissions, inverseRelations, detailLayout, listLayout, boardConfig, calendarConfig }
+  const response = { entity, fields: [idField, ...responseFields.map(field => ({ ...field, systemProtected: isAgendaCoreField(entity, field.name) }))], permissions, inverseRelations, detailLayout, listLayout, boardConfig, calendarConfig }
   metadataCache.set(cacheKey, response)
   return response
 })

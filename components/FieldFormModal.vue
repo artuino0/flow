@@ -74,6 +74,7 @@ const props = defineProps<{
   // Opcional: el diseñador resuelve todos los selectores desde su plano local.
   fieldSource?: FieldFormSource
   readOnly?: boolean
+  schemaLocked?: boolean
   allowSchemaEditing?: boolean
   hasValues?: boolean
   usedOptionValues?: string[]
@@ -341,7 +342,7 @@ function copyFromOptions(currentColumnName: string): CopyFromOption[] {
 
 const typePickerOpen = ref(true)
 const typeChangeNotice = ref(false)
-const typeLocked = computed(() => !props.fieldSource && props.mode === 'edit' && (props.hasValues !== false || props.loadingUsage))
+const typeLocked = computed(() => props.schemaLocked || (!props.fieldSource && props.mode === 'edit' && (props.hasValues !== false || props.loadingUsage)))
 const chosenType = computed(() => TYPE_OPTIONS.find(t => t.value === (form.dataType === 'multiselect' ? 'select' : form.dataType)) ?? TYPE_OPTIONS[0])
 function optionInUse(option: OptionDraft | undefined): boolean { return Boolean(option && !props.fieldSource && props.usedOptionValues?.includes(option.value)) }
 function reopenTypes() {
@@ -769,6 +770,7 @@ const calculationValid = computed(() => {
 })
 
 const canSubmit = computed(() => {
+  if (props.schemaLocked) return !props.loadingUsage && !props.usageUnavailable && Boolean(form.label.trim())
   if (props.loadingUsage || props.usageUnavailable || Object.values(ruleErrors.value).some(Boolean)) return false
   if (form.name.length === 0 || nameError.value || form.label.length === 0 || !calculationValid.value) return false
   if (form.dataType === 'select' || form.dataType === 'multiselect') return optionsValid.value
@@ -779,6 +781,10 @@ const canSubmit = computed(() => {
 
 function onSubmit() {
   if (props.readOnly || !canSubmit.value) return
+  if (props.schemaLocked && props.initialField) {
+    emit('submit', { ...props.initialField, label: form.label })
+    return
+  }
   const rules = { ...form.catalogRules, ...validationRulesForSubmit() }
   if (form.dataType === 'date') {
     Object.assign(rules, presentation.value)
@@ -883,6 +889,8 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </div>
         </div>
 
+        <p v-if="schemaLocked" class="flex items-center gap-2 text-sm text-brand-info-text"><LockKeyhole class="h-4 w-4" />Campo núcleo de Citas: solo puedes editar la etiqueta. El vínculo de Cliente se configura desde Citas.</p>
+        <fieldset :disabled="schemaLocked" class="flex min-w-0 flex-col gap-5 border-0 p-0">
         <div class="flex flex-col gap-2">
           <p class="text-[13px] font-semibold text-brand-text">Tipo de dato</p>
           <div v-if="typePickerOpen && !typeLocked" data-type-grid :data-tour="mode === 'create' ? 'manual-field-type' : undefined" class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -1374,6 +1382,7 @@ onBeforeUnmount(() => { removeDateHelpListeners(); if (props.open) returnFocus?.
           </template>
         </div>
 
+        </fieldset>
       </fieldset>
       <p v-if="error" role="alert" class="px-5 pb-5 text-sm text-brand-error-text">{{ error }}</p>
 

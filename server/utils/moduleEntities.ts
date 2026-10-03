@@ -4,6 +4,8 @@ import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 import { pluralize } from '~/server/utils/pluralize'
 import { recordNotDeleted } from '~/server/utils/records'
+import { createError } from 'h3'
+import { isAgendaBase } from '~/utils/agendaBase'
 
 // HU-ERD-66: logica de "modulos" (entities) como metadatos administrables -
 // hasta ahora entities/entity_fields solo se creaban por scripts/seed.mjs
@@ -20,6 +22,7 @@ export const MODULE_KINDS = ['hecho', 'dimension'] as const
 export type ModuleKind = (typeof MODULE_KINDS)[number]
 
 export interface EntitySummary {
+  templateKey?: string | null
   id: string
   slug: string
   name: string
@@ -112,6 +115,7 @@ export async function listEntities(tenantId: string, moduleKind?: ModuleKind, de
         icon: entities.icon,
         moduleKind: entities.moduleKind,
         singularName: entities.singularName,
+        templateKey: entities.templateKey,
         fiscalConfig: entities.fiscalConfig,
         labelConfig: entities.labelConfig,
         createdAt: entities.createdAt
@@ -252,6 +256,11 @@ async function updateEntityImpl(
   existingTx?: Tx
 ): Promise<EntitySummary | null> {
   const run = async (tx: Tx) => {
+    if (input.isActive === false) {
+      const [current] = await tx.select({ slug: entities.slug, templateKey: entities.templateKey }).from(entities)
+        .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId))).limit(1)
+      if (current && isAgendaBase(current)) throw createError({ statusCode: 422, statusMessage: 'Citas es un módulo base del sistema y no se puede desactivar. Puedes cambiar sus etiquetas, permisos y agregar campos o partidas.' })
+    }
     const setValues: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
     if (input.name !== undefined) setValues.name = input.name
     if (input.description !== undefined) setValues.description = input.description
@@ -378,11 +387,12 @@ export type DeleteEntityResult = { status: 'deleted' } | { status: 'not-found' }
 async function deleteEntityImpl(tenantId: string, entityId: string, existingTx?: Tx): Promise<DeleteEntityResult> {
   const run = async (tx: Tx): Promise<DeleteEntityResult> => {
     const [entity] = await tx
-      .select({ id: entities.id })
+      .select({ id: entities.id, slug: entities.slug, templateKey: entities.templateKey })
       .from(entities)
       .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId)))
       .limit(1)
     if (!entity) return { status: 'not-found' }
+    if (isAgendaBase(entity)) throw createError({ statusCode: 422, statusMessage: 'Citas es un módulo base del sistema y no se puede eliminar.' })
 
     await tx.update(entities).set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), isNull(entities.deletedAt)))

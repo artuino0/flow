@@ -1,5 +1,29 @@
 import { applyBlueprint } from '~/server/utils/blueprint/apply'
 import type { Blueprint } from '~/server/utils/blueprint/schema'
+import { and, eq, isNull } from 'drizzle-orm'
+import { createError } from 'h3'
+import { db, withTenant } from '~/server/db'
+import { entities, entityFields } from '~/server/db/schema'
+import { isAgendaBase } from '~/utils/agendaBase'
+
+export type AgendaClientChoice = { mode: 'create' } | { mode: 'link'; entityId: string }
+
+export async function agendaClientTarget(tx: typeof db, tenantId: string, entityId: string) {
+  const [entity] = await tx.select().from(entities).where(and(eq(entities.id, entityId), eq(entities.tenantId, tenantId), eq(entities.isActive, true), isNull(entities.deletedAt))).limit(1)
+  if (!entity || isAgendaBase(entity)) throw createError({ statusCode: 422, statusMessage: 'Elige un módulo activo de esta organización para los clientes.' })
+  const [text] = await tx.select({ name: entityFields.name }).from(entityFields).where(and(eq(entityFields.entityId, entity.id), eq(entityFields.dataType, 'text'))).limit(1)
+  if (!text) throw createError({ statusCode: 422, statusMessage: 'El módulo de clientes debe tener al menos un campo de texto para mostrar.' })
+  return entity
+}
+
+export function agendaBlueprintForClient(targetSlug?: string): Blueprint {
+  const blueprint = structuredClone(agendaBlueprint)
+  if (!targetSlug) return blueprint
+  blueprint.modules = blueprint.modules.filter(module => module.ref !== 'agenda-clientes')
+  blueprint.modules.find(module => module.ref === 'agenda-citas')!.fields.find(field => field.name === 'cliente')!.validationRules = { relationEntity: targetSlug }
+  for (const role of blueprint.roles ?? []) for (const permission of role.permissions) if (permission.moduleRef === 'agenda-clientes') permission.moduleRef = targetSlug
+  return blueprint
+}
 
 const statusOptions = [
   ['agendada', 'Agendada'], ['confirmada', 'Confirmada'], ['en_curso', 'En curso'],
@@ -70,7 +94,13 @@ export const agendaBlueprint: Blueprint = {
   ]
 }
 
-export async function installAgendaTemplate(tenantId: string) {
-  const result = await applyBlueprint(tenantId, null, agendaBlueprint, 'system:agenda:v1', 'agenda')
+export async function installAgendaTemplate(tenantId: string, choice: AgendaClientChoice = { mode: 'create' }) {
+  const installed = await withTenant(tenantId, tx => tx.select({ id: entities.id, slug: entities.slug, templateKey: entities.templateKey }).from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.slug, 'agenda-citas'))).limit(1))
+  if (installed[0] && isAgendaBase(installed[0])) return { modules: installed, fields: [], associations: [], layouts: [], workflows: [], merges: [] }
+  const target = choice.mode === 'link' ? await withTenant(tenantId, tx => agendaClientTarget(tx, tenantId, choice.entityId)) : undefined
+  const blueprint = agendaBlueprintForClient(target?.slug)
+  const collisions = await withTenant(tenantId, tx => tx.select({ slug: entities.slug }).from(entities).where(eq(entities.tenantId, tenantId)))
+  if (blueprint.modules.some(module => collisions.some(existing => existing.slug === module.slug))) throw createError({ statusCode: 422, statusMessage: 'Ya existe un módulo con un identificador reservado de Agenda. Conservamos tus módulos; cambia ese identificador antes de instalar Citas base.' })
+  const result = await applyBlueprint(tenantId, null, blueprint, 'system:agenda:v1', 'agenda')
   return result
 }

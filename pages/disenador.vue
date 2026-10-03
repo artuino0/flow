@@ -18,6 +18,11 @@ definePageMeta({ middleware: 'designer', editorFullscreen: true, fullBleed: true
 useHead({ title: 'Diseñador de estructura | Flow' })
 
 const api = createDesignerClient((url, options) => $fetch(url, { method: options?.method, body: options?.body as Record<string, unknown> | undefined }))
+const agendaOffer = useAgendaOffer()
+async function openAgenda(slug: string) {
+  agendaOffer.finish()
+  await navigateTo(`/registros/${slug}`)
+}
 const { confirm } = useConfirm()
 const sessions = ref<DesignerSession[]>([])
 const applications = ref<DesignerApplication[]>([])
@@ -189,6 +194,7 @@ async function sendPrompt(value = prompt.value, retryId?: string, repair = false
   const instruction = (retry ? retry.content : value).trim()
   if (!instruction || !session.value || !(repair ? repairCanSend.value : chatCanSend.value)) return
   if (retryId && !retry) return
+  if (!repair && !await agendaOffer.ask(instruction)) return
   const draftId = retry?.id ?? crypto.randomUUID()
   chatDrafts.value = beginDesignerChat(chatDrafts.value, instruction, draftId, new Date().toISOString(), retryId)
   if (!retryId) prompt.value = ''
@@ -435,6 +441,7 @@ function formatDate(value: string) { return new Date(value).toLocaleString('es-M
 </script>
 
 <template>
+  <AgendaBaseModal :open="agendaOffer.open.value" @close="agendaOffer.finish()" @decline="agendaOffer.finish(true)" @installed="openAgenda" />
   <div class="flex h-full min-h-0 flex-col bg-brand-bg text-brand-text">
     <div data-tour="designer" class="flex h-[55px] shrink-0 items-center justify-between gap-3 border-b border-brand-border-light bg-brand-surface px-3 sm:px-5">
       <div class="flex min-w-0 items-center gap-2 sm:gap-3">

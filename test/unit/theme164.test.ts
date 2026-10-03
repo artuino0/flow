@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, h, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, Suspense, watch, watchEffect, type App, type Component } from 'vue'
 import { readFileSync } from 'node:fs'
 import { compileVueComponent } from '../helpers/vueComponent'
+import { useAgendaOffer } from '../../composables/useAgendaOffer'
+import * as agendaBase from '../../utils/agendaBase'
 import { auditThemeColors, migratedThemeFiles } from '../../scripts/auditThemeColors'
 import { darkTokens, lightTokens } from '../../utils/themeTokens'
 import { contentNeedsLight } from '../../utils/theme'
@@ -43,16 +45,20 @@ async function mount(file: string, theme: string, props: Record<string, unknown>
   document.body.dataset.contentTheme = theme
   vi.stubGlobal('$fetch', vi.fn(async (url: string) => response(url)))
   const globals = { ref, computed, reactive, watch, watchEffect, nextTick, onMounted, onBeforeUnmount, onUnmounted,
+    useAgendaOffer,
     definePageMeta: vi.fn(), useRequestHeaders: () => ({}), useRoute: () => ({ query: {}, params: {} }), useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
     useAuth: () => ({ user: ref({ id: 'self' }) }), useToast: () => toast, useConfirm: () => ({ confirm: vi.fn(async () => true) }),
     usePlanLimit: () => ({ handlePlanLimitError: vi.fn(), checkBeforeCreate: vi.fn(async () => true) }), useRequestURL: () => new URL('http://local.test'),
     useFetch: async (url: string) => ({ data: ref(response(url)), pending: ref(false), error: ref(null), refresh: vi.fn() }), pluralize: (s: string) => s + 's', slugify, navigateTo: vi.fn(), refreshNuxtData: vi.fn(), ...extra }
   const imports = { '~/utils/workflowMapLayout': map, '~/utils/moduleIcons': icons, '~/utils/onboardingTours': tours, '~/utils/fieldTypeBadge': badges, '~/utils/listFilters': filters, '~/utils/moduleListingTabs': tabs, '~/utils/labelTemplates': labels,
+    '~/utils/agendaBase': agendaBase,
     '~/components/ModuleNavigationEditor.vue': { default: { render: () => h('div', { 'data-component': 'navigation' }) } }, '~/components/ModuleApiDocs.vue': { default: { render: () => h('div', { 'data-component': 'api' }) } },
     '~/components/FieldFormModal.vue': { default: { render: () => h('div') } }, '~/components/FieldImpactWarningModal.vue': { default: { render: () => h('div') } } }
   const component = compileVueComponent(file, imports, globals, { client: false, server: false, dev: false })
+  const agendaModal = compileVueComponent('components/AgendaBaseModal.vue')
   const host = document.createElement('div'); document.body.append(host)
   const app = createApp({ render: () => h(Suspense, {}, { default: () => h(component, props) }) })
+  app.component('AgendaBaseModal', agendaModal)
   const stub: Component = { setup(_, { slots }) { return () => h('div', {}, Object.values(slots).flatMap(slot => slot?.({ href: '/local', navigate: vi.fn(), activeView: 'table' }) ?? [])) } }
   Object.defineProperties(app.config.globalProperties, { fieldTypeLabel: { value: fieldTypeLabel }, colorDotClass: { value: options.colorDotClass }, colorBadgeClasses: { value: options.colorBadgeClasses } })
   for (const name of ['NuxtLink', 'ListPageHeader', 'ModuleTourHelpButton', 'DynamicTable', 'DynamicForm', 'ChatAvatar', 'ChatGifPicker', 'ChatConversationList', 'ChatThread', 'ChatNewConversationModal', 'ChatGroupEditModal', 'ModuleListing', 'ModuleWizard', 'ModuleFieldsCard', 'ModulePreviewCard', 'ModuleDetailLayoutCard', 'ModuleListLayoutCard', 'ModuleListPreviewCard', 'ModuleStateWorkflowCard', 'ModuleRelationsCard', 'ModuleLabelEditor', 'RecordDetailView', 'IconPicker', 'ReportOptionSelect']) app.component(name, stub)
@@ -147,6 +153,10 @@ describe.each(['light', 'dark'])('montajes HU-164 sin red, %s', theme => {
     name.value = 'Citas'; name.dispatchEvent(new Event('input', { bubbles: true })); await flush()
     const click = async (label: string) => { const button = [...wizard.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === label); expect(button, label).toBeDefined(); button!.click(); await flush() }
     await click('Continuar')
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Citas prearmado')
+    expect(fetch.mock.calls.some(([url]) => url === '/api/entities')).toBe(false)
+    const own = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent?.trim() === 'Crear el mío')!
+    expect(own).toBeDefined(); own.click(); await flush()
     expect(fetch).toHaveBeenCalledWith('/api/entities', expect.objectContaining({ method: 'POST', body: expect.objectContaining({ name: 'Citas', moduleKind }) }))
     await click('Continuar')
     expect(wizard.textContent).toContain('Guardar diseño')

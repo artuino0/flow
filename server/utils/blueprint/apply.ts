@@ -40,7 +40,7 @@ async function applyBlueprintWithActor(tenantId: string, userId: string | null, 
     if (previous[0].undoneAt) throw createError({ statusCode: 409, statusMessage: 'Esta aplicación ya fue deshecha; crea una nueva sesión para aplicar el diseño otra vez' })
     return previous[0].result as BlueprintApplyResult
   }
-  const checked = await validateBlueprint(tenantId, input)
+  const checked = await validateBlueprint(tenantId, input, Boolean(templateKey))
   const normalized = checked.normalized
   if (!normalized) throw createError({ statusCode: 422, statusMessage: 'El plano tiene un formato inválido', data: { errors: checked.errors } })
   if (checked.errors.some(error => error.code !== 'plan_limit')) throw createError({ statusCode: 422, statusMessage: 'El plano contiene errores', data: { errors: checked.errors } })

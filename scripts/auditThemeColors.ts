@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 /** Lista cerrada: cascarón HU-161, registros HU-162, ajustes HU-163 y módulos/chat HU-164. */
 export const migratedThemeFiles = [
+  'components/AgendaBaseModal.vue',
   // HU-172: acceso temático; identidad de Flow en assets intactos.
   'assets/css/access.css', 'pages/login.vue', 'pages/registro.vue',
   'pages/registro-completo.vue', 'pages/recuperar.vue', 'pages/restablecer/[token].vue',

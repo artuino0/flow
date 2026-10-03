@@ -8,6 +8,7 @@ import { accessCache } from '~/server/utils/shortCache'
 export type PermissionAction = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
 
 export interface ResolvedEntity {
+  templateKey?: string | null
   id: string
   slug: string
   name: string
@@ -128,6 +129,7 @@ async function loadEntityAccessBySlug(tenantId: string, roleId: string, entitySl
         slug: entities.slug,
         name: entities.name,
         isActive: entities.isActive,
+        templateKey: entities.templateKey,
         deletedAt: entities.deletedAt,
         detailLayout: entities.detailLayout,
         listLayout: entities.listLayout,

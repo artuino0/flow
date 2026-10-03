@@ -33,6 +33,7 @@
 // detalle de diseno - revisado en Pencil antes de construir, sin mock fiel
 // para esta version simple, decision explicita del usuario 2026-09-01).
 import { MODULE_EDIT_TAB_ANCHORS } from '~/utils/onboardingTours'
+import { isAgendaBase } from '~/utils/agendaBase'
 import { ChevronRight, Trash2 } from '@lucide/vue'
 import ModuleNavigationEditor from '~/components/ModuleNavigationEditor.vue'
 import ModuleApiDocs from '~/components/ModuleApiDocs.vue'
@@ -42,6 +43,7 @@ import { DEFAULT_LABEL_CONFIG, labelConfigSchema, type LabelConfig } from '~/uti
 definePageMeta({ darkReady: true, layout: 'default', fullBleed: true })
 
 interface ModuleDetail {
+  templateKey?: string | null
   id: string
   slug: string
   name: string
@@ -112,6 +114,12 @@ const { data, pending, error: fetchError, refresh } = await useFetch<{ entities:
 })
 
 const currentModule = computed(() => data.value?.entities.find((m) => m.id === moduleId) ?? null)
+const agendaProtected = computed(() => Boolean(currentModule.value && isAgendaBase(currentModule.value)))
+const clientModalOpen = ref(false)
+async function onAgendaClientChanged() {
+  clientModalOpen.value = false
+  await loadFields()
+}
 
 // ERD-86: a donde vuelven "Cancelar"/"Volver al listado" y el redirect tras
 // borrar - segun el tipo real del modulo que se esta editando, no siempre
@@ -307,6 +315,7 @@ async function onSaveListLayout() {
 </script>
 
 <template>
+  <AgendaBaseModal :open="clientModalOpen" change-client @close="clientModalOpen = false" @changed="onAgendaClientChanged" />
   <div class="flex h-full min-w-0 flex-col overflow-y-auto bg-brand-bg">
     <header v-if="currentModule" class="min-w-0 bg-brand-surface">
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-brand-border-light px-7 py-5">
@@ -443,13 +452,14 @@ async function onSaveListLayout() {
                 <div data-tour="edit-info-active" class="flex items-center justify-between">
                   <div class="flex flex-col gap-0.5">
                     <p class="text-sm font-semibold text-brand-text">Módulo activo</p>
+                    <p v-if="agendaProtected" class="text-xs text-brand-info-text">Citas base permanece activo y no se puede eliminar. Configura el vínculo de Cliente desde Campos.</p>
                     <p class="text-xs text-brand-text-muted">Si está deshabilitado, sus registros siguen disponibles para consulta.</p>
                   </div>
                   <button
                     type="button"
                     class="flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px] transition-colors"
                     :class="isActive ? 'justify-end bg-brand-orange' : 'justify-start border border-brand-border bg-brand-surface'"
-                    :disabled="!!currentModule.deletedAt"
+                    :disabled="agendaProtected || !!currentModule.deletedAt"
                     @click="isActive = !isActive"
                   >
                     <span class="h-[18px] w-[18px] rounded-full bg-brand-switch-thumb shadow" />
@@ -481,7 +491,7 @@ async function onSaveListLayout() {
                 </div>
                 <button
                   type="button"
-                  :disabled="deleting || !!currentModule.deletedAt"
+                  :disabled="agendaProtected || deleting || !!currentModule.deletedAt"
                   class="flex shrink-0 items-center gap-1.5 rounded border border-brand-error-text bg-brand-surface px-4 py-2 text-sm font-semibold text-brand-error-text hover:bg-brand-error-bg disabled:cursor-not-allowed disabled:opacity-60"
                   @click="onDeleteModule"
                 >
@@ -499,7 +509,13 @@ async function onSaveListLayout() {
 
       <template v-else-if="step === 'campos'">
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
+          <div class="space-y-4">
+            <div v-if="agendaProtected" role="status" class="rounded border border-brand-border-light bg-brand-info-bg p-4 text-sm text-brand-info-text">
+              <p>Citas es un módulo base del sistema: no se elimina ni desactiva. Sus campos núcleo están protegidos. Puedes cambiar etiquetas y permisos por rol, agregar campos y partidas propias.</p>
+              <button type="button" class="mt-3 rounded border border-brand-border bg-brand-surface px-3 py-2 font-semibold text-brand-blue hover:bg-brand-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue" @click="clientModalOpen = true">Configurar vínculo de Cliente</button>
+            </div>
+            <ModuleFieldsCard :entity-id="currentModule.id" :entity-name="currentModule.name" :fields="fields" @changed="loadFields" />
+          </div>
           <div data-tour="edit-fields-preview" class="min-w-0"><ModulePreviewCard :module-name="name" :module-description="description" :fields="fields" :entity-id="currentModule.id" /></div>
         </div>
       </template>
