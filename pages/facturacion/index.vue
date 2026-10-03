@@ -4,7 +4,7 @@ import { ESTADOS_CFDI, TIPO_CFDI_LABEL, TIPOS_COMPROBANTE, formatoDinero, format
 
 // Fase C de DOCS/HU_Timbrado_CFDI_PAC.md: listado del dominio fiscal fijo.
 // Solo admins de tenants MX llegan acá (nav oculta + endpoints 404 fuera de MX).
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 interface DocRow {
   id: string
@@ -144,27 +144,27 @@ function folioTexto(row: DocRow) {
       @refresh="load"
     >
       <template #actions>
-        <button type="button" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="showSeries = !showSeries">
+        <button type="button" class="flex h-[35px] items-center rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="showSeries = !showSeries">
           <span class="flex items-center gap-1.5"><Hash class="h-4 w-4" :stroke-width="1.75" />Series ({{ series.length }})</span>
         </button>
-        <NuxtLink to="/facturacion/nuevo?tipo=P" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
+        <NuxtLink to="/facturacion/nuevo?tipo=P" class="flex h-[35px] items-center rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
           <span class="flex items-center gap-1.5"><WalletCards class="h-4 w-4" :stroke-width="1.75" />Complemento de pago</span>
         </NuxtLink>
-        <NuxtLink to="/facturacion/nuevo?tipo=E" class="flex h-[35px] items-center rounded border border-brand-border bg-white px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
+        <NuxtLink to="/facturacion/nuevo?tipo=E" class="flex h-[35px] items-center rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] font-semibold text-brand-text hover:bg-brand-bg">
           <span class="flex items-center gap-1.5"><FileMinus class="h-4 w-4" :stroke-width="1.75" />Nota de crédito</span>
         </NuxtLink>
-        <NuxtLink to="/facturacion/nuevo?tipo=I" class="flex h-[35px] items-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-white hover:bg-brand-orange-hover">
+        <NuxtLink to="/facturacion/nuevo?tipo=I" class="flex h-[35px] items-center rounded bg-brand-orange px-3 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover">
           <span class="flex items-center gap-1.5"><Plus class="h-4 w-4" :stroke-width="2" />Nueva factura</span>
         </NuxtLink>
       </template>
       <template #toolbar-left>
-        <select v-model="filters.tipo" class="h-[30px] rounded border border-brand-border bg-white px-3 text-[13px] focus:border-brand-blue focus:outline-none">
+        <select v-model="filters.tipo" class="h-[30px] rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] focus:border-brand-blue focus:outline-none">
           <option value="">Todos los tipos</option>
           <option value="I">Facturas (I)</option>
           <option value="E">Notas de crédito (E)</option>
           <option value="P">Complementos (P)</option>
         </select>
-        <select v-model="filters.estado" class="h-[30px] rounded border border-brand-border bg-white px-3 text-[13px] focus:border-brand-blue focus:outline-none">
+        <select v-model="filters.estado" class="h-[30px] rounded border border-brand-control-border bg-brand-surface px-3 text-[13px] focus:border-brand-blue focus:outline-none">
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
           <option value="timbrando">Timbrando</option>
@@ -172,17 +172,17 @@ function folioTexto(row: DocRow) {
           <option value="error">Error</option>
           <option value="cancelada">Cancelada</option>
         </select>
-        <button type="button" class="h-[30px] rounded border border-brand-border px-3 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="buscar">Buscar</button>
+        <button type="button" class="h-[30px] rounded border border-brand-control-border px-3 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="buscar">Buscar</button>
       </template>
     </ListPageHeader>
 
-    <section v-if="showSeries" class="mt-5 rounded-lg border border-brand-border-light bg-white p-5">
+    <section v-if="showSeries" class="mt-5 rounded-lg border border-brand-border-light bg-brand-surface p-5">
       <h2 class="text-[15px] font-bold text-brand-text">Series fiscales</h2>
       <p class="mt-1 text-[13px] text-brand-text-secondary">El folio se consume al timbrar y nunca se reutiliza. Una serie con folios no se borra: se inactiva.</p>
       <div v-if="series.length" class="mt-4 overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-brand-border-light text-left text-xs uppercase tracking-wide text-brand-text-muted">
+            <tr class="border-b border-brand-border-light text-left text-xs uppercase tracking-wide text-brand-sites-muted">
               <th class="px-2 py-2 font-semibold">Serie</th>
               <th class="px-2 py-2 font-semibold">Tipo</th>
               <th class="px-2 py-2 font-semibold">Lugar de expedición</th>
@@ -198,10 +198,10 @@ function folioTexto(row: DocRow) {
               <td class="px-2 py-2">{{ s.lugarExpedicion }}</td>
               <td class="px-2 py-2 tabular-nums">{{ s.nextFolio }}</td>
               <td class="px-2 py-2">
-                <span class="rounded px-2 py-0.5 text-xs font-semibold" :class="s.estado === 'activa' ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-bg text-brand-text-muted'">{{ s.estado === 'activa' ? 'Activa' : 'Inactiva' }}</span>
+                <span class="rounded px-2 py-0.5 text-xs font-semibold" :class="s.estado === 'activa' ? 'bg-brand-success-bg text-brand-success-text' : 'bg-brand-bg text-brand-sites-muted'">{{ s.estado === 'activa' ? 'Activa' : 'Inactiva' }}</span>
               </td>
               <td class="px-2 py-2 text-right">
-                <button type="button" class="rounded border border-brand-border px-2 py-1 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="toggleSerie(s)">
+                <button type="button" class="rounded border border-brand-control-border px-2 py-1 text-xs font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="toggleSerie(s)">
                   <span class="flex items-center gap-1">
                     <component :is="s.estado === 'activa' ? Ban : CircleCheck" class="h-3.5 w-3.5" :stroke-width="1.75" />
                     {{ s.estado === 'activa' ? 'Inactivar' : 'Activar' }}
@@ -214,30 +214,30 @@ function folioTexto(row: DocRow) {
       </div>
       <form class="mt-4 grid gap-3 border-t border-brand-border-light pt-4 sm:grid-cols-[120px_1fr_160px_auto] sm:items-end" @submit.prevent="createSerie">
         <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Serie
-          <input v-model="nuevaSerie.serie" maxlength="25" placeholder="A" class="w-full rounded border border-brand-border px-3 py-2 text-sm font-normal uppercase focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+          <input v-model="nuevaSerie.serie" maxlength="25" placeholder="A" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm font-normal uppercase focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
         </label>
         <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Tipo de comprobante
-          <select v-model="nuevaSerie.tipoComprobante" class="w-full rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
+          <select v-model="nuevaSerie.tipoComprobante" class="w-full rounded border border-brand-control-border bg-brand-surface px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue">
             <option v-for="t in TIPOS_COMPROBANTE" :key="t.value" :value="t.value">{{ t.label }}</option>
           </select>
         </label>
         <label class="flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Lugar de expedición (CP)
-          <input v-model="nuevaSerie.lugarExpedicion" maxlength="5" inputmode="numeric" placeholder="20110" class="w-full rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+          <input v-model="nuevaSerie.lugarExpedicion" maxlength="5" inputmode="numeric" placeholder="20110" class="w-full rounded border border-brand-control-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
         </label>
-        <button type="submit" :disabled="serieSaving" class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50">Crear serie</button>
+        <button type="submit" :disabled="serieSaving" class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-50">Crear serie</button>
       </form>
     </section>
 
-    <section class="mt-5 rounded-lg border border-brand-border-light bg-white">
+    <section class="mt-5 rounded-lg border border-brand-border-light bg-brand-surface">
 
       <p v-if="loadError" role="alert" class="p-6 text-sm text-brand-error-text">{{ loadError }}</p>
-      <p v-else-if="loading && !rows.length" role="status" class="p-6 text-sm text-brand-text-muted">Cargando documentos…</p>
+      <p v-else-if="loading && !rows.length" role="status" class="p-6 text-sm text-brand-sites-muted">Cargando documentos…</p>
       <p v-else-if="!rows.length" class="p-6 text-sm text-brand-text-secondary">
         Todavía no hay documentos fiscales. Crea tu primera serie y tu primera factura.
       </p>
       <table v-else class="w-full text-sm">
         <thead>
-          <tr class="border-b border-brand-border-light text-left text-xs uppercase tracking-wide text-brand-text-muted">
+          <tr class="border-b border-brand-border-light text-left text-xs uppercase tracking-wide text-brand-sites-muted">
             <th class="px-4 py-2.5 font-semibold">Folio</th>
             <th class="px-4 py-2.5 font-semibold">Tipo</th>
             <th class="px-4 py-2.5 font-semibold">Receptor</th>
@@ -257,7 +257,7 @@ function folioTexto(row: DocRow) {
             <td class="px-4 py-2.5 text-brand-text-secondary">{{ TIPO_CFDI_LABEL[row.tipo] ?? row.tipo }}</td>
             <td class="px-4 py-2.5">
               <span class="block text-brand-text">{{ row.receptorNombre || '—' }}</span>
-              <span v-if="row.receptorRfc" class="block text-xs text-brand-text-muted">{{ row.receptorRfc }}</span>
+              <span v-if="row.receptorRfc" class="block text-xs text-brand-sites-muted">{{ row.receptorRfc }}</span>
             </td>
             <td class="px-4 py-2.5 tabular-nums">{{ formatoDinero(row.total, row.moneda) }}</td>
             <td class="px-4 py-2.5">
@@ -271,10 +271,15 @@ function folioTexto(row: DocRow) {
       <div v-if="total > pageSize" class="flex items-center justify-between border-t border-brand-border-light p-3 text-sm">
         <span class="text-brand-text-secondary">{{ total }} documentos · página {{ page }} de {{ totalPages }}</span>
         <span class="flex gap-1">
-          <button type="button" class="rounded border border-brand-border p-1.5 disabled:opacity-40" :disabled="page <= 1" @click="cambiarPagina(-1)"><ChevronLeft class="h-4 w-4" /></button>
-          <button type="button" class="rounded border border-brand-border p-1.5 disabled:opacity-40" :disabled="page >= totalPages" @click="cambiarPagina(1)"><ChevronRight class="h-4 w-4" /></button>
+          <button type="button" class="rounded border border-brand-control-border p-1.5 disabled:opacity-40" :disabled="page <= 1" @click="cambiarPagina(-1)"><ChevronLeft class="h-4 w-4" /></button>
+          <button type="button" class="rounded border border-brand-control-border p-1.5 disabled:opacity-40" :disabled="page >= totalPages" @click="cambiarPagina(1)"><ChevronRight class="h-4 w-4" /></button>
         </span>
       </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+input, select { background: rgb(var(--brand-surface)); color-scheme: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
+</style>

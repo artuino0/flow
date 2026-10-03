@@ -74,7 +74,7 @@ describe('contratos HU-164', () => {
     for (const file of routes) { expect(readFileSync(file, 'utf8')).toContain('darkReady: true'); expect(migratedThemeFiles).toContain(file) }
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
     expect(contentNeedsLight({})).toBe(true)
-    for (const file of ['pages/facturacion/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    for (const file of ['pages/facturacion/index.vue']) expect(readFileSync(file, 'utf8')).toContain('darkReady: true')
     expect(readFileSync('components/PrintReportPreview.vue', 'utf8')).toContain('theme-light')
     expect(auditThemeColors()).toEqual([])
   })

@@ -17,7 +17,7 @@ import {
 
 // Fase C/D/F/G de DOCS/HU_Timbrado_CFDI_PAC.md: detalle del documento fiscal
 // con su máquina de estados y la línea de tiempo append-only (cfdi_events).
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', darkReady: true })
 
 const route = useRoute()
 const router = useRouter()
@@ -260,36 +260,36 @@ function timelineTone(tipo: string) {
 
     <!-- Modal cancelar -->
 
-    <div v-if="mostrarCancelar" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" @click.self="mostrarCancelar = false">
-      <div class="w-full max-w-md rounded-lg border border-brand-border-light bg-white p-6">
+    <div v-if="mostrarCancelar" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4" role="dialog" aria-modal="true" @click.self="mostrarCancelar = false">
+      <div class="w-full max-w-md rounded-lg border border-brand-border-light bg-brand-surface p-6">
         <h2 class="text-[15px] font-bold text-brand-text">Cancelar CFDI ante el SAT</h2>
         <p class="mt-1 text-[13px] text-brand-text-secondary">Esta acción es irreversible: el PAC enviará la solicitud de cancelación con el motivo seleccionado.</p>
         <label class="mt-4 flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Motivo de cancelación
-          <select v-model="cancelMotivo" class="rounded border border-brand-border bg-white px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
+          <select v-model="cancelMotivo" class="rounded border border-brand-control-border bg-brand-surface px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none">
             <option v-for="m in MOTIVOS_CANCELACION" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </label>
         <label v-if="cancelMotivo === '01'" class="mt-3 flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">UUID del comprobante sustituto *
-          <input v-model="cancelSustituto" placeholder="00000000-0000-0000-0000-000000000000" class="rounded border border-brand-border px-3 py-2 font-mono text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+          <input v-model="cancelSustituto" placeholder="00000000-0000-0000-0000-000000000000" class="rounded border border-brand-control-border px-3 py-2 font-mono text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
         </label>
         <div class="mt-5 flex justify-end gap-2">
-          <button type="button" class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="mostrarCancelar = false">Volver</button>
-          <button type="button" class="rounded bg-brand-error-text px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50" :disabled="accionCorriendo === 'cancelar'" @click="cancelar">{{ accionCorriendo === 'cancelar' ? 'Cancelando…' : 'Cancelar CFDI' }}</button>
+          <button type="button" class="rounded border border-brand-control-border px-4 py-2 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="mostrarCancelar = false">Volver</button>
+          <button type="button" class="rounded bg-brand-error-text px-4 py-2 text-[13px] font-semibold text-brand-error-fg disabled:opacity-50" :disabled="accionCorriendo === 'cancelar'" @click="cancelar">{{ accionCorriendo === 'cancelar' ? 'Cancelando…' : 'Cancelar CFDI' }}</button>
         </div>
       </div>
     </div>
 
     <!-- Modal enviar -->
-    <div v-if="mostrarEnviar" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" @click.self="mostrarEnviar = false">
-      <div class="w-full max-w-md rounded-lg border border-brand-border-light bg-white p-6">
+    <div v-if="mostrarEnviar" class="fixed inset-0 z-50 flex items-center justify-center bg-brand-modal-overlay/40 p-4" role="dialog" aria-modal="true" @click.self="mostrarEnviar = false">
+      <div class="w-full max-w-md rounded-lg border border-brand-border-light bg-brand-surface p-6">
         <h2 class="text-[15px] font-bold text-brand-text">Enviar CFDI por correo</h2>
         <p class="mt-1 text-[13px] text-brand-text-secondary">Se adjuntan el XML y el PDF timbrados.</p>
         <label class="mt-4 flex flex-col gap-1.5 text-[13px] font-semibold text-brand-text">Correo destino
-          <input v-model="enviarPara" type="email" :placeholder="doc?.receptorCorreo || 'receptor@ejemplo.mx'" class="rounded border border-brand-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
+          <input v-model="enviarPara" type="email" :placeholder="doc?.receptorCorreo || 'receptor@ejemplo.mx'" class="rounded border border-brand-control-border px-3 py-2 text-sm font-normal focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue" />
         </label>
         <div class="mt-5 flex justify-end gap-2">
-          <button type="button" class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="mostrarEnviar = false">Volver</button>
-          <button type="button" class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-orange-hover disabled:opacity-50" :disabled="accionCorriendo === 'enviar'" @click="enviar">{{ accionCorriendo === 'enviar' ? 'Enviando…' : 'Enviar' }}</button>
+          <button type="button" class="rounded border border-brand-control-border px-4 py-2 text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-bg" @click="mostrarEnviar = false">Volver</button>
+          <button type="button" class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-50" :disabled="accionCorriendo === 'enviar'" @click="enviar">{{ accionCorriendo === 'enviar' ? 'Enviando…' : 'Enviar' }}</button>
         </div>
       </div>
     </div>
@@ -301,111 +301,111 @@ function timelineTone(tipo: string) {
   width: min(100%, 1280px);
   margin: 0 auto;
   padding: 8px 0 48px;
-  color: var(--brand-text, #17324d);
+  color: rgb(var(--brand-body-text));
 }
-.cfdi-back { display: inline-flex; align-items: center; gap: 6px; color: #527397; font-size: 13px; font-weight: 600; text-decoration: none; }
-.cfdi-back:hover, .cfdi-link:hover { color: #009cc2; }
+.cfdi-back { display: inline-flex; align-items: center; gap: 6px; color: rgb(var(--brand-cfdi-secondary)); font-size: 13px; font-weight: 600; text-decoration: none; }
+.cfdi-back:hover, .cfdi-link:hover { color: rgb(var(--brand-cfdi-link-hover)); }
 .cfdi-topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
-.cfdi-breadcrumb { color: #7690ae; font-size: 12px; }
-.cfdi-breadcrumb span { margin: 0 7px; color: #b5c2d0; }
-.cfdi-breadcrumb strong { color: #17324d; }
-.cfdi-environment { border-radius: 999px; background: #eef5f8; color: #527397; font-size: 11px; font-weight: 700; padding: 5px 10px; }
-.cfdi-header-card, .cfdi-card { border: 1px solid #dce5ed; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(23, 50, 77, .03); }
+.cfdi-breadcrumb { color: rgb(var(--brand-cfdi-muted)); font-size: 12px; }
+.cfdi-breadcrumb span { margin: 0 7px; color: rgb(var(--brand-cfdi-breadcrumb-divider)); }
+.cfdi-breadcrumb strong { color: rgb(var(--brand-cfdi-heading)); }
+.cfdi-environment { border-radius: 999px; background: rgb(var(--brand-cfdi-environment-bg)); color: rgb(var(--brand-cfdi-secondary)); font-size: 11px; font-weight: 700; padding: 5px 10px; }
+.cfdi-header-card, .cfdi-card { border: 1px solid rgb(var(--brand-cfdi-card-border)); border-radius: 8px; background: rgb(var(--brand-surface)); box-shadow: 0 1px 2px rgb(var(--brand-cfdi-shadow) / .03); }
 .cfdi-header-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 24px; align-items: center; margin-top: 10px; padding: 20px 22px; }
 .cfdi-header-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.cfdi-doc-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 8px; background: #e9f6f9; color: #009dc4; }
+.cfdi-doc-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 8px; background: rgb(var(--brand-cfdi-icon-bg)); color: rgb(var(--brand-cfdi-icon)); }
 .cfdi-title-block { min-width: 0; }
 .cfdi-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
-.cfdi-title-line h1 { margin: 0; color: #17324d; font-size: 21px; line-height: 1.2; font-weight: 750; }
-.cfdi-title-block p { margin: 5px 0 0; color: #527397; font-size: 13px; }
-.cfdi-title-block p span, .cfdi-alert p span { margin: 0 5px; color: #a6b7c8; }
+.cfdi-title-line h1 { margin: 0; color: rgb(var(--brand-cfdi-heading)); font-size: 21px; line-height: 1.2; font-weight: 750; }
+.cfdi-title-block p { margin: 5px 0 0; color: rgb(var(--brand-cfdi-secondary)); font-size: 13px; }
+.cfdi-title-block p span, .cfdi-alert p span { margin: 0 5px; color: rgb(var(--brand-cfdi-inline-divider)); }
 .cfdi-status { border-radius: 5px; padding: 4px 8px; font-size: 11px; font-weight: 700; }
-.status-timbrada { color: #14744e; background: #e3f6eb; }
-.status-borrador { color: #527397; background: #eef3f7; }
-.status-error { color: #b9362f; background: #ffe4e1; }
-.status-timbrando { color: #22698f; background: #e3f3fa; }
-.status-cancelada { color: #6d7182; background: #edf0f3; }
+.status-timbrada { color: rgb(var(--brand-cfdi-stamped-text)); background: rgb(var(--brand-cfdi-stamped-bg)); }
+.status-borrador { color: rgb(var(--brand-cfdi-secondary)); background: rgb(var(--brand-cfdi-draft-bg)); }
+.status-error { color: rgb(var(--brand-cfdi-error-text)); background: rgb(var(--brand-cfdi-error-bg)); }
+.status-timbrando { color: rgb(var(--brand-cfdi-stamping-text)); background: rgb(var(--brand-cfdi-stamping-bg)); }
+.status-cancelada { color: rgb(var(--brand-cfdi-cancelled-text)); background: rgb(var(--brand-cfdi-cancelled-bg)); }
 .cfdi-total-block { text-align: right; white-space: nowrap; }
-.cfdi-total-block span { display: block; color: #7690ae; font-size: 11px; }
-.cfdi-total-block strong { display: block; margin-top: 3px; color: #17324d; font-size: 20px; font-weight: 750; }
-.cfdi-action-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; grid-column: 1 / -1; border-top: 1px solid #edf1f5; padding-top: 16px; }
+.cfdi-total-block span { display: block; color: rgb(var(--brand-cfdi-muted)); font-size: 11px; }
+.cfdi-total-block strong { display: block; margin-top: 3px; color: rgb(var(--brand-cfdi-heading)); font-size: 20px; font-weight: 750; }
+.cfdi-action-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; grid-column: 1 / -1; border-top: 1px solid rgb(var(--brand-kanban-divider)); padding-top: 16px; }
 .cfdi-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border-radius: 5px; padding: 7px 11px; font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
 .cfdi-btn:disabled { cursor: not-allowed; opacity: .55; }
-.cfdi-btn-outline { border: 1px solid #c8d7e4; background: #fff; color: #345879; }
-.cfdi-btn-outline:hover { border-color: #8fb4ca; background: #f5f9fb; }
-.cfdi-btn-primary { border: 1px solid #ff7258; background: #ff7258; color: white; }
-.cfdi-btn-primary:hover { background: #ef624b; }
-.cfdi-btn-danger { border: 1px solid #ec9d97; background: #fff; color: #c54841; }
-.cfdi-btn-danger:hover { background: #fff2f0; }
+.cfdi-btn-outline { border: 1px solid rgb(var(--brand-cfdi-action-border)); background: rgb(var(--brand-surface)); color: rgb(var(--brand-cfdi-action-text)); }
+.cfdi-btn-outline:hover { border-color: rgb(var(--brand-cfdi-action-hover-border)); background: rgb(var(--brand-cfdi-action-hover-bg)); }
+.cfdi-btn-primary { border: 1px solid rgb(var(--brand-cfdi-primary)); background: rgb(var(--brand-cfdi-primary)); color: rgb(var(--brand-primary-fg)); }
+.cfdi-btn-primary:hover { background: rgb(var(--brand-cfdi-primary-hover)); }
+.cfdi-btn-danger { border: 1px solid rgb(var(--brand-cfdi-danger-border)); background: rgb(var(--brand-surface)); color: rgb(var(--brand-cfdi-danger-text)); }
+.cfdi-btn-danger:hover { background: rgb(var(--brand-cfdi-danger-hover)); }
 .cfdi-alert { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; border-radius: 6px; padding: 13px 15px; font-size: 13px; }
 .cfdi-alert-icon { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 auto; border-radius: 50%; font-weight: 800; }
 .cfdi-alert strong { display: block; font-size: 13px; }
 .cfdi-alert p { margin: 3px 0 0; line-height: 1.45; }
 .cfdi-alert small { display: block; margin-top: 4px; opacity: .8; }
-.cfdi-alert-error { color: #a63a34; background: #fff0ee; border: 1px solid #f6cbc6; }
-.cfdi-alert-error .cfdi-alert-icon { background: #e56a60; color: #fff; }
-.cfdi-alert-info { color: #286e92; background: #edf8fc; border: 1px solid #c8e9f2; }
-.cfdi-alert-info .cfdi-alert-icon { background: #a6dcec; color: #1f6f94; }
-.cfdi-alert-success { color: #176e4c; background: #ecf9f1; border: 1px solid #c8ecd6; }
-.cfdi-alert-success .cfdi-alert-icon { background: #32ae70; color: #fff; }
+.cfdi-alert-error { color: rgb(var(--brand-cfdi-alert-error-text)); background: rgb(var(--brand-cfdi-alert-error-bg)); border: 1px solid rgb(var(--brand-cfdi-alert-error-border)); }
+.cfdi-alert-error .cfdi-alert-icon { background: rgb(var(--brand-cfdi-alert-error-icon)); color: rgb(var(--brand-error-fg)); }
+.cfdi-alert-info { color: rgb(var(--brand-cfdi-alert-info-text)); background: rgb(var(--brand-cfdi-alert-info-bg)); border: 1px solid rgb(var(--brand-cfdi-alert-info-border)); }
+.cfdi-alert-info .cfdi-alert-icon { background: rgb(var(--brand-cfdi-alert-info-icon-bg)); color: rgb(var(--brand-cfdi-alert-info-icon-text)); }
+.cfdi-alert-success { color: rgb(var(--brand-cfdi-alert-success-text)); background: rgb(var(--brand-cfdi-alert-success-bg)); border: 1px solid rgb(var(--brand-cfdi-alert-success-border)); }
+.cfdi-alert-success .cfdi-alert-icon { background: rgb(var(--brand-cfdi-alert-success-icon)); color: rgb(var(--brand-primary-fg)); }
 .cfdi-columns { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; margin-top: 18px; align-items: start; }
 .cfdi-main-column, .cfdi-side-column { display: grid; gap: 18px; min-width: 0; }
 .cfdi-card { overflow: hidden; }
-.cfdi-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e7edf2; padding: 16px 18px 13px; }
-.cfdi-card-header h2 { margin: 0; color: #17324d; font-size: 15px; font-weight: 750; }
-.cfdi-card-header p { margin: 4px 0 0; color: #7690ae; font-size: 12px; line-height: 1.35; }
+.cfdi-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgb(var(--brand-cfdi-header-divider)); padding: 16px 18px 13px; }
+.cfdi-card-header h2 { margin: 0; color: rgb(var(--brand-cfdi-heading)); font-size: 15px; font-weight: 750; }
+.cfdi-card-header p { margin: 4px 0 0; color: rgb(var(--brand-cfdi-muted)); font-size: 12px; line-height: 1.35; }
 .cfdi-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; padding: 17px 18px 19px; }
-.cfdi-detail-grid dt { color: #7891ad; font-size: 11px; line-height: 1.2; }
-.cfdi-detail-grid dd { margin: 5px 0 0; color: #17324d; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.cfdi-mono { color: #527397 !important; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px !important; }
+.cfdi-detail-grid dt { color: rgb(var(--brand-cfdi-label)); font-size: 11px; line-height: 1.2; }
+.cfdi-detail-grid dd { margin: 5px 0 0; color: rgb(var(--brand-cfdi-heading)); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.cfdi-mono { color: rgb(var(--brand-cfdi-secondary)) !important; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px !important; }
 .cfdi-receptor-grid { padding-bottom: 15px; }
-.cfdi-related-note { margin: 0 18px 16px; padding: 10px 12px; border-radius: 5px; background: #f5f8fa; color: #527397; font-size: 12px; }
-.cfdi-related-note span { font-weight: 700; color: #345879; }
-.cfdi-count { display: inline-grid; place-items: center; min-width: 21px; height: 21px; margin-left: 4px; border-radius: 999px; background: #eef5f8; color: #527397; font-size: 11px; vertical-align: 1px; }
+.cfdi-related-note { margin: 0 18px 16px; padding: 10px 12px; border-radius: 5px; background: rgb(var(--brand-bg)); color: rgb(var(--brand-cfdi-secondary)); font-size: 12px; }
+.cfdi-related-note span { font-weight: 700; color: rgb(var(--brand-cfdi-action-text)); }
+.cfdi-count { display: inline-grid; place-items: center; min-width: 21px; height: 21px; margin-left: 4px; border-radius: 999px; background: rgb(var(--brand-cfdi-environment-bg)); color: rgb(var(--brand-cfdi-secondary)); font-size: 11px; vertical-align: 1px; }
 .cfdi-concepts-wrap { overflow-x: auto; padding: 0 18px 17px; }
-.cfdi-concepts { width: 100%; min-width: 680px; border-collapse: collapse; color: #34516d; font-size: 12px; }
-.cfdi-concepts th { border-bottom: 1px solid #dfe8ef; padding: 12px 8px 10px; color: #7891ad; font-size: 10px; font-weight: 750; letter-spacing: .04em; text-align: left; text-transform: uppercase; white-space: nowrap; }
-.cfdi-concepts td { border-bottom: 1px solid #edf1f4; padding: 12px 8px; vertical-align: top; }
+.cfdi-concepts { width: 100%; min-width: 680px; border-collapse: collapse; color: rgb(var(--brand-cfdi-table-text)); font-size: 12px; }
+.cfdi-concepts th { border-bottom: 1px solid rgb(var(--brand-billing-history)); padding: 12px 8px 10px; color: rgb(var(--brand-cfdi-label)); font-size: 10px; font-weight: 750; letter-spacing: .04em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.cfdi-concepts td { border-bottom: 1px solid rgb(var(--brand-skeleton-base)); padding: 12px 8px; vertical-align: top; }
 .cfdi-concepts tr:last-child td { border-bottom: 0; }
 .cfdi-concepts .numeric { text-align: right; white-space: nowrap; }
-.cfdi-concepts .strong { color: #17324d; font-weight: 750; }
-.cfdi-link { color: #008faf; font-weight: 700; text-decoration: none; }
-.cfdi-subline { display: block; margin-top: 4px; color: #8ba0b5; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
-.cfdi-empty-block { display: grid; place-items: center; gap: 5px; min-height: 140px; padding: 18px; color: #829ab2; text-align: center; }
-.cfdi-empty-block strong { color: #527397; font-size: 13px; }
+.cfdi-concepts .strong { color: rgb(var(--brand-cfdi-heading)); font-weight: 750; }
+.cfdi-link { color: rgb(var(--brand-cfdi-link)); font-weight: 700; text-decoration: none; }
+.cfdi-subline { display: block; margin-top: 4px; color: rgb(var(--brand-label-muted)); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.cfdi-empty-block { display: grid; place-items: center; gap: 5px; min-height: 140px; padding: 18px; color: rgb(var(--brand-cfdi-empty-text)); text-align: center; }
+.cfdi-empty-block strong { color: rgb(var(--brand-cfdi-secondary)); font-size: 13px; }
 .cfdi-empty-block span { font-size: 12px; }
 .cfdi-related-list { padding: 8px 18px 14px; }
-.cfdi-related-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid #edf1f4; padding: 11px 0; }
+.cfdi-related-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid rgb(var(--brand-skeleton-base)); padding: 11px 0; }
 .cfdi-related-row:last-child { border-bottom: 0; }
 .cfdi-related-row strong, .cfdi-related-row span { display: block; }
-.cfdi-related-row strong { color: #345879; font-size: 12px; }
-.cfdi-related-row span { margin-top: 3px; color: #8ba0b5; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
-.cfdi-related-row b { color: #17324d; font-size: 12px; white-space: nowrap; }
+.cfdi-related-row strong { color: rgb(var(--brand-cfdi-action-text)); font-size: 12px; }
+.cfdi-related-row span { margin-top: 3px; color: rgb(var(--brand-label-muted)); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.cfdi-related-row b { color: rgb(var(--brand-cfdi-heading)); font-size: 12px; white-space: nowrap; }
 .cfdi-summary { padding: 10px 18px 17px; }
-.cfdi-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; color: #527397; font-size: 12px; }
-.cfdi-summary dd { margin: 0; color: #34516d; font-variant-numeric: tabular-nums; }
-.cfdi-summary-total { margin-top: 7px; border-top: 1px solid #dfe8ef; padding-top: 13px !important; color: #17324d !important; font-size: 14px !important; font-weight: 750; }
-.cfdi-summary-total dd { color: #17324d; font-size: 18px; font-weight: 800; }
+.cfdi-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; color: rgb(var(--brand-cfdi-secondary)); font-size: 12px; }
+.cfdi-summary dd { margin: 0; color: rgb(var(--brand-cfdi-table-text)); font-variant-numeric: tabular-nums; }
+.cfdi-summary-total { margin-top: 7px; border-top: 1px solid rgb(var(--brand-billing-history)); padding-top: 13px !important; color: rgb(var(--brand-cfdi-heading)) !important; font-size: 14px !important; font-weight: 750; }
+.cfdi-summary-total dd { color: rgb(var(--brand-cfdi-heading)); font-size: 18px; font-weight: 800; }
 .cfdi-timeline { margin: 0; padding: 15px 18px 18px 24px; list-style: none; }
-.cfdi-timeline li { position: relative; display: flex; gap: 10px; border-left: 1px solid #d8e3eb; padding: 0 0 17px 15px; }
+.cfdi-timeline li { position: relative; display: flex; gap: 10px; border-left: 1px solid rgb(var(--brand-cfdi-timeline-border)); padding: 0 0 17px 15px; }
 .cfdi-timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
-.cfdi-timeline-dot { position: absolute; top: 2px; left: -5px; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #dff2f7; box-shadow: 0 0 0 1px #09a0c0; }
-.cfdi-timeline li.timeline-info .cfdi-timeline-dot { background: #dff2f7; box-shadow: 0 0 0 1px #09a0c0; }
-.cfdi-timeline li.timeline-success .cfdi-timeline-dot { background: #dff4e7; box-shadow: 0 0 0 1px #35a76b; }
-.cfdi-timeline li.timeline-warning .cfdi-timeline-dot { background: #fff0cc; box-shadow: 0 0 0 1px #d79626; }
-.cfdi-timeline li.timeline-error .cfdi-timeline-dot { background: #ffe4e1; box-shadow: 0 0 0 1px #d45d55; }
-.cfdi-timeline strong { display: block; color: #345879; font-size: 12px; }
-.cfdi-timeline p { margin: 4px 0 0; color: #527397; font-size: 11px; line-height: 1.35; }
-.cfdi-timeline p.danger { color: #bd4a42; }
-.cfdi-timeline small { display: block; margin-top: 4px; color: #8ba0b5; font-size: 10px; }
-.cfdi-muted { padding: 16px 18px 18px; color: #8ba0b5; font-size: 12px; }
+.cfdi-timeline-dot { position: absolute; top: 2px; left: -5px; width: 9px; height: 9px; border: 2px solid rgb(var(--brand-surface)); border-radius: 50%; background: rgb(var(--brand-cfdi-timeline-info-bg)); box-shadow: 0 0 0 1px rgb(var(--brand-cfdi-timeline-info)); }
+.cfdi-timeline li.timeline-info .cfdi-timeline-dot { background: rgb(var(--brand-cfdi-timeline-info-bg)); box-shadow: 0 0 0 1px rgb(var(--brand-cfdi-timeline-info)); }
+.cfdi-timeline li.timeline-success .cfdi-timeline-dot { background: rgb(var(--brand-cfdi-timeline-success-bg)); box-shadow: 0 0 0 1px rgb(var(--brand-cfdi-timeline-success)); }
+.cfdi-timeline li.timeline-warning .cfdi-timeline-dot { background: rgb(var(--brand-cfdi-timeline-warning-bg)); box-shadow: 0 0 0 1px rgb(var(--brand-cfdi-timeline-warning)); }
+.cfdi-timeline li.timeline-error .cfdi-timeline-dot { background: rgb(var(--brand-cfdi-error-bg)); box-shadow: 0 0 0 1px rgb(var(--brand-cfdi-timeline-error)); }
+.cfdi-timeline strong { display: block; color: rgb(var(--brand-cfdi-action-text)); font-size: 12px; }
+.cfdi-timeline p { margin: 4px 0 0; color: rgb(var(--brand-cfdi-secondary)); font-size: 11px; line-height: 1.35; }
+.cfdi-timeline p.danger { color: rgb(var(--brand-cfdi-event-error)); }
+.cfdi-timeline small { display: block; margin-top: 4px; color: rgb(var(--brand-label-muted)); font-size: 10px; }
+.cfdi-muted { padding: 16px 18px 18px; color: rgb(var(--brand-label-muted)); font-size: 12px; }
 .cfdi-quick-actions { padding-bottom: 8px; }
 .cfdi-quick-actions .cfdi-card-header { border-bottom: 0; padding-bottom: 7px; }
-.cfdi-quick-actions a, .cfdi-quick-actions button { display: flex; align-items: center; gap: 8px; width: calc(100% - 36px); margin: 0 18px 7px; border: 0; border-radius: 5px; background: #f5f8fa; padding: 9px 10px; color: #345879; font: inherit; font-size: 12px; text-align: left; text-decoration: none; cursor: pointer; }
-.cfdi-quick-actions a:hover, .cfdi-quick-actions button:hover { background: #eaf5f8; color: #008faf; }
-.cfdi-quick-actions .danger { color: #bd4a42; }
-.cfdi-state-message { margin-top: 28px; color: #7891ad; font-size: 13px; }
-.cfdi-error-state { display: grid; gap: 8px; max-width: 520px; margin-top: 24px; border: 1px solid #f6cbc6; border-radius: 8px; background: #fff5f3; padding: 18px; color: #a63a34; font-size: 13px; }
+.cfdi-quick-actions a, .cfdi-quick-actions button { display: flex; align-items: center; gap: 8px; width: calc(100% - 36px); margin: 0 18px 7px; border: 0; border-radius: 5px; background: rgb(var(--brand-bg)); padding: 9px 10px; color: rgb(var(--brand-cfdi-action-text)); font: inherit; font-size: 12px; text-align: left; text-decoration: none; cursor: pointer; }
+.cfdi-quick-actions a:hover, .cfdi-quick-actions button:hover { background: rgb(var(--brand-cfdi-quick-hover)); color: rgb(var(--brand-cfdi-link)); }
+.cfdi-quick-actions .danger { color: rgb(var(--brand-cfdi-event-error)); }
+.cfdi-state-message { margin-top: 28px; color: rgb(var(--brand-cfdi-label)); font-size: 13px; }
+.cfdi-error-state { display: grid; gap: 8px; max-width: 520px; margin-top: 24px; border: 1px solid rgb(var(--brand-cfdi-alert-error-border)); border-radius: 8px; background: rgb(var(--brand-cfdi-load-error-bg)); padding: 18px; color: rgb(var(--brand-cfdi-alert-error-text)); font-size: 13px; }
 .cfdi-error-state strong { font-size: 15px; }
 .cfdi-error-state .cfdi-btn { width: fit-content; margin-top: 4px; }
 @media (max-width: 980px) {
@@ -428,4 +428,6 @@ function timelineTone(tipo: string) {
   .cfdi-quick-actions { grid-column: auto; }
   .cfdi-alert { padding-inline: 12px; }
 }
+input, select { background: rgb(var(--brand-surface)); color-scheme: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
 </style>

@@ -17,6 +17,7 @@ import * as designer from '../../utils/reportDesigner'
 import * as workflow from '../../utils/workflowFields'
 import * as cells from '../../utils/reportCellFormat'
 import baseline from '../fixtures/themeBaseline170.json'
+import nextBaseline from '../fixtures/themeBaseline171.json'
 import colors from '../fixtures/themeAutomationReport170.json'
 import deficits from '../fixtures/themeAutomationReportDeficits170.json'
 import paper from '../fixtures/themePaper170.json'
@@ -118,7 +119,7 @@ describe('contratos HU-170', () => {
   it('congela los 263 tokens previos completos y los diez claros nuevos exactos', () => {
     expect(Object.keys(baseline.light)).toHaveLength(263)
     for (const [mode, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((mode === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens], `${mode}:${name}`).toBe(value)
-    expect(Object.keys(lightTokens).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
+    expect(Object.keys(nextBaseline.light).filter(name => !(name in baseline.light)).sort()).toEqual(Object.keys(colors).sort())
     const css = readFileSync('assets/css/theme.css', 'utf8')
     for (const [name, values] of Object.entries(colors)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0]); expect(darkTokens[name as keyof typeof lightTokens]).toBe(values[1])
@@ -145,7 +146,7 @@ describe('contratos HU-170', () => {
       const source = readFileSync(file, 'utf8'); expect(source).not.toContain('darkReady: true')
       expect(source).toContain('layout: false')
     }
-    expect(contentNeedsLight({ layout: false, darkReady: true })).toBe(true)
+    expect(contentNeedsLight({ layout: false })).toBe(true)
   })
   it('las excepciones del documento son literales acotados: ninguna aparición adicional se admite', () => {
     for (const file of ['components/PrintReportSheet.vue', 'components/PrintReportPreview.vue']) {

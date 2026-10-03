@@ -10,6 +10,77 @@ export function contrast(foreground: string, background: string) {
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
 }
 
+/** HU-171: interfaz fiscal y planes; la factura impresa no participa. */
+export const billingContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['cfdi-form-secondary', 'surface', 4.5],
+  ['cfdi-form-success-text', 'cfdi-form-success-bg', 4.5],
+  ['cfdi-form-success-text', 'surface', 4.5],
+  ['cfdi-form-warning', 'surface', 4.5],
+  ['sites-muted', 'cfdi-selected-bg', 4.5],
+  ['text', 'cfdi-selected-bg', 4.5],
+  ['blue', 'cfdi-selected-bg', 4.5],
+  ['primary-fg', 'cfdi-form-primary-hover', 4.5],
+  ['sites-archived-text', 'cfdi-form-error-bg', 4.5],
+  ['cfdi-add-border', 'surface', 3],
+  ['cfdi-secondary', 'surface', 4.5],
+  ['cfdi-secondary', 'cfdi-environment-bg', 4.5],
+  ['cfdi-secondary', 'cfdi-draft-bg', 4.5],
+  ['cfdi-muted', 'surface', 4.5],
+  ['cfdi-label', 'surface', 4.5],
+  ['cfdi-empty-text', 'surface', 4.5],
+  ['cfdi-heading', 'surface', 4.5],
+  ['cfdi-action-text', 'surface', 4.5],
+  ['cfdi-action-text', 'bg', 4.5],
+  ['cfdi-table-text', 'surface', 4.5],
+  ['cfdi-link', 'surface', 4.5],
+  ['cfdi-link', 'cfdi-quick-hover', 4.5],
+  ['cfdi-link-hover', 'surface', 4.5],
+  ['cfdi-icon', 'cfdi-icon-bg', 3],
+  ['cfdi-stamped-text', 'cfdi-stamped-bg', 4.5],
+  ['cfdi-error-text', 'cfdi-error-bg', 4.5],
+  ['cfdi-stamping-text', 'cfdi-stamping-bg', 4.5],
+  ['cfdi-cancelled-text', 'cfdi-cancelled-bg', 4.5],
+  ['primary-fg', 'cfdi-primary', 4.5],
+  ['primary-fg', 'cfdi-primary-hover', 4.5],
+  ['cfdi-danger-text', 'surface', 4.5],
+  ['cfdi-danger-text', 'cfdi-danger-hover', 4.5],
+  ['cfdi-alert-error-text', 'cfdi-alert-error-bg', 4.5],
+  ['error-fg', 'cfdi-alert-error-icon', 4.5],
+  ['cfdi-alert-info-text', 'cfdi-alert-info-bg', 4.5],
+  ['cfdi-alert-info-icon-text', 'cfdi-alert-info-icon-bg', 4.5],
+  ['cfdi-alert-success-text', 'cfdi-alert-success-bg', 4.5],
+  ['primary-fg', 'cfdi-alert-success-icon', 4.5],
+  ['cfdi-action-border', 'surface', 3],
+  ['cfdi-action-hover-border', 'cfdi-action-hover-bg', 3],
+  ['cfdi-event-error', 'surface', 4.5],
+  ['cfdi-alert-error-text', 'cfdi-load-error-bg', 4.5],
+  ['label-muted', 'surface', 4.5],
+  ['sites-muted', 'surface', 4.5],
+  ['sites-muted', 'bg', 4.5],
+  ['sites-muted', 'plan-page-bg', 4.5],
+  ['text', 'plan-page-bg', 4.5],
+  ['text-secondary', 'plan-page-bg', 4.5],
+  ['tooltip-fg', 'plan-interval-bg', 4.5],
+  ['blue', 'surface', 4.5],
+  ['blue', 'blue-bg', 4.5],
+  ['primary-fg', 'orange', 4.5],
+  ['primary-fg', 'orange-hover', 4.5],
+  ['error-fg', 'error-text', 4.5],
+  ['success-text', 'surface', 4.5],
+  ['success-text', 'success-bg', 4.5],
+  ['error-text', 'error-bg', 4.5],
+  ['control-border', 'surface', 3],
+  ['text', 'surface', 4.5],
+  ['text-secondary', 'surface', 4.5],
+  ['blue', 'help-bg', 4.5],
+  ['billing-warning-text', 'billing-warning-bg', 4.5],
+  ['billing-error-text', 'billing-error-bg', 4.5],
+  ['billing-info-text', 'billing-info-bg', 4.5],
+]
+export function isBillingContrast(result: { id?: string }) {
+  return result.id?.includes(':billing:') ?? false
+}
+
 /** HU-170: superficies y estados que realmente usan triggers y cromo de reportes.
  * Papel aislado en claro; no se atribuye AA oscuro a la tinta impresa.
  */
@@ -50,7 +121,7 @@ export const labelContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['label-toggle-bg', 'surface', 3], ['label-toggle-active', 'surface', 3]
 ]
 export function isLabelContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:')) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
   return labelContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -60,7 +131,7 @@ export const resizeContrastPairs: [keyof typeof lightTokens, keyof typeof lightT
   ['resize-mark', 'resize-hover', 3], ['resize-mark', 'resize-bg', 3]
 ]
 export function isResizeContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:')) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
   return result.foreground.startsWith('resize-') || result.background.startsWith('resize-')
 }
 
@@ -84,7 +155,7 @@ export const sitesContrastPairs: [keyof typeof lightTokens, keyof typeof lightTo
   ['text-secondary', 'designer-section-bg', 4.5], ['text-secondary', 'dashboard-soft', 4.5]
 ]
 export function isSitesContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:')) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
   return sitesContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
@@ -118,7 +189,7 @@ export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof ligh
   ['designer-minimap-system', 'designer-minimap-section', 3]
 ]
 export function isDesignerContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:')) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
   return designerContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
     // Contador y leyenda usan pares originales; su auditoría permanece en la sección general.
     && (result.foreground.startsWith('designer-') || result.background.startsWith('designer-'))
@@ -271,7 +342,7 @@ export const editorLightContrastPairs = editorContrastPairs.filter(([foreground,
   return true
 })
 export function isEditorContrast(result: { foreground: string; background: string; id?: string }) {
-  if (result.id?.includes(':automation-report:')) return false
+  if (result.id?.includes(':automation-report:') || isBillingContrast(result)) return false
   return result.foreground.startsWith('sites-editor-') || result.background.startsWith('sites-editor-')
 }
 
@@ -305,5 +376,8 @@ export function themeContrasts() {
   }))).concat((['light', 'dark'] as const).flatMap(theme => automationReportContrastPairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:automation-report:${foreground}/${background}@${minimum}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
+  }))).concat((['light', 'dark'] as const).flatMap(theme => billingContrastPairs.map(([foreground, background, minimum]) => {
+    const tokens = theme === 'light' ? lightTokens : darkTokens
+    return { id: `${theme}:billing:${foreground}/${background}@${minimum}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
   })))
 }

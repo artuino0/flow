@@ -72,7 +72,11 @@ export const migratedThemeFiles = [
   'components/PrintReportFieldPicker.vue', 'components/PrintReportFieldTree.vue',
   'components/PrintReportFilterSelect.vue', 'components/PrintReportLayoutControls.vue',
   'components/PrintReportDataControls.vue', 'components/PrintReportParameterModal.vue',
-  'components/PrintReportSheet.vue', 'components/PrintReportPreview.vue'
+  'components/PrintReportSheet.vue', 'components/PrintReportPreview.vue',
+  // HU-171: interfaz CFDI y elegir plan. La representación impresa queda clara.
+  'pages/facturacion/index.vue', 'pages/facturacion/nuevo.vue',
+  'pages/facturacion/[id].vue', 'pages/elegir-plan.vue', 'utils/cfdiCatalogos.ts',
+  'pages/facturacion-print/[id].vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.
@@ -81,6 +85,31 @@ export const migratedThemeFiles = [
  * Los colores configurados por el usuario llegan como datos, no literales del SFC.
  */
 export const themeColorExceptions: Record<string, Record<string, number>> = {
+  // HU-171: factura impresa intacta. Cada literal y cantidad quedan cerrados.
+  'pages/facturacion-print/[id].vue': {
+    '#f5f8fa': 1,
+    '#33475b': 13,
+    '#cbd6e2': 2,
+    '#fff': 6,
+    '#ff7a59': 3,
+    '#33475b20': 1,
+    '#f1dfb4': 1,
+    '#fef0d2': 1,
+    '#b3720a': 1,
+    '#eaf3f6': 3,
+    '#0091ae': 3,
+    '#516f90': 11,
+    '#ccf1de': 1,
+    '#0a7a4f': 1,
+    '#eaf0f6': 3,
+    '#fbe0dd': 2,
+    '#c7391f': 2,
+    '#e5f5f8': 1,
+    '#e5eaf0': 4,
+    '#fafbfc': 2,
+    '#f7f9fa': 1,
+    '#8da1b5': 4,
+  },
   'app.vue': { '#33475b1f': 1 },
   'layouts/default.vue': { '#33475B22': 1, '#33475B12': 1 },
   'components/AppNavGroup.vue': { '#33475B26': 1 },

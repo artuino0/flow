@@ -12,7 +12,7 @@ export function normalizeThemeMode(value: unknown): ThemeMode {
 }
 
 export function contentNeedsLight(meta: { darkReady?: unknown; layout?: unknown }): boolean {
-  return meta.layout === false || meta.darkReady !== true
+  return meta.darkReady !== true
 }
 
 export const themeBootstrap = `(${function () {

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { compileVueComponent } from '../helpers/vueComponent'
 import { brandColors, darkTokens, lightTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight, createThemeController, normalizeThemeMode, resolveTheme, themeBootstrap } from '../../utils/theme'
-import { isAutomationReportContrast, isEditorContrast, isDesignerContrast, isLabelContrast, isResizeContrast, isSitesContrast, themeContrasts } from '../helpers/themeContrast'
+import { isBillingContrast, isAutomationReportContrast, isEditorContrast, isDesignerContrast, isLabelContrast, isResizeContrast, isSitesContrast, themeContrasts } from '../helpers/themeContrast'
 import baseline from '../fixtures/themeLight161.json'
 
 const apps: App[] = []
@@ -45,7 +45,7 @@ describe('contrato de tokens y alcance de HU-161', () => {
     expect(contentNeedsLight({ darkReady: false })).toBe(true)
     expect(contentNeedsLight({ darkReady: 'true' })).toBe(true)
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
-    expect(contentNeedsLight({ darkReady: true, layout: false })).toBe(true)
+    expect(contentNeedsLight({ darkReady: true, layout: false })).toBe(false)
     for (const file of ['pages/index.vue', 'pages/registros/[entity]/index.vue', 'pages/registros/[entity]/[id]/index.vue']) expect(readFileSync(file, 'utf8')).toContain('darkReady: true')
     expect(readFileSync('layouts/default.vue', 'utf8')).toContain("forceLightContent ? 'theme-light bg-brand-bg'")
     const header = readFileSync('layouts/default.vue', 'utf8')
@@ -67,7 +67,7 @@ describe('contrato de tokens y alcance de HU-161', () => {
       'dark:text-muted/surface': 4.187, 'dark:border/surface': 1.597
     }
     // HU-164 autoriza aparte los claros heredados del editor; su lista/razones y AA oscuro se congelan en theme164.
-    const results = themeContrasts().filter(result => !isLabelContrast(result) && !isDesignerContrast(result) && !isResizeContrast(result) && !isSitesContrast(result) && !isEditorContrast(result) && !isAutomationReportContrast(result))
+    const results = themeContrasts().filter(result => !isLabelContrast(result) && !isDesignerContrast(result) && !isResizeContrast(result) && !isSitesContrast(result) && !isEditorContrast(result) && !isAutomationReportContrast(result) && !isBillingContrast(result))
     expect(results.filter(result => result.ratio < result.minimum).map(result => result.id).sort()).toEqual(Object.keys(exceptions).sort())
     for (const result of results) {
       const known = exceptions[result.id as keyof typeof exceptions]
@@ -104,6 +104,8 @@ it('el layout real aísla el contenido sin darkReady y conserva el cascarón en 
   route.meta.darkReady = true; await nextTick()
   expect(host.querySelector('main')?.classList.contains('theme-light')).toBe(false)
   route.meta.layout = false; await nextTick()
+  expect(host.querySelector('main')?.classList.contains('theme-light')).toBe(false)
+  route.meta.darkReady = false; await nextTick()
   expect(host.querySelector('main')?.classList.contains('theme-light')).toBe(true)
 })
 

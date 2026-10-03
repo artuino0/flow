@@ -59,7 +59,7 @@ onBeforeUnmount(stopNavigationFeedback)
     </div>
   </Transition>
   <div class="chattito-app-shell">
-    <div class="chattito-app-content" :class="{ 'theme-light': route.meta.layout === false }">
+    <div class="chattito-app-content" :class="{ 'theme-light': route.meta.layout === false && contentNeedsLight(route.meta) }">
       <NuxtLayout>
         <NuxtPage />
       </NuxtLayout>

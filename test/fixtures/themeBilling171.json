@@ -1,0 +1,278 @@
+{
+  "cfdi-form-secondary": [
+    "#607D98",
+    "#9FB3C8"
+  ],
+  "cfdi-form-success-bg": [
+    "#EAF7F0",
+    "#123D2A"
+  ],
+  "cfdi-form-success-text": [
+    "#16825D",
+    "#4ADE94"
+  ],
+  "cfdi-form-primary-hover": [
+    "#E66B4D",
+    "#FFA184"
+  ],
+  "cfdi-form-border": [
+    "#DFE5EB",
+    "#3A4A5E"
+  ],
+  "cfdi-selected-bg": [
+    "#F0FBFC",
+    "#0F3A44"
+  ],
+  "cfdi-add-border": [
+    "#9FB3C8",
+    "#7A8CA0"
+  ],
+  "cfdi-form-warning": [
+    "#B7791F",
+    "#F5B94D"
+  ],
+  "cfdi-form-error-bg": [
+    "#FDECEC",
+    "#3D1712"
+  ],
+  "cfdi-secondary": [
+    "#527397",
+    "#9FB3C8"
+  ],
+  "cfdi-link-hover": [
+    "#009CC2",
+    "#4DD0E1"
+  ],
+  "cfdi-muted": [
+    "#7690AE",
+    "#9FB3C8"
+  ],
+  "cfdi-breadcrumb-divider": [
+    "#B5C2D0",
+    "#3A4A5E"
+  ],
+  "cfdi-heading": [
+    "#17324D",
+    "#F0F4F8"
+  ],
+  "cfdi-environment-bg": [
+    "#EEF5F8",
+    "#0F3A44"
+  ],
+  "cfdi-card-border": [
+    "#DCE5ED",
+    "#3A4A5E"
+  ],
+  "cfdi-icon-bg": [
+    "#E9F6F9",
+    "#0F3A44"
+  ],
+  "cfdi-icon": [
+    "#009DC4",
+    "#4DD0E1"
+  ],
+  "cfdi-inline-divider": [
+    "#A6B7C8",
+    "#3A4A5E"
+  ],
+  "cfdi-stamped-text": [
+    "#14744E",
+    "#4ADE94"
+  ],
+  "cfdi-stamped-bg": [
+    "#E3F6EB",
+    "#123D2A"
+  ],
+  "cfdi-draft-bg": [
+    "#EEF3F7",
+    "#2A3648"
+  ],
+  "cfdi-error-text": [
+    "#B9362F",
+    "#FF8A76"
+  ],
+  "cfdi-error-bg": [
+    "#FFE4E1",
+    "#3D1712"
+  ],
+  "cfdi-stamping-text": [
+    "#22698F",
+    "#4DD0E1"
+  ],
+  "cfdi-stamping-bg": [
+    "#E3F3FA",
+    "#0F3A44"
+  ],
+  "cfdi-cancelled-text": [
+    "#6D7182",
+    "#9FB3C8"
+  ],
+  "cfdi-cancelled-bg": [
+    "#EDF0F3",
+    "#2A3648"
+  ],
+  "cfdi-action-border": [
+    "#C8D7E4",
+    "#7A8CA0"
+  ],
+  "cfdi-action-text": [
+    "#345879",
+    "#9FB3C8"
+  ],
+  "cfdi-action-hover-border": [
+    "#8FB4CA",
+    "#3FC3DE"
+  ],
+  "cfdi-action-hover-bg": [
+    "#F5F9FB",
+    "#2A3648"
+  ],
+  "cfdi-primary": [
+    "#FF7258",
+    "#FF8F6B"
+  ],
+  "cfdi-primary-hover": [
+    "#EF624B",
+    "#FFA184"
+  ],
+  "cfdi-danger-border": [
+    "#EC9D97",
+    "#FF8A76"
+  ],
+  "cfdi-danger-text": [
+    "#C54841",
+    "#FF8A76"
+  ],
+  "cfdi-danger-hover": [
+    "#FFF2F0",
+    "#3D1712"
+  ],
+  "cfdi-alert-error-text": [
+    "#A63A34",
+    "#FF8A76"
+  ],
+  "cfdi-alert-error-bg": [
+    "#FFF0EE",
+    "#3D1712"
+  ],
+  "cfdi-alert-error-border": [
+    "#F6CBC6",
+    "#FF8A76"
+  ],
+  "cfdi-alert-error-icon": [
+    "#E56A60",
+    "#FF8A76"
+  ],
+  "cfdi-alert-info-text": [
+    "#286E92",
+    "#4DD0E1"
+  ],
+  "cfdi-alert-info-bg": [
+    "#EDF8FC",
+    "#0F3A44"
+  ],
+  "cfdi-alert-info-border": [
+    "#C8E9F2",
+    "#4DD0E1"
+  ],
+  "cfdi-alert-info-icon-bg": [
+    "#A6DCEC",
+    "#3FC3DE"
+  ],
+  "cfdi-alert-info-icon-text": [
+    "#1F6F94",
+    "#1A2233"
+  ],
+  "cfdi-alert-success-text": [
+    "#176E4C",
+    "#4ADE94"
+  ],
+  "cfdi-alert-success-bg": [
+    "#ECF9F1",
+    "#123D2A"
+  ],
+  "cfdi-alert-success-border": [
+    "#C8ECD6",
+    "#4ADE94"
+  ],
+  "cfdi-alert-success-icon": [
+    "#32AE70",
+    "#4ADE94"
+  ],
+  "cfdi-header-divider": [
+    "#E7EDF2",
+    "#3A4A5E"
+  ],
+  "cfdi-label": [
+    "#7891AD",
+    "#9FB3C8"
+  ],
+  "cfdi-table-text": [
+    "#34516D",
+    "#F0F4F8"
+  ],
+  "cfdi-link": [
+    "#008FAF",
+    "#4DD0E1"
+  ],
+  "cfdi-empty-text": [
+    "#829AB2",
+    "#9FB3C8"
+  ],
+  "cfdi-timeline-border": [
+    "#D8E3EB",
+    "#3A4A5E"
+  ],
+  "cfdi-timeline-info-bg": [
+    "#DFF2F7",
+    "#0F3A44"
+  ],
+  "cfdi-timeline-info": [
+    "#09A0C0",
+    "#4DD0E1"
+  ],
+  "cfdi-timeline-success-bg": [
+    "#DFF4E7",
+    "#123D2A"
+  ],
+  "cfdi-timeline-success": [
+    "#35A76B",
+    "#4ADE94"
+  ],
+  "cfdi-timeline-warning-bg": [
+    "#FFF0CC",
+    "#402D0A"
+  ],
+  "cfdi-timeline-warning": [
+    "#D79626",
+    "#F5B94D"
+  ],
+  "cfdi-timeline-error": [
+    "#D45D55",
+    "#FF8A76"
+  ],
+  "cfdi-event-error": [
+    "#BD4A42",
+    "#FF8A76"
+  ],
+  "cfdi-quick-hover": [
+    "#EAF5F8",
+    "#2A3648"
+  ],
+  "cfdi-load-error-bg": [
+    "#FFF5F3",
+    "#3D1712"
+  ],
+  "plan-page-bg": [
+    "#EEF1F5",
+    "#141B29"
+  ],
+  "plan-interval-bg": [
+    "#213343",
+    "#2A3648"
+  ],
+  "cfdi-shadow": [
+    "#17324D",
+    "#000000"
+  ]
+}

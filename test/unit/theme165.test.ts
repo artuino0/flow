@@ -81,7 +81,7 @@ describe('contratos HU-165', () => {
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
     for (const file of ['pages/disenador.vue', 'components/designer/DesignerCanvas.client.vue', 'components/MarkdownView.vue', 'utils/designerChattito.ts', 'utils/designerWarnings.ts', 'utils/designerChat.ts', 'utils/designerClient.ts']) expect(migratedThemeFiles).toContain(file)
     expect(auditThemeColors()).toEqual([])
-    expect(readFileSync('pages/facturacion/index.vue', 'utf8')).not.toContain('darkReady: true')
+    expect(readFileSync('pages/facturacion/index.vue', 'utf8')).toContain('darkReady: true')
     expect(readFileSync('components/PrintReportPreview.vue', 'utf8')).toContain('theme-light')
   })
   it('conserva byte a byte arte y animaciones, incluida la lógica propia del diseñador', () => {

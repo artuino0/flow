@@ -1,0 +1,5 @@
+{
+  "pages/facturacion-print/[id].vue": "5a94cdacac5d96473a706cd622cf6e94a0a3a3ee88f0290a255368eb40844d44",
+  "server/api/facturacion/documents/[id]/xml.get.ts": "10dc8e659567d810592926bb8106b92120703570f2832d64418e49ba6fda3d23",
+  "server/api/facturacion/documents/[id]/pdf.get.ts": "41a6e2be7c85e9f4a0dc401c9e64147836875e3a8e512550fb5db4ff34be564a"
+}
