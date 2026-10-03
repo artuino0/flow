@@ -153,6 +153,9 @@ const brandTagline = computed(() =>
 
 <template>
   <div class="access-page flex min-h-screen font-sans">
+    <div class="fixed right-4 top-4 z-50">
+      <ThemeSelector />
+    </div>
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
     >
@@ -165,7 +168,7 @@ const brandTagline = computed(() =>
       </p>
     </div>
 
-    <div class="flex flex-1 items-center justify-center bg-brand-surface px-4">
+    <div class="flex flex-1 items-center justify-center bg-brand-surface px-4 py-20">
       <form v-if="step === 'password'" class="flex w-full max-w-[380px] flex-col gap-5" @submit.prevent="onSubmit">
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Iniciar sesión</h2>

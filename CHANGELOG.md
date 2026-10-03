@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.143.1] - 2026-10-03
+#### [bugfix]
+- [ERD-173](https://dydasoftware.atlassian.net/browse/ERD-173) - Inicio de sesión: ahora puedes cambiar el tema (Claro, Oscuro o Sistema) desde la propia pantalla de login, con un selector arriba a la derecha. La elección se conserva al entrar a la aplicación.
+
 ### [0.143.0] - 2026-10-03
 #### [feature]
 - [ERD-172](https://dydasoftware.atlassian.net/browse/ERD-172) - Modo oscuro, fase 3B: las pantallas de acceso (inicio de sesión, registro, recuperar y restablecer contraseña, activar cuenta, verificar y confirmar correo, e invitación) ahora siguen el tema del dispositivo, también el autocompletado del navegador. Con esto todas las pantallas de la aplicación soportan modo oscuro; solo permanecen claros los documentos (factura impresa, etiquetas, reporte impreso), los correos y los sitios de tus clientes. En modo claro todo se ve igual que antes.
