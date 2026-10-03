@@ -103,7 +103,30 @@ export const lightTokens = {
   // BUG-166: roles aislados, con el claro exacto del componente compartido y del lienzo.
   'resize-bg': '#EEF2F5', 'resize-hover': '#D6EDF1', 'resize-mark': '#ADC0CF', 'resize-border': '#D8E1E8',
   'designer-label-bg': '#FFFFFF', 'designer-minimap-bg': '#FFFFFF',
-  'designer-minimap-new': '#E8682D', 'designer-minimap-system': '#64748B', 'designer-minimap-section': '#9DAAB7'
+  'designer-minimap-new': '#E8682D', 'designer-minimap-system': '#64748B', 'designer-minimap-section': '#9DAAB7',
+  // HU-167: claros exactos de Sites; oscuros derivados de la paleta congelada.
+  'sites-muted': '#8DA1B5',
+  'sites-icon': '#7C98B6',
+  'sites-primary-hover': '#FF6B47',
+  'sites-row-hover': '#F8FBFC',
+  'sites-published-bg': '#DCF7E9',
+  'sites-published-text': '#147A4B',
+  'sites-archived-bg': '#FFF1F0',
+  'sites-archived-text': '#C0392B',
+  'sites-action-hover': '#EDF3F7',
+  'sites-modal-border': '#D8E0E8',
+  'sites-warning-border': '#F3D59A',
+  'sites-warning-bg': '#FFF8E8',
+  'sites-warning-text': '#8A5B08',
+  'sites-feedback-border': '#C9E3E8',
+  'sites-feedback-text': '#16687A',
+  'sites-note-border': '#D8E8EB',
+  'sites-domain-border': '#DBE3EB',
+  'sites-choice-border': '#DCE4EB',
+  'sites-choice-bg': '#F2FAFB',
+  'sites-overlay': '#19314A',
+  'sites-draft-bg': '#F1F5F9',
+  'sites-saved': '#047857'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -212,7 +235,29 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'designer-edge-updating': '#C2D2E3',
   'resize-bg': '#2C374A', 'resize-hover': '#174853', 'resize-mark': '#9FB3C8', 'resize-border': '#3A4A5E',
   'designer-label-bg': '#2C374A', 'designer-minimap-bg': '#101724',
-  'designer-minimap-new': '#B96F50', 'designer-minimap-system': '#71869D', 'designer-minimap-section': '#1E2A3D'
+  'designer-minimap-new': '#B96F50', 'designer-minimap-system': '#71869D', 'designer-minimap-section': '#1E2A3D',
+  'sites-muted': '#9FB3C8',
+  'sites-icon': '#9FB3C8',
+  'sites-primary-hover': '#FFA184',
+  'sites-row-hover': '#243247',
+  'sites-published-bg': '#123D2A',
+  'sites-published-text': '#4ADE94',
+  'sites-archived-bg': '#3D1712',
+  'sites-archived-text': '#FF8A76',
+  'sites-action-hover': '#2A3648',
+  'sites-modal-border': '#3A4A5E',
+  'sites-warning-border': '#F5B94D',
+  'sites-warning-bg': '#402D0A',
+  'sites-warning-text': '#F5B94D',
+  'sites-feedback-border': '#3FC3DE',
+  'sites-feedback-text': '#4DD0E1',
+  'sites-note-border': '#3A4A5E',
+  'sites-domain-border': '#3A4A5E',
+  'sites-choice-border': '#7A8CA0',
+  'sites-choice-bg': '#0F3A44',
+  'sites-overlay': '#000000',
+  'sites-draft-bg': '#2A3648',
+  'sites-saved': '#4ADE94'
 }
 
 export function rgbChannels(hex: string): string {

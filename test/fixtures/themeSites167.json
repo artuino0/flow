@@ -1,0 +1,90 @@
+{
+  "sites-muted": [
+    "#8DA1B5",
+    "#9FB3C8"
+  ],
+  "sites-icon": [
+    "#7C98B6",
+    "#9FB3C8"
+  ],
+  "sites-primary-hover": [
+    "#FF6B47",
+    "#FFA184"
+  ],
+  "sites-row-hover": [
+    "#F8FBFC",
+    "#243247"
+  ],
+  "sites-published-bg": [
+    "#DCF7E9",
+    "#123D2A"
+  ],
+  "sites-published-text": [
+    "#147A4B",
+    "#4ADE94"
+  ],
+  "sites-archived-bg": [
+    "#FFF1F0",
+    "#3D1712"
+  ],
+  "sites-archived-text": [
+    "#C0392B",
+    "#FF8A76"
+  ],
+  "sites-action-hover": [
+    "#EDF3F7",
+    "#2A3648"
+  ],
+  "sites-modal-border": [
+    "#D8E0E8",
+    "#3A4A5E"
+  ],
+  "sites-warning-border": [
+    "#F3D59A",
+    "#F5B94D"
+  ],
+  "sites-warning-bg": [
+    "#FFF8E8",
+    "#402D0A"
+  ],
+  "sites-warning-text": [
+    "#8A5B08",
+    "#F5B94D"
+  ],
+  "sites-feedback-border": [
+    "#C9E3E8",
+    "#3FC3DE"
+  ],
+  "sites-feedback-text": [
+    "#16687A",
+    "#4DD0E1"
+  ],
+  "sites-note-border": [
+    "#D8E8EB",
+    "#3A4A5E"
+  ],
+  "sites-domain-border": [
+    "#DBE3EB",
+    "#3A4A5E"
+  ],
+  "sites-choice-border": [
+    "#DCE4EB",
+    "#7A8CA0"
+  ],
+  "sites-choice-bg": [
+    "#F2FAFB",
+    "#0F3A44"
+  ],
+  "sites-overlay": [
+    "#19314A",
+    "#000000"
+  ],
+  "sites-draft-bg": [
+    "#F1F5F9",
+    "#2A3648"
+  ],
+  "sites-saved": [
+    "#047857",
+    "#4ADE94"
+  ]
+}

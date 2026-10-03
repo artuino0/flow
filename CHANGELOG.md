@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.139.0] - 2026-10-02
+#### [feature]
+- [ERD-167](https://dydasoftware.atlassian.net/browse/ERD-167) - Modo oscuro, fase 3E-1: Sites ahora se ve en oscuro. La lista de sitios, plantillas, papelera, resumen del sitio, páginas, landing pages, formularios, dominios (con todos sus estados), analítica, publicaciones y ajustes siguen el tema elegido. La vista previa, los sitios publicados y las miniaturas de plantillas se mantienen siempre claros porque son el producto de tu cliente. El editor de páginas queda para la siguiente fase. En modo claro todo se ve igual que antes.
+
 ### [0.138.1] - 2026-10-02
 #### [bugfix]
 - [ERD-166](https://dydasoftware.atlassian.net/browse/ERD-166) - Modo oscuro en el diseñador: desaparecen las franjas claras a los lados del lienzo (eran los divisores para cambiar el ancho de los paneles, que no seguían el tema), las líneas de relación y sus etiquetas se leen mejor y el minimapa deja de verse brillante, con los módulos nuevos, los existentes y las secciones bien diferenciados. En modo claro todo se ve igual que antes.

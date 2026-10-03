@@ -192,6 +192,28 @@
   --brand-designer-minimap-new: 232 104 45;
   --brand-designer-minimap-system: 100 116 139;
   --brand-designer-minimap-section: 157 170 183;
+  --brand-sites-muted: 141 161 181;
+  --brand-sites-icon: 124 152 182;
+  --brand-sites-primary-hover: 255 107 71;
+  --brand-sites-row-hover: 248 251 252;
+  --brand-sites-published-bg: 220 247 233;
+  --brand-sites-published-text: 20 122 75;
+  --brand-sites-archived-bg: 255 241 240;
+  --brand-sites-archived-text: 192 57 43;
+  --brand-sites-action-hover: 237 243 247;
+  --brand-sites-modal-border: 216 224 232;
+  --brand-sites-warning-border: 243 213 154;
+  --brand-sites-warning-bg: 255 248 232;
+  --brand-sites-warning-text: 138 91 8;
+  --brand-sites-feedback-border: 201 227 232;
+  --brand-sites-feedback-text: 22 104 122;
+  --brand-sites-note-border: 216 232 235;
+  --brand-sites-domain-border: 219 227 235;
+  --brand-sites-choice-border: 220 228 235;
+  --brand-sites-choice-bg: 242 250 251;
+  --brand-sites-overlay: 25 49 74;
+  --brand-sites-draft-bg: 241 245 249;
+  --brand-sites-saved: 4 120 87;
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
@@ -387,6 +409,28 @@
   --brand-designer-minimap-new: 185 111 80;
   --brand-designer-minimap-system: 113 134 157;
   --brand-designer-minimap-section: 30 42 61;
+  --brand-sites-muted: 159 179 200;
+  --brand-sites-icon: 159 179 200;
+  --brand-sites-primary-hover: 255 161 132;
+  --brand-sites-row-hover: 36 50 71;
+  --brand-sites-published-bg: 18 61 42;
+  --brand-sites-published-text: 74 222 148;
+  --brand-sites-archived-bg: 61 23 18;
+  --brand-sites-archived-text: 255 138 118;
+  --brand-sites-action-hover: 42 54 72;
+  --brand-sites-modal-border: 58 74 94;
+  --brand-sites-warning-border: 245 185 77;
+  --brand-sites-warning-bg: 64 45 10;
+  --brand-sites-warning-text: 245 185 77;
+  --brand-sites-feedback-border: 63 195 222;
+  --brand-sites-feedback-text: 77 208 225;
+  --brand-sites-note-border: 58 74 94;
+  --brand-sites-domain-border: 58 74 94;
+  --brand-sites-choice-border: 122 140 160;
+  --brand-sites-choice-bg: 15 58 68;
+  --brand-sites-overlay: 0 0 0;
+  --brand-sites-draft-bg: 42 54 72;
+  --brand-sites-saved: 74 222 148;
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
@@ -582,6 +626,28 @@
   --brand-designer-minimap-new: 232 104 45;
   --brand-designer-minimap-system: 100 116 139;
   --brand-designer-minimap-section: 157 170 183;
+  --brand-sites-muted: 141 161 181;
+  --brand-sites-icon: 124 152 182;
+  --brand-sites-primary-hover: 255 107 71;
+  --brand-sites-row-hover: 248 251 252;
+  --brand-sites-published-bg: 220 247 233;
+  --brand-sites-published-text: 20 122 75;
+  --brand-sites-archived-bg: 255 241 240;
+  --brand-sites-archived-text: 192 57 43;
+  --brand-sites-action-hover: 237 243 247;
+  --brand-sites-modal-border: 216 224 232;
+  --brand-sites-warning-border: 243 213 154;
+  --brand-sites-warning-bg: 255 248 232;
+  --brand-sites-warning-text: 138 91 8;
+  --brand-sites-feedback-border: 201 227 232;
+  --brand-sites-feedback-text: 22 104 122;
+  --brand-sites-note-border: 216 232 235;
+  --brand-sites-domain-border: 219 227 235;
+  --brand-sites-choice-border: 220 228 235;
+  --brand-sites-choice-bg: 242 250 251;
+  --brand-sites-overlay: 25 49 74;
+  --brand-sites-draft-bg: 241 245 249;
+  --brand-sites-saved: 4 120 87;
   color-scheme: light;
   color: rgb(var(--brand-body-text));
 }
@@ -779,6 +845,28 @@
   --brand-designer-minimap-new: 232 104 45 !important;
   --brand-designer-minimap-system: 100 116 139 !important;
   --brand-designer-minimap-section: 157 170 183 !important;
+  --brand-sites-muted: 141 161 181 !important;
+  --brand-sites-icon: 124 152 182 !important;
+  --brand-sites-primary-hover: 255 107 71 !important;
+  --brand-sites-row-hover: 248 251 252 !important;
+  --brand-sites-published-bg: 220 247 233 !important;
+  --brand-sites-published-text: 20 122 75 !important;
+  --brand-sites-archived-bg: 255 241 240 !important;
+  --brand-sites-archived-text: 192 57 43 !important;
+  --brand-sites-action-hover: 237 243 247 !important;
+  --brand-sites-modal-border: 216 224 232 !important;
+  --brand-sites-warning-border: 243 213 154 !important;
+  --brand-sites-warning-bg: 255 248 232 !important;
+  --brand-sites-warning-text: 138 91 8 !important;
+  --brand-sites-feedback-border: 201 227 232 !important;
+  --brand-sites-feedback-text: 22 104 122 !important;
+  --brand-sites-note-border: 216 232 235 !important;
+  --brand-sites-domain-border: 219 227 235 !important;
+  --brand-sites-choice-border: 220 228 235 !important;
+  --brand-sites-choice-bg: 242 250 251 !important;
+  --brand-sites-overlay: 25 49 74 !important;
+  --brand-sites-draft-bg: 241 245 249 !important;
+  --brand-sites-saved: 4 120 87 !important;
     color-scheme: light !important;
   }
 }

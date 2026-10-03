@@ -34,7 +34,29 @@ export const migratedThemeFiles = [
   'components/ChatFloatingDock.vue', 'components/ChatGifPicker.vue', 'components/ChatGroupEditModal.vue', 'components/ChatNewConversationModal.vue',
   'pages/disenador.vue', 'components/designer/DesignerCanvas.client.vue', 'components/MarkdownView.vue',
   'utils/designerChattito.ts', 'utils/designerWarnings.ts', 'utils/designerChat.ts', 'utils/designerClient.ts',
-  'utils/designerMarkdown.ts', 'components/ChattitoMessageAvatar.vue', 'components/ChattitoAvatar.vue'
+  'utils/designerMarkdown.ts', 'components/ChattitoMessageAvatar.vue', 'components/ChattitoAvatar.vue',
+  // HU-167: interfaz Sites; el editor y documentos públicos permanecen claros.
+  'pages/sites/[siteId]/analytics/index.vue',
+  'pages/sites/[siteId]/domains/index.vue',
+  'pages/sites/[siteId]/forms/index.vue',
+  'pages/sites/[siteId]/index.vue',
+  'pages/sites/[siteId]/landing-pages/index.vue',
+  'pages/sites/[siteId]/overview/index.vue',
+  'pages/sites/[siteId]/pages/index.vue',
+  'pages/sites/[siteId]/publications/index.vue',
+  'pages/sites/[siteId]/settings/index.vue',
+  'pages/sites/analytics/index.vue',
+  'pages/sites/domains/index.vue',
+  'pages/sites/forms/index.vue',
+  'pages/sites/index.vue',
+  'pages/sites/landing-pages/index.vue',
+  'pages/sites/pages/index.vue',
+  'pages/sites/templates.vue',
+  'pages/sites/trash.vue',
+  'components/SitesAnalyticsSummary.vue',
+  'components/SitesDomainManager.vue',
+  'components/SitesFormManager.vue',
+  'components/SitesPageManager.vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.

@@ -66,7 +66,7 @@ afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.in
 describe('contratos HU-165', () => {
   it('congela todos los valores previos contra HEAD y conserva cada claro nuevo', () => {
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens]).toBe(value)
-    const newNames = Object.keys(lightTokens).filter(name => !(name in baseline.light) && !name.startsWith('resize-'))
+    const newNames = Object.keys(lightTokens).filter(name => !(name in baseline.light) && !name.startsWith('resize-') && !name.startsWith('sites-'))
     expect(newNames.sort()).toEqual(Object.keys(originals).sort())
     for (const [name, values] of Object.entries(originals)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0])

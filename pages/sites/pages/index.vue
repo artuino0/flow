@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'default', fullBleed: true })
+definePageMeta({ layout: 'default', darkReady: true, fullBleed: true })
 </script>
 
 <template>

@@ -33,6 +33,29 @@ export function isResizeContrast(result: { foreground: string; background: strin
   return result.foreground.startsWith('resize-') || result.background.startsWith('resize-')
 }
 
+/** HU-167: pares reales de Sites; claros originales medidos sin corregirlos ni ocultarlos. */
+export const sitesContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['sites-muted', 'surface', 4.5], ['sites-muted', 'bg', 4.5],
+  ['sites-muted', 'designer-section-bg', 4.5], ['sites-muted', 'dashboard-soft', 4.5],
+  ['sites-muted', 'sites-row-hover', 4.5], ['sites-icon', 'surface', 4.5],
+  ['sites-icon', 'bg', 4.5], ['sites-icon', 'kanban-divider', 3],
+  ['primary-fg', 'sites-primary-hover', 4.5],
+  ['sites-published-text', 'sites-published-bg', 4.5],
+  ['sites-archived-text', 'sites-archived-bg', 4.5], ['sites-archived-text', 'surface', 4.5],
+  ['text', 'sites-row-hover', 4.5], ['text-secondary', 'sites-row-hover', 4.5],
+  ['text', 'sites-action-hover', 4.5], ['text-secondary', 'sites-draft-bg', 4.5],
+  ['text-secondary', 'kanban-divider', 4.5], ['sites-warning-text', 'sites-warning-bg', 4.5],
+  ['sites-feedback-text', 'blue-bg', 4.5], ['sites-saved', 'bg', 4.5],
+  ['text', 'sites-choice-bg', 4.5], ['sites-muted', 'sites-choice-bg', 4.5],
+  ['sites-choice-border', 'surface', 3],
+  ['text-secondary', 'blue-bg', 4.5], ['blue', 'blue-bg', 4.5],
+  ['warning-text', 'surface', 4.5], ['designer-error-action', 'designer-error-bg', 4.5],
+  ['text-secondary', 'designer-section-bg', 4.5], ['text-secondary', 'dashboard-soft', 4.5]
+]
+export function isSitesContrast(result: { foreground: string; background: string }) {
+  return sitesContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
+}
+
 /** HU-165: claros heredados del diseñador autorizados aparte; todos los oscuros nuevos exigen AA. */
 export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
   ['designer-node-text', 'surface', 4.5], ['designer-node-text', 'designer-node-head', 4.5],
@@ -94,11 +117,12 @@ export function themeContrasts() {
   // Texto secundario de citas/nombres y metadatos propios en oscuro.
   pairs.push(['text-secondary', 'help-bg', 4.5], ['primary-fg', 'success-text', 4.5])
   pairs.push(...labelContrastPairs)
+  pairs.push(...sitesContrastPairs)
   pairs.push(...resizeContrastPairs.filter(([foreground, background]) => foreground.startsWith('resize-') || background.startsWith('resize-')))
   pairs.push(...designerContrastPairs.filter(([foreground, background]) => foreground.startsWith('designer-') || background.startsWith('designer-')))
   return (['light', 'dark'] as const).flatMap(theme => pairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
-    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: background === 'designer-section-bg' ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
+    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: background === 'designer-section-bg' && foreground.startsWith('designer-') ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
   }).concat([false, true].map(section => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:designer-label/designer-label-bg@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'designer-label-bg' as const, minimum: 4.5,
