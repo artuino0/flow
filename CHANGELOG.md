@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.140.1] - 2026-10-02
+#### [bugfix]
+- [ERD-169](https://dydasoftware.atlassian.net/browse/ERD-169) - Sites: las pestañas de Páginas, Landing pages y Formularios (globales y de cada sitio) ya no están pegadas a la tabla; ahora hay una separación de 16 px entre ambas.
+
 ### [0.140.0] - 2026-10-02
 #### [feature]
 - [ERD-168](https://dydasoftware.atlassian.net/browse/ERD-168) - Modo oscuro, fase 3E-2: el editor de páginas de Sites ahora se ve en oscuro: el editor de código (con su propio tema oscuro y colores de sintaxis legibles, que cambia al instante sin perder lo escrito, el cursor ni el historial de deshacer), el panel lateral, la biblioteca de recursos, la conexión de formularios, la barra de herramientas, las pestañas y los divisores. La vista previa de la página y el sitio publicado se mantienen siempre claros porque son el producto de tu cliente. En modo claro todo se ve igual que antes.
