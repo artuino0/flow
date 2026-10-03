@@ -66,7 +66,7 @@ afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.in
 describe('contratos HU-165', () => {
   it('congela todos los valores previos contra HEAD y conserva cada claro nuevo', () => {
     for (const [theme, values] of Object.entries(baseline)) for (const [name, value] of Object.entries(values)) expect((theme === 'light' ? lightTokens : darkTokens)[name as keyof typeof lightTokens]).toBe(value)
-    const newNames = Object.keys(lightTokens).filter(name => !(name in baseline.light))
+    const newNames = Object.keys(lightTokens).filter(name => !(name in baseline.light) && !name.startsWith('resize-'))
     expect(newNames.sort()).toEqual(Object.keys(originals).sort())
     for (const [name, values] of Object.entries(originals)) {
       expect(lightTokens[name as keyof typeof lightTokens]).toBe(values[0])
@@ -98,7 +98,15 @@ describe('contratos HU-165', () => {
       ['light:designer-type/designer-added-row', 2.401, 4.5],
       ['light:designer-node-border/surface', 1.923, 3],
       ['light:designer-edge/bg', 2.667, 3], ['light:designer-existing-edge/bg', 2.404, 3],
-      ['light:designer-new-arrow/bg', 2.628, 3]
+      ['light:designer-new-arrow/bg', 2.628, 3],
+      // BUG-166 amplía la medición a secciones y minimapa; los claros siguen siendo los originales.
+      ['light:designer-edge/designer-section-bg', 2.707, 3],
+      ['light:designer-existing-edge/designer-section-bg', 2.440, 3],
+      ['light:designer-new-arrow/designer-section-bg', 2.668, 3],
+      ['light:designer-minimap-existing/designer-minimap-bg', 2.368, 3],
+      ['light:designer-minimap-existing/designer-minimap-section', 1.000, 3],
+      ['light:designer-minimap-new/designer-minimap-section', 1.375, 3],
+      ['light:designer-minimap-system/designer-minimap-section', 2.009, 3]
     ])
     for (const pair of pairs.filter(pair => pair.theme === 'dark')) expect(pair.ratio, pair.id).toBeGreaterThanOrEqual(pair.minimum)
   })
@@ -120,7 +128,13 @@ describe.each(['light', 'dark'] as const)('montajes del diseñador sin red: %s',
       }
     } })
     const background = defineComponent({ props: ['color', 'id'], setup(props) { return () => h('svg', { 'data-grid': props.id }, [h('path', { stroke: props.color })]) } })
-    const minimap = defineComponent({ props: ['nodeColor', 'maskColor'], setup(props) { return () => h('svg', { 'data-minimap': true }, [h('rect', { fill: props.nodeColor({ data: { module: { state: 'new' } } }) }), h('path', { fill: props.maskColor })]) } })
+    const minimap = defineComponent({ props: ['nodeColor', 'maskColor'], setup(props) { return () => h('svg', { 'data-minimap': true }, [
+      h('rect', { 'data-kind': 'new', fill: props.nodeColor({ data: { module: { state: 'new' } } }) }),
+      h('rect', { 'data-kind': 'existing', fill: props.nodeColor({ data: { module: { state: 'existing' } } }) }),
+      h('rect', { 'data-kind': 'system', fill: props.nodeColor({ data: { module: { system: true } } }) }),
+      h('rect', { 'data-kind': 'section', fill: props.nodeColor({ type: 'section', data: { title: 'Grupo' } }) }),
+      h('path', { fill: props.maskColor })
+    ]) } })
     const component = compileVueComponent('components/designer/DesignerCanvas.client.vue', { ...imports,
       '@vue-flow/core': { ...core, VueFlow: flow, Handle: { render: () => h('span') }, useVueFlow: () => ({ fitView, zoomIn: vi.fn(), zoomOut: vi.fn() }) },
       '@vue-flow/background': { Background: background }, '@vue-flow/minimap': { MiniMap: minimap }, '@vue-flow/controls': { Controls: { render: () => h('div') } }
@@ -142,7 +156,11 @@ describe.each(['light', 'dark'] as const)('montajes del diseñador sin red: %s',
     const palette = next === 'dark' ? darkTokens : lightTokens
     expect(document.documentElement.dataset.theme).toBe(next)
     expect(host.querySelector('[data-grid="minor-grid"] path')?.getAttribute('stroke')).toBe(palette['designer-grid-minor'])
-    expect(host.querySelector('[data-minimap] rect')?.getAttribute('fill')).toBe(palette['designer-new'])
+    expect(host.querySelector('[data-minimap] rect')?.getAttribute('fill')).toBe(palette['designer-minimap-new'])
+    for (const kind of ['existing', 'system', 'section'] as const) expect(host.querySelector(`[data-minimap] [data-kind="${kind}"]`)?.getAttribute('fill')).toBe(palette[`designer-minimap-${kind}`])
+    expect(host.querySelector('[data-minimap]')?.classList.contains('!bg-brand-designer-minimap-bg')).toBe(true)
+    expect(host.querySelector('[data-minimap] path')?.getAttribute('fill')).toBe('rgb(var(--brand-designer-minimap-mask) / 0.6)')
+    expect(latest.edges[0]!.labelBgStyle).toEqual({ fill: 'rgb(var(--brand-designer-label-bg))', fillOpacity: .92 })
     expect((latest.edges[0]!.markerEnd as core.EdgeMarker).color).toBe(palette[edgeMode === 'selected' ? 'designer-selected-edge' : 'designer-new-arrow'])
     const edgeStyle = latest.edges[0]!.style
     expect(typeof edgeStyle).not.toBe('function')
@@ -280,7 +298,8 @@ describe.each(['light', 'dark'] as const)('montajes del diseñador sin red: %s',
       expect(store!.findNode('clientes')!.position).toEqual({ x: 515, y: 270 })
       expect(host.querySelector('.is-selected')).not.toBeNull()
       const nextTokens = theme === 'light' ? darkTokens : lightTokens
-      expect([...host.querySelectorAll('.vue-flow__minimap rect')].some(rect => rect.getAttribute('fill') === nextTokens['designer-new']), host.querySelector('.vue-flow__minimap')?.outerHTML).toBe(true)
+      expect([...host.querySelectorAll('.vue-flow__minimap rect')].some(rect => rect.getAttribute('fill') === nextTokens['designer-minimap-new']), host.querySelector('.vue-flow__minimap')?.outerHTML).toBe(true)
+      expect([...host.querySelectorAll('.vue-flow__minimap rect')].some(rect => rect.getAttribute('fill') === nextTokens['designer-minimap-section'])).toBe(true)
     }
     const palette = theme === 'light' ? darkTokens : lightTokens
     expect(host.querySelector('.vue-flow__background pattern path')?.getAttribute('stroke')).toBe(palette['designer-grid-minor'])

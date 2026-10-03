@@ -99,7 +99,11 @@ export const lightTokens = {
   'designer-handle': '#555555',
   'designer-system-icon': '#475569',
   'designer-type': '#8DA1B5',
-  'designer-edge-updating': '#777777'
+  'designer-edge-updating': '#777777',
+  // BUG-166: roles aislados, con el claro exacto del componente compartido y del lienzo.
+  'resize-bg': '#EEF2F5', 'resize-hover': '#D6EDF1', 'resize-mark': '#ADC0CF', 'resize-border': '#D8E1E8',
+  'designer-label-bg': '#FFFFFF', 'designer-minimap-bg': '#FFFFFF',
+  'designer-minimap-new': '#E8682D', 'designer-minimap-system': '#64748B', 'designer-minimap-section': '#9DAAB7'
 } as const
 
 export const darkTokens: Record<keyof typeof lightTokens, string> = {
@@ -149,14 +153,14 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'label-paper-border': '#3A4A5E', 'label-ink': '#F0F4F8', 'label-shadow': '#000000',
   'label-paper-muted': '#9FB3C8', 'label-paper-separator': '#9FB3C8',
   // Oscuros derivados de los roles congelados; déficits claros heredados autorizados aparte.
-  'designer-selected-edge': '#FFA184',
+  'designer-selected-edge': '#FFC4AD',
   'designer-system-muted': '#9FB3C8',
-  'designer-new-arrow': '#FF8F6B',
-  'designer-existing-edge': '#9FB3C8',
+  'designer-new-arrow': '#FFAD8F',
+  'designer-existing-edge': '#C2D2E3',
   'designer-new': '#FF8F6B',
-  'designer-edge': '#9FB3C8',
-  'designer-label': '#9FB3C8',
-  'designer-minimap-existing': '#9FB3C8',
+  'designer-edge': '#C2D2E3',
+  'designer-label': '#E0EAF4',
+  'designer-minimap-existing': '#71869D',
   'designer-grid-minor': '#202C3D',
   'designer-grid-major': '#2C374A',
   'designer-section-bg': '#141B29',
@@ -199,13 +203,16 @@ export const darkTokens: Record<keyof typeof lightTokens, string> = {
   'designer-controls-border': '#2C374A',
   'designer-controls-hover': '#2A3648',
   'designer-controls-icon': '#F0F4F8',
-  'designer-minimap-mask': '#141B29',
+  'designer-minimap-mask': '#516F90',
   'designer-selection': '#3FC3DE',
   'designer-connection': '#9FB3C8',
-  'designer-handle': '#9FB3C8',
+  'designer-handle': '#D0E0EF',
   'designer-system-icon': '#9FB3C8',
   'designer-type': '#9FB3C8',
-  'designer-edge-updating': '#9FB3C8'
+  'designer-edge-updating': '#C2D2E3',
+  'resize-bg': '#2C374A', 'resize-hover': '#174853', 'resize-mark': '#9FB3C8', 'resize-border': '#3A4A5E',
+  'designer-label-bg': '#2C374A', 'designer-minimap-bg': '#101724',
+  'designer-minimap-new': '#B96F50', 'designer-minimap-system': '#71869D', 'designer-minimap-section': '#1E2A3D'
 }
 
 export function rgbChannels(hex: string): string {

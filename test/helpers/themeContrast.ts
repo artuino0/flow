@@ -24,13 +24,22 @@ export function isLabelContrast(result: { foreground: string; background: string
   return labelContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
+/** BUG-166: foco y marca del divisor, incluidos sus fondos de interacción reales. */
+export const resizeContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['blue', 'resize-hover', 3], ['blue', 'resize-bg', 3], ['blue', 'surface', 3],
+  ['resize-mark', 'resize-hover', 3], ['resize-mark', 'resize-bg', 3]
+]
+export function isResizeContrast(result: { foreground: string; background: string }) {
+  return result.foreground.startsWith('resize-') || result.background.startsWith('resize-')
+}
+
 /** HU-165: claros heredados del diseñador autorizados aparte; todos los oscuros nuevos exigen AA. */
 export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
   ['designer-node-text', 'surface', 4.5], ['designer-node-text', 'designer-node-head', 4.5],
   ['designer-node-text', 'designer-new-head', 4.5], ['designer-node-text', 'designer-added-row', 4.5],
   ['designer-node-meta', 'designer-node-head', 4.5], ['designer-node-meta', 'designer-new-head', 4.5],
   ['primary-fg', 'designer-new', 4.5], ['designer-added-text', 'designer-added-bg', 4.5],
-  ['designer-label', 'surface', 4.5], ['designer-label', 'bg', 4.5],
+  ['designer-label', 'surface', 4.5], ['designer-label', 'bg', 4.5], ['designer-label', 'designer-label-bg', 4.5],
   ['designer-section-text', 'designer-section-bg', 4.5], ['designer-system-text', 'dashboard-soft', 4.5],
   ['designer-system-text', 'designer-system-tag', 4.5], ['designer-system-muted', 'dashboard-soft', 4.5],
   ['designer-type', 'surface', 4.5], ['designer-type', 'designer-added-row', 4.5],
@@ -43,7 +52,15 @@ export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof ligh
   ['text-secondary', 'bg', 4.5], ['text-secondary', 'surface', 4.5],
   ['designer-node-border', 'surface', 3], ['designer-new', 'surface', 3],
   ['designer-edge', 'bg', 3], ['designer-existing-edge', 'bg', 3], ['designer-new-arrow', 'bg', 3],
-  ['designer-selected-edge', 'bg', 3], ['designer-system-muted', 'bg', 3], ['designer-system-icon', 'surface', 3]
+  ['designer-selected-edge', 'bg', 3], ['designer-system-muted', 'bg', 3], ['designer-system-icon', 'surface', 3],
+  ['designer-handle', 'bg', 3], ['designer-edge-updating', 'bg', 3],
+  ['designer-edge', 'designer-section-bg', 3], ['designer-existing-edge', 'designer-section-bg', 3],
+  ['designer-new-arrow', 'designer-section-bg', 3], ['designer-selected-edge', 'designer-section-bg', 3],
+  ['designer-handle', 'designer-section-bg', 3],
+  ['designer-minimap-existing', 'designer-minimap-bg', 3], ['designer-minimap-new', 'designer-minimap-bg', 3],
+  ['designer-minimap-system', 'designer-minimap-bg', 3],
+  ['designer-minimap-existing', 'designer-minimap-section', 3], ['designer-minimap-new', 'designer-minimap-section', 3],
+  ['designer-minimap-system', 'designer-minimap-section', 3]
 ]
 export function isDesignerContrast(result: { foreground: string; background: string }) {
   return designerContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
@@ -77,13 +94,14 @@ export function themeContrasts() {
   // Texto secundario de citas/nombres y metadatos propios en oscuro.
   pairs.push(['text-secondary', 'help-bg', 4.5], ['primary-fg', 'success-text', 4.5])
   pairs.push(...labelContrastPairs)
+  pairs.push(...resizeContrastPairs.filter(([foreground, background]) => foreground.startsWith('resize-') || background.startsWith('resize-')))
   pairs.push(...designerContrastPairs.filter(([foreground, background]) => foreground.startsWith('designer-') || background.startsWith('designer-')))
   return (['light', 'dark'] as const).flatMap(theme => pairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
     return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: background === 'designer-section-bg' ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
   }).concat([false, true].map(section => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
-    return { id: `${theme}:designer-label/surface@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'surface' as const, minimum: 4.5,
-      ratio: compositeContrast(tokens['designer-label'], tokens.surface, tokens.bg, .92, section ? [tokens['designer-section-bg'], .8] : undefined) }
+    return { id: `${theme}:designer-label/designer-label-bg@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'designer-label-bg' as const, minimum: 4.5,
+      ratio: compositeContrast(tokens['designer-label'], tokens['designer-label-bg'], tokens.bg, .92, section ? [tokens['designer-section-bg'], .8] : undefined) }
   })))
 }

@@ -8,7 +8,7 @@ export const migratedThemeFiles = [
   'components/ChattitoHelp.vue', 'components/ChattitoPanel.vue', 'components/ChattitoToggle.vue',
   'components/FlowAppLauncher.vue', 'components/GlobalSearch.vue', 'components/NotificationCenter.vue',
   'components/InactivityWarningModal.vue', 'components/SettingsConfirmDialog.vue', 'components/SidebarPlanUsage.vue',
-  'components/ThemeSelector.vue', 'components/ToastContainer.vue', 'components/ListPageHeader.vue',
+  'components/ThemeSelector.vue', 'components/ToastContainer.vue', 'components/ListPageHeader.vue', 'components/PanelResizeHandle.vue',
   'components/DynamicForm.vue', 'components/DynamicSelectField.vue', 'components/DynamicRelationField.vue',
   'components/DynamicTableField.vue', 'components/DynamicUserField.vue', 'components/DynamicFileField.vue',
   'components/DynamicFileValue.vue', 'components/DynamicTable.vue', 'components/FieldDateValue.vue',

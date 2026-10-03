@@ -183,6 +183,15 @@
   --brand-designer-system-icon: 71 85 105;
   --brand-designer-type: 141 161 181;
   --brand-designer-edge-updating: 119 119 119;
+  --brand-resize-bg: 238 242 245;
+  --brand-resize-hover: 214 237 241;
+  --brand-resize-mark: 173 192 207;
+  --brand-resize-border: 216 225 232;
+  --brand-designer-label-bg: 255 255 255;
+  --brand-designer-minimap-bg: 255 255 255;
+  --brand-designer-minimap-new: 232 104 45;
+  --brand-designer-minimap-system: 100 116 139;
+  --brand-designer-minimap-section: 157 170 183;
   color-scheme: light;
 }
 :root[data-theme="dark"], .dark {
@@ -312,14 +321,14 @@
   --brand-label-shadow: 0 0 0;
   --brand-label-paper-muted: 159 179 200;
   --brand-label-paper-separator: 159 179 200;
-  --brand-designer-selected-edge: 255 161 132;
+  --brand-designer-selected-edge: 255 196 173;
   --brand-designer-system-muted: 159 179 200;
-  --brand-designer-new-arrow: 255 143 107;
-  --brand-designer-existing-edge: 159 179 200;
+  --brand-designer-new-arrow: 255 173 143;
+  --brand-designer-existing-edge: 194 210 227;
   --brand-designer-new: 255 143 107;
-  --brand-designer-edge: 159 179 200;
-  --brand-designer-label: 159 179 200;
-  --brand-designer-minimap-existing: 159 179 200;
+  --brand-designer-edge: 194 210 227;
+  --brand-designer-label: 224 234 244;
+  --brand-designer-minimap-existing: 113 134 157;
   --brand-designer-grid-minor: 32 44 61;
   --brand-designer-grid-major: 44 55 74;
   --brand-designer-section-bg: 20 27 41;
@@ -362,13 +371,22 @@
   --brand-designer-controls-border: 44 55 74;
   --brand-designer-controls-hover: 42 54 72;
   --brand-designer-controls-icon: 240 244 248;
-  --brand-designer-minimap-mask: 20 27 41;
+  --brand-designer-minimap-mask: 81 111 144;
   --brand-designer-selection: 63 195 222;
   --brand-designer-connection: 159 179 200;
-  --brand-designer-handle: 159 179 200;
+  --brand-designer-handle: 208 224 239;
   --brand-designer-system-icon: 159 179 200;
   --brand-designer-type: 159 179 200;
-  --brand-designer-edge-updating: 159 179 200;
+  --brand-designer-edge-updating: 194 210 227;
+  --brand-resize-bg: 44 55 74;
+  --brand-resize-hover: 23 72 83;
+  --brand-resize-mark: 159 179 200;
+  --brand-resize-border: 58 74 94;
+  --brand-designer-label-bg: 44 55 74;
+  --brand-designer-minimap-bg: 16 23 36;
+  --brand-designer-minimap-new: 185 111 80;
+  --brand-designer-minimap-system: 113 134 157;
+  --brand-designer-minimap-section: 30 42 61;
   color-scheme: dark;
 }
 .theme-light, body[data-content-theme="light"] > :not(#__nuxt):not([data-theme-shell]):not(.driver-popover):not(.driver-overlay) {
@@ -555,6 +573,15 @@
   --brand-designer-system-icon: 71 85 105;
   --brand-designer-type: 141 161 181;
   --brand-designer-edge-updating: 119 119 119;
+  --brand-resize-bg: 238 242 245;
+  --brand-resize-hover: 214 237 241;
+  --brand-resize-mark: 173 192 207;
+  --brand-resize-border: 216 225 232;
+  --brand-designer-label-bg: 255 255 255;
+  --brand-designer-minimap-bg: 255 255 255;
+  --brand-designer-minimap-new: 232 104 45;
+  --brand-designer-minimap-system: 100 116 139;
+  --brand-designer-minimap-section: 157 170 183;
   color-scheme: light;
   color: rgb(var(--brand-body-text));
 }
@@ -743,6 +770,15 @@
   --brand-designer-system-icon: 71 85 105 !important;
   --brand-designer-type: 141 161 181 !important;
   --brand-designer-edge-updating: 119 119 119 !important;
+  --brand-resize-bg: 238 242 245 !important;
+  --brand-resize-hover: 214 237 241 !important;
+  --brand-resize-mark: 173 192 207 !important;
+  --brand-resize-border: 216 225 232 !important;
+  --brand-designer-label-bg: 255 255 255 !important;
+  --brand-designer-minimap-bg: 255 255 255 !important;
+  --brand-designer-minimap-new: 232 104 45 !important;
+  --brand-designer-minimap-system: 100 116 139 !important;
+  --brand-designer-minimap-section: 157 170 183 !important;
     color-scheme: light !important;
   }
 }

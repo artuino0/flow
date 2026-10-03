@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.138.1] - 2026-10-02
+#### [bugfix]
+- [ERD-166](https://dydasoftware.atlassian.net/browse/ERD-166) - Modo oscuro en el diseñador: desaparecen las franjas claras a los lados del lienzo (eran los divisores para cambiar el ancho de los paneles, que no seguían el tema), las líneas de relación y sus etiquetas se leen mejor y el minimapa deja de verse brillante, con los módulos nuevos, los existentes y las secciones bien diferenciados. En modo claro todo se ve igual que antes.
+
 ### [0.138.0] - 2026-10-02
 #### [feature]
 - [ERD-165](https://dydasoftware.atlassian.net/browse/ERD-165) - Modo oscuro, fase 3A: el diseñador de módulos con IA ahora también se ve en oscuro: el lienzo con sus módulos, relaciones, controles y minimapa (que cambian de tema al instante sin perder el zoom, la posición ni la selección), el inspector de campos, el chat del diseñador con sus avisos agrupados y la leyenda. Los estados existente, nuevo y se agrega conservan su significado, con etiquetas y bordes además del color, y Chattito del diseñador se mantiene tal como estaba. En claro todo se ve igual que antes.

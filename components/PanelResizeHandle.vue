@@ -67,12 +67,12 @@ onBeforeUnmount(() => { stopDrag?.() })
 </template>
 
 <style scoped>
-.panel-resize-handle { position: relative; z-index: 15; flex-shrink: 0; width: 5px; min-width: 5px; height: 100%; cursor: col-resize; background: #eef2f5; touch-action: none; }
-.panel-resize-handle:hover, .panel-resize-handle:active { background: #d6edf1; }
-.panel-resize-handle:focus-visible { background: #d6edf1; outline: none; box-shadow: inset 0 0 0 1px #0091ae; }
-.panel-resize-handle span { position: absolute; top: 50%; left: 1px; width: 3px; height: 38px; transform: translateY(-50%); border-radius: 2px; background: #adc0cf; opacity: 0; }
+.panel-resize-handle { position: relative; z-index: 15; flex-shrink: 0; width: 5px; min-width: 5px; height: 100%; cursor: col-resize; background: rgb(var(--brand-resize-bg)); touch-action: none; }
+.panel-resize-handle:hover, .panel-resize-handle:active { background: rgb(var(--brand-resize-hover)); }
+.panel-resize-handle:focus-visible { background: rgb(var(--brand-resize-hover)); outline: none; box-shadow: inset 0 0 0 1px rgb(var(--brand-blue)); }
+.panel-resize-handle span { position: absolute; top: 50%; left: 1px; width: 3px; height: 38px; transform: translateY(-50%); border-radius: 2px; background: rgb(var(--brand-resize-mark)); opacity: 0; }
 .panel-resize-handle:hover span, .panel-resize-handle:active span { opacity: 1; }
-.panel-resize-handle.is-bordered { border-right: 1px solid #d8e1e8; border-left: 1px solid #d8e1e8; }
+.panel-resize-handle.is-bordered { border-right: 1px solid rgb(var(--brand-resize-border)); border-left: 1px solid rgb(var(--brand-resize-border)); }
 :global(body.panel-resizing) { cursor: col-resize !important; user-select: none !important; }
 :global(body.panel-resizing *) { cursor: col-resize !important; }
 </style>

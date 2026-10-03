@@ -20,7 +20,7 @@ const edges = shallowRef<Edge[]>([])
 const { fitView, zoomIn, zoomOut } = useVueFlow()
 const { resolved } = useTheme()
 const palette = computed(() => resolved.value === 'dark' ? darkTokens : lightTokens)
-const minimapNodeColor = computed(() => (node: Node) => node.data?.module?.system ? palette.value['designer-system-muted'] : node.data?.module?.state === 'new' ? palette.value['designer-new'] : palette.value['designer-minimap-existing'])
+const minimapNodeColor = computed(() => (node: Node) => node.type === 'section' ? palette.value['designer-minimap-section'] : node.data?.module?.system ? palette.value['designer-minimap-system'] : node.data?.module?.state === 'new' ? palette.value['designer-minimap-new'] : palette.value['designer-minimap-existing'])
 const relationGraph = computed(() => filterDesignerRelations(props.graph, props.selectedId, props.relationFilter))
 const visible = computed(() => visibleDesignerGraph(relationGraph.value, query.value, section.value))
 const highlighted = computed(() => props.selectedEdgeId ? focusDesignerEdge(visible.value, props.selectedEdgeId) : focusDesignerGraph(visible.value, props.focusId))
@@ -76,7 +76,7 @@ function refreshGraph() {
     data: { pulse: pulsing.has(edge.id), direction: designerEdgeFlowDirection(edge), phaseMs: (index % 9) * 340, revealMs: Math.max(revealDelay.get(edge.source) ?? -450, revealDelay.get(edge.target) ?? -450) + 450 },
     markerEnd: { type: MarkerType.ArrowClosed, color: edgeColors(edge).marker },
     style: { stroke: edgeColors(edge).stroke, strokeWidth: props.selectedEdgeId && highlighted.value.edges.has(edge.id) ? 3.5 : edge.kind === 'lines' ? 3 : 1.5, ...(edge.kind === 'user' ? { strokeDasharray: '5 3' } : {}) },
-    labelStyle: { fill: 'rgb(var(--brand-designer-label))', fontSize: '10px', fontWeight: 600 }, labelBgStyle: { fill: 'rgb(var(--brand-surface))', fillOpacity: 0.92 }, labelBgPadding: [5, 3]
+    labelStyle: { fill: 'rgb(var(--brand-designer-label))', fontSize: '10px', fontWeight: 600 }, labelBgStyle: { fill: 'rgb(var(--brand-designer-label-bg))', fillOpacity: 0.92 }, labelBgPadding: [5, 3]
   } as Edge))
 }
 watch([() => props.graph, () => props.positions, () => props.selectedId, () => props.focusId, () => props.selectedEdgeId, () => props.relationFilter, () => props.changedIds.join('|'), () => props.revealEdgeIds.join('|'), () => props.revealFieldKeys.join('|'), query, section], refreshGraph, { immediate: true })
@@ -120,7 +120,7 @@ defineExpose({ fitCanvas, focusElement })
     <VueFlow v-model:nodes="nodes" v-model:edges="edges" class="designer-flow" :min-zoom="0.2" :max-zoom="2" :nodes-connectable="false" :elements-selectable="false" fit-view-on-init @node-click="onNodeClick" @edge-click="({ edge, event }) => { event?.stopPropagation(); emit('edgeSelect', edge.id) }" @node-drag-stop="onDragStop" @pane-click="systemInfoOpen = false; emit('clear')">
       <Background id="minor-grid" variant="lines" :color="palette['designer-grid-minor']" :gap="20" :line-width="0.4" />
       <Background id="major-grid" variant="lines" :color="palette['designer-grid-major']" :gap="100" :line-width="0.65" />
-      <MiniMap pannable zoomable :node-color="minimapNodeColor" mask-color="rgb(var(--brand-designer-minimap-mask) / 0.6)" class="!border !border-brand-border-light !bg-brand-surface" />
+      <MiniMap pannable zoomable :node-color="minimapNodeColor" mask-color="rgb(var(--brand-designer-minimap-mask) / 0.6)" class="!border !border-brand-border-light !bg-brand-designer-minimap-bg" />
       <Controls position="bottom-right" />
       <template #edge-flow="{ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, label, labelStyle, labelBgStyle, labelBgPadding, data }">
         <g :style="{ '--edge-delay': `${data.revealMs}ms`, '--pulse-phase': `${data.phaseMs}ms` }">
@@ -175,10 +175,11 @@ defineExpose({ fitCanvas, focusElement })
 .designer-flow .vue-flow__controls-button svg { fill: currentColor; }
 .designer-flow .vue-flow__controls-button:hover { background: rgb(var(--brand-designer-controls-hover)); }
 .designer-flow .vue-flow__controls-button:focus-visible, .designer-module:focus-visible, .designer-system-user:focus-visible { outline: 2px solid rgb(var(--brand-blue)); outline-offset: 2px; }
-.designer-flow .vue-flow__edge-textbg { fill: rgb(var(--brand-surface)); }
+.designer-flow .vue-flow__edge-textbg { fill: rgb(var(--brand-designer-label-bg)); }
 .designer-flow .vue-flow__edge.updating .vue-flow__edge-path { stroke: rgb(var(--brand-designer-edge-updating)); }
 .designer-flow .vue-flow__connection-path { stroke: rgb(var(--brand-designer-connection)); }
 .designer-flow .vue-flow__edge.selected .vue-flow__edge-path, .designer-flow .vue-flow__edge:focus .vue-flow__edge-path { stroke: rgb(var(--brand-designer-handle)); }
+:root[data-theme="dark"] .designer-flow .vue-flow__edge:hover .vue-flow__edge-path { stroke: rgb(var(--brand-designer-handle)); }
 .designer-flow .vue-flow__handle { background: rgb(var(--brand-designer-handle)); border-color: rgb(var(--brand-surface)); }
 .designer-flow .vue-flow__nodesselection-rect, .designer-flow .vue-flow__selection { background: rgb(var(--brand-designer-selection) / 0.08); border-color: rgb(var(--brand-designer-selection) / 0.8); }
 .designer-flow .vue-flow__node { border: 0; border-radius: 6px; background: transparent; padding: 0; }

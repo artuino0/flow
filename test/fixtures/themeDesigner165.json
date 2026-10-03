@@ -1,7 +1,7 @@
 {
   "designer-selected-edge": [
     "#C94F19",
-    "#FFA184"
+    "#FFC4AD"
   ],
   "designer-system-muted": [
     "#64748B",
@@ -9,11 +9,11 @@
   ],
   "designer-new-arrow": [
     "#F97316",
-    "#FF8F6B"
+    "#FFAD8F"
   ],
   "designer-existing-edge": [
     "#94A3B8",
-    "#9FB3C8"
+    "#C2D2E3"
   ],
   "designer-new": [
     "#E8682D",
@@ -21,15 +21,15 @@
   ],
   "designer-edge": [
     "#8B9BAC",
-    "#9FB3C8"
+    "#C2D2E3"
   ],
   "designer-label": [
     "#526579",
-    "#9FB3C8"
+    "#E0EAF4"
   ],
   "designer-minimap-existing": [
     "#9DAAB7",
-    "#9FB3C8"
+    "#71869D"
   ],
   "designer-grid-minor": [
     "#E9EFF3",
@@ -201,7 +201,7 @@
   ],
   "designer-minimap-mask": [
     "#F0F0F0",
-    "#141B29"
+    "#516F90"
   ],
   "designer-selection": [
     "#0059DC",
@@ -213,7 +213,7 @@
   ],
   "designer-handle": [
     "#555555",
-    "#9FB3C8"
+    "#D0E0EF"
   ],
   "designer-system-icon": [
     "#475569",
@@ -225,6 +225,26 @@
   ],
   "designer-edge-updating": [
     "#777777",
-    "#9FB3C8"
+    "#C2D2E3"
+  ],
+  "designer-label-bg": [
+    "#FFFFFF",
+    "#2C374A"
+  ],
+  "designer-minimap-bg": [
+    "#FFFFFF",
+    "#101724"
+  ],
+  "designer-minimap-new": [
+    "#E8682D",
+    "#B96F50"
+  ],
+  "designer-minimap-system": [
+    "#64748B",
+    "#71869D"
+  ],
+  "designer-minimap-section": [
+    "#9DAAB7",
+    "#1E2A3D"
   ]
 }
