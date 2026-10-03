@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.138.0] - 2026-10-02
+#### [feature]
+- [ERD-165](https://dydasoftware.atlassian.net/browse/ERD-165) - Modo oscuro, fase 3A: el diseñador de módulos con IA ahora también se ve en oscuro: el lienzo con sus módulos, relaciones, controles y minimapa (que cambian de tema al instante sin perder el zoom, la posición ni la selección), el inspector de campos, el chat del diseñador con sus avisos agrupados y la leyenda. Los estados existente, nuevo y se agrega conservan su significado, con etiquetas y bordes además del color, y Chattito del diseñador se mantiene tal como estaba. En claro todo se ve igual que antes.
+
 ### [0.137.0] - 2026-10-02
 #### [feature]
 - [ERD-164](https://dydasoftware.atlassian.net/browse/ERD-164) - Modo oscuro, segunda fase (bloque C): los módulos y catálogos (listado, asistente de nuevo módulo y el editor con todas sus pestañas: información, campos, relaciones, diseño del listado y del detalle, flujo de estados, etiquetas, menú y API) y el chat (conversaciones, burbujas propias y ajenas, adjuntos, estados de reconexión, ventanas flotantes y el diálogo de eliminar) ahora también se ven en oscuro. Los colores que eliges tú o tu organización para opciones, estados y etiquetas se conservan tal cual, y el papel de las etiquetas, los logos y las impresiones siguen siempre en claro. En claro todo se ve igual que antes.

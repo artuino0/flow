@@ -98,7 +98,7 @@ describe('contratos HU-163', () => {
   it('audita el alcance completo y mantiene protegidas las rutas ajenas', () => {
     for (const file of routes) { expect(migratedThemeFiles).toContain(file); expect(readFileSync(file, 'utf8')).toContain('darkReady: true') }
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
-    for (const file of ['pages/disenador.vue', 'pages/facturacion/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
+    for (const file of ['pages/facturacion/index.vue']) expect(readFileSync(file, 'utf8')).not.toContain('darkReady: true')
     expect(contentNeedsLight({})).toBe(true)
     expect(auditThemeColors()).toEqual([])
   })

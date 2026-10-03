@@ -1,0 +1,230 @@
+{
+  "designer-selected-edge": [
+    "#C94F19",
+    "#FFA184"
+  ],
+  "designer-system-muted": [
+    "#64748B",
+    "#9FB3C8"
+  ],
+  "designer-new-arrow": [
+    "#F97316",
+    "#FF8F6B"
+  ],
+  "designer-existing-edge": [
+    "#94A3B8",
+    "#9FB3C8"
+  ],
+  "designer-new": [
+    "#E8682D",
+    "#FF8F6B"
+  ],
+  "designer-edge": [
+    "#8B9BAC",
+    "#9FB3C8"
+  ],
+  "designer-label": [
+    "#526579",
+    "#9FB3C8"
+  ],
+  "designer-minimap-existing": [
+    "#9DAAB7",
+    "#9FB3C8"
+  ],
+  "designer-grid-minor": [
+    "#E9EFF3",
+    "#202C3D"
+  ],
+  "designer-grid-major": [
+    "#DFE8EE",
+    "#2C374A"
+  ],
+  "designer-section-bg": [
+    "#F8FAFB",
+    "#141B29"
+  ],
+  "designer-section-text": [
+    "#657789",
+    "#9FB3C8"
+  ],
+  "designer-system-text": [
+    "#334155",
+    "#F0F4F8"
+  ],
+  "designer-related": [
+    "#D65A23",
+    "#FFA184"
+  ],
+  "designer-system-tag": [
+    "#E2E8F0",
+    "#2A3648"
+  ],
+  "designer-node-border": [
+    "#AEBDC9",
+    "#7A8CA0"
+  ],
+  "designer-node-text": [
+    "#243849",
+    "#F0F4F8"
+  ],
+  "designer-node-head": [
+    "#F4F7F9",
+    "#243247"
+  ],
+  "designer-new-head": [
+    "#FFF3EF",
+    "#40291F"
+  ],
+  "designer-node-meta": [
+    "#708191",
+    "#AEC0D2"
+  ],
+  "designer-added-row": [
+    "#E7F6FA",
+    "#0F3A44"
+  ],
+  "designer-added-bg": [
+    "#D2EEF5",
+    "#174853"
+  ],
+  "designer-added-text": [
+    "#087A96",
+    "#4DD0E1"
+  ],
+  "designer-node-divider": [
+    "#E1E7EB",
+    "#2C374A"
+  ],
+  "designer-inspector-divider": [
+    "#DCE5EB",
+    "#2C374A"
+  ],
+  "designer-markdown-heading": [
+    "#253044",
+    "#F0F4F8"
+  ],
+  "designer-markdown-code": [
+    "#F1F4F8",
+    "#141B29"
+  ],
+  "designer-markdown-border": [
+    "#DBE2EA",
+    "#3A4A5E"
+  ],
+  "designer-existing": [
+    "#CBD5E1",
+    "#9FB3C8"
+  ],
+  "designer-error-border": [
+    "#FECACA",
+    "#FF8A76"
+  ],
+  "designer-error-bg": [
+    "#FEF2F2",
+    "#3D1712"
+  ],
+  "designer-error-text": [
+    "#991B1B",
+    "#FF8A76"
+  ],
+  "designer-error-action": [
+    "#B91C1C",
+    "#FF8A76"
+  ],
+  "designer-error-control": [
+    "#FCA5A5",
+    "#FF8A76"
+  ],
+  "designer-error-hover": [
+    "#FEE2E2",
+    "#4C2019"
+  ],
+  "designer-success-border": [
+    "#BBF7D0",
+    "#4ADE94"
+  ],
+  "designer-success-bg": [
+    "#F0FDF4",
+    "#123D2A"
+  ],
+  "designer-success-text": [
+    "#166534",
+    "#4ADE94"
+  ],
+  "designer-success-strong": [
+    "#14532D",
+    "#4ADE94"
+  ],
+  "designer-warning-border": [
+    "#FDE68A",
+    "#F5B94D"
+  ],
+  "designer-warning-bg": [
+    "#FFFBEB",
+    "#402D0A"
+  ],
+  "designer-warning-text": [
+    "#451A03",
+    "#F5B94D"
+  ],
+  "designer-warning-secondary": [
+    "#92400E",
+    "#F5B94D"
+  ],
+  "designer-warning-strong": [
+    "#78350F",
+    "#F5B94D"
+  ],
+  "designer-warning-link": [
+    "#B45309",
+    "#F5B94D"
+  ],
+  "designer-review-overlay": [
+    "#0F172A",
+    "#000000"
+  ],
+  "designer-controls-bg": [
+    "#FEFEFE",
+    "#1E2A3D"
+  ],
+  "designer-controls-border": [
+    "#EEEEEE",
+    "#2C374A"
+  ],
+  "designer-controls-hover": [
+    "#F4F4F4",
+    "#2A3648"
+  ],
+  "designer-controls-icon": [
+    "#000000",
+    "#F0F4F8"
+  ],
+  "designer-minimap-mask": [
+    "#F0F0F0",
+    "#141B29"
+  ],
+  "designer-selection": [
+    "#0059DC",
+    "#3FC3DE"
+  ],
+  "designer-connection": [
+    "#B1B1B7",
+    "#9FB3C8"
+  ],
+  "designer-handle": [
+    "#555555",
+    "#9FB3C8"
+  ],
+  "designer-system-icon": [
+    "#475569",
+    "#9FB3C8"
+  ],
+  "designer-type": [
+    "#8DA1B5",
+    "#9FB3C8"
+  ],
+  "designer-edge-updating": [
+    "#777777",
+    "#9FB3C8"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "utils/designerChattito.ts": "07a1e8bffa5da402a5d0bd09a61087aaa12419f8bd20fdc16fdfe52db09c2b95",
+  "utils/chattito.ts": "ec4482f8361f9f2e4bb7a7baa641160a6162333de99d39c4ebb06f6b688e4ccd",
+  "components/ChattitoArtwork.vue": "cda1c375d5dea8269238defc479644e6c72ffb437fa958ba12a08f483e52f02b",
+  "components/ChattitoAvatar.vue": "943432c8e7fc0a8b476212401b4bcc5a8be533e1220441b15b02c05c58eeef82",
+  "components/ChattitoMessageAvatar.vue": "ef3c3d25a7d0ef750972d9877994cdf05b6c375e78152bb31d939c3d78f6c5dd",
+  "components/ChattitoSymbolRegistry.vue": "83581aac11d73b9dfabbb4ee576240adac483e33ef9625fc39a34018f69db363"
+}

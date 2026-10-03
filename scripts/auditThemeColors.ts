@@ -31,7 +31,10 @@ export const migratedThemeFiles = [
   'components/ModuleListPreviewCard.vue', 'components/ModuleStateWorkflowCard.vue', 'components/ModuleRelationsCard.vue',
   'components/ModuleNavigationEditor.vue', 'components/ModuleApiDocs.vue', 'components/ModuleLabelEditor.vue', 'components/WorkflowNotificationRecipients.vue',
   'components/ChatAvatar.vue', 'components/ChatConversationList.vue', 'components/ChatThread.vue',
-  'components/ChatFloatingDock.vue', 'components/ChatGifPicker.vue', 'components/ChatGroupEditModal.vue', 'components/ChatNewConversationModal.vue'
+  'components/ChatFloatingDock.vue', 'components/ChatGifPicker.vue', 'components/ChatGroupEditModal.vue', 'components/ChatNewConversationModal.vue',
+  'pages/disenador.vue', 'components/designer/DesignerCanvas.client.vue', 'components/MarkdownView.vue',
+  'utils/designerChattito.ts', 'utils/designerWarnings.ts', 'utils/designerChat.ts', 'utils/designerClient.ts',
+  'utils/designerMarkdown.ts', 'components/ChattitoMessageAvatar.vue', 'components/ChattitoAvatar.vue'
 ] as const
 
 /** Sombras heredadas de HU-161: alfa decorativo, sin rol de texto/superficie.

@@ -24,6 +24,43 @@ export function isLabelContrast(result: { foreground: string; background: string
   return labelContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
 }
 
+/** HU-165: claros heredados del diseñador autorizados aparte; todos los oscuros nuevos exigen AA. */
+export const designerContrastPairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = [
+  ['designer-node-text', 'surface', 4.5], ['designer-node-text', 'designer-node-head', 4.5],
+  ['designer-node-text', 'designer-new-head', 4.5], ['designer-node-text', 'designer-added-row', 4.5],
+  ['designer-node-meta', 'designer-node-head', 4.5], ['designer-node-meta', 'designer-new-head', 4.5],
+  ['primary-fg', 'designer-new', 4.5], ['designer-added-text', 'designer-added-bg', 4.5],
+  ['designer-label', 'surface', 4.5], ['designer-label', 'bg', 4.5],
+  ['designer-section-text', 'designer-section-bg', 4.5], ['designer-system-text', 'dashboard-soft', 4.5],
+  ['designer-system-text', 'designer-system-tag', 4.5], ['designer-system-muted', 'dashboard-soft', 4.5],
+  ['designer-type', 'surface', 4.5], ['designer-type', 'designer-added-row', 4.5],
+  ['text-secondary', 'designer-markdown-code', 4.5], ['designer-markdown-heading', 'surface', 4.5],
+  ['designer-error-text', 'designer-error-bg', 4.5], ['designer-error-action', 'surface', 4.5],
+  ['designer-error-action', 'designer-error-hover', 4.5], ['designer-success-text', 'designer-success-bg', 4.5],
+  ['designer-success-strong', 'designer-success-bg', 4.5], ['designer-warning-text', 'designer-warning-bg', 4.5],
+  ['designer-warning-secondary', 'surface', 4.5], ['designer-warning-strong', 'designer-warning-bg', 4.5],
+  ['designer-controls-icon', 'designer-controls-bg', 4.5], ['designer-controls-icon', 'designer-controls-hover', 4.5],
+  ['text-secondary', 'bg', 4.5], ['text-secondary', 'surface', 4.5],
+  ['designer-node-border', 'surface', 3], ['designer-new', 'surface', 3],
+  ['designer-edge', 'bg', 3], ['designer-existing-edge', 'bg', 3], ['designer-new-arrow', 'bg', 3],
+  ['designer-selected-edge', 'bg', 3], ['designer-system-muted', 'bg', 3], ['designer-system-icon', 'surface', 3]
+]
+export function isDesignerContrast(result: { foreground: string; background: string }) {
+  return designerContrastPairs.some(([foreground, background]) => foreground === result.foreground && background === result.background)
+    // Contador y leyenda usan pares originales; su auditoría permanece en la sección general.
+    && (result.foreground.startsWith('designer-') || result.background.startsWith('designer-'))
+}
+
+/** Fondo efectivo compuesto en sRGB; conserva fracciones de canal y alfas reales del lienzo. */
+export function compositeContrast(foreground: string, overlay: string, background: string, alpha: number, underlay?: [string, number]) {
+  const channels = (hex: string) => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16))
+  const base = channels(background).map((value, index) => underlay ? channels(underlay[0])[index]! * underlay[1] + value * (1 - underlay[1]) : value)
+  const mixed = channels(overlay).map((value, index) => value * alpha + base[index]! * (1 - alpha))
+  const luminance = (rgb: number[]) => rgb.map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index]!, 0)
+  const a = luminance(channels(foreground)), b = luminance(mixed)
+  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
+}
+
 export function themeContrasts() {
   const pairs: [keyof typeof lightTokens, keyof typeof lightTokens, number][] = []
   for (const background of ['bg', 'surface'] as const) {
@@ -40,8 +77,13 @@ export function themeContrasts() {
   // Texto secundario de citas/nombres y metadatos propios en oscuro.
   pairs.push(['text-secondary', 'help-bg', 4.5], ['primary-fg', 'success-text', 4.5])
   pairs.push(...labelContrastPairs)
+  pairs.push(...designerContrastPairs.filter(([foreground, background]) => foreground.startsWith('designer-') || background.startsWith('designer-')))
   return (['light', 'dark'] as const).flatMap(theme => pairs.map(([foreground, background, minimum]) => {
     const tokens = theme === 'light' ? lightTokens : darkTokens
-    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: contrast(tokens[foreground], tokens[background]) }
-  }))
+    return { id: `${theme}:${foreground}/${background}`, theme, foreground, background, minimum, ratio: background === 'designer-section-bg' ? compositeContrast(tokens[foreground], tokens[background], tokens.bg, .8) : contrast(tokens[foreground], tokens[background]) }
+  }).concat([false, true].map(section => {
+    const tokens = theme === 'light' ? lightTokens : darkTokens
+    return { id: `${theme}:designer-label/surface@0.92/${section ? 'section@0.8' : 'bg'}`, theme, foreground: 'designer-label' as const, background: 'surface' as const, minimum: 4.5,
+      ratio: compositeContrast(tokens['designer-label'], tokens.surface, tokens.bg, .92, section ? [tokens['designer-section-bg'], .8] : undefined) }
+  })))
 }
