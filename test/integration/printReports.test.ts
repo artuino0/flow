@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withRecordActor } from '../../server/utils/recordActorContext'
 import type {
   listPrintReports as ListPrintReports,
   getPrintReport as GetPrintReport,
@@ -104,7 +105,8 @@ describe('printReports (Postgres real)', () => {
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT_A}, ${lotesId}, ${admin.json({ nombre: 'L1' })})`
     const before = await listPrintReports(TENANT_A, 'lotes')
 
-    const result = await previewPrintReport(TENANT_A, sampleDsl())
+    const [membership] = await admin`select role_id from users where id = ${userId}`
+    const result = await withRecordActor({ userId, roleId: membership!.role_id }, () => previewPrintReport(TENANT_A, sampleDsl()))
     expect(result.ungroupedRows.map((r) => r.values.nombre)).toContain('L1')
 
     const after = await listPrintReports(TENANT_A, 'lotes')

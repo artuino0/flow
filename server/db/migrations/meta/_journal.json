@@ -652,6 +652,13 @@
       "when": 1790607401000,
       "breakpoints": true,
       "tag": "0092_agent_usage"
+    },
+    {
+      "version": "7",
+      "idx": 93,
+      "when": 1790607402000,
+      "breakpoints": true,
+      "tag": "0093_agenda_availability"
     }
   ]
 }

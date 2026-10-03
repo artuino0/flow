@@ -17,6 +17,8 @@ let app: Sql
 async function asTenant<T>(tenantId: string, fn: (tx: TransactionSql) => Promise<T>): Promise<T> {
   const result = await app.begin(async (tx) => {
     await tx.unsafe(`select set_config('app.tenant_id', '${tenantId}', true)`)
+    // Fixture de esquema: sistema explícito local; conserva aislamiento por tenant.
+    await tx`select set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true), set_config('app.role_id', '00000000-0000-0000-0000-000000000000', true), set_config('app.record_system', 'on', true)`
     return fn(tx)
   })
   return result as T

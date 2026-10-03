@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.145.0] - 2026-10-03
+#### [feature]
+- [ERD-175](https://dydasoftware.atlassian.net/browse/ERD-175) - Agenda: horarios por usuario, bloqueos y disponibilidad. Cada persona tiene su horario semanal (con varios rangos por día) y puedes registrar bloqueos como vacaciones, festivos o ausencias, de una persona o de toda la organización. En Ajustes hay una sección Agenda con la rejilla de huecos, el margen entre citas, la anticipación mínima y los días máximos hacia adelante, con vista previa de los huecos libres. Flow ya no permite dos citas activas traslapadas para la misma persona (un administrador puede forzarlo con un motivo, y queda constancia). El plan Agenda llega con horario de lunes a viernes de 9:00 a 18:00 para el personal. Todo con modo oscuro.
+
 ### [0.144.0] - 2026-10-03
 #### [feature]
 - [ERD-174](https://dydasoftware.atlassian.net/browse/ERD-174) - Citas base: el módulo Citas ahora es un módulo de sistema protegido (no se borra ni se desactiva, y sus campos esenciales quedan con candado, pero puedes agregarle campos propios). Puedes elegir de dónde viene el cliente: vincularlo a un módulo de clientes que ya tengas o crear el módulo Clientes. Al crear un módulo (a mano o con el diseñador de IA) cuyo nombre o descripción hable de citas o agenda, Flow te pregunta si quieres usar el módulo Citas prearmado. El plan Agenda sigue llegando preconfigurado. Todo con modo oscuro.

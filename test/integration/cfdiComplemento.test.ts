@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { adminRecordTest } from '../helpers/recordActorFixture'
 import type * as CfdiDocumentsModule from '../../server/utils/cfdiDocuments'
 import type * as ComplementoModule from '../../server/utils/cfdi/complementoPagos'
 import type * as TimbradoModule from '../../server/utils/cfdi/timbrado'
@@ -132,7 +133,7 @@ afterAll(async () => {
 })
 
 describe('generarComplementoDesdeCobro', () => {
-  it('construye el documento P con sus DoctoRelacionado, saldos y parcialidades', async () => {
+  it('construye el documento P con sus DoctoRelacionado, saldos y parcialidades', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc1 = await makeRecord(entityCxc, { folio: 'CXC-1', total: 1160, moneda: 'MXN', estado: 'vigente' })
     const cxc2 = await makeRecord(entityCxc, { folio: 'CXC-2', total: 580, moneda: 'MXN', estado: 'vigente' })
     await facturaTimbrada(cxc1, 10, 1) // total 1160 (1000 + IVA 160)
@@ -170,9 +171,9 @@ describe('generarComplementoDesdeCobro', () => {
     expect(provider.lastPaymentInput?.doctos).toHaveLength(2)
     expect(provider.lastPaymentInput?.montoTotal).toBe(150)
     expect(provider.lastPaymentInput?.formaPago).toBe('03')
-  })
+  }))
 
-  it('segundo pago parcial: parcialidad 2 y saldo anterior descontado', async () => {
+  it('segundo pago parcial: parcialidad 2 y saldo anterior descontado', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-3', total: 1160, moneda: 'MXN' })
     await facturaTimbrada(cxc, 10, 3)
     const cobro1 = await makeCobroAplicado([{ cxcId: cxc, monto: 100 }])
@@ -187,39 +188,39 @@ describe('generarComplementoDesdeCobro', () => {
     expect(d2.pagos[0].numParcialidad).toBe(2)
     expect(Number(d2.pagos[0].impSaldoAnt)).toBe(1060) // 1160 − 100 ya documentados
     expect(Number(d2.pagos[0].impSaldoIns)).toBe(860)
-  })
+  }))
 
-  it('cobro no aplicado: se rechaza', async () => {
+  it('cobro no aplicado: se rechaza', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-4', total: 100 })
     const cobroId = await makeRecord(entityCobros, { fecha: '2026-09-10', monto: 100, moneda: 'MXN', estado: 'borrador' })
     await makeRecord(entityAplicaciones, { cobro: cobroId, cuenta_por_cobrar: cxc, monto: 100 })
     await expect(complementoMod.generarComplementoDesdeCobro(TENANT, null, { cobroRecordId: cobroId, formaPago: '03' })).rejects.toThrow(/aplicado/)
-  })
+  }))
 
-  it('CxC sin factura timbrada asociada: error accionable (422)', async () => {
+  it('CxC sin factura timbrada asociada: error accionable (422)', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-5', total: 100 })
     const cobroId = await makeCobroAplicado([{ cxcId: cxc, monto: 100 }])
     await expect(complementoMod.generarComplementoDesdeCobro(TENANT, null, { cobroRecordId: cobroId, formaPago: '03' })).rejects.toThrow(/no tiene una factura timbrada/)
-  })
+  }))
 
-  it('aplicación que excede el saldo pendiente: se rechaza', async () => {
+  it('aplicación que excede el saldo pendiente: se rechaza', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-6', total: 116 })
     await facturaTimbrada(cxc, 1, 4) // total 116
     const cobroId = await makeCobroAplicado([{ cxcId: cxc, monto: 5000 }])
     await expect(complementoMod.generarComplementoDesdeCobro(TENANT, null, { cobroRecordId: cobroId, formaPago: '03' })).rejects.toThrow(/excede el saldo/)
-  })
+  }))
 
-  it('sin forma de pago (ni en body ni en el método del cobro): se rechaza', async () => {
+  it('sin forma de pago (ni en body ni en el método del cobro): se rechaza', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-7', total: 116 })
     await facturaTimbrada(cxc, 1, 5)
     const cobroId = await makeCobroAplicado([{ cxcId: cxc, monto: 50 }])
     await expect(complementoMod.generarComplementoDesdeCobro(TENANT, null, { cobroRecordId: cobroId })).rejects.toThrow(/forma de pago/)
-  })
+  }))
 
-  it('serie P explícita de otro tipo: se rechaza', async () => {
+  it('serie P explícita de otro tipo: se rechaza', adminRecordTest(() => TENANT, () => admin, async () => {
     const cxc = await makeRecord(entityCxc, { folio: 'CXC-8', total: 116 })
     await facturaTimbrada(cxc, 1, 6)
     const cobroId = await makeCobroAplicado([{ cxcId: cxc, monto: 50 }])
     await expect(complementoMod.generarComplementoDesdeCobro(TENANT, null, { cobroRecordId: cobroId, formaPago: '03', serieId: serieI })).rejects.toThrow(/no es de comprobantes tipo P/)
-  })
+  }))
 })

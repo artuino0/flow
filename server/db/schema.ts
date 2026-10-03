@@ -2,8 +2,29 @@
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
 import type { DesignerWarningItem } from '~/utils/designerWarnings'
 
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint, time } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+
+export const agendaSettings = pgTable('agenda_settings', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id),
+  slotMinutes: integer('slot_minutes').notNull().default(30),
+  bufferMinutes: integer('buffer_minutes').notNull().default(0),
+  minNoticeMinutes: integer('min_notice_minutes').notNull().default(0),
+  maxDaysAhead: integer('max_days_ahead').notNull().default(30),
+  assignmentMode: text('assignment_mode').$type<'client_chooses' | 'auto' | 'both'>().notNull().default('both'),
+  conflictPolicy: text('conflict_policy').$type<'block' | 'warn'>().notNull().default('block'),
+  confirmationMessage: text('confirmation_message').notNull().default('Tu cita quedó agendada.')
+})
+export const agendaSchedules = pgTable('agenda_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id), userId: uuid('user_id').notNull().references(() => users.id),
+  weekday: integer('weekday').notNull(), startTime: time('start_time').notNull(), endTime: time('end_time').notNull(),
+  validFrom: date('valid_from'), validTo: date('valid_to')
+})
+export const agendaTimeOff = pgTable('agenda_time_off', {
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id), userId: uuid('user_id').references(() => users.id),
+  startLocal: timestamp('start_local', { mode: 'string' }).notNull(), endLocal: timestamp('end_local', { mode: 'string' }).notNull(),
+  reason: text('reason').notNull(), allDay: boolean('all_day').notNull().default(false)
+})
 
 // entities: define los objetos/modulos del sistema (ej. Clientes, Facturas, Productores).
 export const entities = pgTable('entities', {

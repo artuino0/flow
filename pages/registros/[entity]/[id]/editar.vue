@@ -46,6 +46,7 @@ const generalFormRef = ref<{ validateAll: () => boolean } | null>(null)
 const tablaFormRefs = ref<Array<{ validateAll: () => boolean } | null>>([])
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const agendaConflict = ref(false), agendaForceReason = ref('')
 
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts. Toast/Editado (variante "updated") reemplaza
@@ -67,13 +68,15 @@ async function onSubmit() {
 
   submitting.value = true
   try {
-    await $fetch(`/api/records/${slug}/${id}`, {
+    const updated = await $fetch<{ customData: Record<string, unknown> }>(`/api/records/${slug}/${id}`, {
       method: 'PUT',
-      body: { customData: formValues.value }
+      body: { customData: formValues.value, ...(agendaConflict.value && agendaForceReason.value.trim().length >= 5 ? { agendaForceReason: agendaForceReason.value.trim() } : {}) }
     })
     toast.updated('Registro actualizado', 'Los cambios se guardaron correctamente.')
+    if (updated.customData._agenda_conflict) toast.updated('Aviso: cita traslapada', 'La excepción quedó registrada en la actividad de la cita.')
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo actualizar el registro'
+    agendaConflict.value = err?.statusCode === 409 && submitError.value?.includes('Hueco ya ocupado') === true
     toast.error('No se pudo actualizar el registro', submitError.value)
   } finally {
     submitting.value = false
@@ -132,6 +135,7 @@ async function onSubmit() {
         </div>
 
         <p v-if="submitError" class="text-sm text-brand-error-text">{{ submitError }}</p>
+        <AgendaConflictOverride v-if="agendaConflict" v-model="agendaForceReason" :disabled="submitting" />
 
         <div class="flex justify-end gap-2">
           <NuxtLink

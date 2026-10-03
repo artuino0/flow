@@ -18,12 +18,13 @@ const { data: rolesData } = await useFetch<{ roles: RoleOption[] }>('/api/roles'
 const { data: chatData, refresh: refreshChat } = await useFetch<ResolvedChatPermissions>(`/api/users/${id}/chat-permissions`, { headers })
 const { data: appData, refresh: refreshApps } = await useFetch<ResolvedFlowCapabilities>(`/api/users/${id}/app-permissions`, { headers })
 
-const activeTab = ref<'profile' | 'access' | 'applications' | 'chat'>('profile')
+const activeTab = ref<'profile' | 'access' | 'applications' | 'chat' | 'agenda'>('profile')
 const userTabs = [
   { key: 'profile', label: 'Perfil', icon: UserRound },
   { key: 'access', label: 'Acceso', icon: KeyRound },
   { key: 'applications', label: 'Aplicaciones', icon: AppWindow },
   { key: 'chat', label: 'Permisos de chat', icon: ShieldCheck }
+  , { key: 'agenda', label: 'Horario de agenda', icon: UserRound }
 ] as const
 
 const roleId = ref(detail.value?.roleId ?? '')
@@ -130,6 +131,7 @@ const triStateOptions = [{ value: null, label: 'Heredar' }, { value: true, label
       </aside>
 
       <main class="min-w-0 flex-1">
+        <SettingsAgenda v-if="activeTab === 'agenda'" :user-id="id" />
         <section v-if="activeTab === 'profile'" class="rounded-lg border border-brand-border-light bg-brand-surface">
           <header class="border-b border-brand-border-light px-6 py-5"><h2 class="text-base font-bold text-brand-text">Perfil del trabajador</h2><p class="mt-1 text-sm text-brand-text-muted">Información registrada para esta organización.</p></header>
           <dl class="grid gap-x-8 gap-y-6 p-6 sm:grid-cols-2"><div><dt class="text-xs font-semibold text-brand-text-muted">Nombre completo</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.fullName || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Correo electrónico</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.email }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Teléfono</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.phone || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Puesto</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.jobTitle || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Zona horaria</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.timezone || 'Predeterminada de la organización' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Miembro desde</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ new Date(detail.createdAt).toLocaleDateString('es-MX', { dateStyle: 'long' }) }}</dd></div></dl>
@@ -151,7 +153,7 @@ const triStateOptions = [{ value: null, label: 'Heredar' }, { value: true, label
           </div>
         </section>
 
-        <section v-else class="overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
+        <section v-else-if="activeTab === 'chat'" class="overflow-hidden rounded-lg border border-brand-border-light bg-brand-surface">
           <header class="border-b border-brand-border-light px-6 py-5"><h2 class="text-base font-bold text-brand-text">Permisos de chat</h2><p class="mt-1 text-sm text-brand-text-muted">Usa el rol como base y define excepciones solo cuando sean necesarias.</p></header>
           <div class="divide-y divide-brand-border-light">
             <div v-for="permission in permissionRows" :key="permission.key" class="flex flex-col gap-3 px-6 py-5 lg:flex-row lg:items-center lg:justify-between"><div><p class="text-sm font-semibold text-brand-text">{{ permission.title }}</p><p class="mt-1 text-xs text-brand-text-muted">{{ permission.description }}</p><p class="mt-1 text-[11px] font-medium" :class="effectiveChat(permission.key) ? 'text-brand-success-text' : 'text-brand-error-text'">Permiso efectivo: {{ effectiveChat(permission.key) ? 'Permitido' : 'Bloqueado' }}</p></div><div class="flex rounded border border-brand-border bg-brand-bg p-0.5"><button v-for="option in triStateOptions" :key="String(option.value)" class="rounded px-3 py-1.5 text-xs font-semibold" :class="chatOverrides[permission.key] === option.value ? option.value === false ? 'bg-brand-surface text-brand-error-text shadow-sm' : option.value === true ? 'bg-brand-surface text-brand-success-text shadow-sm' : 'bg-brand-surface text-brand-blue shadow-sm' : 'text-brand-text-muted'" @click="setChatOverride(permission.key, option.value)">{{ option.label }}</button></div></div>

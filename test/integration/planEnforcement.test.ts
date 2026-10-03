@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withSystemRecordAccess } from '../../server/utils/recordActorContext'
 
 let testDb: TestDb
 let admin: postgres.Sql
@@ -201,8 +202,8 @@ describe('aplicación de límites por concepto con PostgreSQL real', () => {
       origin: { domain: 'example.test', path: '/', referrer: null, userAgent: null, utm: {}, capturedAt: new Date().toISOString() }
     }
     await assertPlanCapacity(id, 'formSubmissions')
-    await submitSiteForm(submission)
-    await expectPlanLimit(submitSiteForm(submission), 'formSubmissions')
+    await withSystemRecordAccess(() => submitSiteForm(submission))
+    await expectPlanLimit(withSystemRecordAccess(() => submitSiteForm(submission)), 'formSubmissions')
     const [{ count }] = await admin`select count(*)::int as count from site_form_submissions where tenant_id = ${id}`
     expect(count).toBe(1)
   })

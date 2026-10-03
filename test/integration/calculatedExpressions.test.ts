@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { adminRecordTest } from '../helpers/recordActorFixture'
 
 // Campos calculados con expresiones (varios campos, condicionales) y acumulados
 // con filtro/avg/min/max, contra un Postgres real.
@@ -66,7 +67,7 @@ describe('campos calculados con expresión', () => {
 })
 
 describe('acumulados con filtro y más funciones', () => {
-  it('suma solo lo que cumple el filtro y calcula avg/min/max; existencias = entradas - salidas', async () => {
+  it('suma solo lo que cumple el filtro y calcula avg/min/max; existencias = entradas - salidas', adminRecordTest(() => TENANT, () => admin, async () => {
     const add = async (producto: string, tipo: string, cantidad: number) => {
       const data = await db.withTenant(TENANT, tx => calc.applyCalculatedFields(tx, TENANT, movimientosId, { producto, tipo, cantidad, costo: '1.00' }))
       await admin`insert into records (tenant_id, entity_id, custom_data) values (${TENANT}, ${movimientosId}, ${admin.json(data as never)})`
@@ -96,7 +97,7 @@ describe('acumulados con filtro y más funciones', () => {
     expect(a.salidas).toBe(1)
     const b = await db.withTenant(TENANT, tx => calc.applyCalculatedFields(tx, TENANT, productosId, { nombre: 'B' }, productoB))
     expect(b.existencia).toBe(7)
-  })
+  }))
 
   it('rechaza filtros con campos inexistentes', async () => {
     await expect(fields.createEntityField(TENANT, productosId, {

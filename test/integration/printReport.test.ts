@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { adminRecordTest } from '../helpers/recordActorFixture'
 import type { executePrintReport as ExecutePrintReport, PrintReportError as PrintReportErrorType } from '../../server/utils/printReport'
 
 // ERD-88: prueba server/utils/printReport.ts (DSL + motor de ejecucion) contra
@@ -80,7 +81,7 @@ afterAll(async () => {
 })
 
 describe('printReport (Postgres real)', () => {
-  it('ejecuta un reporte agrupado con tabla relacionada: detalle + suma + reparto por condicion, sin contar registros en la papelera', async () => {
+  it('ejecuta un reporte agrupado con tabla relacionada: detalle + suma + reparto por condicion, sin contar registros en la papelera', adminRecordTest(() => TENANT_A, () => admin, async () => {
     const result = await executePrintReport(TENANT_A, {
       title: 'Bultos por Lote',
       baseEntity: 'lotes',
@@ -143,9 +144,9 @@ describe('printReport (Postgres real)', () => {
     expect(result.grandTotals.total_kilos).toBe(60)
     expect(result.grandTotals[embarcadosKey]).toBe(40)
     expect(result.grandTotals[noEmbarcadosKey]).toBe(20)
-  })
+  }))
 
-  it('rechaza repartir cuando el campo condicion esta en un lado distinto al del campo a repartir', async () => {
+  it('rechaza repartir cuando el campo condicion esta en un lado distinto al del campo a repartir', adminRecordTest(() => TENANT_A, () => admin, async () => {
     await expect(
       executePrintReport(TENANT_A, {
         title: 'Invalido',
@@ -164,9 +165,9 @@ describe('printReport (Postgres real)', () => {
         ]
       })
     ).rejects.toBeInstanceOf(PrintReportError)
-  })
+  }))
 
-  it('con includeDeleted:true en la tabla relacionada, cuenta tambien el bulto en la papelera', async () => {
+  it('con includeDeleted:true en la tabla relacionada, cuenta tambien el bulto en la papelera', adminRecordTest(() => TENANT_A, () => admin, async () => {
     const result = await executePrintReport(TENANT_A, {
       title: 'Bultos por Lote (con papelera)',
       baseEntity: 'lotes',
@@ -177,9 +178,9 @@ describe('printReport (Postgres real)', () => {
     })
     const groupL1 = result.groups.find((g) => g.label === 'L1')
     expect(groupL1!.subtotals.total_kilos).toBe(1059) // 10+20+30+999
-  })
+  }))
 
-  it('reporte sin agrupar ni tabla relacionada: filas planas de la entidad base', async () => {
+  it('reporte sin agrupar ni tabla relacionada: filas planas de la entidad base', adminRecordTest(() => TENANT_A, () => admin, async () => {
     const result = await executePrintReport(TENANT_A, {
       title: 'Lotes',
       baseEntity: 'lotes',
@@ -194,9 +195,9 @@ describe('printReport (Postgres real)', () => {
     expect(result.ungroupedRows).toHaveLength(2)
     expect(result.grandTotals.costo).toBe(400)
     expect(result.ungroupedRows.map((r) => r.values.nombre).sort()).toEqual(['L1', 'L2'])
-  })
+  }))
 
-  it('rechaza sumar/repartir sobre un campo no numerico', async () => {
+  it('rechaza sumar/repartir sobre un campo no numerico', adminRecordTest(() => TENANT_A, () => admin, async () => {
     await expect(
       executePrintReport(TENANT_A, {
         title: 'Invalido',
@@ -206,9 +207,9 @@ describe('printReport (Postgres real)', () => {
         columns: [{ kind: 'sumar', key: 'nombre_sumado', label: 'Nombre', source: { side: 'base', forwardHops: [], field: 'nombre' } }]
       })
     ).rejects.toBeInstanceOf(PrintReportError)
-  })
+  }))
 
-  it('rechaza una entidad base inexistente', async () => {
+  it('rechaza una entidad base inexistente', adminRecordTest(() => TENANT_A, () => admin, async () => {
     await expect(
       executePrintReport(TENANT_A, {
         title: 'Invalido',
@@ -218,9 +219,9 @@ describe('printReport (Postgres real)', () => {
         columns: [{ kind: 'detalle', key: 'x', label: 'X', source: { side: 'base', forwardHops: [], field: 'x' } }]
       })
     ).rejects.toBeInstanceOf(PrintReportError)
-  })
+  }))
 
-  it('rechaza una tabla relacionada cuyo campo no apunta de vuelta a la entidad base', async () => {
+  it('rechaza una tabla relacionada cuyo campo no apunta de vuelta a la entidad base', adminRecordTest(() => TENANT_A, () => admin, async () => {
     await expect(
       executePrintReport(TENANT_A, {
         title: 'Invalido',
@@ -231,9 +232,9 @@ describe('printReport (Postgres real)', () => {
         columns: [{ kind: 'detalle', key: 'kilos', label: 'Kilos', source: { side: 'detail', forwardHops: [], field: 'kilos' } }]
       })
     ).rejects.toBeInstanceOf(PrintReportError)
-  })
+  }))
 
-  it('filtra por folio (incremental) con el texto exacto, con ceros a la izquierda y con prefijo, sin reventar el cast', async () => {
+  it('filtra por folio (incremental) con el texto exacto, con ceros a la izquierda y con prefijo, sin reventar el cast', adminRecordTest(() => TENANT_A, () => admin, async () => {
     const pedidosId = await createEntity('Pedidos', 'pedidos-folio')
     await createField(pedidosId, 'folio', 'Folio', 'incremental', { digits: 6 })
     await createField(pedidosId, 'nota', 'Nota', 'text')
@@ -252,5 +253,5 @@ describe('printReport (Postgres real)', () => {
     expect(await notes('000001')).toEqual(['uno'])
     expect(await notes('1')).toEqual(['uno']) // el filtro numérico de siempre sigue funcionando
     expect(await notes('PED-000003')).toEqual(['tres'])
-  })
+  }))
 })

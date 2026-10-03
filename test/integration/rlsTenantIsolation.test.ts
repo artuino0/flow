@@ -19,6 +19,8 @@ let app: Sql
 async function asTenant<T>(tenantId: string, fn: (tx: TransactionSql) => Promise<T>): Promise<T> {
   const result = await app.begin(async (tx) => {
     await tx.unsafe(`select set_config('app.tenant_id', '${tenantId}', true)`)
+    // Fixture de aislamiento de tenant: sistema explícito, erp_app sigue sujeto a RLS.
+    await tx`select set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true), set_config('app.role_id', '00000000-0000-0000-0000-000000000000', true), set_config('app.record_system', 'on', true)`
     return fn(tx)
   })
   return result as T
@@ -109,5 +111,16 @@ describe('RLS: aislamiento por tenant_id (Postgres real, rol erp_app)', () => {
 
     const rowsAsA = await asTenant(TENANT_A, (tx) => tx.unsafe('select custom_data from records'))
     expect(rowsAsA.map((r) => r.custom_data.nombre)).toEqual(['A1'])
+  })
+
+  it('0091 sigue fail-closed sin actor ni sistema, incluso con tenant válido', async () => {
+    const rows = await asTenant(TENANT_A, async tx => {
+      await tx`select set_config('app.record_system', 'off', true)`
+      return tx`select custom_data from records`
+    })
+    expect(rows).toHaveLength(0)
+    // El contexto de sistema de una fixture no se vuelve un permiso por omisión.
+    const visible = await asTenant(TENANT_A, tx => tx`select custom_data from records`)
+    expect(visible.map(row => row.custom_data.nombre)).toEqual(['A1'])
   })
 })

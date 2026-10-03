@@ -172,6 +172,7 @@ onBeforeUnmount(() => emit('dirty', false))
       <div class="flex items-center gap-3 border-b border-brand-border-light p-5">
         <UserRound class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
         <h2 class="text-[15px] font-bold text-brand-text">Tu perfil</h2>
+        <div class="mt-3 flex flex-wrap gap-4"><NuxtLink to="/ajustes?section=mi-horario" class="text-sm font-semibold text-brand-blue">Mi horario</NuxtLink><NuxtLink to="/ajustes?section=agenda" class="text-sm font-semibold text-brand-blue">Agenda de la organización</NuxtLink></div>
       </div>
       <div class="flex flex-col gap-4 p-5">
         <div class="flex items-center gap-3"><span class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-blue-bg text-lg font-semibold text-brand-blue">{{ (user?.fullName || user?.email || '?').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase() }}</span><div><p class="text-sm font-semibold text-brand-text">{{ user?.fullName }}</p><p class="text-xs text-brand-text-muted">{{ user?.jobTitle || user?.email }}</p></div></div>

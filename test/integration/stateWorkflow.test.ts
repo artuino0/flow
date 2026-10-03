@@ -3,6 +3,7 @@ import { createError } from 'h3'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withRecordActor, withSystemRecordAccess } from '../../server/utils/recordActorContext'
 
 const TENANT = randomUUID()
 let testDb: TestDb
@@ -60,9 +61,15 @@ beforeAll(async () => {
   vi.stubGlobal('createError', createError)
   vi.stubGlobal('readValidatedBody', async (event: any, parse: (body: unknown) => unknown) => parse(event.context.body))
   vi.stubGlobal('setResponseStatus', () => {})
-  deleteRecord = (await import('../../server/api/records/[entity]/[id].delete')).default
-  patchRecord = (await import('../../server/api/records/[entity]/[id].patch')).default
-  createRecord = (await import('../../server/api/records/[entity]/index.post')).default
+  const deleteHandler = (await import('../../server/api/records/[entity]/[id].delete')).default
+  const patchHandler = (await import('../../server/api/records/[entity]/[id].patch')).default
+  const createHandler = (await import('../../server/api/records/[entity]/index.post')).default
+  // La invocación directa de un handler no instala el contexto de Nitro.
+  const asEventActor = (event: any, handler: (event: any) => Promise<any>) =>
+    withRecordActor({ userId: event.context.auth.sub, roleId: event.context.auth.roleId }, () => handler(event))
+  deleteRecord = event => asEventActor(event, deleteHandler)
+  patchRecord = event => asEventActor(event, patchHandler)
+  createRecord = event => asEventActor(event, createHandler)
 }, 60_000)
 
 afterAll(async () => { await admin.end(); await testDb.stop() })
@@ -122,7 +129,7 @@ describe('stateWorkflow (Postgres real)', () => {
     await admin`delete from records where entity_id = ${lineEntityId} and custom_data->>'pedido' = ${recordId}`
   }
   function evaluate(next: Record<string, unknown>, acknowledgeWarnings = false, roleId = adminRoleId) {
-    return withTenant(TENANT, tx => workflow.enforceWorkflowChange(tx, { tenantId: TENANT, entityId, roleId, userId, recordId, current: { estado: 'borrador', referencia: '' }, next: { estado: 'pagado', referencia: '', ...next }, changedFields: ['estado'], acknowledgeWarnings }))
+    return withRecordActor({ userId, roleId }, () => withTenant(TENANT, tx => workflow.enforceWorkflowChange(tx, { tenantId: TENANT, entityId, roleId, userId, recordId, current: { estado: 'borrador', referencia: '' }, next: { estado: 'pagado', referencia: '', ...next }, changedFields: ['estado'], acknowledgeWarnings })))
   }
 
   it('required bloquea valores vacíos y deja pasar valores informados; warn exige acknowledgeWarnings y audita usuario y transición', async () => {
@@ -192,7 +199,7 @@ describe('stateWorkflow (Postgres real)', () => {
     await setRules([{ type: 'required', mode: 'warn', when: { to: 'pagado' }, fields: ['referencia'], message: 'La automatización acepta referencia vacía' }], 'all')
     const [trigger] = await admin`insert into triggers (tenant_id, entity_id, name, trigger_event, condition, is_active) values (${TENANT}, ${entityId}, 'Workflow aviso', 'on_update', ${admin.json({ always: true })}, true) returning id`
     await admin`insert into trigger_actions (tenant_id, trigger_id, action_type, config, execution_order) values (${TENANT}, ${trigger!.id}, 'update_field', ${admin.json({ field: 'estado', value: 'pagado' })}, 0)`
-    await automation.executeTriggerActions(TENANT, entityId, trigger!.id, 'Workflow aviso', recordId, 'on_update', { estado: 'borrador', referencia: '' })
+    await withSystemRecordAccess(() => automation.executeTriggerActions(TENANT, entityId, trigger!.id, 'Workflow aviso', recordId, 'on_update', { estado: 'borrador', referencia: '' }))
     const [log] = await admin`select status, last_error, request_payload from trigger_logs where trigger_id = ${trigger!.id} order by created_at desc limit 1`
     expect(log?.status).toBe('success')
     expect(log?.request_payload).toMatchObject({ acceptedWarnings: ['La automatización acepta referencia vacía: referencia'] })

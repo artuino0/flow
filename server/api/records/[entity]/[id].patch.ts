@@ -10,11 +10,13 @@ import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { assertBlockingWorkflowActions, WorkflowTransitionBlockedError } from '~/server/utils/workflowPreflight'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents } from '~/server/utils/calculatedFields'
 import { assertEditableLineParents, enforceWorkflowChange, StateWorkflowError } from '~/server/utils/stateWorkflow'
+import { setAgendaForce, agendaDatabaseError } from '~/server/utils/agendaConflict'
 
 const bodySchema = z.object({
   changes: z.record(z.any()).refine(value => Object.keys(value).length > 0, 'Debes enviar al menos un cambio'),
   expectedUpdatedAt: z.string().datetime().optional()
   , acknowledgeWarnings: z.boolean().optional()
+  , agendaForceReason: z.string().trim().min(5).max(500).optional()
 })
 
 export default defineEventHandler(async event => {
@@ -25,6 +27,7 @@ export default defineEventHandler(async event => {
   const dynamicSchema = await getEntityZodSchema(auth.tenantId, entity.id)
 
   const result = await withTenant(auth.tenantId, async tx => {
+    await setAgendaForce(tx, auth, body.agendaForceReason)
     const where = [eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted]
     const [current] = await tx.select().from(records).where(and(...where)).limit(1)
     if (!current) return { kind: 'missing' as const }
@@ -71,7 +74,7 @@ export default defineEventHandler(async event => {
     await tx.insert(recordActivities).values({ tenantId: auth.tenantId, recordId: id, userId: auth.sub, actionType: 'UPDATED', details: { changes } })
     await recalculateCalculatedDependents(tx, auth.tenantId, entity.id, currentData, customData)
     return { kind: 'updated' as const, row: updated, previousData: currentData }
-  })
+  }).catch(agendaDatabaseError)
 
   if (result.kind === 'missing') throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   if (result.kind === 'conflict') throw createError({ statusCode: 409, statusMessage: 'El registro cambió mientras lo estabas editando. Actualiza el tablero e inténtalo otra vez.' })

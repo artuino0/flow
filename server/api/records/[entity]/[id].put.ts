@@ -10,8 +10,9 @@ import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { assertBlockingWorkflowActions, WorkflowTransitionBlockedError } from '~/server/utils/workflowPreflight'
 import { applyCalculatedFields, isCalculatedField, recalculateCalculatedDependents } from '~/server/utils/calculatedFields'
 import { assertEditableLineParents, enforceWorkflowChange, StateWorkflowError } from '~/server/utils/stateWorkflow'
+import { setAgendaForce, agendaDatabaseError } from '~/server/utils/agendaConflict'
 
-const bodySchema = z.object({ customData: z.record(z.any()), acknowledgeWarnings: z.boolean().optional() })
+const bodySchema = z.object({ customData: z.record(z.any()), acknowledgeWarnings: z.boolean().optional(), agendaForceReason: z.string().trim().min(5).max(500).optional() })
 
 export default defineEventHandler(async (event) => {
   const entitySlug = getRouterParam(event, 'entity')!
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
   let previousData: Record<string, unknown> | undefined
 
   const row = await withTenant(auth.tenantId, async (tx) => {
+    await setAgendaForce(tx, auth, body.agendaForceReason)
     const [current] = await tx.select({ customData: records.customData }).from(records)
       .where(and(eq(records.id, id), eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), recordNotDeleted)).limit(1)
     if (!current) return undefined
@@ -64,7 +66,7 @@ export default defineEventHandler(async (event) => {
     if (changes.length) await tx.insert(recordActivities).values({ tenantId: auth.tenantId, recordId: id, userId: auth.sub, actionType: 'UPDATED', details: { changes } })
     await recalculateCalculatedDependents(tx, auth.tenantId, entity.id, currentData, customData)
     return updated
-  })
+  }).catch(agendaDatabaseError)
 
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Registro no encontrado' })
   fireTriggersForRecord(auth.tenantId, entity.id, 'on_update', row.id, row.customData as Record<string, unknown>, previousData)

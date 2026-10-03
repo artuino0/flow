@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withFixtureAdmin } from '../helpers/recordActorFixture'
 import type { executeTriggerActions as ExecuteTriggerActions } from '../../server/utils/triggerActions'
 import type { runJobQueueTick as RunJobQueueTick } from '../../server/utils/jobQueue'
 
@@ -100,12 +101,12 @@ describe('executeTriggerActions - accion email', () => {
     const { templateRelationData } = await import('../../server/utils/templateRelations')
     await admin`insert into entity_fields (entity_id, name, label, data_type, validation_rules) values (${entityId}, 'cliente', 'Cliente', 'relation', ${admin.json({ relationEntity: 'facturas' })})`
     const related = await insertRecord({ nombre: 'Cliente relacionado' })
-    const resolved = await templateRelationData(TENANT_A, entityId, { cliente: related }, ['{{cliente.nombre}}'])
+    const resolved = await withFixtureAdmin(TENANT_A, admin, () => templateRelationData(TENANT_A, entityId, { cliente: related }, ['{{cliente.nombre}}']))
     expect(resolved['cliente.nombre']).toBe('Cliente relacionado')
     const foreignTenant = randomUUID()
     await admin`insert into tenants (id, name) values (${foreignTenant}, 'Otro tenant')`
     const [foreign] = await admin`insert into records (entity_id, tenant_id, custom_data) values (${entityId}, ${foreignTenant}, ${admin.json({ nombre: 'Privado' })}) returning id`
-    await expect(templateRelationData(TENANT_A, entityId, { cliente: foreign.id }, ['{{cliente.nombre}}'])).rejects.toThrow('no está disponible')
+    await expect(withFixtureAdmin(TENANT_A, admin, () => templateRelationData(TENANT_A, entityId, { cliente: foreign.id }, ['{{cliente.nombre}}']))).rejects.toThrow('no está disponible')
     expect(sendMailMock).not.toHaveBeenCalled()
   })
   it('exito: interpola to/subject/body contra el customData del record y envia via SMTP', async () => {

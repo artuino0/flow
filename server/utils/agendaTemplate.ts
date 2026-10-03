@@ -5,6 +5,7 @@ import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields } from '~/server/db/schema'
 import { isAgendaBase } from '~/utils/agendaBase'
+import { initializeAgenda } from '~/server/utils/agendaAdmin'
 
 export type AgendaClientChoice = { mode: 'create' } | { mode: 'link'; entityId: string }
 
@@ -96,11 +97,15 @@ export const agendaBlueprint: Blueprint = {
 
 export async function installAgendaTemplate(tenantId: string, choice: AgendaClientChoice = { mode: 'create' }) {
   const installed = await withTenant(tenantId, tx => tx.select({ id: entities.id, slug: entities.slug, templateKey: entities.templateKey }).from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.slug, 'agenda-citas'))).limit(1))
-  if (installed[0] && isAgendaBase(installed[0])) return { modules: installed, fields: [], associations: [], layouts: [], workflows: [], merges: [] }
+  if (installed[0] && isAgendaBase(installed[0])) {
+    await initializeAgenda(tenantId)
+    return { modules: installed, fields: [], associations: [], layouts: [], workflows: [], merges: [] }
+  }
   const target = choice.mode === 'link' ? await withTenant(tenantId, tx => agendaClientTarget(tx, tenantId, choice.entityId)) : undefined
   const blueprint = agendaBlueprintForClient(target?.slug)
   const collisions = await withTenant(tenantId, tx => tx.select({ slug: entities.slug }).from(entities).where(eq(entities.tenantId, tenantId)))
   if (blueprint.modules.some(module => collisions.some(existing => existing.slug === module.slug))) throw createError({ statusCode: 422, statusMessage: 'Ya existe un módulo con un identificador reservado de Agenda. Conservamos tus módulos; cambia ese identificador antes de instalar Citas base.' })
   const result = await applyBlueprint(tenantId, null, blueprint, 'system:agenda:v1', 'agenda')
+  await initializeAgenda(tenantId)
   return result
 }

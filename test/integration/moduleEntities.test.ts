@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { withFixtureAdmin } from '../helpers/recordActorFixture'
 import type {
   createEntity as CreateEntity,
   updateEntity as UpdateEntity,
@@ -198,7 +199,7 @@ describe('moduleEntities (Postgres real)', () => {
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${tenantCounts}, ${withData.id}, '{}')`
     await admin`insert into entity_fields (entity_id, name, label, data_type) values (${withData.id}, 'nombre', 'Nombre', 'text')`
 
-    const result = await listEntities(tenantCounts)
+    const result = await withFixtureAdmin(tenantCounts, admin, () => listEntities(tenantCounts))
     expect(result.find((e) => e.slug === 'con-datos')).toMatchObject({ recordCount: 2, fieldCount: 1 })
     expect(result.find((e) => e.slug === 'vacio')).toMatchObject({ recordCount: 0, fieldCount: 0 })
   })
@@ -214,7 +215,7 @@ describe('moduleEntities (Postgres real)', () => {
     await admin`insert into records (tenant_id, entity_id, custom_data) values (${tenantSoftDelete}, ${entity.id}, '{}')`
     await admin`insert into records (tenant_id, entity_id, custom_data, deleted_at) values (${tenantSoftDelete}, ${entity.id}, '{}', now())`
 
-    const result = await listEntities(tenantSoftDelete)
+    const result = await withFixtureAdmin(tenantSoftDelete, admin, () => listEntities(tenantSoftDelete))
     expect(result.find((e) => e.slug === 'con-papelera')).toMatchObject({ recordCount: 1 })
   })
 

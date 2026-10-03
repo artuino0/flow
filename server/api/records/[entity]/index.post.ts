@@ -10,8 +10,9 @@ import { generateIncrementalValue, MissingIncrementalPrefixError } from '~/serve
 import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
 import { stateWorkflowSchema, assertEditableLineParents, StateWorkflowError } from '~/server/utils/stateWorkflow'
+import { setAgendaForce, agendaDatabaseError } from '~/server/utils/agendaConflict'
 
-const bodySchema = z.object({ customData: z.record(z.any()).default({}) })
+const bodySchema = z.object({ customData: z.record(z.any()).default({}), agendaForceReason: z.string().trim().min(5).max(500).optional() })
 
 export default defineEventHandler(async (event) => {
   const entitySlug = getRouterParam(event, 'entity')!
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
   let row
   try {
     row = await withTenant(auth.tenantId, async (tx) => {
+      await setAgendaForce(tx, auth, body.agendaForceReason)
       const allFields = await tx
         .select({ id: entityFields.id, name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
         .from(entityFields)
@@ -49,7 +51,7 @@ export default defineEventHandler(async (event) => {
     })
   } catch (err) {
     if (err instanceof MissingIncrementalPrefixError) throw createError({ statusCode: 422, statusMessage: err.message })
-    throw err
+    agendaDatabaseError(err)
   }
 
   fireTriggersForRecord(auth.tenantId, entity.id, 'on_create', row.id, row.customData as Record<string, unknown>)

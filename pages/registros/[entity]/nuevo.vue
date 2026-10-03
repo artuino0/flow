@@ -87,6 +87,7 @@ const generalFormRef = ref<{ validateAll: () => boolean } | null>(null)
 const tablaFormRefs = ref<Array<{ validateAll: () => boolean } | null>>([])
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const agendaConflict = ref(false), agendaForceReason = ref('')
 
 // Pedido directo del usuario ("aplica los toast, checa donde deben ir") -
 // ver composables/useToast.ts. Toast/Guardado (variante "success") en la
@@ -112,9 +113,10 @@ async function onSubmit() {
   try {
     const res = await $fetch<any>(`/api/records/${slug}`, {
       method: 'POST',
-      body: { customData: formValues.value }
+      body: { customData: formValues.value, ...(agendaConflict.value && agendaForceReason.value.trim().length >= 5 ? { agendaForceReason: agendaForceReason.value.trim() } : {}) }
     })
     toast.success('Registro creado', `Se creó un nuevo registro en ${data.value?.entity?.singularName || data.value?.entity?.name || slug}.`)
+    if (res.customData?._agenda_conflict) toast.updated('Aviso: cita traslapada', 'La excepción quedó registrada en la actividad de la cita.')
     
     // Redirect to the newly created record's detail view
     const newId = res.id
@@ -125,6 +127,7 @@ async function onSubmit() {
     }
   } catch (err: any) {
     submitError.value = err?.data?.statusMessage || 'No se pudo crear el registro'
+    agendaConflict.value = err?.statusCode === 409 && submitError.value?.includes('Hueco ya ocupado') === true
     toast.error('No se pudo crear el registro', submitError.value)
   } finally {
     submitting.value = false
@@ -163,6 +166,7 @@ async function onSubmit() {
             <p v-else class="text-sm text-brand-text-muted">No hay campos generales configurados.</p>
             
             <p v-if="submitError" class="mt-4 text-sm text-brand-error-text">{{ submitError }}</p>
+            <AgendaConflictOverride v-if="agendaConflict" v-model="agendaForceReason" :disabled="submitting" />
 
             <div class="mt-6 flex flex-col gap-2">
               <button

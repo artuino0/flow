@@ -27,6 +27,8 @@ const { fetchMe } = useAuth()
 const section = ref(String(route.query.section || (isAdmin.value ? 'organizacion' : 'perfil')))
 const settingsHeader = computed(() => ({
   perfil: { title: 'Mi perfil', description: 'Administra tus datos personales y preferencias de acceso.' },
+  agenda: { title: 'Agenda', description: 'Configura horarios, bloqueos y disponibilidad.' },
+  'mi-horario': { title: 'Mi horario', description: 'Administra tus horas de atención y ausencias.' },
   seguridad: { title: 'Seguridad y sesiones', description: 'Protege tu cuenta y revisa las sesiones activas.' },
   plan: { title: 'Plan y consumo', description: 'Administra tu suscripción, límites y uso de recursos.' },
   organizacion: { title: 'Organización', description: 'Configura los datos generales y fiscales de tu empresa.' },
@@ -40,7 +42,7 @@ const settingsHeader = computed(() => ({
 async function refreshBilling() {
   await Promise.all([refreshNuxtData('billing-overview'), refreshNuxtData('billing-plans')])
 }
-const allowed = computed(() => isAdmin.value || section.value === 'perfil' || section.value === 'seguridad')
+const allowed = computed(() => isAdmin.value || ['perfil', 'seguridad', 'agenda', 'mi-horario'].includes(section.value))
 watch(() => route.query.section, value => {
   section.value = typeof value === 'string' ? value : (isAdmin.value ? 'organizacion' : 'perfil')
 })
@@ -407,6 +409,7 @@ async function testPac() {
     <div class="min-w-0 space-y-5">
 
         <section v-if="!allowed" class="settings-card"><h2>Acceso restringido</h2><p>Los ajustes de empresa solo están disponibles para administradores.</p><button class="settings-button mt-4" @click="selectSection('perfil')">Ir a mi perfil</button></section>
+        <SettingsAgenda v-else-if="section === 'agenda' || section === 'mi-horario'" :own-only="section === 'mi-horario'" @dirty="childDirty = $event" />
         <template v-else-if="section === 'perfil'"><SettingsProfile mode="profile" @dirty="childDirty = $event" @security="selectSection('seguridad')" /><SettingsSessions /><SettingsApiKeys personal /></template>
         <template v-else-if="section === 'seguridad'">
           <form v-if="isAdmin && tenant" class="settings-card" @submit.prevent="onSave">
@@ -631,4 +634,3 @@ input, textarea, select { color-scheme: inherit; }
 .settings-select :deep(.report-option-trigger) { @apply min-h-10 w-full font-normal; }
 .settings-select :deep(.report-option-menu) { @apply max-h-64 overflow-y-auto; }
 </style>
-
