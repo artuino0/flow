@@ -1,16 +1,23 @@
-import type { H3Event } from 'h3'
+import { getRequestURL, sendRedirect, setResponseHeader, type H3Event } from 'h3'
+import { siteRequestHasTraversal } from '~/utils/siteAssetPath'
 import { normalizeSitePath } from '~/server/utils/sites'
 import { renderPublicSiteDocument, resolvePublishedPreview } from '~/server/utils/siteDomains'
-import { protectSiteAgendaDocument, siteAgendaPresentation } from '~/server/utils/siteAgenda'
+import { protectSiteAgendaDocument, sandboxSitePreview, siteAgendaPresentation } from '~/server/utils/siteAgenda'
+import { sendRelativeSiteAsset, sitePublicNotFound } from './publicSiteAssets'
+import { sandboxSiteFormsDocument } from './sitePreviewForms'
 export async function sendSitePreview(event: H3Event, siteId: string, rawPath = '/') {
-  if (!/^[0-9a-f-]{36}$/i.test(siteId)) throw createError({ statusCode: 404, statusMessage: 'Sitio no encontrado' })
-  let path = '/'
-  try { path = normalizeSitePath(rawPath) } catch { throw createError({ statusCode: 404, statusMessage: 'Página no encontrada' }) }
-  const page = await resolvePublishedPreview(siteId, path)
-  if (!page) throw createError({ statusCode: 404, statusMessage: 'Publica esta página antes de abrir la vista pública' })
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(siteId) || siteRequestHasTraversal(event.node.req.url ?? '')) return sitePublicNotFound(event)
+  const url = getRequestURL(event)
+  if (url.pathname === `/site-preview/${siteId}`) return sendRedirect(event, `${url.pathname}/${url.search}`, 308)
+  let path: string | undefined
+  try { path = normalizeSitePath(rawPath) } catch { path = undefined }
+  const page = path ? await resolvePublishedPreview(siteId, path) : null
+  if (!page) return sendRelativeSiteAsset(event, await resolvePublishedPreview(siteId, '/'), rawPath)
   setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
   setResponseHeader(event, 'x-robots-tag', 'noindex, nofollow')
-  const agenda = await siteAgendaPresentation(event, page)
+  const sandboxed = sandboxSitePreview(event, page)
+  const agenda = await siteAgendaPresentation(event, page, sandboxed)
   if (agenda) setResponseHeader(event, 'cache-control', 'no-store')
-  return renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page))
+  const document = renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page))
+  return sandboxed ? sandboxSiteFormsDocument(document) : document
 }

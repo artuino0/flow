@@ -7,7 +7,7 @@ export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
   const parts = await readMultipartFormData(event)
   const file = parts?.find(part => part.filename)
-  if (!file?.filename) throw createError({ statusCode: 422, statusMessage: 'Selecciona una imagen o fuente para subir' })
+  if (!file?.filename) throw createError({ statusCode: 422, statusMessage: 'Selecciona una imagen, fuente, CSS o JavaScript para subir' })
   try {
     await assertPlanCapacity(auth.tenantId, 'storageBytes', file.data.length)
     const asset = await storeSiteAsset(auth.tenantId, getRouterParam(event, 'siteId')!, auth.sub, {

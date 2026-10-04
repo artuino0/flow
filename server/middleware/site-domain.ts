@@ -1,4 +1,6 @@
-import type { H3Event } from 'h3'
+import { defineEventHandler, getHeader, getRequestURL, setResponseHeader, setResponseStatus, type H3Event } from 'h3'
+import { siteRelativeAssetName, siteRequestHasTraversal } from '~/utils/siteAssetPath'
+import { sendRelativeSiteAsset, sitePublicNotFound } from '~/server/utils/publicSiteAssets'
 import { normalizeSitePath } from '~/server/utils/sites'
 import { isActiveSiteDomain, renderPublicSiteDocument, resolvePublishedDomain } from '~/server/utils/siteDomains'
 import { protectSiteAgendaDocument, siteAgendaPresentation } from '~/server/utils/siteAgenda'
@@ -20,9 +22,13 @@ export default defineEventHandler(async event => {
   if (path.startsWith('/api/') || path.startsWith('/_nuxt/') || path.startsWith('/site-preview/') || path.startsWith('/agenda-manage/')) return
   const hostname = requestHostname(event)
   if (!hostname || reservedHostnames().has(hostname) || hostname.endsWith('.vercel.app')) return
-  let normalizedPath: string
-  try { normalizedPath = normalizeSitePath(path) } catch { return }
-  const page = await resolvePublishedDomain(hostname, normalizedPath)
+  if (siteRequestHasTraversal(event.node.req.url ?? '')) {
+    if (await isActiveSiteDomain(hostname)) return sitePublicNotFound(event)
+    return
+  }
+  let normalizedPath: string | undefined
+  try { normalizedPath = normalizeSitePath(path) } catch { normalizedPath = undefined }
+  const page = normalizedPath ? await resolvePublishedDomain(hostname, normalizedPath) : null
   if (page) {
     setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
     setResponseHeader(event, 'cache-control', 'public, s-maxage=60, stale-while-revalidate=300')
@@ -30,8 +36,13 @@ export default defineEventHandler(async event => {
     if (agenda) setResponseHeader(event, 'cache-control', 'no-store')
     return renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page))
   }
-  if (/\.[a-z0-9]{2,8}$/i.test(path)) return
+  const assetName = /\.[a-z0-9]{2,8}$/i.test(path) || path.startsWith('/assets/') ? siteRelativeAssetName(path) : null
+  if (assetName) {
+    const root = await resolvePublishedDomain(hostname, '/')
+    if (root) return sendRelativeSiteAsset(event, root, path)
+  }
   if (await isActiveSiteDomain(hostname)) {
+    if (assetName || /\.[a-z0-9]{2,8}$/i.test(path)) return sitePublicNotFound(event)
     setResponseStatus(event, 404)
     setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
     return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Página no encontrada</title></head><body style="font-family:Inter,system-ui,sans-serif;color:#33475b;padding:64px"><h1>Página no encontrada</h1><p>La ruta solicitada no está publicada.</p></body></html>'

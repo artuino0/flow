@@ -1,20 +1,27 @@
 import { getHeader, getRequestURL, setResponseHeader, type H3Event } from 'h3'
-import { randomBytes } from 'node:crypto'
 import { analyzeAgendaMarkers } from '~/utils/agendaMarkers'
+import { hasSiteAuthorScripts } from '~/utils/siteAuthorScripts'
 import type { PublicSitePage } from './siteDomains'
-import { publicAgendaPresentation, resolveAgendaContext } from './agendaPublic'
+import { agendaFlowOrigin, publicAgendaPresentation, resolveAgendaContext } from './agendaPublic'
 
 export function protectSiteAgendaDocument(event: H3Event, page: PublicSitePage) {
   if (!analyzeAgendaMarkers(page.html).length) return undefined
-  const nonce = randomBytes(24).toString('base64')
-  setResponseHeader(event, 'Content-Security-Policy', `script-src 'nonce-${nonce}'; script-src-attr 'none'; object-src 'none'; base-uri 'self'`)
-  setResponseHeader(event, 'Referrer-Policy', 'no-referrer')
+  // La página pertenece al autor: Agenda no limita sus scripts ni enlaces.
   setResponseHeader(event, 'Cache-Control', 'no-store')
-  return nonce
+  return undefined
 }
 
-export async function siteAgendaPresentation(event: H3Event, page: PublicSitePage) {
+export function sandboxSitePreview(event: H3Event, page: PublicSitePage) {
+  const url = getRequestURL(event)
+  if (process.env.NODE_ENV !== 'production' || !url.pathname.startsWith('/site-preview/') || url.origin !== agendaFlowOrigin() || !hasSiteAuthorScripts(page.html)) return false
+  setResponseHeader(event, 'Content-Security-Policy', 'sandbox allow-scripts allow-forms allow-popups allow-modals')
+  return true
+}
+
+export async function siteAgendaPresentation(event: H3Event, page: PublicSitePage, preview = false) {
   if (!analyzeAgendaMarkers(page.html).length) return undefined
+  if (preview) return { enabled: true, services: [{ id: 'demo', name: 'Servicio de ejemplo' }], people: [{ id: 'demo-person', name: 'Persona de ejemplo' }],
+    runtime: { site: page.siteId, page: page.pageId, locale: page.siteLocale, accent: 'rgb(0 110 132)', timezone: 'UTC', preview: true } }
   const url = getRequestURL(event)
   const host = getHeader(event, 'host') ?? url.host
   try {

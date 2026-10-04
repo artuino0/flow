@@ -2,15 +2,17 @@ import { MAX_FILE_SIZE_BYTES } from '~/server/utils/fieldValidations/filePolicy'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { chatAttachments, chatMessages, chatParticipants, entities, files, siteAssets, sites, tenants } from '~/server/db/schema'
+import { chatAttachments, chatMessages, chatParticipants, entities, files, siteAssets, sitePages, sites, tenants } from '~/server/db/schema'
+import { siteRelativeAssetName } from '~/utils/siteAssetPath'
+import type { PublicSitePage } from './siteDomains'
 import { deleteStoredObject, getStoredObject, localObjectPath, putStoredObject, StoredObjectNotFoundError } from '~/server/utils/objectStorage'
 import { releaseStorage, reserveStorage } from '~/server/utils/storageUsage'
 import { getPublicAppBaseUrl } from '~/server/utils/publicUrls'
 
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024
-const MAX_SITE_ASSET_BYTES = 15 * 1024 * 1024
+export const MAX_SITE_ASSET_BYTES = 15 * 1024 * 1024
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
 const SITE_ASSET_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml', 'font/woff', 'font/woff2', 'application/font-woff', 'application/font-woff2'])
 
@@ -173,7 +175,10 @@ export async function readManagedTenantLogo(storageKey: string) { return readTen
 export function managedTenantLogoUrl(tenantId: string) { return `${getPublicAppBaseUrl()}/api/public/tenant/${tenantId}/logo` }
 
 export async function storeSiteAsset(tenantId: string, siteId: string, userId: string, input: { fileName: string; mimeType: string; buffer: Buffer }) {
-  if (!SITE_ASSET_TYPES.has(input.mimeType)) throw new SiteAssetInvalidTypeError('Solo puedes subir imágenes SVG/WEBP/PNG/JPEG/GIF/AVIF o fuentes WOFF/WOFF2')
+  const textType = /\.css$/i.test(input.fileName) ? 'text/css' : /\.(?:js|mjs)$/i.test(input.fileName) ? 'text/javascript' : null
+  const compatibleText = textType && ['', 'application/octet-stream', 'text/plain', textType, ...(textType === 'text/javascript' ? ['application/javascript'] : [])].includes(input.mimeType)
+  const mimeType = compatibleText ? textType : input.mimeType
+  if (!SITE_ASSET_TYPES.has(mimeType) && !compatibleText) throw new SiteAssetInvalidTypeError('Solo puedes subir imágenes SVG/WEBP/PNG/JPEG/GIF/AVIF, fuentes WOFF/WOFF2, CSS o JavaScript')
   if (input.buffer.length > MAX_SITE_ASSET_BYTES) throw new SiteAssetTooLargeError(`El asset supera el máximo permitido de ${MAX_SITE_ASSET_BYTES / (1024 * 1024)} MB`)
   const id = randomUUID()
   const storageKey = key(tenantId, `sites/${siteId}/assets`, id, input.fileName)
@@ -183,9 +188,11 @@ export async function storeSiteAsset(tenantId: string, siteId: string, userId: s
   })
   await reserveStorage(tenantId, input.buffer.length)
   try {
-    await putStoredObject({ key: storageKey, body: input.buffer, contentType: input.mimeType, cacheControl: 'public, max-age=31536000, immutable' })
+    await putStoredObject({ key: storageKey, body: input.buffer, contentType: mimeType, cacheControl: 'public, max-age=31536000, immutable' })
     return await withTenant(tenantId, async tx => {
-      const [asset] = await tx.insert(siteAssets).values({ id, tenantId, siteId, fileName: input.fileName, mimeType: input.mimeType, sizeBytes: input.buffer.length, storageKey, uploadedBy: userId }).returning()
+      const [asset] = await tx.insert(siteAssets).values({ id, tenantId, siteId, fileName: input.fileName, mimeType, sizeBytes: input.buffer.length, storageKey, uploadedBy: userId }).returning()
+      await tx.update(sitePages).set({ seo: sql`jsonb_set(coalesce(${sitePages.seo}, '{}'::jsonb), '{_flowAssetTenantId}', to_jsonb(${tenantId}::text), true)` })
+        .where(and(eq(sitePages.tenantId, tenantId), eq(sitePages.siteId, siteId)))
       return { id: asset.id, fileName: asset.fileName, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes, createdAt: asset.createdAt, publicUrl: `${getPublicAppBaseUrl()}/site-assets/${tenantId}/${asset.id}` }
     })
   } catch (error) {
@@ -203,6 +210,21 @@ export async function getPublicSiteAsset(tenantId: string, assetId: string) {
   return withTenant(tenantId, async tx => {
     const [asset] = await tx.select().from(siteAssets).where(and(eq(siteAssets.id, assetId), eq(siteAssets.tenantId, tenantId))).limit(1)
     return asset ?? null
+  })
+}
+export async function getRelativeSiteAsset(page: PublicSitePage, rawPath: string) {
+  const fileName = siteRelativeAssetName(rawPath), tenantId = page.seo._flowAssetTenantId
+  if (!fileName || typeof tenantId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(tenantId)) return null
+  return withTenant(tenantId, async tx => {
+    const [published] = await tx.select({ id: sitePages.id }).from(sitePages).innerJoin(sites, and(eq(sites.id, sitePages.siteId), eq(sites.tenantId, sitePages.tenantId)))
+      .where(and(eq(sites.id, page.siteId), eq(sites.tenantId, tenantId), eq(sites.status, 'published'), eq(sitePages.id, page.pageId), eq(sitePages.status, 'published'), sql`${sitePages.publishedVersionId} is not null`)).limit(1)
+    if (!published) return null
+    const assets = await tx.select().from(siteAssets).where(and(eq(siteAssets.tenantId, tenantId), eq(siteAssets.siteId, page.siteId), eq(siteAssets.fileName, fileName))).limit(2)
+    if (assets.length !== 1) return null
+    const asset = assets[0]!
+    if (!asset.storageKey.startsWith(`tenants/${tenantId}/sites/${page.siteId}/assets/`) || asset.sizeBytes < 0 || asset.sizeBytes > MAX_SITE_ASSET_BYTES) return null
+    if (!SITE_ASSET_TYPES.has(asset.mimeType) && !(asset.mimeType === 'text/css' && /\.css$/i.test(fileName)) && !(asset.mimeType === 'text/javascript' && /\.(?:js|mjs)$/i.test(fileName))) return null
+    return asset
   })
 }
 export async function readSiteAsset(storageKey: string) { return getStoredObject(storageKey) }

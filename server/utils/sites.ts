@@ -1,4 +1,4 @@
-import { and, desc, eq, max } from 'drizzle-orm'
+import { and, desc, eq, max, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, siteFormConnections, sitePages, sitePageVersions, sites } from '~/server/db/schema'
 import { agendaMarkerWarnings, agendaEditorPreviewState } from './agendaMarkerWarnings'
@@ -417,6 +417,7 @@ export async function publishSitePage(tenantId: string, userId: string, siteId: 
     }).returning()
     const [updated] = await tx.update(sitePages).set({
       status: 'published',
+      seo: sql`jsonb_set(coalesce(${sitePages.seo}, '{}'::jsonb), '{_flowAssetTenantId}', to_jsonb(${tenantId}::text), true)`,
       publishedVersionId: draft.id,
       draftVersionId: nextDraft.id,
       updatedAt: new Date()

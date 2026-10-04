@@ -7,6 +7,7 @@ export default defineEventHandler(async event => {
   const asset = await getPublicSiteAsset(getRouterParam(event, 'tenantId')!, getRouterParam(event, 'assetId')!)
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'Asset no encontrado' })
   setResponseHeader(event, 'Content-Type', asset.mimeType)
+  setResponseHeader(event, 'X-Content-Type-Options', 'nosniff')
   setResponseHeader(event, 'Content-Disposition', `inline; filename="${asset.fileName.replace(/"/g, '')}"`)
   setResponseHeader(event, 'Cache-Control', 'public, max-age=31536000, immutable')
   setResponseHeader(event, 'Access-Control-Allow-Origin', '*')

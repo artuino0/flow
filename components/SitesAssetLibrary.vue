@@ -42,8 +42,8 @@ async function upload(event: Event) {
 
 <template>
   <section class="asset-library">
-    <div class="asset-heading"><div><strong>Assets del sitio</strong><p>Imágenes y fuentes públicas.</p></div><button type="button" :disabled="uploading" @click="input?.click()"><LoaderCircle v-if="uploading" class="spin" /><ImagePlus v-else />{{ uploading ? 'Subiendo' : 'Subir' }}</button></div>
-    <input ref="input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,font/woff,font/woff2,application/font-woff,application/font-woff2" class="hidden" @change="upload" />
+    <div class="asset-heading"><div><strong>Assets del sitio</strong><p>Imágenes, fuentes, CSS y JavaScript públicos.</p></div><button type="button" :disabled="uploading" @click="input?.click()"><LoaderCircle v-if="uploading" class="spin" /><ImagePlus v-else />{{ uploading ? 'Subiendo' : 'Subir' }}</button></div>
+    <input ref="input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,font/woff,font/woff2,application/font-woff,application/font-woff2,.css,.js,.mjs" class="hidden" @change="upload" />
     <p v-if="errorMessage" class="asset-error">{{ errorMessage }}</p>
     <p v-else-if="!data?.assets.length" class="asset-empty">Sube un archivo y pega su URL en <code>src</code>, <code>href</code> o <code>url()</code>.</p>
     <ul v-else class="asset-list"><li v-for="asset in data.assets" :key="asset.id"><span class="asset-thumb theme-light"><img v-if="asset.mimeType.startsWith('image/')" :src="asset.publicUrl" alt="" /></span><span class="asset-info"><strong :title="asset.fileName">{{ asset.fileName }}</strong><small>{{ formatSize(asset.sizeBytes) }}</small></span><button type="button" :aria-label="`Copiar URL de ${asset.fileName}`" @click="copyUrl(asset)"><Check v-if="copied === asset.id" /><Copy v-else /></button></li></ul>

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.147.2] - 2026-10-04
+#### [bugfix]
+- [ERD-181](https://dydasoftware.atlassian.net/browse/ERD-181) - Sitios con agenda: las páginas que llevan la agenda ya no bloquean los scripts propios de la página (animaciones, menús), se comportan igual que una página sin agenda. Los archivos de la página (hojas de estilo, scripts, imágenes) se cargan desde la biblioteca de archivos del sitio también en la vista previa y en el dominio del sitio, y un archivo que no existe responde un error claro. En producción la vista previa de una página con scripts corre aislada de tu sesión de Flow, y en ella la agenda y los formularios muestran un aviso en lugar de enviar datos reales; en desarrollo y en el dominio publicado todo funciona con datos reales.
+
 ### [0.147.1] - 2026-10-04
 #### [bugfix]
 - [ERD-180](https://dydasoftware.atlassian.net/browse/ERD-180) - Agenda pública: el modal de reserva decía siempre «La agenda no está disponible por ahora» aunque todo estuviera configurado, porque el navegador no enviaba el origen de la petición. Ahora carga los servicios, las personas y los huecos libres. La seguridad no se relaja: el servidor sigue verificando el origen y el sitio, y el enlace de gestión de la cita sigue sin viajar en la URL.
