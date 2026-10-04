@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.145.1] - 2026-10-03
+#### [bugfix]
+- [ERD-176](https://dydasoftware.atlassian.net/browse/ERD-176) - Agenda: los módulos de la plantilla ahora traen su icono (Clientes, Servicios, Recursos, Citas y Servicios de la cita) y el estado de las citas es un flujo con transiciones: Agendada pasa a Confirmada, Cancelada o No asistió; Confirmada a En curso, Cancelada o No asistió; En curso a Terminada o Cancelada. Las organizaciones que ya tenían Citas se actualizan sin pisar lo que hayas personalizado.
+
 ### [0.145.0] - 2026-10-03
 #### [feature]
 - [ERD-175](https://dydasoftware.atlassian.net/browse/ERD-175) - Agenda: horarios por usuario, bloqueos y disponibilidad. Cada persona tiene su horario semanal (con varios rangos por día) y puedes registrar bloqueos como vacaciones, festivos o ausencias, de una persona o de toda la organización. En Ajustes hay una sección Agenda con la rejilla de huecos, el margen entre citas, la anticipación mínima y los días máximos hacia adelante, con vista previa de los huecos libres. Flow ya no permite dos citas activas traslapadas para la misma persona (un administrador puede forzarlo con un motivo, y queda constancia). El plan Agenda llega con horario de lunes a viernes de 9:00 a 18:00 para el personal. Todo con modo oscuro.

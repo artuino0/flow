@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import postgres from 'postgres'
+import { createError } from 'h3'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import { withRecordActor, withSystemRecordAccess } from '../../server/utils/recordActorContext'
@@ -83,6 +84,7 @@ describe('Agenda 175, PostgreSQL real sin red externa', () => {
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
     for (const result of results) if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 409 })
     expect(await admin`select id from records where entity_id=${baseId}`).toHaveLength(1)
+    expect((await admin`select custom_data from records where entity_id=${baseId}`)[0]!.custom_data.estado).toBe('agendada')
   }, 60_000)
   it('20 escrituras internas directas usan el mismo candado', async () => {
     const data = { personal: staff, fecha: '2026-10-05', hora: '10:00', duracion_minutos: 30, estado: 'agendada', asunto: 'Interna', cliente: clientId }
@@ -126,5 +128,24 @@ describe('Agenda 175, PostgreSQL real sin red externa', () => {
     expect(result.slots.every(row => row.status === 'free')).toBe(true)
     expect(JSON.stringify(result)).not.toContain(clientId)
     await expect(withSystemRecordAccess(() => connection.withTenant(tenant, tx => availability.serviceDuration(tx, tenant, randomUUID())))).rejects.toMatchObject({ statusCode: 422 })
+  })
+  it('reserva de sistema y creación del servidor nacen en agendada con el flujo instalado', async () => {
+    const [base] = await admin`select workflow_config from entities where id=${baseId}`
+    expect(base!.workflow_config).toEqual(agenda.agendaStateWorkflow)
+    const reserved = await withSystemRecordAccess(() => availability.reserveSlot({ ...slot('14:00'), customData: { asunto: 'Pública futura', cliente: clientId, estado: 'terminada' } }))
+    expect((reserved.customData as Record<string, unknown>).estado).toBe('agendada')
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('getRouterParam', (event: { context: { params: Record<string, string> } }, name: string) => event.context.params[name])
+    vi.stubGlobal('readValidatedBody', async (event: { context: { body: unknown } }, parse: (body: unknown) => unknown) => parse(event.context.body))
+    vi.stubGlobal('createError', createError)
+    vi.stubGlobal('setResponseStatus', () => {})
+    try {
+      const handler = (await import('../../server/api/records/[entity]/index.post')).default
+      for (const [hora, estado] of [['15:00', undefined], ['16:00', 'terminada']] as const) {
+        const event = { context: { auth, params: { entity: 'agenda-citas' }, body: { customData: { asunto: 'Servidor', cliente: clientId, personal: staff, fecha: '2026-10-05', hora, duracion_minutos: 30, ...(estado ? { estado } : {}) } } } } as unknown as Parameters<typeof handler>[0]
+        const created = await actor(() => handler(event))
+        expect((created.customData as Record<string, unknown>).estado).toBe('agendada')
+      }
+    } finally { vi.unstubAllGlobals() }
   })
 })

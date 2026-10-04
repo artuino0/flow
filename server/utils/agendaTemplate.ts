@@ -6,6 +6,8 @@ import { db, withTenant } from '~/server/db'
 import { entities, entityFields } from '~/server/db/schema'
 import { isAgendaBase } from '~/utils/agendaBase'
 import { initializeAgenda } from '~/server/utils/agendaAdmin'
+import { stateWorkflowSchema } from '~/server/utils/stateWorkflow'
+import { invalidatesTenantAccess } from '~/server/utils/shortCache'
 
 export type AgendaClientChoice = { mode: 'create' } | { mode: 'link'; entityId: string }
 
@@ -31,13 +33,23 @@ const statusOptions = [
   ['terminada', 'Terminada'], ['cancelada', 'Cancelada'], ['no_asistio', 'No asistió']
 ].map(([value, label]) => ({ value, label }))
 
+export const agendaStateWorkflow = stateWorkflowSchema.parse({
+  enabled: true, field: 'estado', initial: 'agendada',
+  states: Object.fromEntries(statusOptions.map(({ value }) => [value, { locked: false, editableFields: [] }])),
+  transitions: [
+    ...['confirmada', 'cancelada', 'no_asistio'].map(to => ({ from: 'agendada', to, roles: 'all' })),
+    ...['en_curso', 'cancelada', 'no_asistio'].map(to => ({ from: 'confirmada', to, roles: 'all' })),
+    ...['terminada', 'cancelada'].map(to => ({ from: 'en_curso', to, roles: 'all' }))
+  ]
+})
+
 export const agendaBlueprint: Blueprint = {
   version: 1,
   summary: 'Agenda de citas, servicios, clientes, recursos y personal del sistema',
   associations: [],
   modules: [
     {
-      ref: 'agenda-clientes', action: 'create', kind: 'dimension', name: 'Clientes', slug: 'agenda-clientes',
+      ref: 'agenda-clientes', action: 'create', kind: 'dimension', name: 'Clientes', slug: 'agenda-clientes', icon: 'Users',
       fields: [
         { name: 'nombre', label: 'Nombre', dataType: 'text', required: true },
         { name: 'telefono', label: 'Teléfono', dataType: 'text' },
@@ -45,7 +57,7 @@ export const agendaBlueprint: Blueprint = {
       ]
     },
     {
-      ref: 'agenda-servicios', action: 'create', kind: 'dimension', name: 'Servicios', slug: 'agenda-servicios',
+      ref: 'agenda-servicios', action: 'create', kind: 'dimension', name: 'Servicios', slug: 'agenda-servicios', icon: 'Briefcase',
       fields: [
         { name: 'nombre', label: 'Servicio', dataType: 'text', required: true },
         { name: 'duracion_minutos', label: 'Duración en minutos', dataType: 'number', validationRules: { min: 1, integer: true } },
@@ -53,7 +65,7 @@ export const agendaBlueprint: Blueprint = {
       ]
     },
     {
-      ref: 'agenda-recursos', action: 'create', kind: 'dimension', name: 'Recursos', slug: 'agenda-recursos',
+      ref: 'agenda-recursos', action: 'create', kind: 'dimension', name: 'Recursos', slug: 'agenda-recursos', icon: 'Box',
       fields: [
         { name: 'nombre', label: 'Recurso', dataType: 'text', required: true },
         { name: 'descripcion', label: 'Descripción', dataType: 'text' },
@@ -61,7 +73,8 @@ export const agendaBlueprint: Blueprint = {
       ]
     },
     {
-      ref: 'agenda-citas', action: 'create', kind: 'hecho', name: 'Citas', singularName: 'Cita', slug: 'agenda-citas',
+      ref: 'agenda-citas', action: 'create', kind: 'hecho', name: 'Citas', singularName: 'Cita', slug: 'agenda-citas', icon: 'CalendarClock',
+      workflow: agendaStateWorkflow,
       fields: [
         { name: 'asunto', label: 'Asunto', dataType: 'text', required: true },
         { name: 'cliente', label: 'Cliente', dataType: 'relation', required: true, validationRules: { relationEntity: 'agenda-clientes' } },
@@ -77,7 +90,7 @@ export const agendaBlueprint: Blueprint = {
       calendarConfig: { enabled: true, startDateField: 'fecha', startTimeField: 'hora', durationField: 'duracion_minutos', endField: null, titleField: 'asunto', colorField: 'estado', groupByField: 'personal', defaultView: 'day' }
     },
     {
-      ref: 'agenda-servicios-cita', action: 'create', kind: 'hecho', name: 'Servicios de la cita', singularName: 'Servicio de la cita', slug: 'agenda-servicios-cita',
+      ref: 'agenda-servicios-cita', action: 'create', kind: 'hecho', name: 'Servicios de la cita', singularName: 'Servicio de la cita', slug: 'agenda-servicios-cita', icon: 'ListOrdered',
       fields: [
         { name: 'cita', label: 'Cita', dataType: 'relation', required: true, validationRules: { relationEntity: 'agenda-citas' } },
         { name: 'servicio', label: 'Servicio', dataType: 'relation', required: true, validationRules: { relationEntity: 'agenda-servicios' } },
@@ -95,9 +108,32 @@ export const agendaBlueprint: Blueprint = {
   ]
 }
 
+// Solo completa metadata ausente en módulos activos de la plantilla real.
+// El bloqueo serializa este paso con cualquier edición del módulo; nunca escribe campos ni registros.
+export const upgradeAgendaTemplate = invalidatesTenantAccess(async (tenantId: string) => {
+  return withTenant(tenantId, async tx => {
+    const installed = await tx.select().from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt))).for('update')
+    if (!installed.some(isAgendaBase)) return
+    for (const entity of installed) {
+      const module = agendaBlueprint.modules.find(item => item.slug === entity.slug)
+      if (!module) continue
+      const changes: { icon?: string; workflowConfig?: typeof agendaStateWorkflow } = {}
+      if (entity.icon === null && module.icon) changes.icon = module.icon
+      if (isAgendaBase(entity) && entity.workflowConfig === null) {
+        const [field] = await tx.select().from(entityFields).where(and(eq(entityFields.entityId, entity.id), eq(entityFields.name, 'estado'))).limit(1)
+        const options = (field?.validationRules as { options?: Array<{ value?: unknown }> } | null)?.options
+        // Un Select personalizado (incluidos estados añadidos) queda intacto.
+        if (field?.dataType === 'select' && Array.isArray(options) && options.length === statusOptions.length && statusOptions.every(({ value }) => options.filter(option => option.value === value).length === 1)) changes.workflowConfig = agendaStateWorkflow
+      }
+      if (Object.keys(changes).length) await tx.update(entities).set(changes).where(and(eq(entities.id, entity.id), eq(entities.tenantId, tenantId)))
+    }
+  })
+})
+
 export async function installAgendaTemplate(tenantId: string, choice: AgendaClientChoice = { mode: 'create' }) {
   const installed = await withTenant(tenantId, tx => tx.select({ id: entities.id, slug: entities.slug, templateKey: entities.templateKey }).from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.slug, 'agenda-citas'))).limit(1))
   if (installed[0] && isAgendaBase(installed[0])) {
+    await upgradeAgendaTemplate(tenantId)
     await initializeAgenda(tenantId)
     return { modules: installed, fields: [], associations: [], layouts: [], workflows: [], merges: [] }
   }

@@ -43,6 +43,8 @@ describe('Agenda base con PostgreSQL local y RLS', () => {
     await agenda.installAgendaTemplate(tenantId)
     const installed = await admin`select * from entities where tenant_id=${tenantId} and template_key='agenda'`
     expect(installed).toHaveLength(5)
+    for (const module of agenda.agendaBlueprint.modules) expect(installed.find(row => row.slug === module.slug)?.icon).toBe(module.icon)
+    expect(installed.find(row => row.slug === 'agenda-citas')?.workflow_config).toEqual(agenda.agendaStateWorkflow)
     expect(installed.find(row => row.slug === 'agenda-citas')?.calendar_config).toMatchObject({ enabled: true, startDateField: 'fecha', groupByField: 'personal' })
     expect(await admin`select id from blueprint_applications where tenant_id=${tenantId}`).toHaveLength(1)
     expect(await admin`select id from roles where tenant_id=${tenantId} and name in ('Recepción', 'Personal')`).toHaveLength(2)
@@ -50,6 +52,60 @@ describe('Agenda base con PostgreSQL local y RLS', () => {
     await modules.createEntity(tenantId, { name: 'Propio', slug: 'propio', description: null })
     expect((await billing.getPlanUsage(tenantId)).usage.find(item => item.concept === 'modules')?.used).toBe(1)
   }, 60_000)
+
+  it('completa una instalación anterior sin cambiar campos, calendario, permisos ni registros', async () => {
+    const [base] = await admin`select * from entities where tenant_id=${tenantId} and slug='agenda-citas'`
+    const previousFields = await admin`select * from entity_fields where entity_id=${base!.id} order by id`
+    const permissions = await admin`select * from role_entity_permissions where entity_id=${base!.id} order by role_id`
+    const [record] = await admin`insert into records(tenant_id,entity_id,custom_data) values (${tenantId},${base!.id},'{"asunto":"Anterior","estado":"no_asistio"}') returning *`
+    await admin`update entities set icon=null,workflow_config=null where tenant_id=${tenantId} and template_key='agenda'`
+    await agenda.installAgendaTemplate(tenantId)
+    await agenda.installAgendaTemplate(tenantId)
+    const installed = await admin`select * from entities where tenant_id=${tenantId} and template_key='agenda'`
+    for (const module of agenda.agendaBlueprint.modules) expect(installed.find(row => row.slug === module.slug)?.icon).toBe(module.icon)
+    const upgraded = installed.find(row => row.slug === 'agenda-citas')!
+    expect(upgraded.workflow_config).toEqual(agenda.agendaStateWorkflow)
+    expect(upgraded.calendar_config).toEqual(base!.calendar_config)
+    expect(await admin`select * from entity_fields where entity_id=${base!.id} order by id`).toEqual(previousFields)
+    expect(await admin`select * from role_entity_permissions where entity_id=${base!.id} order by role_id`).toEqual(permissions)
+    expect((await admin`select * from records where id=${record!.id}`)[0]).toEqual(record)
+  })
+
+  it('conserva iconos y flujos personalizados, incluso deshabilitados, y Select extendidos', async () => {
+    const [base] = await admin`select id from entities where tenant_id=${tenantId} and slug='agenda-citas'`
+    for (const enabled of [true, false]) {
+      const custom = { ...agenda.agendaStateWorkflow, enabled, initial: 'confirmada', transitions: [] }
+      await admin`update entities set icon='Star',workflow_config=${admin.json(custom)} where id=${base!.id}`
+      await agenda.installAgendaTemplate(tenantId)
+      expect((await admin`select icon,workflow_config from entities where id=${base!.id}`)[0]).toEqual({ icon: 'Star', workflow_config: custom })
+    }
+    const [field] = await admin`select * from entity_fields where entity_id=${base!.id} and name='estado'`
+    const rules = { ...field!.validation_rules, options: [...field!.validation_rules.options, { value: 'propio', label: 'Propio' }] }
+    await admin`update entity_fields set validation_rules=${admin.json(rules)} where id=${field!.id}`
+    await admin`update entities set workflow_config=null where id=${base!.id}`
+    await agenda.installAgendaTemplate(tenantId)
+    expect((await admin`select workflow_config from entities where id=${base!.id}`)[0]!.workflow_config).toBeNull()
+    expect((await admin`select validation_rules from entity_fields where id=${field!.id}`)[0]!.validation_rules).toEqual(rules)
+    await admin`update entity_fields set validation_rules=${admin.json(field!.validation_rules)} where id=${field!.id}`
+    await agenda.installAgendaTemplate(tenantId)
+    expect((await admin`select icon,workflow_config from entities where id=${base!.id}`)[0]).toEqual({ icon: 'Star', workflow_config: agenda.agendaStateWorkflow })
+  })
+
+  it('el motor permite exactamente las ocho transiciones y ningún retorno de estados finales', async () => {
+    const workflow = await import('../../server/utils/stateWorkflow')
+    const { withTenant } = await import('../../server/db')
+    const [base] = await admin`select id from entities where tenant_id=${tenantId} and slug='agenda-citas'`
+    const [record] = await admin`select id from records where entity_id=${base!.id} limit 1`
+    const [role] = await admin`select id from roles where tenant_id=${tenantId} and name='Personal'`
+    const allowed = ['agendada:confirmada', 'agendada:cancelada', 'agendada:no_asistio', 'confirmada:en_curso', 'confirmada:cancelada', 'confirmada:no_asistio', 'en_curso:terminada', 'en_curso:cancelada']
+    for (const from of Object.keys(agenda.agendaStateWorkflow.states)) for (const to of Object.keys(agenda.agendaStateWorkflow.states)) {
+      const change = withSystemRecordAccess(() => withTenant(tenantId, tx => workflow.enforceWorkflowChange(tx, { tenantId, entityId: base!.id, roleId: role!.id, userId, recordId: record!.id, current: { estado: from }, next: { estado: to }, changedFields: ['estado'] })))
+      if (from === to) await expect(change).resolves.toBeNull()
+      else if (allowed.includes(`${from}:${to}`)) await expect(change).resolves.toMatchObject({ from, to, roles: 'all' })
+      else await expect(change).rejects.toMatchObject({ statusCode: 403 })
+    }
+    await admin`delete from records where id=${record!.id}`
+  })
 
   it('vincula un módulo elegido sin alterarlo ni crear Clientes de plantilla', async () => {
     const existing = await modules.createEntity(linkedTenant, { name: 'Clientes', slug: 'personas-propias', description: null })
@@ -59,6 +115,7 @@ describe('Agenda base con PostgreSQL local y RLS', () => {
     expect(await admin`select id from entities where tenant_id=${linkedTenant} and template_key='agenda'`).toHaveLength(4)
     expect(await admin`select id from entities where tenant_id=${linkedTenant} and slug='agenda-clientes'`).toHaveLength(0)
     expect(await admin`select name from entity_fields where entity_id=${existing.id}`).toEqual([{ name: 'razon' }])
+    expect((await admin`select icon,workflow_config from entities where id=${existing.id}`)[0]).toEqual({ icon: null, workflow_config: null })
     expect((await client.agendaInstallOptions(linkedTenant)).clientSlug).toBe(existing.slug)
   }, 60_000)
 
@@ -70,6 +127,8 @@ describe('Agenda base con PostgreSQL local y RLS', () => {
     await modules.createEntity(collisionTenant, { name: 'Citas propias', slug: 'agenda-citas', description: null })
     await expect(agenda.installAgendaTemplate(collisionTenant)).rejects.toMatchObject({ statusCode: 422 })
     expect(await admin`select id from entities where tenant_id=${collisionTenant} and template_key='agenda'`).toHaveLength(0)
+    await agenda.upgradeAgendaTemplate(collisionTenant)
+    expect((await admin`select icon,workflow_config from entities where tenant_id=${collisionTenant} and slug='agenda-citas'`)[0]).toEqual({ icon: null, workflow_config: null })
   })
 
   it('protege entidad y seis campos; permite etiquetas, permisos, campos y partidas propias', async () => {
