@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.146.0] - 2026-10-03
+#### [feature]
+- [ERD-177](https://dydasoftware.atlassian.net/browse/ERD-177) - Agenda pública: base para reservar citas desde tus sitios. Los visitantes podrán consultar los huecos libres, reservar, cancelar y reprogramar sin iniciar sesión, con un enlace seguro que reciben por correo; la cita nace «Agendada» y tú la mueves. Cada sitio configura qué servicios y personal se ofrecen, cómo se asigna la persona (elige el cliente, automática o ambas), qué datos se piden y el plazo para cancelar. Incluye protecciones contra abuso (límite de reservas, campo trampa, tope de citas por correo y teléfono). La pantalla para el visitante llega en la siguiente versión.
+
 ### [0.145.1] - 2026-10-03
 #### [bugfix]
 - [ERD-176](https://dydasoftware.atlassian.net/browse/ERD-176) - Agenda: los módulos de la plantilla ahora traen su icono (Clientes, Servicios, Recursos, Citas y Servicios de la cita) y el estado de las citas es un flujo con transiciones: Agendada pasa a Confirmada, Cancelada o No asistió; Confirmada a En curso, Cancelada o No asistió; En curso a Terminada o Cancelada. Las organizaciones que ya tenían Citas se actualizan sin pisar lo que hayas personalizado.

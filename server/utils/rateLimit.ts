@@ -55,3 +55,20 @@ export function resetAllRateLimits(): void {
 /** Reutiliza los mismos límites del login para una clave de recuperación. */
 export const checkPasswordResetRateLimit = checkLoginRateLimit
 export const recordPasswordResetAttempt = recordFailedLoginAttempt
+
+// Mismo mecanismo de timestamps que login, con límites independientes para
+// entradas públicas. Mapa acotado: rechazar claves nuevas al llenarse evita
+// que rotar IPs expulse buckets activos y eluda sus límites.
+const publicAttempts = new Map<string, number[]>()
+export function consumeRateLimit(key: string, limit: number, windowMs: number, now = Date.now()): RateLimitStatus {
+  if (publicAttempts.size >= 10000) {
+    for (const [entry, timestamps] of publicAttempts) if (!timestamps.length || now - timestamps[timestamps.length - 1]! >= windowMs) publicAttempts.delete(entry)
+    if (!publicAttempts.has(key) && publicAttempts.size >= 10000) return { blocked: true, retryAfterSeconds: Math.ceil(windowMs / 1000) }
+  }
+  const timestamps = (publicAttempts.get(key) ?? []).filter(time => now - time < windowMs)
+  if (timestamps.length >= limit) return { blocked: true, retryAfterSeconds: Math.max(1, Math.ceil((windowMs - now + timestamps[0]!) / 1000)) }
+  timestamps.push(now)
+  publicAttempts.set(key, timestamps)
+  return { blocked: false, retryAfterSeconds: 0 }
+}
+export function resetPublicRateLimits() { publicAttempts.clear() }

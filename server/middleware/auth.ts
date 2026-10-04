@@ -30,6 +30,11 @@ const PUBLIC_PATHS = new Set([
   '/api/license/status',
   '/api/license/activate',
   '/api/sites/forms/submit',
+  '/api/public/agenda/slots',
+  '/api/public/agenda/book',
+  '/api/public/agenda/cancel',
+  '/api/public/agenda/reschedule',
+  '/api/public/agenda/booking',
   // Lo invoca Vercel Cron / un cron externo con `Authorization: Bearer CRON_SECRET`.
   '/api/cron/job-queue',
   '/api/cron/trigger-retries',

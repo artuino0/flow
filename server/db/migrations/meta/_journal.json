@@ -659,6 +659,13 @@
       "when": 1790607402000,
       "breakpoints": true,
       "tag": "0093_agenda_availability"
+    },
+    {
+      "version": "7",
+      "idx": 94,
+      "when": 1790607403000,
+      "breakpoints": true,
+      "tag": "0094_agenda_public"
     }
   ]
 }

@@ -5,6 +5,19 @@ import type { DesignerWarningItem } from '~/utils/designerWarnings'
 import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint, time } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
+export const agendaSiteSettings = pgTable('agenda_site_settings', {
+  siteId: uuid('site_id').primaryKey().references(() => sites.id), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  config: jsonb('config').notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})
+export const agendaPublicBookings = pgTable('agenda_public_bookings', {
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }), pageId: uuid('page_id').notNull().references(() => sitePages.id, { onDelete: 'cascade' }), recordId: uuid('record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(), clientEmailHash: text('client_email_hash'), clientPhoneHash: text('client_phone_hash'), serviceIds: jsonb('service_ids').$type<string[]>().notNull(),
+  status: text('status').$type<'active' | 'canceled'>().notNull().default('active'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  canceledAt: timestamp('canceled_at', { withTimezone: true }), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  originHash: text('origin_hash').notNull(), userAgent: text('user_agent').notNull(), rescheduleCount: integer('reschedule_count').notNull().default(0)
+})
+
 export const agendaSettings = pgTable('agenda_settings', {
   tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id),
   slotMinutes: integer('slot_minutes').notNull().default(30),

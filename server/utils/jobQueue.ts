@@ -105,7 +105,7 @@ export async function enqueueEmail(tenantId: string, payload: EmailJobPayload, o
   return enqueueJob(tenantId, 'email', parsed, options)
 }
 
-async function emailQuota(tenantId: string) {
+export async function emailQuota(tenantId: string) {
   const usage = await getPlanUsage(tenantId)
   const quota = usage.usage.find(item => item.concept === 'emails')!
   return { usage, exceeded: !(IS_ONPREM_BUILD && getLicenseStatus().activated) && quota.limit !== null && quota.used >= quota.limit }
