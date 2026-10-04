@@ -101,14 +101,10 @@ export async function getDashboardMetrics(
       .where(and(eq(dimSucursal.tenantId, tenantId), visibleDimensionRecord('sucursales')))
 
     const [usuariosTotalRow] = await tx
-      .select({ count: dsql<number>`count(*)::int` })
+      .select({ count: dsql<number>`count(*)::int`, active: dsql<number>`count(*) filter (where ${users.isActive} = true)::int` })
       .from(users)
       .where(eq(users.tenantId, tenantId))
 
-    const [usuariosActivosRow] = await tx
-      .select({ count: dsql<number>`count(*)::int` })
-      .from(users)
-      .where(and(eq(users.tenantId, tenantId), eq(users.isActive, true)))
 
     return {
       tenantId,
@@ -121,7 +117,7 @@ export async function getDashboardMetrics(
       },
       clientes: { total: clientesRow?.count ?? 0 },
       sucursales: { total: sucursalesRow?.count ?? 0 },
-      usuarios: { total: usuariosTotalRow?.count ?? 0, activos: usuariosActivosRow?.count ?? 0 }
+      usuarios: { total: usuariosTotalRow?.count ?? 0, activos: usuariosTotalRow?.active ?? 0 }
     }
   })
 }

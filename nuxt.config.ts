@@ -3,7 +3,14 @@ import { themeBootstrap } from './utils/theme'
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-27',
   devtools: { enabled: true },
+  hooks: {
+    // La ruta inicial conserva modulepreload; las demás se cargan al interactuar.
+    'build:manifest': (manifest) => {
+      for (const entry of Object.values(manifest)) entry.prefetch = false
+    }
+  },
   nitro: {
+    compressPublicAssets: { gzip: true, brotli: true },
     experimental: { websocket: true, asyncContext: true },
     // La verificacion se incorpora al paquete on-premise durante el build.
     // Cambiar el .env del cliente no desactiva la licencia de ese paquete.

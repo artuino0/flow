@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { invalidateTenantAccess } from '~/server/utils/shortCache'
+import { cachedTenantMetadata, invalidateTenantAccess } from '~/server/utils/shortCache'
 import { eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
 import { upgradeAgendaStaffField } from './agendaStaffField'
@@ -77,11 +77,11 @@ import { tenants } from '~/server/db/schema'
  * que se calculo (comparando una huella de nombre/tipo/reglas/requerido).
  */
 export async function getEntityZodSchema(tenantId: string, entityId: string, creation?: { userId?: string }): Promise<z.ZodTypeAny> {
-  await withTenant(tenantId, tx => upgradeAgendaStaffField(tx, tenantId, entityId))
   const cacheKey = `${tenantId}:${entityId}:${creation ? `create:${creation.userId ?? ""}` : "validate"}`
 
-  const rows = (await withTenant(tenantId, (tx) =>
-    tx
+  const { rows, timezone } = await cachedTenantMetadata(tenantId, `schema-fields:${entityId}`, () => withTenant(tenantId, async tx => {
+    await upgradeAgendaStaffField(tx, tenantId, entityId)
+    const rows = await tx
       .select({
         name: entityFields.name,
         dataType: entityFields.dataType,
@@ -90,10 +90,9 @@ export async function getEntityZodSchema(tenantId: string, entityId: string, cre
       })
       .from(entityFields)
       .where(eq(entityFields.entityId, entityId))
-  )) as EntityFieldRow[]
-
-  const [organization] = await withTenant(tenantId, tx => tx.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, tenantId)).limit(1))
-  const timezone = organization?.timezone ?? 'America/Mexico_City'
+    const [organization] = await tx.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+    return { rows, timezone: organization?.timezone ?? 'America/Mexico_City' }
+  }))
   const fp = fingerprint(rows) + timezone
   const cached = cache.get(cacheKey)
   if (cached && cached.fingerprint === fp) {

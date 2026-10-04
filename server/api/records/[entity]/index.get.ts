@@ -135,19 +135,17 @@ export default defineEventHandler(async (event) => {
       // particular de "es").
     }
 
-    const data = await tx.select().from(records).where(where).orderBy(orderBy).limit(query.pageSize).offset(offset)
-
-    const [{ count }] = await tx.select({ count: dsql<number>`count(*)::int` }).from(records).where(where)
+    const [data, [{ count }], sourceFields] = await Promise.all([
+      tx.select().from(records).where(where).orderBy(orderBy).limit(query.pageSize).offset(offset),
+      tx.select({ count: dsql<number>`count(*)::int` }).from(records).where(where),
+      tx.select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules }).from(entityFields).where(eq(entityFields.entityId, entity.id))
+    ])
 
     // Reportado por el usuario (2026-09-03): columnas de tipo relation en el
     // listado mostraban el uuid crudo (ver comentario largo en
     // server/utils/relationLabels.ts) - se resuelve una sola vez aca, para
     // toda la pagina, en vez de que cada fila del cliente dispare su propia
     // consulta.
-    const sourceFields = await tx
-      .select({ name: entityFields.name, dataType: entityFields.dataType, validationRules: entityFields.validationRules })
-      .from(entityFields)
-      .where(eq(entityFields.entityId, entity.id))
     const relationLabels = await resolveRelationLabels(tx, auth.tenantId, sourceFields, data)
 
     return {

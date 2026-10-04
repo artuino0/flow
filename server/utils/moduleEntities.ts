@@ -1,5 +1,5 @@
 import { and, count, eq, inArray, isNull, isNotNull } from 'drizzle-orm'
-import { invalidatesTenantAccess } from '~/server/utils/shortCache'
+import { cachedTenantMetadata, invalidatesTenantAccess } from '~/server/utils/shortCache'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, records, roleEntityPermissions, roles } from '~/server/db/schema'
 import { pluralize } from '~/server/utils/pluralize'
@@ -344,7 +344,7 @@ export function visibleEntityAccess(tenantId: string, roleId: string, moduleKind
   }
 }
 
-export async function listVisibleEntities(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
+async function listVisibleEntitiesImpl(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
   const access = visibleEntityAccess(tenantId, roleId, moduleKind)
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
@@ -380,6 +380,10 @@ export async function listVisibleEntities(tenantId: string, roleId: string, modu
 }
 
 export type DeleteEntityResult = { status: 'deleted' } | { status: 'not-found' }
+
+export function listVisibleEntities(tenantId: string, roleId: string, moduleKind?: ModuleKind) {
+  return cachedTenantMetadata(tenantId, `${roleId}:visible:${moduleKind ?? 'all'}`, () => listVisibleEntitiesImpl(tenantId, roleId, moduleKind))
+}
 
 /**
  * Envía un módulo a la papelera sin borrar metadatos ni registros.

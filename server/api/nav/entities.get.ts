@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '~/server/db'
 import { tenants } from '~/server/db/schema'
 import { buildNavigation } from '~/utils/moduleNavigation'
+import { cachedTenantMetadata } from '~/server/utils/shortCache'
 
 // GET /api/nav/entities (ERD-43/ERD-44): entidades visibles para armar el
 // menu dinamico (components/AppNav.vue) - a diferencia de GET /api/entities
@@ -26,8 +27,10 @@ import { buildNavigation } from '~/utils/moduleNavigation'
 // showInMenu solo cambia esta respuesta, nunca los permisos de captura.
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const readable = await listVisibleEntities(auth.tenantId, auth.roleId!)
-  const [tenant] = await db.select({ layout: tenants.navigationLayout }).from(tenants).where(eq(tenants.id, auth.tenantId))
+  const [readable, tenant] = await Promise.all([
+    listVisibleEntities(auth.tenantId, auth.roleId!),
+    cachedTenantMetadata(auth.tenantId, 'navigation-layout', async () => (await db.select({ layout: tenants.navigationLayout }).from(tenants).where(eq(tenants.id, auth.tenantId)))[0])
+  ])
   const navigation = buildNavigation(tenant?.layout ?? { groups: [] }, readable)
   return { entities: readable.filter(entity => entity.moduleKind === 'hecho' && entity.showInMenu), ...navigation }
 })

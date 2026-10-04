@@ -78,6 +78,18 @@ export function ttlFromEnv(name: string, fallbackMs: number, env: NodeJS.Process
 export const sessionCache = createShortCache<true>({ ttlMs: ttlFromEnv('SESSION_CACHE_TTL_MS', 10_000), maxEntries: 20_000 })
 export const accessCache = createShortCache<unknown>({ ttlMs: ttlFromEnv('ACCESS_CACHE_TTL_MS', 5_000), maxEntries: 20_000 })
 export const metadataCache = createShortCache<unknown>({ ttlMs: ttlFromEnv('METADATA_CACHE_TTL_MS', 30_000), maxEntries: 2_000 })
+let metadataGeneration = 0
+
+/** Copias por consumidor y sin guardar una lectura que cruzó una invalidación. */
+export async function cachedTenantMetadata<T>(tenantId: string, scope: string, load: () => Promise<T>): Promise<T> {
+  const key = `${tenantId}:${scope}`
+  const cached = metadataCache.get(key) as T | undefined
+  if (cached !== undefined) return structuredClone(cached)
+  const generation = metadataGeneration
+  const value = await load()
+  if (generation === metadataGeneration) metadataCache.set(key, structuredClone(value))
+  return value
+}
 
 /**
  * Invalida lo que depende de módulos, campos y permisos de una organización. Se
@@ -85,6 +97,7 @@ export const metadataCache = createShortCache<unknown>({ ttlMs: ttlFromEnv('META
  * servidor lo notan al vencer el tiempo de cada caché.)
  */
 export function invalidateTenantAccess(tenantId: string): void {
+  metadataGeneration++
   accessCache.deletePrefix(`${tenantId}:`)
   metadataCache.deletePrefix(`${tenantId}:`)
 }

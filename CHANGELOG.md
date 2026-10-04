@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.148.0] - 2026-10-04
+#### [feature]
+- [ERD-182](https://dydasoftware.atlassian.net/browse/ERD-182) - Rendimiento: la aplicación hace menos viajes a la base de datos y reutiliza durante unos segundos los datos que casi no cambian (módulos, campos, menú, permisos y ajustes), con la caché separada por organización y rol y renovada al instante cuando cambias el diseño o los permisos. Las pantallas de Ajustes, editar registro, sesión, menú y Tablero cargan con la mitad de viajes o menos, y las listas y el detalle de registros resuelven las relaciones en una sola consulta. El Tablero descarga 40 % menos JavaScript (el catálogo de iconos se carga bajo demanda) y ya no se precargan en segundo plano las demás pantallas. Para quien administra: se pueden activar mediciones de tiempo por petición (`REQUEST_PERFORMANCE_ENABLED`) y un precalentamiento opcional de la base de datos, ambos apagados por omisión.
+
 ### [0.147.2] - 2026-10-04
 #### [bugfix]
 - [ERD-181](https://dydasoftware.atlassian.net/browse/ERD-181) - Sitios con agenda: las páginas que llevan la agenda ya no bloquean los scripts propios de la página (animaciones, menús), se comportan igual que una página sin agenda. Los archivos de la página (hojas de estilo, scripts, imágenes) se cargan desde la biblioteca de archivos del sitio también en la vista previa y en el dominio del sitio, y un archivo que no existe responde un error claro. En producción la vista previa de una página con scripts corre aislada de tu sesión de Flow, y en ella la agenda y los formularios muestran un aviso en lugar de enviar datos reales; en desarrollo y en el dominio publicado todo funciona con datos reales.

@@ -30,10 +30,10 @@ export default defineEventHandler(async (event) => {
   // casi nunca cambia y cada pantalla la pide: se guarda en memoria unos segundos
   // (METADATA_CACHE_TTL_MS, 30 s por defecto). Cualquier cambio de módulos, campos o permisos
   // la invalida (invalidateTenantAccess). Depende del rol por los permisos que incluye.
-  await withTenant(auth.tenantId, tx => upgradeAgendaStaffField(tx, auth.tenantId, entity.id))
   const cacheKey = `${auth.tenantId}:${auth.roleId}:fields:${entitySlug}`
   const cachedResponse = metadataCache.get(cacheKey)
-  if (cachedResponse) return cachedResponse
+  if (cachedResponse) return structuredClone(cachedResponse)
+  await withTenant(auth.tenantId, tx => upgradeAgendaStaffField(tx, auth.tenantId, entity.id))
 
   const fields = await withTenant(auth.tenantId, async (tx) =>
     tx

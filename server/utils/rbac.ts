@@ -260,7 +260,9 @@ export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload
     throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar la organización' })
   }
 
-  const isAdmin = await withTenant(auth.tenantId, async (tx) => {
+  const adminKey = `${auth.tenantId}:${auth.roleId}:admin`
+  const cachedAdmin = accessCache.get(adminKey) as boolean | undefined
+  const isAdmin = cachedAdmin ?? await withTenant(auth.tenantId, async (tx) => {
     const [role] = await tx
       .select({ isSystem: roles.isSystem })
       .from(roles)
@@ -268,6 +270,7 @@ export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload
       .limit(1)
     return Boolean(role?.isSystem)
   })
+  if (cachedAdmin === undefined) accessCache.set(adminKey, isAdmin)
 
   if (!isAdmin) {
     throw createError({ statusCode: 403, statusMessage: 'Requiere rol administrador' })

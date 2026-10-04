@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '~/server/db'
 import { tenants } from '~/server/db/schema'
 import { requireAdminRole } from '~/server/utils/rbac'
+import { cachedTenantMetadata } from '~/server/utils/shortCache'
 
 // GET /api/tenant (HU-ERD-61): datos de negocio/fiscales del propio tenant,
 // para la pantalla Configuracion General (ERD-62). tenants no tiene RLS por
@@ -14,7 +15,7 @@ import { requireAdminRole } from '~/server/utils/rbac'
 export default defineEventHandler(async (event) => {
   const auth = await requireAdminRole(event)
 
-  const [tenant] = await db.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
+  const tenant = await cachedTenantMetadata(auth.tenantId, `${auth.roleId}:tenant-settings`, async () => (await db.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1))[0])
 
   if (!tenant) {
     throw createError({ statusCode: 404, statusMessage: 'Tenant no encontrado' })

@@ -1,5 +1,4 @@
 import type { Driver } from 'driver.js'
-import { driver } from 'driver.js'
 import { h, render } from 'vue'
 import ChattitoAvatar from '~/components/ChattitoAvatar.vue'
 import { lookAtElement } from '~/utils/chattito'
@@ -326,6 +325,8 @@ export function useOnboarding() {
       highlightedClickCleanup = () => element.removeEventListener('click', clickTarget)
     }
 
+    const { driver } = await import('driver.js')
+    if (!isCurrent()) return false
     instance = driver({
       animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       allowKeyboardControl: false,

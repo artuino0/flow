@@ -69,6 +69,8 @@ export async function resolveRelationLabels(
 
   const result: Record<string, Record<string, string>> = {}
   const entityMetaCache = new Map<string, { id: string; labelField: string | null; fields: LabelFieldRow[] } | null>()
+  const labelMaps = new Map<string, Record<string, string>>()
+  let userRows: Awaited<ReturnType<typeof lookupUsers>> | undefined
 
   for (const field of relationFields) {
     if (field.dataType === 'user') {
@@ -77,9 +79,9 @@ export async function resolveRelationLabels(
         const value = ((row.customData ?? {}) as Record<string, unknown>)[field.name]
         for (const id of Array.isArray(value) ? value : [value]) if (typeof id === 'string') ids.add(id)
       }
-      const userRows = ids.size ? await lookupUsers(tx, tenantId) : []
+      if (ids.size && !userRows) userRows = await lookupUsers(tx, tenantId)
       result[field.name] = Object.fromEntries([...ids].map(id => {
-        const user = userRows.find(item => item.id === id)
+        const user = userRows?.find(item => item.id === id)
         return [id, user ? `${user.fullName || user.email}${user.isActive ? '' : ' (inactivo)'}` : `${id.slice(0, 8)} (inactivo)`]
       }))
       continue
@@ -95,6 +97,8 @@ export async function resolveRelationLabels(
       if (typeof v === 'string' && v) ids.add(v)
     }
     if (ids.size === 0) continue
+    const existingLabels = labelMaps.get(relationEntitySlug)
+    if (existingLabels) { result[field.name] = Object.fromEntries([...ids].filter(id => id in existingLabels).map(id => [id, existingLabels[id]!])); continue }
 
     let meta = entityMetaCache.get(relationEntitySlug)
     if (meta === undefined) {
@@ -117,18 +121,27 @@ export async function resolveRelationLabels(
     if (!meta) continue
 
     const labelFieldName = pickLabelField(meta.fields, meta.labelField)
+    const targetIds = new Set(ids)
+    for (const relatedField of relationFields) {
+      if (relatedField.dataType !== 'relation' || (relatedField.validationRules as { relationEntity?: string } | null)?.relationEntity !== relationEntitySlug) continue
+      for (const row of rows) {
+        const value = (row.customData as Record<string, unknown> | null)?.[relatedField.name]
+        if (typeof value === 'string' && value) targetIds.add(value)
+      }
+    }
 
     const targetRows = await tx
       .select({ id: records.id, customData: records.customData })
       .from(records)
-      .where(and(eq(records.tenantId, tenantId), eq(records.entityId, meta.id), inArray(records.id, [...ids])))
+      .where(and(eq(records.tenantId, tenantId), eq(records.entityId, meta.id), inArray(records.id, [...targetIds])))
 
     const map: Record<string, string> = {}
     for (const r of targetRows) {
       const raw = labelFieldName ? (r.customData as Record<string, unknown>)[labelFieldName] : null
       map[r.id] = typeof raw === 'string' && raw.length > 0 ? raw : r.id.slice(0, 8)
     }
-    result[field.name] = map
+    labelMaps.set(relationEntitySlug, map)
+    result[field.name] = Object.fromEntries([...ids].filter(id => id in map).map(id => [id, map[id]!]))
   }
 
   return result

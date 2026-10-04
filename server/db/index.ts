@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import * as schema from './schema'
 import { currentRecordActor } from '~/server/utils/recordActorContext'
+import { instrumentDatabase } from '~/server/utils/requestPerformance'
 
 // En runtime la app debe conectarse con APP_DATABASE_URL (rol "erp_app", sin
 // privilegios de superusuario) para que las politicas RLS (HU-ERD-12) apliquen.
@@ -18,7 +19,14 @@ const connectionString =
 // proveedor (p. ej. Neon) y un valor bajo aquí; en un servidor propio súbelo
 // según max_connections de Postgres / número de procesos.
 const poolMax = Number(process.env.DB_POOL_MAX)
-export const client = postgres(connectionString, Number.isInteger(poolMax) && poolMax > 0 ? { max: poolMax } : {})
+function positiveSeconds(name: string, fallback: number) { const value = Number(process.env[name]); return Number.isInteger(value) && value > 0 ? value : fallback }
+export const client = postgres(connectionString, {
+  max: Number.isInteger(poolMax) && poolMax > 0 ? poolMax : 10,
+  idle_timeout: positiveSeconds('DB_IDLE_TIMEOUT_SECONDS', 20),
+  connect_timeout: positiveSeconds('DB_CONNECT_TIMEOUT_SECONDS', 10),
+  keep_alive: positiveSeconds('DB_KEEP_ALIVE_SECONDS', 60)
+})
+instrumentDatabase(client)
 
 export const db = drizzle(client, { schema })
 
@@ -108,8 +116,7 @@ export async function withPerson<T>(
     // error. Por eso tambien se resetea app.tenant_id aca, a un uuid valido
     // que nunca coincide con ningun tenant real, para que esa otra policy
     // evalue limpio a "false" en vez de reventar.
-    await tx.execute(sql`select set_config('app.tenant_id', ${NIL_UUID}, true)`)
-    await tx.execute(sql`select set_config('app.person_id', ${personId}, true)`)
+    await tx.execute(sql`select set_config('app.tenant_id', ${NIL_UUID}, true), set_config('app.person_id', ${personId}, true)`)
     return fn(tx as unknown as typeof db)
   })
 }

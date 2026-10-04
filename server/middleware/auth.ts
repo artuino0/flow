@@ -2,7 +2,7 @@ import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/ut
 import { resolveApiKeyAuth } from '~/server/utils/apiKeyAuth'
 import { validateSession } from '~/server/utils/sessions'
 import { and, eq } from 'drizzle-orm'
-import { db, withTenant } from '~/server/db'
+import { withTenant } from '~/server/db'
 import { people, tenants, users } from '~/server/db/schema'
 
 // Middleware global (HU-ERD-15): valida el JWT de cualquier ruta /api/* salvo
@@ -95,11 +95,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const auth = event.context.auth!
-  const [membership] = await withTenant(auth.tenantId, tx => tx.select({ personId: users.personId }).from(users)
+  const [membership] = await withTenant(auth.tenantId, tx => tx.select({ verifiedAt: people.emailVerifiedAt, status: tenants.onboardingStatus }).from(users)
+    .leftJoin(people, eq(people.id, users.personId)).leftJoin(tenants, eq(tenants.id, users.tenantId))
     .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId))).limit(1))
-  const [person] = membership ? await db.select({ verifiedAt: people.emailVerifiedAt }).from(people).where(eq(people.id, membership.personId)).limit(1) : []
-  const [tenant] = await db.select({ status: tenants.onboardingStatus }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1)
-  const onboarding = !person?.verifiedAt ? 'email_pending' : tenant?.status ?? 'complete'
+  const onboarding = !membership?.verifiedAt ? 'email_pending' : membership.status ?? 'complete'
   if (onboarding === 'complete' || path === '/api/auth/me') return
   if (onboarding === 'email_pending') {
     if (path === '/api/auth/email-verification/resend' || path === '/api/auth/email-verification/change-email') return

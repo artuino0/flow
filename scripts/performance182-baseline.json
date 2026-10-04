@@ -1,0 +1,26 @@
+{
+  "bundle": {
+    "entry": 127123,
+    "login": 139748,
+    "home": 330634
+  },
+  "trips": {
+    "login-password": 10,
+    "login-totp-password": 1,
+    "login-totp-code": 10,
+    "session-cold": 10,
+    "session-warm": 6,
+    "menu": 11,
+    "dashboard": 15,
+    "dashboard-operational": 17,
+    "modules": 16,
+    "records-list": 21,
+    "records-list-100": 16,
+    "record-detail": 15,
+    "form-new": 27,
+    "form-edit": 10,
+    "settings": 11,
+    "sites": 24,
+    "agenda-slots": 16
+  }
+}

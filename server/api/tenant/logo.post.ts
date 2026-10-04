@@ -1,6 +1,7 @@
 import { requireAdminRole } from '~/server/utils/rbac'
 import { ManagedLogoInvalidTypeError, ManagedLogoTooLargeError, storeManagedTenantLogo } from '~/server/utils/managedStorage'
 import { StorageLimitExceededError } from '~/server/utils/storageUsage'
+import { invalidateTenantAccess } from '~/server/utils/shortCache'
 
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
@@ -9,6 +10,7 @@ export default defineEventHandler(async event => {
   if (!filePart?.filename) throw createError({ statusCode: 422, statusMessage: 'No se recibió ningún archivo' })
   try {
     const logo = await storeManagedTenantLogo(auth.tenantId, { fileName: filePart.filename, mimeType: filePart.type ?? 'application/octet-stream', buffer: filePart.data })
+    invalidateTenantAccess(auth.tenantId)
     setResponseStatus(event, 201)
     return logo
   } catch (error) {

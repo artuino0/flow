@@ -50,18 +50,16 @@ export default defineEventHandler(async (event) => {
       : []
     if (!readable.length) return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), modules: [], facturacion, activityTotal: 0, activity: [] }
     const ids = readable.map(entity => entity.id)
-    const modules = []
-    for (const entity of readable) {
-      const conditions = [eq(records.tenantId, auth.tenantId), eq(records.entityId, entity.id), isNull(records.deletedAt), gte(records.createdAt, from), lte(records.createdAt, to)]
-      const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(records).where(and(...conditions))
-      let attention = 0
+    const attentionConditions = readable.flatMap(entity => {
       const statuses = attentionValues[entity.slug]
-      if (statuses?.length) {
-        const [pending] = await tx.select({ count: sql<number>`count(*)::int` }).from(records).where(and(...conditions, or(...statuses.map(value => sql`${records.customData}->>'estado' = ${value}`))))
-        attention = pending?.count ?? 0
-      }
-      modules.push({ slug: entity.slug, name: entity.name, icon: entity.icon, total: total?.count ?? 0, attention })
-    }
+      return statuses?.length ? [and(eq(records.entityId, entity.id), or(...statuses.map(value => sql`${records.customData}->>'estado' = ${value}`)))] : []
+    })
+    const counts = await tx.select({ entityId: records.entityId, total: sql<number>`count(*)::int`,
+      attention: sql<number>`count(*) filter (where ${attentionConditions.length ? or(...attentionConditions) : sql`false`})::int` })
+      .from(records).where(and(eq(records.tenantId, auth.tenantId), inArray(records.entityId, ids), isNull(records.deletedAt), gte(records.createdAt, from), lte(records.createdAt, to)))
+      .groupBy(records.entityId)
+    const countsById = new Map(counts.map(row => [row.entityId, row]))
+    const modules = readable.map(entity => ({ slug: entity.slug, name: entity.name, icon: entity.icon, total: countsById.get(entity.id)?.total ?? 0, attention: countsById.get(entity.id)?.attention ?? 0 }))
     const activityConditions = [eq(recordActivities.tenantId, auth.tenantId), inArray(records.entityId, ids), isNull(records.deletedAt), gte(recordActivities.createdAt, from), lte(recordActivities.createdAt, to)]
     const [activityCount] = await tx.select({ count: sql<number>`count(*)::int` }).from(recordActivities).innerJoin(records, eq(records.id, recordActivities.recordId)).where(and(...activityConditions))
     const activity = await tx.select({

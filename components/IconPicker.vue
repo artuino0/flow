@@ -26,7 +26,8 @@
 // solo cuando el picker esta habilitado (si esta disabled, no hay nada que
 // editar).
 import { Pencil, Search } from '@lucide/vue'
-import { MODULE_ICONS, moduleIconComponent } from '~/utils/moduleIcons'
+import { MODULE_ICONS } from '~/utils/moduleIconCatalog'
+import { moduleIconComponent } from '~/utils/moduleIcons'
 
 const props = defineProps<{ modelValue: string | null; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
