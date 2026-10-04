@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.147.1] - 2026-10-04
+#### [bugfix]
+- [ERD-180](https://dydasoftware.atlassian.net/browse/ERD-180) - Agenda pública: el modal de reserva decía siempre «La agenda no está disponible por ahora» aunque todo estuviera configurado, porque el navegador no enviaba el origen de la petición. Ahora carga los servicios, las personas y los huecos libres. La seguridad no se relaja: el servidor sigue verificando el origen y el sitio, y el enlace de gestión de la cita sigue sin viajar en la URL.
+
 ### [0.147.0] - 2026-10-04
 #### [feature]
 - [ERD-178](https://dydasoftware.atlassian.net/browse/ERD-178) - Agenda en tus sitios: pon `{{agenda-component}}` en cualquier página para incrustar la agenda, o `{{openAgenda}}` en un botón o enlace para abrirla en una ventana, y tus visitantes podrán ver huecos libres, reservar, cancelar y reprogramar desde el enlace que reciben por correo. El editor de páginas tiene «Insertar agenda» y una vista previa con datos de ejemplo. En Sites hay una sección Agenda para elegir servicios, personal, modo de asignación, datos que se piden y un color personalizado para el componente. Incluye también las correcciones [ERD-179](https://dydasoftware.atlassian.net/browse/ERD-179): la pantalla de Agenda hace scroll y usa el mismo diseño de Sites, con una lista de verificación que dice qué falta y se colapsa cuando todo está listo; el administrador puede atender citas desde el primer día (con un horario de lunes a viernes de 9 a 18 y un botón para crearlo); las fichas de usuario tienen su horario de agenda y hay «Mi horario», bloqueos y ausencias, reglas con vista semanal de huecos y aviso de choque; y los errores de carga se explican según su causa. Todo con modo oscuro; el componente público siempre se ve claro.

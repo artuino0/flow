@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
-import { agendaPublicBookings, agendaSchedules, agendaSiteSettings, entities, entityFields, people, records, recordActivities, roles, sitePages, sites, users } from '~/server/db/schema'
+import { agendaPublicBookings, agendaSchedules, agendaSiteSettings, entities, entityFields, people, records, recordActivities, roles, siteDomains, sitePages, sites, users } from '~/server/db/schema'
 import { agendaSiteSettingsSchema, normalizeAgendaPhone, type AgendaSiteConfig, type PublicBook, type PublicReschedule } from '~/utils/agendaPublic'
 import { agendaStaff } from './agendaStaff'
 import { agendaAccentPresentation } from '~/utils/agendaAccent'
@@ -22,6 +22,11 @@ import { applyCalculatedFields, recalculateCalculatedDependents } from './calcul
 import type { AuthTokenPayload } from './auth'
 
 export interface PublicAgendaOrigin { origin: string; host: string; ip: string; userAgent: string }
+function unavailableAgenda(reason: string): never {
+  // Motivos fijos, sin URL, cabeceras, tokens ni datos del visitante.
+  if (process.env.NODE_ENV !== 'production') console.warn(`[Agenda pública] ${reason}`)
+  throw publicAgendaNotFound()
+}
 // Origen de Flow explícito; no confiar en X-Forwarded-Host ni en el cuerpo.
 export function agendaFlowOrigin() {
   const deployed = process.env.NODE_ENV === 'production' || process.env.RAILWAY_PROJECT_ID || process.env.VERCEL
@@ -31,15 +36,23 @@ export function agendaFlowOrigin() {
 }
 function verifiedOrigin(input: PublicAgendaOrigin) {
   let url: URL
-  try { url = new URL(input.origin) } catch { throw publicAgendaNotFound() }
-  if (!['http:', 'https:'].includes(url.protocol) || url.host.toLowerCase() !== input.host.toLowerCase() || url.origin !== input.origin) throw publicAgendaNotFound()
+  try { url = new URL(input.origin) } catch { return unavailableAgenda(input.origin ? 'Origen inválido o null.' : 'Sin origen: faltan Origin y Referer válido.') }
+  if (!['http:', 'https:'].includes(url.protocol) || url.origin !== input.origin) return unavailableAgenda('Origen no canónico o protocolo inválido.')
+  if (url.host.toLowerCase() !== input.host.toLowerCase()) return unavailableAgenda('El origen no coincide con Host.')
   return { hostname: url.hostname.toLowerCase(), flow: url.origin === agendaFlowOrigin(), origin: url.origin }
 }
 export async function resolveAgendaContext(site: string, page: string, origin: PublicAgendaOrigin) {
   const verified = verifiedOrigin(origin)
   const rows = await db.execute(sql`select * from resolve_public_agenda(${site}::uuid,${page}::uuid,${verified.hostname},${verified.flow})`)
   const tenantId = rows[0]?.tenant_id
-  if (!tenantId) throw publicAgendaNotFound()
+  if (!tenantId) return unavailableAgenda('Resolución pública rechazada: sitio/página/versión no publicados, agenda desactivada o dominio no autorizado.')
+  if (!verified.flow) {
+    // Comprobación explícita del argumento hostname: no depender de la
+    // resolución de nombres de columnas/argumentos del resolver SQL.
+    const activeDomain = await withTenant(String(tenantId), async tx => tx.select({ id: siteDomains.id }).from(siteDomains)
+      .where(and(eq(siteDomains.tenantId, String(tenantId)), eq(siteDomains.siteId, site), eq(siteDomains.hostname, verified.hostname), eq(siteDomains.status, 'active'))).limit(1))
+    if (!activeDomain.length) return unavailableAgenda('El dominio no está activo para este sitio.')
+  }
   return { tenantId: String(tenantId), site, page, origin: verified.origin, fingerprint: agendaHash(`${String(tenantId)}:${origin.ip}`), userAgent: origin.userAgent.slice(0, 300) }
 }
 export type PublicAgendaContext = Awaited<ReturnType<typeof resolveAgendaContext>>
@@ -57,22 +70,23 @@ async function catalogInTx(tx: typeof db, context: PublicAgendaContext) {
   const [published] = await tx.select({ id: sites.id }).from(sites).innerJoin(sitePages, and(eq(sitePages.siteId, sites.id), eq(sitePages.tenantId, sites.tenantId)))
     .where(and(eq(sites.id, site), eq(sites.tenantId, tenantId), eq(sites.status, 'published'), eq(sitePages.id, page), eq(sitePages.status, 'published'), sql`${sitePages.publishedVersionId} is not null`)).limit(1)
   const [setting] = await tx.select().from(agendaSiteSettings).where(and(eq(agendaSiteSettings.siteId, site), eq(agendaSiteSettings.tenantId, tenantId))).limit(1)
-  if (!published || !setting) throw publicAgendaNotFound()
+  if (!published) return unavailableAgenda('Sitio o página no publicados.')
+  if (!setting) return unavailableAgenda('El sitio no tiene configuración de agenda.')
   const config = agendaSiteSettingsSchema.parse(setting.config)
-  if (!config.enabled) throw publicAgendaNotFound()
+  if (!config.enabled) return unavailableAgenda('Agenda desactivada.')
   const base = await agendaBaseInTx(tx, tenantId)
-  if (!base) throw publicAgendaNotFound()
+  if (!base) return unavailableAgenda('No existe Citas base.')
   const staff = await agendaStaff(tx, tenantId)
   const visible = staff.filter(person => (!config.personalIds.length || config.personalIds.includes(person.id)) && person.name?.trim())
   const scheduled = await tx.select({ userId: agendaSchedules.userId }).from(agendaSchedules).where(eq(agendaSchedules.tenantId, tenantId))
-  if (!visible.some(person => scheduled.some(row => row.userId === person.id))) throw publicAgendaNotFound()
+  if (!visible.some(person => scheduled.some(row => row.userId === person.id))) return unavailableAgenda('No hay personas visibles con horario.')
   const services = await tx.select({ id: records.id, data: records.customData }).from(records).innerJoin(entities, eq(entities.id, records.entityId))
     .where(and(eq(records.tenantId, tenantId), eq(entities.tenantId, tenantId), eq(entities.slug, 'agenda-servicios'), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt), isNull(records.deletedAt)))
   const publicServices = services.filter(service => !config.serviceIds.length || config.serviceIds.includes(service.id)).map(service => {
     const data = service.data as Record<string, unknown>
     return { id: service.id, name: String(data.nombre ?? '').slice(0, 160), duration: Number(data.duracion_minutos), price: String(data.precio ?? '0') }
   }).filter(service => service.name && Number.isInteger(service.duration) && service.duration > 0 && service.duration <= 1440)
-  if (!publicServices.length) throw publicAgendaNotFound()
+  if (!publicServices.length) return unavailableAgenda('No hay servicios públicos válidos.')
   const { settings, timezone } = await agendaSettingsInTx(tx, tenantId)
   return { config, base, people: visible.map(person => ({ id: person.id, name: person.name!, email: person.email })), services: publicServices, mode: config.assignmentMode ?? settings.assignmentMode, settings, timezone }
 }

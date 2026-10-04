@@ -38,7 +38,9 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
   async function api<T>(path: string, body?: object, token?: string): Promise<T> {
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     if (token) headers['X-Flow-Agenda-Token'] = token
-    const response = await fetch('/api/public/agenda/' + path, { method: body ? 'POST' : 'GET', headers, ...(body ? { body: JSON.stringify({ site: cfg.site, page: cfg.page, ...body }) } : {}), credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' })
+    // GET del mismo origen no lleva Origin. Referer solo a este origen y sin
+    // query/fragmento; el documento y los POST mantienen no-referrer.
+    const response = await fetch('/api/public/agenda/' + path, { method: body ? 'POST' : 'GET', headers, ...(body ? { body: JSON.stringify({ site: cfg.site, page: cfg.page, ...body }) } : { referrer: location.origin + location.pathname }), credentials: 'omit', cache: 'no-store', referrerPolicy: body ? 'no-referrer' : 'same-origin' })
     if (!response.ok) throw Object.assign(new Error('agenda'), { status: response.status })
     return await response.json() as T
   }
