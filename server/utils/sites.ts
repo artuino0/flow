@@ -1,6 +1,7 @@
 import { and, desc, eq, max } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields, siteFormConnections, sitePages, sitePageVersions, sites } from '~/server/db/schema'
+import { agendaMarkerWarnings, agendaEditorPreviewState } from './agendaMarkerWarnings'
 
 export const SITE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DEFAULT_HOME_HTML = `<main class="flow-site-page"><section class="flow-site-hero"><p class="eyebrow">Bienvenido</p><h1>Una experiencia pública conectada con Flow.</h1><p>Este es el borrador de tu página de inicio. Personaliza su contenido antes de publicarla.</p></section></main>`
@@ -262,7 +263,7 @@ export async function getSitePage(tenantId: string, siteId: string, pageId: stri
     if (!page) return null
     const [draft] = page.draftVersionId ? await tx.select().from(sitePageVersions).where(and(eq(sitePageVersions.id, page.draftVersionId), eq(sitePageVersions.tenantId, tenantId))).limit(1) : []
     const versions = await tx.select({ id: sitePageVersions.id, version: sitePageVersions.version, status: sitePageVersions.status, createdAt: sitePageVersions.createdAt, updatedAt: sitePageVersions.updatedAt }).from(sitePageVersions).where(and(eq(sitePageVersions.pageId, pageId), eq(sitePageVersions.tenantId, tenantId))).orderBy(desc(sitePageVersions.version))
-    return { ...page, draft: draft ?? null, versions }
+    return { ...page, draft: draft ?? null, versions, agendaWarnings: await agendaMarkerWarnings(tx, tenantId, siteId, draft?.html ?? ''), agendaPreview: await agendaEditorPreviewState(tx, tenantId, siteId) }
   })
 }
 
@@ -281,7 +282,7 @@ export async function saveSitePageDraft(tenantId: string, userId: string, siteId
         draftId = version.id
       }
       const [updated] = await tx.update(sitePages).set({ title: input.title, path, draftVersionId: draftId, updatedAt: new Date() }).where(eq(sitePages.id, pageId)).returning()
-      return updated
+      return { ...updated, agendaWarnings: await agendaMarkerWarnings(tx, tenantId, siteId, input.html) }
     } catch (error) {
       if (pgCode(error) === '23505') throw new DuplicateSiteError(`Ya existe una página con la ruta "${path}"`)
       throw error
@@ -421,7 +422,7 @@ export async function publishSitePage(tenantId: string, userId: string, siteId: 
       updatedAt: new Date()
     }).where(eq(sitePages.id, pageId)).returning()
     await tx.update(sites).set({ status: 'published', updatedAt: new Date() }).where(and(eq(sites.id, siteId), eq(sites.tenantId, tenantId)))
-    return updated ?? null
+    return updated ? { ...updated, agendaWarnings: await agendaMarkerWarnings(tx, tenantId, siteId, draft.html) } : null
   })
 }
 

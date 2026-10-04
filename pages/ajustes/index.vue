@@ -391,7 +391,7 @@ async function testPac() {
 
 
 <template>
-  <div class="settings-page">
+  <div class="settings-page" :class="{ 'agenda-settings-page': section === 'agenda' || section === 'mi-horario' }">
     <ListPageHeader
       :title="settingsHeader.title"
       :description="settingsHeader.description"
@@ -617,6 +617,9 @@ async function testPac() {
 input, textarea, select { color-scheme: inherit; }
 
 .settings-page { --list-page-gutter-x: 32px; --list-page-gutter-y: 32px; @apply flex min-h-[calc(100vh-120px)] flex-col gap-6 pb-20 text-brand-text; }
+.agenda-settings-page { margin:-32px; padding:0 28px 28px; --list-page-gutter-x:28px; --list-page-gutter-y:0px; gap:28px; }
+.agenda-settings-page :deep(.list-page-heading) { height:113px; }
+@media(max-width:720px) { .agenda-settings-page { padding:0 16px 16px; --list-page-gutter-x:16px; gap:16px; } .agenda-settings-page :deep(.list-page-heading) { height:auto; min-height:90px; padding:14px 16px; } }
 .settings-layout { @apply grid items-start gap-6 lg:grid-cols-[224px_minmax(0,1fr)]; }
 .settings-nav { @apply flex gap-1 overflow-x-auto lg:sticky lg:top-5 lg:flex-col; }
 .settings-nav button { @apply flex shrink-0 items-center gap-2.5 rounded px-3 py-3 text-left text-[13px] text-brand-text-secondary hover:bg-brand-blue-bg; }

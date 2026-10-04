@@ -49,7 +49,8 @@ watch(appData, value => { if (value) appOverrides.value = { ...value.overrides }
 const dirtyAccess = computed(() => roleId.value !== (detail.value?.roleId ?? '') || isActive.value !== detail.value?.isActive)
 const dirtyChat = computed(() => Boolean(chatData.value && (Object.keys(chatOverrides.value) as ChatPermissionKey[]).some(key => chatOverrides.value[key] !== chatData.value!.overrides[key])))
 const dirtyApps = computed(() => Boolean(appData.value && (Object.keys(appOverrides.value) as FlowCapabilityKey[]).some(key => appOverrides.value[key] !== appData.value!.overrides[key])))
-const dirty = computed(() => dirtyAccess.value || dirtyChat.value || dirtyApps.value)
+const dirtyAgenda = ref(false)
+const dirty = computed(() => dirtyAccess.value || dirtyChat.value || dirtyApps.value || dirtyAgenda.value)
 
 const permissionRows: { key: ChatPermissionKey; title: string; description: string }[] = [
   { key: 'canAccess', title: 'Acceder al chat', description: 'Ver conversaciones existentes y responder mensajes.' },
@@ -119,7 +120,8 @@ const triStateOptions = [{ value: null, label: 'Heredar' }, { value: true, label
 </script>
 
 <template>
-  <div v-if="detail" class="mx-auto max-w-[1260px] pb-20">
+  <AgendaUserSchedule v-if="detail && activeTab === 'agenda'" :user="detail" @profile="selectTab('profile')" @permissions="selectTab('access')" @dirty="dirtyAgenda = $event" />
+  <div v-else-if="detail" class="mx-auto max-w-[1260px] pb-20">
     <div class="mb-5 flex items-center gap-3">
       <NuxtLink to="/usuarios" class="flex h-8 w-8 items-center justify-center rounded hover:bg-brand-surface"><ArrowLeft class="h-4 w-4 text-brand-text-secondary" /></NuxtLink>
       <div><p class="text-xs text-brand-text-muted">Usuarios / Detalle</p><h1 class="text-xl font-bold text-brand-text">{{ detail.fullName || detail.email }}</h1></div>
@@ -131,7 +133,6 @@ const triStateOptions = [{ value: null, label: 'Heredar' }, { value: true, label
       </aside>
 
       <main class="min-w-0 flex-1">
-        <SettingsAgenda v-if="activeTab === 'agenda'" :user-id="id" />
         <section v-if="activeTab === 'profile'" class="rounded-lg border border-brand-border-light bg-brand-surface">
           <header class="border-b border-brand-border-light px-6 py-5"><h2 class="text-base font-bold text-brand-text">Perfil del trabajador</h2><p class="mt-1 text-sm text-brand-text-muted">Información registrada para esta organización.</p></header>
           <dl class="grid gap-x-8 gap-y-6 p-6 sm:grid-cols-2"><div><dt class="text-xs font-semibold text-brand-text-muted">Nombre completo</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.fullName || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Correo electrónico</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.email }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Teléfono</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.phone || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Puesto</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.jobTitle || 'Sin capturar' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Zona horaria</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ detail.timezone || 'Predeterminada de la organización' }}</dd></div><div><dt class="text-xs font-semibold text-brand-text-muted">Miembro desde</dt><dd class="mt-1 text-sm font-medium text-brand-text">{{ new Date(detail.createdAt).toLocaleDateString('es-MX', { dateStyle: 'long' }) }}</dd></div></dl>

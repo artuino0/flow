@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick, Suspense, ref, reactive, computed, watch, onBeforeUnmount, type App, type Component } from 'vue'
+import { createApp, h, nextTick, Suspense, ref, reactive, computed, watch, onBeforeUnmount, onMounted, useId, type App, type Component } from 'vue'
 import { compileVueComponent } from '../helpers/vueComponent'
 import * as agenda from '../../utils/agenda'
 import { themeBootstrap, THEME_STORAGE_KEY } from '../../utils/theme'
@@ -17,7 +17,7 @@ async function mount(surface: Surface, mode: string, state: { installed?: boolea
   const api = vi.fn(async (url: string, _options?: unknown) => url === '/api/agenda/availability' ? { slots: [], automatic: [] } : {})
   const refresh = vi.fn(), dirty = vi.fn()
   const permissions = { edit: !state.readonly, manage: !state.readonly }
-  const globals = { ref, reactive, computed, watch, onBeforeUnmount, nextTick,
+  const globals = { ref, reactive, computed, watch, onBeforeUnmount, onMounted, useId, nextTick,
     useAuth: () => ({ user: ref({ id: person.id }) }), useRequestHeaders: () => ({}), useIsAdmin: async () => ({ data: ref(true) }), $fetch: api,
     useFetch: (url: string) => ({ pending: ref(false), error: ref(state.error ? new Error('Prueba') : null), refresh,
       data: ref(url.endsWith('/settings') ? { installed: state.installed !== false, settings: agenda.agendaDefaults, timezone: 'America/Mexico_City', people: [person], permissions }
@@ -27,6 +27,9 @@ async function mount(surface: Surface, mode: string, state: { installed?: boolea
   const app = createApp({ render: () => h(Suspense, {}, { default: () => h(comp, { ...props, onDirty: dirty }) }) })
   const link: Component = { setup(_, { attrs, slots }) { return () => h('a', { href: String(attrs.to) }, slots.default?.()) } }
   app.component('NuxtLink', link)
+  app.component('AgendaCard', compileVueComponent('components/AgendaCard.vue'))
+  app.component('AgendaInternalModal', compileVueComponent('components/AgendaInternalModal.vue', {}, globals))
+  app.component('AgendaScheduleSummary', compileVueComponent('components/AgendaScheduleSummary.vue', { '~/utils/agenda': agenda }, globals))
   for (const child of ['AgendaScheduleEditor', 'AgendaTimeOffEditor']) app.component(child, { template: '<div />' })
   const host = document.createElement('div'); document.body.append(host); apps.push(app); app.mount(host); await flush()
   return { host, api, refresh, dirty }
@@ -39,6 +42,7 @@ describe.each(['light', 'dark', 'system'])('Agenda en %s sin red', mode => {
     expect(host.querySelector('.theme-light')).toBeNull()
     expect(document.documentElement.dataset.theme).toBe(mode === 'light' ? 'light' : 'dark')
     expect(host.textContent?.trim().length).toBeGreaterThan(30)
+    if (surface === 'AgendaTimeOffEditor') { expect(host.querySelector('[role="dialog"]')).toBeNull(); await click(host, '＋ Nuevo bloqueo'); expect(host.querySelector('[role="dialog"]')).toBeTruthy() }
     expect(host.querySelectorAll('label').length).toBeGreaterThan(0)
   })
   it('horario permite agregar, copiar, guardar y detectar traslapes', async () => {
@@ -54,6 +58,7 @@ describe.each(['light', 'dark', 'system'])('Agenda en %s sin red', mode => {
   it('bloqueos vacíos y alta mandan hora local y motivo', async () => {
     const { host, api } = await mount('AgendaTimeOffEditor', mode)
     expect(host.textContent).toContain('Sin bloqueos')
+    await click(host, '＋ Nuevo bloqueo')
     for (const [selector, value] of [['#agenda-block-reason', 'Vacaciones'], ['input[type="datetime-local"]', '2026-10-05T00:00']] as const) { const el = host.querySelector<HTMLInputElement>(selector)!; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })) }
     const end = host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[1]!; end.value = '2026-10-06T00:00'; end.dispatchEvent(new Event('input', { bubbles: true })); await flush()
     host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await flush()

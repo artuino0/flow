@@ -5,6 +5,7 @@ import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
 import { entities, entityFields } from '~/server/db/schema'
 import { isAgendaBase } from '~/utils/agendaBase'
+import { upgradeAgendaStaffField } from './agendaStaffField'
 import { initializeAgenda } from '~/server/utils/agendaAdmin'
 import { stateWorkflowSchema } from '~/server/utils/stateWorkflow'
 import { invalidatesTenantAccess } from '~/server/utils/shortCache'
@@ -81,7 +82,7 @@ export const agendaBlueprint: Blueprint = {
         { name: 'fecha', label: 'Fecha', dataType: 'date', required: true },
         { name: 'hora', label: 'Hora', dataType: 'text', required: true },
         { name: 'duracion_minutos', label: 'Duración en minutos', dataType: 'number', validationRules: { min: 1, integer: true } },
-        { name: 'personal', label: 'Personal que atiende', dataType: 'user', required: true, isOwnerField: true, validationRules: { roles: ['Personal'] } },
+        { name: 'personal', label: 'Personal que atiende', dataType: 'user', required: true, isOwnerField: true, validationRules: { agendaStaff: true } },
         { name: 'recurso', label: 'Recurso', dataType: 'relation', validationRules: { relationEntity: 'agenda-recursos' } },
         { name: 'estado', label: 'Estado', dataType: 'select', required: true, validationRules: { options: statusOptions } },
         { name: 'notas', label: 'Notas', dataType: 'text' }
@@ -109,12 +110,13 @@ export const agendaBlueprint: Blueprint = {
 }
 
 // Solo completa metadata ausente en módulos activos de la plantilla real.
-// El bloqueo serializa este paso con cualquier edición del módulo; nunca escribe campos ni registros.
+// El bloqueo serializa este paso con la edición del módulo; solo actualiza el filtro canónico de personal, nunca registros.
 export const upgradeAgendaTemplate = invalidatesTenantAccess(async (tenantId: string) => {
   return withTenant(tenantId, async tx => {
     const installed = await tx.select().from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt))).for('update')
     if (!installed.some(isAgendaBase)) return
     for (const entity of installed) {
+      if (isAgendaBase(entity)) await upgradeAgendaStaffField(tx, tenantId, entity.id)
       const module = agendaBlueprint.modules.find(item => item.slug === entity.slug)
       if (!module) continue
       const changes: { icon?: string; workflowConfig?: typeof agendaStateWorkflow } = {}

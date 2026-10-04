@@ -17,6 +17,8 @@ import { compileVueComponent } from '../helpers/vueComponent'
 import * as codeTheme from '../../utils/sitesCodeTheme'
 import { lightTokens, darkTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight } from '../../utils/theme'
+import { agendaSiteSettingsSchema } from '../../utils/agendaPublic'
+import * as agendaPreview from '../../utils/sitesAgendaPreview'
 import { buildPreviewDocument, joinSiteScript, splitSiteScript } from '../../utils/sitesEditorScript'
 import { auditThemeColors, auditThemeSource, migratedThemeFiles, themeColorExceptions } from '../../scripts/auditThemeColors'
 import { editorContrastPairs, isEditorContrast, themeContrasts } from '../helpers/themeContrast'
@@ -28,8 +30,8 @@ import deficits from '../fixtures/themeEditorDeficits168.json'
 const apps: App[] = []
 const files = ['pages/sites/[siteId]/pages/[pageId].vue', 'components/SitesCodeEditor.client.vue', 'components/SitesEditorForms.vue', 'components/SitesAssetLibrary.vue', 'utils/sitesCodeTheme.ts']
 const flush = async () => { await new Promise(resolve => setTimeout(resolve, 25)); await nextTick() }
-const imports = { codemirror: cm, '@codemirror/state': state, '@codemirror/view': view, '@codemirror/commands': commands, '@codemirror/lang-html': htmlLanguage, '@codemirror/lang-css': cssLanguage, '@codemirror/lang-javascript': jsLanguage, '~/utils/sitesCodeTheme': codeTheme, '~/utils/sitesEditorScript': { buildPreviewDocument, joinSiteScript, splitSiteScript } }
-const page = { id: 'p', title: 'Contacto', path: '/contacto', status: 'draft', kind: 'website', draft: { version: 1, html: '<main style="background:#ffeecc;color:#102030">Mi sitio</main>', css: 'body{background:#fafafa}', updatedAt: '2026-10-02T12:00:00Z' }, versions: [] }
+const imports = { '~/utils/sitesAgendaPreview': agendaPreview, codemirror: cm, '@codemirror/state': state, '@codemirror/view': view, '@codemirror/commands': commands, '@codemirror/lang-html': htmlLanguage, '@codemirror/lang-css': cssLanguage, '@codemirror/lang-javascript': jsLanguage, '~/utils/sitesCodeTheme': codeTheme, '~/utils/sitesEditorScript': { buildPreviewDocument, joinSiteScript, splitSiteScript } }
+const page = { agendaPreview: undefined as agendaPreview.AgendaEditorPreviewState | undefined, id: 'p', title: 'Contacto', path: '/contacto', status: 'draft', kind: 'website', draft: { version: 1, html: '<main style="background:#ffeecc;color:#102030">Mi sitio</main>', css: 'body{background:#fafafa}', updatedAt: '2026-10-02T12:00:00Z' }, versions: [] }
 const form = { id: 'contacto', name: 'Contacto', siteId: 's', pageId: 'p', pageTitle: 'Contacto', pagePath: '/contacto', fields: [{ name: 'nombre', label: 'Nombre', type: 'text', required: true }], connection: { entityId: 'e', entityName: 'Clientes', entitySlug: 'clientes', fieldMapping: { nombre: 'nombre' }, defaultValues: {}, valueMappings: {} } }
 const asset = { id: 'a', fileName: 'imagen.svg', mimeType: 'image/svg+xml', sizeBytes: 2000, publicUrl: 'https://ejemplo.invalid/imagen.svg', createdAt: '' }
 function response(url: string) {
@@ -96,6 +98,23 @@ describe('contratos HU-168', () => {
     for (const file of files) { expect(migratedThemeFiles).toContain(file); expect(themeColorExceptions[file]).toBeUndefined(); expect(auditThemeSource(file, '<div class="bg-white text-slate-500" style="color:#fff"/>')).toHaveLength(3) }
     expect(contentNeedsLight({ darkReady: true })).toBe(false)
     expect(readFileSync(files[0]!, 'utf8')).toContain('darkReady: true')
+  })
+})
+
+describe.each(['light', 'dark'] as const)('Inserción de agenda HU-178 en el editor, %s', theme => {
+  it('inserta ambos fragmentos desde preview y resalta los marcadores sin cambiar el tema', async () => {
+    prepareMeasurements()
+    const { host, stop } = await mount(files[0]!, theme)
+    host.querySelectorAll('.segmented button')[2]!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush()
+    expect(host.querySelector('.code-pane')).toBeNull()
+    const options = host.querySelectorAll('.header-actions details button')
+    options[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush()
+    expect(host.querySelector('.cm-content')!.textContent).toContain('{{agenda-component}}')
+    options[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush()
+    expect(host.querySelector('.cm-content')!.textContent).toContain('<button {{openAgenda}}>Agenda tu cita</button>')
+    expect(host.querySelectorAll('.cm-flow-agenda').length).toBeGreaterThanOrEqual(2)
+    expect(view.EditorView.findFromDOM(host.querySelector('.cm-editor')!)!.state.facet(view.EditorView.darkTheme)).toBe(theme === 'dark')
+    stop()
   })
 })
 
@@ -243,5 +262,28 @@ describe.each(['light', 'dark'] as const)('editor y paneles montados sin red, %s
     expect(writeText).toHaveBeenCalledWith(asset.publicUrl)
     expect(host.querySelector('.asset-list button svg')).toBeTruthy()
     stop()
+  })
+})
+
+
+describe.each(['light', 'dark'] as const)('Agenda demostrativa dentro del editor %s', theme => {
+  it('srcdoc incrustado/modal conserva ejemplo, acento, viewport y puente sin red pública', async () => {
+    prepareMeasurements()
+    const original = page.draft.html
+    try {
+      page.draft.html = '{{agenda-component}}<button {{openAgenda}}>Abrir agenda</button><form data-flow-form="f"><input name="nombre"></form>'
+      page.agendaPreview = { settings: agendaSiteSettingsSchema.parse({ enabled: true, accent: 'custom', accentColor: '#AbC' }), missing: [], assignmentMode: 'both', timezone: 'America/Mexico_City' }
+      const { host, fetch, stop } = await mount(files[0]!, theme)
+      const iframe = host.querySelector('iframe')!
+      expect(iframe.getAttribute('srcdoc')).toContain('data-flow-agenda="inline"')
+      expect(iframe.getAttribute('srcdoc')).toContain('data-flow-agenda-open')
+      expect(iframe.getAttribute('srcdoc')).toContain('"preview":true')
+      expect(iframe.getAttribute('srcdoc')).toContain('#aabbcc')
+      expect(iframe.getAttribute('srcdoc')).toContain('flow-sites-editor')
+      expect(iframe.classList.contains('theme-light')).toBe(true)
+      expect(document.documentElement.dataset.theme).toBe(theme)
+      expect(fetch.mock.calls.every(([url]) => !String(url).startsWith('/api/public/agenda'))).toBe(true)
+      stop()
+    } finally { page.draft.html = original; page.agendaPreview = undefined }
   })
 })

@@ -1,16 +1,17 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, or, sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import { requireAuth } from './rbac'
+import { agendaStaff } from './agendaStaff'
 import { db, withTenant } from '~/server/db'
 import { agendaSchedules, agendaSettings, agendaTimeOff, entities, people, roles, tenants, users } from '~/server/db/schema'
 import { agendaDefaults, agendaSettingsSchema, schedulesSchema, timeOffSchema, type AgendaPerson } from '~/utils/agenda'
 import type { AuthTokenPayload } from '~/server/utils/auth'
 
-export function agendaPermissions(actor: { id: string; role: string; isSystem: boolean }, target: string | null) {
+export function agendaPermissions(actor: { id: string; role: string; isSystem: boolean; agendaStaff?: boolean }, target: string | null) {
   const admin = actor.isSystem
   const reception = actor.role === 'Recepción'
-  return { manage: admin || reception, edit: admin || reception || (actor.role === 'Personal' && target === actor.id), force: admin }
+  return { manage: admin || reception, edit: admin || reception || ((actor.role === 'Personal' || actor.agendaStaff === true) && target === actor.id), force: admin }
 }
 export function requireAgendaSession(event: H3Event) {
   const auth = requireAuth(event)
@@ -22,7 +23,8 @@ export async function agendaActor(tx: typeof db, auth: AuthTokenPayload, target:
     .innerJoin(roles, and(eq(roles.id, users.roleId), eq(roles.tenantId, users.tenantId)))
     .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId), eq(users.roleId, auth.roleId!), eq(users.isActive, true))).limit(1)
   if (!actor) throw createError({ statusCode: 403, statusMessage: 'No tienes acceso a la agenda de esta organización.' })
-  return agendaPermissions(actor, target)
+  const eligible = (await agendaStaff(tx, auth.tenantId)).some(person => person.id === actor.id)
+  return agendaPermissions({ ...actor, agendaStaff: eligible }, target)
 }
 export async function agendaBaseInTx(tx: typeof db, tenantId: string) {
   const [base] = await tx.select().from(entities).where(and(eq(entities.tenantId, tenantId), eq(entities.slug, 'agenda-citas'), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt))).limit(1)
@@ -53,11 +55,25 @@ export async function initializeAgenda(tenantId: string) {
     await agendaMutationLock(tx, tenantId)
     await tx.insert(agendaSettings).values({ tenantId }).onConflictDoNothing()
     const staff = await tx.select({ id: users.id }).from(users).innerJoin(roles, eq(roles.id, users.roleId))
-      .where(and(eq(users.tenantId, tenantId), eq(roles.tenantId, tenantId), eq(roles.name, 'Personal'), eq(users.isActive, true)))
+      .where(and(eq(users.tenantId, tenantId), eq(roles.tenantId, tenantId), or(eq(roles.name, 'Personal'), eq(roles.isSystem, true)), eq(users.isActive, true)))
     for (const person of staff) {
-      const existing = await tx.select({ id: agendaSchedules.id }).from(agendaSchedules).where(and(eq(agendaSchedules.tenantId, tenantId), eq(agendaSchedules.userId, person.id))).limit(1)
-      if (!existing.length) await tx.insert(agendaSchedules).values([1, 2, 3, 4, 5].map(weekday => ({ tenantId, userId: person.id, weekday, startTime: '09:00', endTime: '18:00' })))
+      await createDefaultAgendaScheduleInTx(tx, tenantId, person.id)
     }
+  })
+}
+export async function createDefaultAgendaScheduleInTx(tx: typeof db, tenantId: string, userId: string) {
+  // El llamador mantiene el mismo lock que PUT: nunca pisa rangos concurrentes.
+  const existing = await tx.select({ id: agendaSchedules.id }).from(agendaSchedules).where(and(eq(agendaSchedules.tenantId, tenantId), eq(agendaSchedules.userId, userId))).limit(1)
+  if (existing.length) return { created: false }
+  await tx.insert(agendaSchedules).values([1, 2, 3, 4, 5].map(weekday => ({ tenantId, userId, weekday, startTime: '09:00', endTime: '18:00' })))
+  return { created: true }
+}
+export async function createOwnDefaultAgendaSchedule(auth: AuthTokenPayload) {
+  return withTenant(auth.tenantId, async tx => {
+    await requireAgendaBase(tx, auth.tenantId)
+    await agendaMutationLock(tx, auth.tenantId)
+    if (!(await agendaActor(tx, auth, auth.sub)).force) throw createError({ statusCode: 403, statusMessage: 'Solo un administrador puede crear su horario inicial desde aquí.' })
+    return createDefaultAgendaScheduleInTx(tx, auth.tenantId, auth.sub)
   })
 }
 export async function saveAgendaSchedules(auth: AuthTokenPayload, userId: string, input: unknown) {

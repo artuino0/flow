@@ -8,7 +8,7 @@ describe('definiciones de recorridos', () => {
   it('tiene IDs únicos, textos útiles y selectores declarados', () => {
     const tours = Object.values(onboardingTours)
     expect(new Set(tours.map(tour => tour.id)).size).toBe(tours.length)
-    expect(tours.map(tour => tour.id)).toEqual(['ajustes-plan', ...Object.values(MODULE_EDIT_TOURS), 'bienvenida', 'primer-modulo', 'crear-modulo-manual'])
+    expect(tours.map(tour => tour.id)).toEqual(['sites-agenda', 'ajustes-plan', ...Object.values(MODULE_EDIT_TOURS), 'bienvenida', 'primer-modulo', 'crear-modulo-manual'])
     for (const tour of tours) {
       expect(tour.steps.length).toBeGreaterThan(0)
       for (const step of tour.steps) {
@@ -139,6 +139,9 @@ describe('definiciones de recorridos', () => {
 
   it('cada selector data-tour existe en la plantilla que lo ofrece', () => {
     const sourceByName: Record<keyof typeof TOUR_SELECTORS, string> = {
+      sitesAgendaSettings: 'pages/sites/[siteId]/agenda/index.vue',
+      sitesAgendaCatalog: 'pages/sites/[siteId]/agenda/index.vue',
+      sitesAgendaPreview: 'pages/sites/[siteId]/agenda/index.vue',
       settingsPlanRefresh: 'pages/ajustes/index.vue',
       settingsPlanCurrent: 'components/SettingsBillingSummary.vue',
       settingsPlanConsumption: 'components/SettingsBillingSummary.vue',

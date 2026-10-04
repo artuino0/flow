@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normalizeAgendaAccent, agendaAccentPresentation } from './agendaAccent'
 import { agendaDate, agendaTime } from './agenda'
 
 const plain = (max: number) => z.string().trim().max(max).refine(value => !/[<>\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value), 'Texto inválido')
@@ -21,11 +22,15 @@ export const agendaSiteSettingsSchema = z.object({
   enabled: z.boolean().default(false), serviceIds: z.array(z.string().uuid()).max(100).default([]), personalIds: z.array(z.string().uuid()).max(100).default([]),
   assignmentMode: z.enum(['client_chooses', 'auto', 'both']).nullable().default(null),
   requiredFields: z.array(z.enum(['name', 'phone', 'email'])).max(3).default(['name', 'email']),
+  visibleFields: z.array(z.enum(['name', 'phone', 'email'])).max(3).default(['name', 'phone', 'email']),
   clientFields: z.object({ name: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).default('nombre'), phone: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).default('telefono'), email: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).default('correo') }).strict().default({}),
   cancellationHours: z.number().int().min(0).max(8760).default(24), maxActiveBookings: z.number().int().min(1).max(20).default(3),
   requireConsent: z.boolean().default(false), confirmationMessage: plain(2000).default('Tu cita quedó agendada.'),
-  accent: z.enum(['primary', 'secondary', 'accent']).default('primary')
-}).strict().refine(value => new Set(Object.values(value.clientFields)).size === 3, 'Campos duplicados')
+  accent: z.enum(['primary', 'secondary', 'accent', 'custom']).default('primary'),
+  accentColor: z.string().max(7).transform(value => normalizeAgendaAccent(value)).refine((value): value is string => value !== null, 'Escribe un color hexadecimal #RGB o #RRGGBB válido').optional()
+}).strict().refine(value => agendaAccentPresentation(value.accent, value.accentColor).approved, 'El acento necesita un color válido con contraste AA').refine(value => new Set(Object.values(value.clientFields)).size === 3, 'Campos duplicados')
+  .refine(value => value.requiredFields.every(field => value.visibleFields.includes(field)), 'Los campos obligatorios deben solicitarse al cliente')
+  .refine(value => value.visibleFields.includes('email') || value.visibleFields.includes('phone'), 'Solicita al menos correo o teléfono')
 export type AgendaSiteConfig = z.infer<typeof agendaSiteSettingsSchema>
 export type PublicBook = z.infer<typeof publicBookSchema>
 export type PublicReschedule = z.infer<typeof publicRescheduleSchema>

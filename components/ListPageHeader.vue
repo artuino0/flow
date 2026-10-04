@@ -33,9 +33,11 @@ defineEmits<{ refresh: [] }>()
   <div class="list-page-header">
     <header class="list-page-heading">
       <nav class="list-breadcrumb" aria-label="Migas de pan">
+        <slot name="breadcrumb">
         <NuxtLink to="/">Inicio</NuxtLink>
         <ChevronRight :size="13" :stroke-width="1.75" />
         <span>{{ breadcrumb || title }}</span>
+        </slot>
       </nav>
 
       <div class="list-title-row">

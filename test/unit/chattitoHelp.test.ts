@@ -5,7 +5,7 @@ import { canReadChattitoHelp, chattitoHelpCatalog, chattitoHelpId, chattitoHelpM
 
 describe('catálogo de ayuda de Chattito', () => {
   it('cubre las nueve pestañas y Plan y consumo con textos y recorridos válidos', () => {
-    expect(Object.keys(chattitoHelpCatalog)).toEqual(['settings:plan', ...Object.values(MODULE_EDIT_TABS).map(tab => `module-edit:${tab}`)])
+    expect(Object.keys(chattitoHelpCatalog)).toEqual(['sites:agenda', 'settings:plan', ...Object.values(MODULE_EDIT_TABS).map(tab => `module-edit:${tab}`)])
     for (const tab of Object.values(MODULE_EDIT_TABS)) {
       const context = { page: 'module-edit', tab, moduleId: '123' } as const
       const help = helpForContext(context)!

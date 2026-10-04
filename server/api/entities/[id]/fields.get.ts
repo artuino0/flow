@@ -8,6 +8,7 @@ import { resolveListLayout } from '~/server/utils/listLayout'
 import { isListFilterable } from '~/utils/listFilters'
 import { resolveBoardConfig } from '~/server/utils/boardConfig'
 import { resolveCalendarConfig } from '~/server/utils/calendarConfig'
+import { upgradeAgendaStaffField } from '~/server/utils/agendaStaffField'
 import { metadataCache } from '~/server/utils/shortCache'
 
 // GET /api/entities/:entity/fields (HU-ERD-23)
@@ -29,6 +30,7 @@ export default defineEventHandler(async (event) => {
   // casi nunca cambia y cada pantalla la pide: se guarda en memoria unos segundos
   // (METADATA_CACHE_TTL_MS, 30 s por defecto). Cualquier cambio de módulos, campos o permisos
   // la invalida (invalidateTenantAccess). Depende del rol por los permisos que incluye.
+  await withTenant(auth.tenantId, tx => upgradeAgendaStaffField(tx, auth.tenantId, entity.id))
   const cacheKey = `${auth.tenantId}:${auth.roleId}:fields:${entitySlug}`
   const cachedResponse = metadataCache.get(cacheKey)
   if (cachedResponse) return cachedResponse

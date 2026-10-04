@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { EntityFieldMeta } from '~/composables/useEntityFields'
 
-type UserOption = { id: string; fullName: string | null; email: string; isActive: boolean; roleId: string | null; roleName: string | null }
+type UserOption = { id: string; fullName: string | null; email: string; isActive: boolean; agendaStaff?: boolean; roleId: string | null; roleName: string | null }
 const props = defineProps<{ field: EntityFieldMeta; modelValue: unknown; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string | string[] | null] }>()
 const route = useRoute()
@@ -10,7 +10,7 @@ const users = ref<UserOption[]>([])
 const multiple = computed(() => props.field.validationRules?.multiple === true)
 const selected = computed(() => Array.isArray(props.modelValue) ? props.modelValue.filter((id): id is string => typeof id === 'string') : typeof props.modelValue === 'string' ? [props.modelValue] : [])
 const roles = computed(() => Array.isArray(props.field.validationRules?.roles) ? props.field.validationRules.roles as string[] : [])
-const available = computed(() => users.value.filter(user => user.isActive && (!roles.value.length || roles.value.includes(user.roleId ?? '') || roles.value.includes(user.roleName ?? '')) && `${user.fullName ?? ''} ${user.email}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())))
+const available = computed(() => users.value.filter(user => user.isActive && (props.field.validationRules?.agendaStaff === true ? user.agendaStaff === true : (!roles.value.length || roles.value.includes(user.roleId ?? '') || roles.value.includes(user.roleName ?? ''))) && `${user.fullName ?? ''} ${user.email}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())))
 function label(id: string): string {
   const user = users.value.find(row => row.id === id)
   return user ? `${user.fullName || user.email}${user.isActive ? '' : ' (inactivo)'}` : `${id} (inactivo)`

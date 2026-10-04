@@ -16,6 +16,9 @@ export const MODULE_EDIT_TAB_ANCHORS = {
 export const SETTINGS_TOURS = { plan: 'ajustes-plan' } as const
 
 export const TOUR_SELECTORS = {
+  sitesAgendaSettings: '[data-tour="sites-agenda-settings"]',
+  sitesAgendaCatalog: '[data-tour="sites-agenda-catalog"]',
+  sitesAgendaPreview: '[data-tour="sites-agenda-preview"]',
   settingsPlanRefresh: '[data-tour="settings-plan-refresh"]',
   settingsPlanCurrent: '[data-tour="settings-plan-current"]',
   settingsPlanConsumption: '[data-tour="settings-plan-consumption"]',
@@ -97,7 +100,7 @@ export const TOUR_SELECTORS = {
 } as const
 
 export type ModuleEditTourId = typeof MODULE_EDIT_TOURS[ModuleEditTab]
-export type TourId = 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual' | ModuleEditTourId | typeof SETTINGS_TOURS[keyof typeof SETTINGS_TOURS]
+export type TourId = 'sites-agenda' | 'bienvenida' | 'primer-modulo' | 'crear-modulo-manual' | ModuleEditTourId | typeof SETTINGS_TOURS[keyof typeof SETTINGS_TOURS]
 
 export function isModuleEditTour(id: TourId | null): id is ModuleEditTourId {
   return Object.values(MODULE_EDIT_TOURS).some(tourId => tourId === id)
@@ -108,10 +111,11 @@ export function moduleEditTourMatchesRoute(id: ModuleEditTourId, path: string, t
 }
 // Recorridos informativos que permanecen en la URL donde se iniciaron.
 export function isContextualTour(id: TourId | null) {
-  return isModuleEditTour(id) || id === SETTINGS_TOURS.plan
+  return isModuleEditTour(id) || id === SETTINGS_TOURS.plan || id === 'sites-agenda'
 }
 
 export function contextualTourMatchesRoute(id: TourId, path: string, query: Record<string, unknown>) {
+  if (id === 'sites-agenda') return /^\/sites\/[^/]+\/agenda\/?$/.test(path)
   return isModuleEditTour(id) ? moduleEditTourMatchesRoute(id, path, query.tab)
     : id === SETTINGS_TOURS.plan && /^\/ajustes\/?$/.test(path) && query.section === 'plan'
 }
@@ -231,6 +235,11 @@ export function tourStepDestination(id: TourId, index: number, step: OnboardingS
 }
 
 export const onboardingTours: Record<TourId, OnboardingTour> = {
+  'sites-agenda': { id: 'sites-agenda', requires: ['settings.modules'], steps: [
+    { selector: TOUR_SELECTORS.sitesAgendaSettings, title: 'Agenda del sitio', text: 'Activa la agenda cuando Citas base y los horarios del personal estén listos. Guarda para aplicar los cambios.', side: 'bottom', emotion: 'idle' },
+    { selector: TOUR_SELECTORS.sitesAgendaCatalog, title: 'Servicios y personal visibles', text: 'Busca y selecciona los servicios y las personas que aparecerán en tu sitio. Una lista vacía permite todos los disponibles.', side: 'bottom', emotion: 'idle' },
+    { selector: TOUR_SELECTORS.sitesAgendaPreview, title: 'Prueba sin reservar', text: 'Esta vista usa datos simulados y nunca crea citas. Inserta el componente o un botón modal desde el editor de páginas.', side: 'top', emotion: 'happy' }
+  ] },
   'ajustes-plan': {
     id: 'ajustes-plan', requires: ['settings.modules'], steps: [
       { selector: TOUR_SELECTORS.settingsPlanRefresh, title: 'Tu plan, a la vista', text: 'Aquí revisas el plan y el consumo de tu organización. Actualizar vuelve a consultar los datos; este recorrido solo te los explica.', side: 'bottom', emotion: 'happy' },

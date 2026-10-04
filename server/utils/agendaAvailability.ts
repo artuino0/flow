@@ -2,7 +2,8 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
 import { agendaSchedules, agendaTimeOff, entities, entityFields, records, recordActivities } from '~/server/db/schema'
-import { agendaPeople, agendaSettingsInTx, requireAgendaBase } from './agendaAdmin'
+import { agendaSettingsInTx, requireAgendaBase } from './agendaAdmin'
+import { agendaStaff } from './agendaStaff'
 import { calculateAvailability, localInstant, localAt, addAgendaDays } from './agendaEngine'
 import { agendaDate, agendaTime, type AgendaAppointment } from '~/utils/agenda'
 import { z } from 'zod'
@@ -30,7 +31,7 @@ export async function serviceDuration(tx: typeof db, tenantId: string, service: 
 export async function availabilityInTx(tx: typeof db, tenantId: string, query: AvailabilityQuery, now = Date.now(), publicOptions?: { people: { id: string; name: string }[]; assignmentMode: 'client_chooses' | 'auto' | 'both' }) {
   await requireAgendaBase(tx, tenantId)
   const { settings, timezone } = await agendaSettingsInTx(tx, tenantId)
-  const people = publicOptions?.people ?? await agendaPeople(tx, tenantId)
+  const people = publicOptions?.people ?? (await agendaStaff(tx, tenantId)).map(person => ({ id: person.id, name: person.name || person.email }))
   if (publicOptions) settings.assignmentMode = publicOptions.assignmentMode
   if (query.personal && !people.some(p => p.id === query.personal)) throw createError({ statusCode: 404, statusMessage: 'Personal no encontrado.' })
   const schedules = await tx.select().from(agendaSchedules).where(eq(agendaSchedules.tenantId, tenantId))

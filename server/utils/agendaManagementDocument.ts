@@ -1,0 +1,4 @@
+import { publicAgendaRuntime, type AgendaRuntimeConfig } from '~/utils/publicAgendaRuntime'
+export function renderAgendaManagementDocument(config: AgendaRuntimeConfig) {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="light"><title>Gestionar mi cita</title><style>html{color-scheme:light!important}body{margin:0;padding:56px 16px 72px;background:#F6F7F9;color:#111827;font-family:system-ui,sans-serif}@media(max-width:700px){body{padding:20px 16px 32px}}</style></head><body><main data-flow-agenda-management></main>${publicAgendaRuntime({ ...config, management: true })}</body></html>`
+}

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { invalidateTenantAccess } from '~/server/utils/shortCache'
 import { eq } from 'drizzle-orm'
 import { withTenant } from '~/server/db'
+import { upgradeAgendaStaffField } from './agendaStaffField'
 import { entityFields } from '~/server/db/schema'
 
 // Generador de schema Zod dinamico desde entity_fields (HU-ERD-17).
@@ -76,6 +77,7 @@ import { tenants } from '~/server/db/schema'
  * que se calculo (comparando una huella de nombre/tipo/reglas/requerido).
  */
 export async function getEntityZodSchema(tenantId: string, entityId: string, creation?: { userId?: string }): Promise<z.ZodTypeAny> {
+  await withTenant(tenantId, tx => upgradeAgendaStaffField(tx, tenantId, entityId))
   const cacheKey = `${tenantId}:${entityId}:${creation ? `create:${creation.userId ?? ""}` : "validate"}`
 
   const rows = (await withTenant(tenantId, (tx) =>

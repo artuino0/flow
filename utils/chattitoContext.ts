@@ -6,6 +6,7 @@ export const SETTINGS_SECTIONS = ['organizacion', 'perfil', 'seguridad', 'plan',
 export type SettingsSection = typeof SETTINGS_SECTIONS[number]
 
 export type ChattitoContext =
+  | { page: 'sites-agenda'; siteId: string }
   | { page: 'module-edit'; tab: ModuleEditTab; moduleId: string }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'unknown' }
@@ -27,6 +28,8 @@ const contextResolvers: ((route: ChattitoRoute) => ChattitoContext | null)[] = [
 ]
 
 export function resolveChattitoContext(route: ChattitoRoute, isAdmin = false): ChattitoContext {
+  const agenda = /^\/sites\/([^/]+)\/agenda\/?$/.exec(route.path)
+  if (agenda) return { page: 'sites-agenda', siteId: agenda[1]! }
   if (/^\/ajustes\/?$/.test(route.path)) {
     const section = route.query.section === undefined || route.query.section === null || route.query.section === ''
       ? isAdmin ? 'organizacion' : 'perfil' : route.query.section

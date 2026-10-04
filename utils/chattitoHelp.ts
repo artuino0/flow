@@ -10,9 +10,10 @@ export interface ChattitoHelp {
   requires: readonly TourRequirement[]
 }
 
-export type ChattitoHelpId = `module-edit:${ModuleEditTab}` | 'settings:plan'
+export type ChattitoHelpId = `module-edit:${ModuleEditTab}` | 'settings:plan' | 'sites:agenda'
 
 export const chattitoHelpCatalog: Readonly<Record<ChattitoHelpId, ChattitoHelp>> = {
+  'sites:agenda': { tourId: 'sites-agenda', title: 'Agenda del sitio', requires: ['settings.modules'], summary: 'Elige qué servicios y personal podrán reservar los visitantes. Activa la agenda y guarda antes de insertar los marcadores en una página.', bullets: ['La vista previa utiliza datos simulados y no crea citas.', 'Los horarios y la anticipación se definen en Usuarios y Ajustes → Agenda.', 'Los enlaces del correo permiten ver, cancelar y reprogramar la cita.'] },
   'settings:plan': {
     tourId: 'ajustes-plan', title: 'Plan y consumo', requires: ['settings.modules'],
     summary: 'Tu plan define los recursos disponibles para tu organización. Aquí puedes revisar su consumo, comparar planes y consultar la facturación registrada.',
@@ -75,6 +76,7 @@ export const chattitoHelpCatalog: Readonly<Record<ChattitoHelpId, ChattitoHelp>>
 }
 
 export function chattitoHelpId(context: ChattitoContext): ChattitoHelpId | null {
+  if (context.page === 'sites-agenda') return 'sites:agenda'
   if (context.page === 'settings' && context.section === 'plan') return 'settings:plan'
   return context.page === 'module-edit' ? `module-edit:${context.tab}` : null
 }

@@ -3,6 +3,8 @@ import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
 import { agendaPublicBookings, agendaSchedules, agendaSiteSettings, entities, entityFields, people, records, recordActivities, roles, sitePages, sites, users } from '~/server/db/schema'
 import { agendaSiteSettingsSchema, normalizeAgendaPhone, type AgendaSiteConfig, type PublicBook, type PublicReschedule } from '~/utils/agendaPublic'
+import { agendaStaff } from './agendaStaff'
+import { agendaAccentPresentation } from '~/utils/agendaAccent'
 import { agendaActor, agendaBaseInTx, agendaSettingsInTx } from './agendaAdmin'
 import { availabilityInTx, reserveSlotInTx } from './agendaAvailability'
 import { addAgendaDays, localAt, localInstant } from './agendaEngine'
@@ -41,6 +43,15 @@ export async function resolveAgendaContext(site: string, page: string, origin: P
   return { tenantId: String(tenantId), site, page, origin: verified.origin, fingerprint: agendaHash(`${String(tenantId)}:${origin.ip}`), userAgent: origin.userAgent.slice(0, 300) }
 }
 export type PublicAgendaContext = Awaited<ReturnType<typeof resolveAgendaContext>>
+export async function publicAgendaPresentation(context: PublicAgendaContext, locale: string) {
+  return withSystemRecordAccess(() => withTenant(context.tenantId, async tx => {
+    const catalog = await catalogInTx(tx, context)
+    const accent = agendaAccentPresentation(catalog.config.accent, catalog.config.accentColor).css
+    return { enabled: true, mode: catalog.mode, services: catalog.services.map(s => ({ id: agendaOpaqueId(context.site, 'service', s.id), name: s.name })),
+      people: catalog.people.map(p => ({ id: agendaOpaqueId(context.site, 'person', p.id), name: p.name })),
+      runtime: { site: context.site, page: context.page, locale, accent, timezone: catalog.timezone, assignmentMode: catalog.mode, maxDaysAhead: catalog.settings.maxDaysAhead, fields: catalog.config.visibleFields } }
+  }))
+}
 async function catalogInTx(tx: typeof db, context: PublicAgendaContext) {
   const { tenantId, site, page } = context
   const [published] = await tx.select({ id: sites.id }).from(sites).innerJoin(sitePages, and(eq(sitePages.siteId, sites.id), eq(sitePages.tenantId, sites.tenantId)))
@@ -51,9 +62,7 @@ async function catalogInTx(tx: typeof db, context: PublicAgendaContext) {
   if (!config.enabled) throw publicAgendaNotFound()
   const base = await agendaBaseInTx(tx, tenantId)
   if (!base) throw publicAgendaNotFound()
-  const staff = await tx.select({ id: users.id, name: people.fullName, email: people.email }).from(users)
-    .innerJoin(roles, and(eq(roles.id, users.roleId), eq(roles.tenantId, users.tenantId))).innerJoin(people, eq(people.id, users.personId))
-    .where(and(eq(users.tenantId, tenantId), eq(users.isActive, true), eq(roles.name, 'Personal'))).orderBy(people.fullName, users.id)
+  const staff = await agendaStaff(tx, tenantId)
   const visible = staff.filter(person => (!config.personalIds.length || config.personalIds.includes(person.id)) && person.name?.trim())
   const scheduled = await tx.select({ userId: agendaSchedules.userId }).from(agendaSchedules).where(eq(agendaSchedules.tenantId, tenantId))
   if (!visible.some(person => scheduled.some(row => row.userId === person.id))) throw publicAgendaNotFound()
@@ -65,7 +74,7 @@ async function catalogInTx(tx: typeof db, context: PublicAgendaContext) {
   }).filter(service => service.name && Number.isInteger(service.duration) && service.duration > 0 && service.duration <= 1440)
   if (!publicServices.length) throw publicAgendaNotFound()
   const { settings, timezone } = await agendaSettingsInTx(tx, tenantId)
-  return { config, base, people: visible.map(person => ({ ...person, name: person.name! })), services: publicServices, mode: config.assignmentMode ?? settings.assignmentMode, settings, timezone }
+  return { config, base, people: visible.map(person => ({ id: person.id, name: person.name!, email: person.email })), services: publicServices, mode: config.assignmentMode ?? settings.assignmentMode, settings, timezone }
 }
 type Catalog = Awaited<ReturnType<typeof catalogInTx>>
 function selectServices(catalog: Catalog, context: PublicAgendaContext, ids: string[]) {
@@ -176,7 +185,7 @@ export function publicAgendaEmail(confirmation: ReturnType<typeof publicConfirma
 }
 async function queueNotifications(tx: typeof db, prepared: Awaited<ReturnType<typeof prepare>>, context: PublicAgendaContext, catalog: Catalog, data: Record<string, unknown>, services: string[], clientEmail: string, action: 'book' | 'cancel' | 'reschedule', token?: string, previousPerson?: string) {
   const confirmation = publicConfirmation(catalog, context, data, services)
-  const link = token ? `${agendaFlowOrigin()}/site-preview/${context.site}/#agenda=${encodeURIComponent(token)}&page=${context.page}` : undefined
+  const link = token ? `${agendaFlowOrigin()}/agenda-manage/${context.site}/${context.page}#agenda=${encodeURIComponent(token)}` : undefined
   const assigned = catalog.people.find(person => person.id === data.personal)
   const jobs: Awaited<ReturnType<typeof enqueueCriticalEmailInTx>>[] = []
   if (clientEmail) jobs.push(await enqueueCriticalEmailInTx(tx, context.tenantId, { to: clientEmail, ...publicAgendaEmail(confirmation, action, link) }, prepared.quota))
@@ -273,11 +282,11 @@ export async function agendaSiteAdministration(auth: AuthTokenPayload, site: str
     const [owner] = await tx.select({ id: sites.id }).from(sites).where(and(eq(sites.id, site), eq(sites.tenantId, auth.tenantId))).limit(1)
     if (!owner) throw publicAgendaNotFound()
     const base = await agendaBaseInTx(tx, auth.tenantId)
-    const schedules = await tx.select({ id: agendaSchedules.id }).from(agendaSchedules).where(eq(agendaSchedules.tenantId, auth.tenantId)).limit(1)
+    const staff = await agendaStaff(tx, auth.tenantId)
+    const hasSchedules = staff.some(person => person.scheduled)
     if (config) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${auth.tenantId},175))`)
-      if (config.enabled && (!base || !schedules.length)) throw createError({ statusCode: 422, statusMessage: !base ? 'Instala Citas base para activar la agenda.' : 'Configura horarios para activar la agenda.' })
-      const staff = await tx.select({ id: users.id }).from(users).innerJoin(roles, and(eq(roles.id, users.roleId), eq(roles.tenantId, users.tenantId))).where(and(eq(users.tenantId, auth.tenantId), eq(users.isActive, true), eq(roles.name, 'Personal')))
+      if (config.enabled && (!base || !hasSchedules)) throw createError({ statusCode: 422, statusMessage: !base ? 'Instala Citas base para activar la agenda.' : 'Configura horarios para activar la agenda.' })
       const services = await tx.select({ id: records.id }).from(records).innerJoin(entities, eq(entities.id, records.entityId)).where(and(eq(records.tenantId, auth.tenantId), eq(entities.tenantId, auth.tenantId), eq(entities.slug, 'agenda-servicios'), eq(entities.templateKey, 'agenda'), isNull(records.deletedAt), isNull(entities.deletedAt)))
       if (config.personalIds.some(id => !staff.some(person => person.id === id)) || config.serviceIds.some(id => !services.some(service => service.id === id))) throw createError({ statusCode: 422, statusMessage: 'Selecciona servicios y personal de esta organización.' })
       if (config.enabled && base) await clientMetadata(tx, auth.tenantId, base.id, config)
@@ -288,6 +297,12 @@ export async function agendaSiteAdministration(auth: AuthTokenPayload, site: str
       date: sql<string>`${records.customData}->>'fecha'`, time: sql<string>`${records.customData}->>'hora'`, personal: sql<string>`${records.customData}->>'personal'`, services: agendaPublicBookings.serviceIds }).from(agendaPublicBookings)
       .innerJoin(records, and(eq(records.id, agendaPublicBookings.recordId), eq(records.tenantId, agendaPublicBookings.tenantId)))
       .where(and(eq(agendaPublicBookings.tenantId, auth.tenantId), eq(agendaPublicBookings.siteId, site))).orderBy(desc(agendaPublicBookings.createdAt)).limit(50)
-    return { settings: agendaSiteSettingsSchema.parse(saved?.config ?? {}), available: !!base && !!schedules.length, reason: !base ? 'Instala Citas base.' : !schedules.length ? 'Configura horarios del personal.' : null, recent }
+    const catalogPeople = staff
+    const catalogServices = await tx.select({ id: records.id, data: records.customData }).from(records).innerJoin(entities, eq(entities.id, records.entityId))
+      .where(and(eq(records.tenantId, auth.tenantId), eq(entities.tenantId, auth.tenantId), eq(entities.slug, 'agenda-servicios'), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt), isNull(records.deletedAt)))
+    const own = staff.find(person => person.id === auth.sub)
+    return { settings: agendaSiteSettingsSchema.parse(saved?.config ?? {}), available: !!base && hasSchedules, ownStaff: own ? { id: own.id, administrator: own.isSystem === true, scheduled: own.scheduled } : null, scheduledOtherRoles: staff.filter(person => person.scheduled && person.roleName !== 'Personal' && !person.isSystem).map(person => person.name || person.email), reason: !base ? 'Instala Citas base.' : !hasSchedules ? 'Configura horarios del personal.' : null, recent,
+      services: catalogServices.map(s => ({ id: s.id, name: String((s.data as Record<string, unknown>).nombre ?? ''), duration: Number((s.data as Record<string, unknown>).duracion_minutos) })).filter(s => s.name && s.duration > 0),
+      people: catalogPeople.filter(p => p.name?.trim()).map(p => ({ id: p.id, name: p.name!, scheduled: p.scheduled })) }
   })
 }

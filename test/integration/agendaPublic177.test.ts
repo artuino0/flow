@@ -48,7 +48,7 @@ beforeAll(async () => {
     const [version] = await admin`insert into site_page_versions(tenant_id,site_id,page_id,version,status,html) values (${tid},${sid},${pid},1,'published','<p>Prueba</p>') returning id`
     await admin`update site_pages set published_version_id=${version!.id} where id=${pid}`
   }
-  await actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, cancellationHours: 1 }))
+  await actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, personalIds: [staff], cancellationHours: 1 }))
   await admin`insert into agenda_site_settings(tenant_id,site_id,config) values (${other},${otherSite},'{"enabled":true}')`
   context = await api.resolveAgendaContext(site, page, origin)
 }, 90000)
@@ -80,7 +80,7 @@ describe('Agenda pública 177 con PostgreSQL real y SMTP simulado', () => {
   })
   it('administración valida permiso, tenant, servicios, Personal y Citas/horarios', async () => {
     await expect(actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, serviceIds: [randomUUID()] }))).rejects.toMatchObject({ statusCode: 422 })
-    await expect(actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, personalIds: [adminId] }))).rejects.toMatchObject({ statusCode: 422 })
+    await expect(actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, personalIds: [adminId] }))).resolves.toMatchObject({ settings: { personalIds: [adminId] } })
     await expect(actor(() => api.agendaSiteAdministration(auth, otherSite))).rejects.toMatchObject({ statusCode: 404 })
     const personal = { ...auth, sub: staff, roleId: staffRole }
     await expect(withRecordActor({ userId: staff, roleId: staffRole }, () => api.agendaSiteAdministration(personal, site))).rejects.toMatchObject({ statusCode: 403 })
@@ -117,7 +117,7 @@ describe('Agenda pública 177 con PostgreSQL real y SMTP simulado', () => {
     const jobs = await admin`select payload,status from job_queue where tenant_id=${tenant}`
     expect(jobs).toHaveLength(2); expect(sendPlainEmail).toHaveBeenCalledTimes(2)
     const mail = jobs.find(job => job.payload.to === 'ana@example.test')!.payload
-    expect(mail.html).toContain('09:00'); expect(mail.html).toContain('Consulta'); expect(mail.html).toContain('Ana visible'); expect(mail.html).toContain('#agenda=' + result.token)
+    expect(mail.html).toContain('09:00'); expect(mail.html).toContain('Consulta'); expect(mail.html).toContain('Ana visible'); expect(mail.html).toContain(`/agenda-manage/${site}/${page}#agenda=${result.token}`)
     expect(mail.html).not.toContain(adminId); expect(mail.html).not.toContain('Administrador privado')
     expect(await admin`select id from record_activities where record_id=${booking!.record_id} and details->>'source'='Sitio web'`).toHaveLength(1)
   })
@@ -280,6 +280,17 @@ describe('Agenda pública 177 con PostgreSQL real y SMTP simulado', () => {
     const [cita] = await admin`select r.custom_data from agenda_public_bookings b join records r on r.id=b.record_id where b.token_hash=${agendaHash(first.token)}`
     expect(cita!.custom_data.cliente).toBe(clients[0]!.id)
     await expect(actor(() => api.agendaSiteAdministration(auth, site, { enabled: true }))).rejects.toMatchObject({ statusCode: 404 })
+  })
+  it('administrador atiende reservas públicas con acento personalizado sin exponer su identidad interna', async () => {
+    await setConfig({ personalIds: [adminId], accent: 'custom', accentColor: '#AbC' })
+    const presentation = await api.publicAgendaPresentation(context, 'es')
+    expect(presentation.runtime.accent).toBe('#aabbcc')
+    expect(presentation.people).toEqual([{ id: agendaOpaqueId(site, 'person', adminId), name: 'Administrador privado' }])
+    const booked = await api.publicAgendaBook(context, { ...input('15:00'), personal: agendaOpaqueId(site, 'person', adminId), date: '2026-10-09' }, now)
+    expect(booked.personal).toBe('Administrador privado')
+    const [record] = await admin`select r.custom_data from agenda_public_bookings b join records r on r.id=b.record_id where b.token_hash=${agendaHash(booked.token)}`
+    expect(record!.custom_data.personal).toBe(adminId)
+    await setConfig({ personalIds: [staff], accent: 'primary' })
   })
   it('eliminar página o sitio mantiene las citas y elimina únicamente sus vínculos públicos', async () => {
     await api.publicAgendaBook(context, { ...input('09:00'), date: '2026-10-09' }, now)

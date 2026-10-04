@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { basicSetup } from 'codemirror'
 import { Compartment, EditorState } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { Decoration, EditorView, keymap, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { html } from '@codemirror/lang-html'
 import { css } from '@codemirror/lang-css'
@@ -24,6 +24,29 @@ const languageCompartment = new Compartment()
 const { resolved } = useTheme()
 const themeCompartment = new Compartment()
 
+function agendaDecorations(view: EditorView) {
+  const ranges: Array<ReturnType<Decoration['range']>> = []
+  for (const { from, to } of view.visibleRanges) {
+    const text = view.state.doc.sliceString(from, to)
+    for (const match of text.matchAll(/\{\{\s*(?:agenda-component|openagenda)\b[^}]*\}\}/gi)) ranges.push(Decoration.mark({ class: 'cm-flow-agenda' }).range(from + match.index!, from + match.index! + match[0].length))
+  }
+  return Decoration.set(ranges, true)
+}
+const agendaHighlights = ViewPlugin.fromClass(class {
+  decorations: DecorationSet
+  constructor(view: EditorView) { this.decorations = agendaDecorations(view) }
+  update(update: ViewUpdate) { if (update.docChanged || update.viewportChanged) this.decorations = agendaDecorations(update.view) }
+}, { decorations: plugin => plugin.decorations })
+
+function insertAgenda(kind: 'inline' | 'open') {
+  if (!editor || props.language !== 'html') return false
+  const fragment = kind === 'inline' ? '{{agenda-component}}' : '<button {{openAgenda}}>Agenda tu cita</button>'
+  editor.dispatch(editor.state.replaceSelection(fragment))
+  editor.focus()
+  return true
+}
+defineExpose({ insertAgenda })
+
 function languageExtension(language: 'html' | 'css' | 'js') {
   if (language === 'html') return html({ autoCloseTags: true })
   if (language === 'css') return css()
@@ -44,6 +67,7 @@ onMounted(async () => {
         languageCompartment.of(languageExtension(props.language)),
         themeCompartment.of(resolved.value === 'dark' ? sitesCodeDarkTheme : []),
         sitesCodeBaseTheme,
+        agendaHighlights,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ 'aria-label': props.ariaLabel }),
         EditorView.updateListener.of(update => {
@@ -106,6 +130,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
+.sites-code-editor :deep(.cm-flow-agenda) { font-weight: 700; text-decoration: underline; text-decoration-color: rgb(var(--brand-blue)); text-underline-offset: 3px; }
 .sites-code-editor :deep(.cm-scroller) {
   min-height: 0;
   overflow: auto !important;

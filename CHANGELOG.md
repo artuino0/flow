@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.147.0] - 2026-10-04
+#### [feature]
+- [ERD-178](https://dydasoftware.atlassian.net/browse/ERD-178) - Agenda en tus sitios: pon `{{agenda-component}}` en cualquier página para incrustar la agenda, o `{{openAgenda}}` en un botón o enlace para abrirla en una ventana, y tus visitantes podrán ver huecos libres, reservar, cancelar y reprogramar desde el enlace que reciben por correo. El editor de páginas tiene «Insertar agenda» y una vista previa con datos de ejemplo. En Sites hay una sección Agenda para elegir servicios, personal, modo de asignación, datos que se piden y un color personalizado para el componente. Incluye también las correcciones [ERD-179](https://dydasoftware.atlassian.net/browse/ERD-179): la pantalla de Agenda hace scroll y usa el mismo diseño de Sites, con una lista de verificación que dice qué falta y se colapsa cuando todo está listo; el administrador puede atender citas desde el primer día (con un horario de lunes a viernes de 9 a 18 y un botón para crearlo); las fichas de usuario tienen su horario de agenda y hay «Mi horario», bloqueos y ausencias, reglas con vista semanal de huecos y aviso de choque; y los errores de carga se explican según su causa. Todo con modo oscuro; el componente público siempre se ve claro.
+
 ### [0.146.0] - 2026-10-03
 #### [feature]
 - [ERD-177](https://dydasoftware.atlassian.net/browse/ERD-177) - Agenda pública: base para reservar citas desde tus sitios. Los visitantes podrán consultar los huecos libres, reservar, cancelar y reprogramar sin iniciar sesión, con un enlace seguro que reciben por correo; la cita nace «Agendada» y tú la mueves. Cada sitio configura qué servicios y personal se ofrecen, cómo se asigna la persona (elige el cliente, automática o ambas), qué datos se piden y el plazo para cancelar. Incluye protecciones contra abuso (límite de reservas, campo trampa, tope de citas por correo y teléfono). La pantalla para el visitante llega en la siguiente versión.

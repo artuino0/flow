@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { normalizeSitePath } from '~/server/utils/sites'
 import { isActiveSiteDomain, renderPublicSiteDocument, resolvePublishedDomain } from '~/server/utils/siteDomains'
+import { protectSiteAgendaDocument, siteAgendaPresentation } from '~/server/utils/siteAgenda'
 
 function requestHostname(event: H3Event) {
   const forwarded = getHeader(event, 'x-forwarded-host')?.split(',')[0]?.trim()
@@ -16,7 +17,7 @@ function reservedHostnames() {
 }
 export default defineEventHandler(async event => {
   const path = getRequestURL(event).pathname
-  if (path.startsWith('/api/') || path.startsWith('/_nuxt/') || path.startsWith('/site-preview/')) return
+  if (path.startsWith('/api/') || path.startsWith('/_nuxt/') || path.startsWith('/site-preview/') || path.startsWith('/agenda-manage/')) return
   const hostname = requestHostname(event)
   if (!hostname || reservedHostnames().has(hostname) || hostname.endsWith('.vercel.app')) return
   let normalizedPath: string
@@ -25,7 +26,9 @@ export default defineEventHandler(async event => {
   if (page) {
     setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
     setResponseHeader(event, 'cache-control', 'public, s-maxage=60, stale-while-revalidate=300')
-    return renderPublicSiteDocument(page)
+    const agenda = await siteAgendaPresentation(event, page)
+    if (agenda) setResponseHeader(event, 'cache-control', 'no-store')
+    return renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page))
   }
   if (/\.[a-z0-9]{2,8}$/i.test(path)) return
   if (await isActiveSiteDomain(hostname)) {

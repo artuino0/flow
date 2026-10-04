@@ -1,14 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { compileScript, parse } from '@vue/compiler-sfc'
+import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc'
 import ts from 'typescript'
 import type { Component } from 'vue'
 
 /** Monta el SFC real sin plugin Nuxt; las dependencias de aplicación son explícitas. */
 export function compileVueComponent(file: string, imports: Record<string, unknown> = {}, globals: Record<string, unknown> = {}, meta = { client: true, server: false, dev: false }): Component {
   const require = createRequire(import.meta.url)
-  const compiled = compileScript(parse(readFileSync(file, 'utf8')).descriptor, { id: file, inlineTemplate: true })
-  const code = ts.transpileModule(compiled.content, {
+  const descriptor = parse(readFileSync(file, 'utf8')).descriptor
+  const content = descriptor.script || descriptor.scriptSetup
+    ? compileScript(descriptor, { id: file, inlineTemplate: true }).content
+    : compileTemplate({ source: descriptor.template?.content ?? '', filename: file, id: file }).code + '\nexport default { render }'
+  const code = ts.transpileModule(content, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     // Los SFC reales pueden consultar las banderas de Nuxt. Se transforma
     // el nodo sintáctico, sin alterar strings ni el comportamiento del SFC.

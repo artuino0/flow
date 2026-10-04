@@ -4,6 +4,7 @@ import type { NavigationEntity, NavigationNode } from '~/utils/moduleNavigation'
 import AppNavGroup from '~/components/AppNavGroup.vue'
 import AppNavEntity from '~/components/AppNavEntity.vue'
 import { showDesignerAccess, tourNeedsAdministration } from '~/utils/onboardingTours'
+import { siteNavigation } from '~/utils/siteNavigation'
 
 defineProps<{ compact?: boolean }>()
 const { activeKey } = useFlowApps()
@@ -28,21 +29,7 @@ const sections = computed<NavSection[]>(() => {
   switch (activeKey.value) {
     case 'automation': return [{ key: 'automation', label: 'AUTOMATIZACIÓN', items: isAdmin.value ? [{ label: 'Flujos', to: '/triggers', icon: Zap }] : [] }]
     case 'communications': return [{ key: 'communications', label: 'COMUNICACIONES', items: [] }]
-    case 'sites': return siteId ? [
-      { key: 'sites', label: 'SITES', items: [{ label: 'Todos los sitios', to: '/sites', icon: Globe2 }] },
-      { key: 'site-content', label: 'CONTENIDO', items: [
-        { label: 'Resumen', to: `/sites/${siteId}/overview`, icon: Home },
-        { label: 'Páginas', to: `/sites/${siteId}/pages`, icon: FileText },
-        { label: 'Landing pages', to: `/sites/${siteId}/landing-pages`, icon: PanelsTopLeft },
-        { label: 'Formularios', to: `/sites/${siteId}/forms`, icon: ClipboardList }
-      ] },
-      { key: 'site-publishing', label: 'PUBLICACIÓN', items: [
-        { label: 'Publicaciones', to: `/sites/${siteId}/publications`, icon: History },
-        { label: 'Dominios y URLs', to: `/sites/${siteId}/domains`, icon: Link2 },
-        { label: 'Analítica', to: `/sites/${siteId}/analytics`, icon: BarChart3 }
-      ] },
-      { key: 'site-settings', label: 'CONFIGURACIÓN', items: [{ label: 'Configuración', to: `/sites/${siteId}/settings`, icon: Settings }] }
-    ] : [
+    case 'sites': return siteId ? siteNavigation(siteId) : [
       { key: 'sites', label: 'SITES', items: [{ label: 'Todos los sitios', to: '/sites', icon: Globe2 }] },
       { key: 'sites-content', label: 'CONTENIDO', items: [
         { label: 'Páginas', to: '/sites/pages', icon: FileText },

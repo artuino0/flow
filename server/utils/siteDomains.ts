@@ -5,6 +5,8 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 import { getDomain } from 'tldts'
 import { db, withTenant } from '~/server/db'
 import { siteDomains, sitePages, sites } from '~/server/db/schema'
+import { transformAgendaMarkers, type AgendaMarkerConfig } from '~/utils/agendaMarkers'
+import { publicAgendaRuntime, type AgendaRuntimeConfig } from '~/utils/publicAgendaRuntime'
 
 export type DomainRecordType = 'apex' | 'subdomain'
 
@@ -594,12 +596,15 @@ function publicFormsRuntime(page: PublicSitePage) {
   return `<script data-flow-sites-runtime>(function(){var cfg=${config};function nodes(form,name){var root=form.closest('[data-flow-form-container]')||form.parentElement||document;return root.querySelectorAll('[data-flow-form-'+name+']')}function state(form,name,message){form.dataset.flowState=name;['success','error','validation'].forEach(function(key){nodes(form,key).forEach(function(node){node.hidden=key!==name})});var output=form.querySelector('[data-flow-form-message]');if(!output){output=document.createElement('p');output.setAttribute('data-flow-form-message','');output.setAttribute('role','status');form.appendChild(output)}output.textContent=message||'';output.hidden=!message}function payload(form){var result={};new FormData(form).forEach(function(value,key){if(value instanceof File)return;var current=result[key];if(current===undefined)result[key]=value;else if(Array.isArray(current))current.push(value);else result[key]=[current,value]});return result}function boot(){document.querySelectorAll('form[data-flow-form]').forEach(function(form){if(form.dataset.flowBound==='true')return;form.dataset.flowBound='true';state(form,'idle','');form.addEventListener('submit',async function(event){event.preventDefault();var submittedPayload=payload(form);if(!form.checkValidity()){form.reportValidity();state(form,'validation','Revisa los campos marcados.');return}var buttons=form.querySelectorAll('[type=submit]');buttons.forEach(function(button){button.disabled=true});form.setAttribute('aria-busy','true');state(form,'submitting','');try{var response=await fetch('/api/sites/forms/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({siteId:cfg.siteId,pageId:cfg.pageId,formKey:form.dataset.flowForm,payload:submittedPayload,href:location.href,referrer:document.referrer})});var body=await response.json().catch(function(){return {}});if(!response.ok)throw new Error(body.statusMessage||body.message||'No se pudo enviar el formulario.');form.reset();state(form,'success','');if(form.hasAttribute('data-flow-hide-on-success'))form.hidden=true;form.dispatchEvent(new CustomEvent('flow:form-success',{bubbles:true,detail:body}))}catch(error){state(form,'error',error instanceof Error?error.message:'No se pudo enviar el formulario.');form.dispatchEvent(new CustomEvent('flow:form-error',{bubbles:true,detail:{error:error}}))}finally{buttons.forEach(function(button){button.disabled=false});form.removeAttribute('aria-busy')}},true)})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()})();</script>`
 }
 
-export function renderPublicSiteDocument(page: PublicSitePage) {
+export function renderPublicSiteDocument(page: PublicSitePage, agenda?: AgendaMarkerConfig & { runtime: AgendaRuntimeConfig }, nonce?: string) {
+  const transformed = transformAgendaMarkers(page.html, agenda ?? { enabled: false, services: [], people: [] })
+  const agendaScript = agenda?.enabled && transformed.active ? publicAgendaRuntime(agenda.runtime) : ''
+  if (transformed.markers.length) page = { ...page, html: transformed.html }
   const title = escapeDocumentText(String(page.seo?.title || page.pageTitle))
   const description = escapeDocumentText(String(page.seo?.description || ''))
   const style = `<meta name="color-scheme" content="light"><style data-flow-sites>${page.css}</style><style data-flow-theme>:root{color-scheme:light!important}</style>`
   const meta = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>${description ? `<meta name="description" content="${description}">` : ''}${style}`
-  const runtime = publicFormsRuntime(page)
+  const runtime = (publicFormsRuntime(page) + agendaScript).replace(/<script data-flow-(sites|agenda)-runtime>/g, match => nonce ? match.replace('>', ` nonce="${escapeDocumentText(nonce)}">`) : match)
   if (/<html[\s>]/i.test(page.html)) {
     let document = /<\/head>/i.test(page.html)
       ? page.html.replace(/<\/head>/i, `${meta}</head>`)

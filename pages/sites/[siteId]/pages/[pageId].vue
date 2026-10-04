@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ArrowLeft, Check, Code2, Eye, FileCode2, Laptop, Maximize2, Minus, Monitor, MoreVertical, PanelRight, Plus, Rocket, Save, Smartphone, Tablet, WandSparkles } from '@lucide/vue'
-import { buildPreviewDocument, joinSiteScript, splitSiteScript } from '~/utils/sitesEditorScript'
+import { buildAgendaEditorPreview, type AgendaEditorPreviewState } from '~/utils/sitesAgendaPreview'
+import { joinSiteScript, splitSiteScript } from '~/utils/sitesEditorScript'
 
 definePageMeta({ darkReady: true, layout: 'default', editorFullscreen: true, fullBleed: true })
 interface Draft { id: string; version: number; html: string; css: string; updatedAt: string }
-interface PageDetail { id: string; title: string; path: string; kind: 'website' | 'landing'; status: string; draft: Draft | null; versions: Array<{ id: string; version: number; status: string; updatedAt: string }> }
+interface PageDetail { id: string; title: string; path: string; kind: 'website' | 'landing'; status: string; draft: Draft | null; versions: Array<{ id: string; version: number; status: string; updatedAt: string }>; agendaWarnings?: string[]; agendaPreview?: AgendaEditorPreviewState }
 
 const route = useRoute()
 const siteId = route.params.siteId as string
@@ -13,6 +14,13 @@ const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 const { data: page, error, refresh } = await useFetch<PageDetail>(() => `/api/sites/${siteId}/pages/${pageId}`, { headers })
 const form = reactive({ title: '', path: '', html: '', css: '', js: '' })
 const activeFile = ref<'html' | 'css' | 'js'>('html')
+const codeEditor = ref<{ insertAgenda: (kind: 'inline' | 'open') => boolean } | null>(null)
+async function insertAgenda(kind: 'inline' | 'open') {
+  formsPanel.value?.closeConnection()
+  activeFile.value = 'html'; workspace.value = 'split'; connectionOpen.value = false
+  await nextTick()
+  if (!codeEditor.value?.insertAgenda(kind)) form.html += '\n' + (kind === 'inline' ? '{{agenda-component}}' : '<button {{openAgenda}}>Agenda tu cita</button>')
+}
 const workspace = ref<'code' | 'split' | 'preview'>('split')
 const viewport = ref<'desktop' | 'tablet' | 'mobile'>('desktop')
 const previewZoom = ref(100)
@@ -54,7 +62,7 @@ const previewWidth = computed(() => viewport.value === 'mobile' ? 390 : viewport
 function serializedHtml() {
   return joinSiteScript(form.html, form.js)
 }
-const previewDocument = computed(() => buildPreviewDocument(serializedHtml(), form.css))
+const previewDocument = computed(() => buildAgendaEditorPreview(serializedHtml(), form.css, siteId, page.value?.agendaPreview))
 const previewTransform = computed(() => ({ width: `${previewWidth.value}px`, height: `${10000 / previewZoom.value}%`, transform: `scale(${previewZoom.value / 100})`, transformOrigin: 'top center' }))
 
 async function save() {
@@ -140,15 +148,20 @@ function focusPreviewField(formKey: string, fieldName: string) {
   previewSelection.value = { formKey, fieldName }
   nextTick(sendPreviewSelection)
 }
+function onAgendaPreviewMessage(event: MessageEvent) {
+  if (event.source === previewFrame.value?.contentWindow && event.data?.source === 'flow-sites-agenda-preview' && event.data.action === 'configure') void navigateTo(`/sites/${encodeURIComponent(siteId)}/agenda`)
+}
 function onKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save() }
 }
 function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value) event.preventDefault() }
 onMounted(() => {
+  window.addEventListener('message', onAgendaPreviewMessage)
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('beforeunload', beforeUnload)
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('message', onAgendaPreviewMessage)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('beforeunload', beforeUnload)
 })
@@ -165,6 +178,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="header-actions">
+        <details class="relative"><summary class="flex h-8 cursor-pointer items-center rounded border border-brand-control-border bg-brand-surface px-3 text-[10px] font-bold text-brand-text">Insertar agenda</summary><div class="absolute right-0 z-50 mt-2 grid min-w-44 gap-2 rounded border border-brand-border-light bg-brand-surface p-3 text-xs text-brand-text"><button type="button" @click="insertAgenda('inline')">Componente incrustado</button><button type="button" @click="insertAgenda('open')">Botón para abrir modal</button></div></details>
         <span v-if="dirty" class="save-state dirty"><i />Cambios sin guardar</span>
         <span v-else-if="saved" class="save-state saved"><Check />Guardado</span>
         <button type="button" class="ghost-button preview-action" @click="workspace = 'preview'"><Eye />Vista previa</button>
@@ -176,6 +190,7 @@ onBeforeUnmount(() => {
 
     <div v-if="error" class="load-error">No se encontró la página o ya no tienes acceso.</div>
     <template v-else-if="page">
+      <ul v-if="page.agendaWarnings?.length" role="status" class="max-h-28 shrink-0 overflow-auto bg-brand-warning-bg p-3 text-xs text-brand-warning-text"><li v-for="warning in page.agendaWarnings" :key="warning">{{ warning }}</li></ul>
       <div class="editor-toolbar">
         <div class="segmented" aria-label="Vista del editor"><button type="button" :class="{ active: workspace === 'code' }" @click="workspace = 'code'"><Code2 />Código</button><button type="button" :class="{ active: workspace === 'split' }" @click="workspace = 'split'"><PanelRight />Dividida</button><button type="button" :class="{ active: workspace === 'preview' }" @click="workspace = 'preview'"><Eye />Vista previa</button></div>
         <div class="toolbar-center"><span><FileCode2 />{{ activeFile === 'html' ? 'index.html' : activeFile === 'css' ? 'styles.css' : 'site.js' }}</span><span>{{ lineCount }} líneas</span><button v-if="workspace !== 'preview' && !connectionOpen" type="button" :disabled="formatting" @click="formatCode"><WandSparkles />{{ formatting ? 'Formateando…' : 'Formatear' }}</button></div>
@@ -192,7 +207,7 @@ onBeforeUnmount(() => {
         <main class="workspace" :class="[`mode-${workspace}`]">
           <section v-if="workspace !== 'preview' && !connectionOpen" class="code-pane" :style="workspace === 'split' ? { width: `${codePercent}%` } : undefined">
             <div class="code-tabs"><button type="button" :class="{ active: activeFile === 'html' }" @click="activeFile = 'html'">index.html</button><button type="button" :class="{ active: activeFile === 'css' }" @click="activeFile = 'css'">styles.css</button><button type="button" :class="{ active: activeFile === 'js' }" @click="activeFile = 'js'">site.js</button></div>
-            <div class="code-editor-host"><ClientOnly><SitesCodeEditor v-model="activeCode" :language="activeFile" :ariaLabel="`Código ${activeFile.toUpperCase()} de la página`" /><template #fallback><div class="editor-loading">Preparando editor…</div></template></ClientOnly></div>
+            <div class="code-editor-host"><ClientOnly><SitesCodeEditor ref="codeEditor" v-model="activeCode" :language="activeFile" :ariaLabel="`Código ${activeFile.toUpperCase()} de la página`" /><template #fallback><div class="editor-loading">Preparando editor…</div></template></ClientOnly></div>
             <footer class="editor-status"><span>{{ activeFile.toUpperCase() }}</span><span>Espacios: 2</span><span>UTF-8</span><span>Ctrl + S para guardar</span></footer>
           </section>
 
