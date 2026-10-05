@@ -1,4 +1,5 @@
 import { resolveFlowApp } from '~/utils/flowApps'
+import { normalizeRegistrationChoice, type RegistrationChoice } from '~/utils/registrationIntent'
 
 interface LicenseCache {
   required: boolean
@@ -12,6 +13,14 @@ const LICENSE_TTL_MS = 60_000
 // navegaciones para que cambiar de pantalla no espere dos consultas remotas
 // antes de comenzar a renderizar.
 export default defineNuxtRouteMiddleware(async (to) => {
+  const landingChoice = useState<RegistrationChoice | null>('registration-landing-choice', () => null)
+  const unavailableChoice = useState<boolean>('registration-plan-unavailable', () => false)
+  unavailableChoice.value = false
+  if (['/registro', '/login', '/elegir-plan'].includes(to.path)) {
+    const incoming = normalizeRegistrationChoice(to.query)
+    if (incoming) landingChoice.value = incoming
+    else if (to.path === '/registro' || to.query.plan !== undefined) landingChoice.value = null
+  }
   const licenseCache = useState<LicenseCache | null>('license-status-cache', () => null)
   const licenseIsFresh = licenseCache.value && Date.now() - licenseCache.value.fetchedAt < LICENSE_TTL_MS
   const publicRoute = to.path === '/activar' || to.path.startsWith('/invitacion/') || ['/registro', '/verificar-correo', '/recuperar'].includes(to.path) || to.path.startsWith('/restablecer/')
@@ -41,18 +50,44 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (to.path.startsWith('/invitacion/')) return
-  if (to.path === '/registro') return
+  if (to.path === '/registro') {
+    if (landingChoice.value) {
+      if (!user.value) await fetchMe()
+      if (user.value?.authenticated) {
+        // En SSR un redirect abre otra request: guarda antes de salir, sin depender del useState hidratado.
+        const choice = user.value.isAdmin
+          ? await useRequestFetch()<{ intent: unknown }>('/api/billing/registration-intent', { method: 'POST', body: landingChoice.value })
+          : { intent: null }
+        landingChoice.value = null
+        if (!user.value.emailVerified) return navigateTo('/confirmar-correo')
+        if (choice.intent || user.value.onboardingStatus !== 'complete') return navigateTo('/elegir-plan')
+        return navigateTo(user.value.isAdmin ? '/ajustes?section=plan' : '/')
+      }
+    }
+    return
+  }
   if (to.path === '/verificar-correo') return
   if (to.path === '/recuperar' || to.path.startsWith('/restablecer/')) return
 
   if (!user.value && !needsMe) await fetchMe()
 
   const isLoggedIn = Boolean(user.value?.authenticated)
+  const hasLandingRequest = isLoggedIn && Boolean(landingChoice.value) && Boolean(user.value?.isAdmin)
+  let hasLandingIntent = false
+  if (isLoggedIn && landingChoice.value) {
+    if (user.value?.isAdmin) {
+      const result = await useRequestFetch()<{ intent: { plan: string; interval: string } | null }>('/api/billing/registration-intent', { method: 'POST', body: landingChoice.value })
+      hasLandingIntent = Boolean(result.intent)
+    }
+    landingChoice.value = null
+  }
   if (isLoggedIn && to.path !== '/login') useRealtime().resumeSession()
   if (to.path === '/login') {
     if (isLoggedIn) {
       if (!user.value?.emailVerified) return navigateTo('/confirmar-correo')
       if (user.value.onboardingStatus !== 'complete') return navigateTo('/elegir-plan')
+      if (hasLandingIntent) return navigateTo('/elegir-plan')
+      if (hasLandingRequest) return navigateTo('/ajustes?section=plan')
       return navigateTo('/')
     }
     return
@@ -67,7 +102,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (to.path === '/elegir-plan' || to.path === '/registro-completo') return
     return navigateTo('/elegir-plan')
   }
-  if (to.path === '/confirmar-correo' || to.path === '/elegir-plan') return navigateTo('/')
+  if (hasLandingIntent && to.path !== '/elegir-plan') return navigateTo('/elegir-plan')
+  if (hasLandingRequest && !hasLandingIntent) return navigateTo('/ajustes?section=plan')
+  if (to.path === '/elegir-plan') {
+    if (!user.value?.isAdmin) return navigateTo('/')
+    const choice = await useRequestFetch()<{ intent: unknown; unavailable: boolean }>('/api/billing/registration-intent')
+    if (choice.unavailable) unavailableChoice.value = true
+    if (choice.intent || choice.unavailable) return
+    return navigateTo('/')
+  }
+  if (to.path === '/confirmar-correo') return navigateTo('/')
   if (to.path === '/registro-completo') return
 
   const loaded = appsPromise ? await appsPromise : { value: await load(), error: null }

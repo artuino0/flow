@@ -27,6 +27,7 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/password-reset/request',
   '/api/auth/password-reset/confirm',
   '/api/config',
+  '/api/public/plans',
   '/api/license/status',
   '/api/license/activate',
   '/api/sites/forms/submit',
@@ -99,7 +100,7 @@ export default defineEventHandler(async (event) => {
     .leftJoin(people, eq(people.id, users.personId)).leftJoin(tenants, eq(tenants.id, users.tenantId))
     .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId))).limit(1))
   const onboarding = !membership?.verifiedAt ? 'email_pending' : membership.status ?? 'complete'
-  if (onboarding === 'complete' || path === '/api/auth/me') return
+  if (onboarding === 'complete' || path === '/api/auth/me' || path === '/api/billing/registration-intent') return
   if (onboarding === 'email_pending') {
     if (path === '/api/auth/email-verification/resend' || path === '/api/auth/email-verification/change-email') return
     throw createError({ statusCode: 403, statusMessage: 'Confirma tu correo antes de continuar' })

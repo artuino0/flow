@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
+import * as registrationIntent from '../../utils/registrationIntent'
 
 // Ejecuta las fuentes reales con las banderas SSR/cliente y adaptadores Nuxt explícitos.
 export function loadNuxtSource183(file: string, globals: Record<string, unknown>, imports: Record<string, unknown> = {}, client = true) {
@@ -15,6 +16,6 @@ export function loadNuxtSource183(file: string, globals: Record<string, unknown>
   }).outputText
   const exports: Record<string, Function> = {}
   new Function('require', 'exports', '__testImportMeta', ...Object.keys(globals), code)(
-    (id: string) => imports[id] ?? require(id), exports, { client, server: !client }, ...Object.values(globals))
+    (id: string) => imports[id] ?? (id === '~/utils/registrationIntent' ? registrationIntent : require(id)), exports, { client, server: !client }, ...Object.values(globals))
   return exports
 }

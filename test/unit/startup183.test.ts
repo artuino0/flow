@@ -62,6 +62,7 @@ function harness(client = true) {
     return Object.assign(result, { then: (resolve: (value: unknown) => unknown) => initial.then(() => resolve({ ...entry, refresh: execute, execute })) })
   }
   const globals: Record<string, unknown> = { ...vue, useState, $fetch: fetch, useAsyncData, useRoute: () => route,
+    useRequestFetch: () => fetch,
     useRequestHeaders: () => ({ cookie: 'synthetic' }), useRealtime: () => realtime, clearNuxtData() {},
     definePageMeta() {}, defineNuxtRouteMiddleware: (fn: unknown) => fn, navigateTo: vi.fn(async (target: unknown) => target),
     preloadRouteComponents: vi.fn(async () => {}), onNuxtReady: (fn: () => void) => setTimeout(fn, 0), useNuxtApp: () => nuxtApp,
@@ -203,7 +204,7 @@ it.each([
     return original(url)
   })
   const middleware = loadNuxtSource183('middleware/auth.global.ts', h.globals, { '~/utils/flowApps': flowApps }).default
-  await middleware({ path: scenario.target, fullPath: scenario.target })
+  await middleware({ path: scenario.target, fullPath: scenario.target, query: {} })
   const navigate = h.globals.navigateTo as ReturnType<typeof vi.fn>
   if (scenario.expected === null) expect(navigate).not.toHaveBeenCalled()
   else expect(navigate).toHaveBeenCalledWith(scenario.expected)

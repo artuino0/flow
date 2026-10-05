@@ -366,6 +366,7 @@ export const tenants = pgTable('tenants', {
   email: text('email'),
   onboardingStatus: text('onboarding_status').notNull().default('complete'),
   trialConsumedAt: timestamp('trial_consumed_at', { withTimezone: true }),
+  registrationIntent: jsonb('registration_intent').$type<import('../../utils/registrationIntent').RegistrationIntent>(),
   phone: text('phone'),
   defaultCurrency: text('default_currency').notNull().default('MXN'),
   timezone: text('timezone').notNull().default('America/Mexico_City'),

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.150.0] - 2026-10-05
+#### [feature]
+- [ERD-186](https://dydasoftware.atlassian.net/browse/ERD-186) - Registro con plan elegido desde tu página: un enlace como `/registro?plan=starter&interval=year` lleva al visitante a crear su cuenta con el plan ya elegido (Agenda, Starter, Crecimiento o Escala, mensual o anual). La elección se guarda con la organización, sobrevive a confirmar el correo desde otro dispositivo y, al entrar, la pantalla de elegir plan la muestra resaltada con un botón «Continuar al pago» (el pago y los 30 días de prueba funcionan como antes y no se abre Stripe sin tu acción). También se guardan la fuente de la visita (UTM y referencia) para medir de dónde llegan los registros. Si tu organización ya tiene un plan, la elección se ignora.
+
 ### [0.149.0] - 2026-10-05
 #### [feature]
 - [ERD-185](https://dydasoftware.atlassian.net/browse/ERD-185) - Dominios propios de clientes con Cloudflare: Flow puede registrar los dominios de tus clientes en Cloudflare (que emite y renueva el certificado) en lugar de depender del límite de dominios del hosting, y mostrar los registros DNS que debe crear cada cliente. El dominio real del cliente solo se acepta cuando la petición trae el secreto de borde de Cloudflare, para que nadie pueda suplantarlo. El dominio de la propia empresa (por ejemplo `flow.` y el raíz) se asigna a un sitio sin darlo de alta como dominio de cliente, y la dirección de la aplicación queda reservada. Incluye un script de solo lectura que detecta dominios huérfanos entre Flow y el proveedor, y una guía de operación con los pasos de configuración en Cloudflare.

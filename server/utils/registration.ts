@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm'
 import { db } from '~/server/db'
 import { people, roles, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
+import { registrationEvent, validateRegistrationChoice } from '~/server/utils/registrationIntent'
 
 // HU multi-organizacion (2026-09-04): "Registro" (Screen/Registro Paso 1-4
 // del .pen, ver el flujo completo revisado con mcp__pencil__execute antes de
@@ -51,6 +52,7 @@ export interface RegisterInput {
   password: string
   organizationName: string
   slug: string
+  registrationChoice?: unknown
 }
 
 export interface RegisterResult {
@@ -74,6 +76,8 @@ export interface RegisterResult {
 export async function registerTenant(input: RegisterInput): Promise<RegisterResult> {
   const normalizedEmail = input.email.trim().toLowerCase()
   const normalizedSlug = input.slug.trim().toLowerCase()
+  const choice = await validateRegistrationChoice(input.registrationChoice)
+  registrationEvent('registration_started', choice)
 
   return db.transaction(async (tx) => {
     const [existingPerson] = await tx.select({ id: people.id }).from(people).where(eq(people.email, normalizedEmail)).limit(1)
@@ -83,7 +87,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
 
     let tenant: typeof tenants.$inferSelect
     try {
-      ;[tenant] = await tx.insert(tenants).values({ name: input.organizationName.trim(), slug: normalizedSlug, email: normalizedEmail, onboardingStatus: 'email_pending' }).returning()
+      ;[tenant] = await tx.insert(tenants).values({ name: input.organizationName.trim(), slug: normalizedSlug, email: normalizedEmail, onboardingStatus: 'email_pending', registrationIntent: choice ? { ...choice, expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString() } : null }).returning()
     } catch (err) {
       const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
       if (code === PG_UNIQUE_VIOLATION) {

@@ -10,6 +10,7 @@
 // registerTenant() solo crea ese rol de arranque además de "Administrador",
 // así que se dibuja fijo, sin dropdown funcional.
 import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
+import { normalizeRegistrationChoice, type RegistrationChoice } from '~/utils/registrationIntent'
 
 definePageMeta({ layout: false, darkReady: true })
 
@@ -25,6 +26,26 @@ if (appConfig.value?.appMode === 'dedicated') {
 const step = ref(1)
 const loading = ref(false)
 const errorMessage = ref('')
+const accountExists = ref(false)
+const choiceError = ref('')
+type PublicPlan = { key: string; name: string; description: string; monthlyPriceCents: number; annualPriceCents: number; currency: string }
+const choice = ref<RegistrationChoice | null>(normalizeRegistrationChoice(useRoute().query))
+const { data: publicPlans } = choice.value ? await useFetch<{ plans: PublicPlan[] }>('/api/public/plans') : { data: ref<{ plans: PublicPlan[] } | null>(null) }
+const chosenPlan = computed(() => publicPlans.value?.plans.find(plan => plan.key === choice.value?.plan))
+const chosenPrice = computed(() => chosenPlan.value ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: chosenPlan.value.currency, maximumFractionDigits: 0 }).format((choice.value?.interval === 'year' ? chosenPlan.value.annualPriceCents : chosenPlan.value.monthlyPriceCents) / 100) : '')
+const loginLink = computed(() => ({ path: '/login', query: chosenPlan.value && choice.value ? { ...choice.value } : {} }))
+async function changePlan() {
+  if (loading.value) return
+  loading.value = true
+  choiceError.value = ''
+  try {
+    if (result.value) await $fetch('/api/billing/registration-intent', { method: 'POST', body: { clear: true } })
+    choice.value = null
+    useState<RegistrationChoice | null>('registration-landing-choice').value = null
+    await navigateTo('/registro', { replace: true })
+  } catch { choiceError.value = 'No se pudo cambiar el plan. Intenta de nuevo.' }
+  finally { loading.value = false }
+}
 
 // Paso 1: "Tu cuenta"
 const fullName = ref('')
@@ -118,6 +139,7 @@ const result = ref<{ tenantName: string; slug: string; invitationsSent: number }
 
 async function onSubmit() {
   errorMessage.value = ''
+  accountExists.value = false
   loading.value = true
   try {
     const cleanInvitees = invitees.value
@@ -133,7 +155,8 @@ async function onSubmit() {
         password: password.value,
         organizationName: organizationName.value.trim(),
         slug: slug.value,
-        invitees: cleanInvitees.length ? cleanInvitees : undefined
+        invitees: cleanInvitees.length ? cleanInvitees : undefined,
+        registrationChoice: chosenPlan.value ? choice.value : undefined
       }
     })
 
@@ -141,6 +164,7 @@ async function onSubmit() {
     step.value = 4
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo crear tu organización.'
+    accountExists.value = errorMessage.value.startsWith('Ya existe una cuenta con el correo')
   } finally {
     loading.value = false
   }
@@ -172,7 +196,13 @@ const brandText = computed(() => {
       <p class="w-[340px] text-[15px] text-brand-access-description">{{ brandText }}</p>
     </div>
 
-    <div class="flex flex-1 items-center justify-center bg-brand-surface px-4 py-10">
+    <div class="flex flex-1 flex-col items-center justify-center gap-6 bg-brand-surface px-4 py-10">
+      <section v-if="chosenPlan" aria-label="Plan elegido" class="w-full max-w-[380px] rounded border border-brand-control-border bg-brand-blue-bg px-4 py-3 text-sm text-brand-text">
+        <p>Plan elegido: <strong>{{ chosenPlan.name }}</strong> · {{ chosenPrice }} MXN {{ choice?.interval === 'year' ? 'al año' : 'al mes' }} · 30 días de prueba</p>
+        <button type="button" :disabled="loading" class="mt-2 font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-brand-blue disabled:opacity-50" @click="changePlan">Cambiar plan</button>
+        <p v-if="choiceError" role="alert" class="mt-2 text-brand-error-text">{{ choiceError }}</p>
+      </section>
+      <NuxtLink v-if="accountExists" :to="loginLink" class="w-full max-w-[380px] text-sm font-semibold text-brand-blue underline">{{ chosenPlan ? 'Inicia sesión para continuar con el plan elegido' : 'Inicia sesión para continuar' }}</NuxtLink>
       <!-- Paso 1: Tu cuenta -->
       <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
@@ -267,7 +297,7 @@ const brandText = computed(() => {
         </button>
 
         <p class="text-center text-[13px] text-brand-sites-muted">
-          ¿Ya tienes cuenta? <NuxtLink to="/login" class="font-semibold text-brand-blue hover:underline">Iniciar sesión</NuxtLink>
+          ¿Ya tienes cuenta? <NuxtLink :to="loginLink" class="font-semibold text-brand-blue hover:underline">Iniciar sesión</NuxtLink>
         </p>
       </div>
 

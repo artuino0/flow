@@ -2,7 +2,8 @@ import postgres from 'postgres'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
+import { createServer } from 'node:net'
 
 // HU-ERD-29: fixture de Postgres real para tests de integracion (RLS, etc.).
 // Usa embedded-postgres (Postgres real embebido, sin Docker) en vez de pglite:
@@ -20,6 +21,24 @@ import { randomUUID } from 'node:crypto'
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../server/db/migrations')
 
+async function reserveTestPort() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const server = createServer()
+    const port = randomInt(20000, 40000)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(port, '127.0.0.1', resolve)
+      })
+      return { port, server }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'EADDRINUSE' && code !== 'EACCES') throw error
+    }
+  }
+  throw new Error('No se encontró un puerto disponible para PostgreSQL de pruebas')
+}
+
 export interface TestDb {
   /** Conexion como erp_admin (superusuario) - migraciones, setup. */
   adminUrl: string
@@ -32,7 +51,8 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
   if (options.preserveFiles && process.env.TEST_POSTGRES_ADMIN_URL) throw new Error('Esta prueba requiere PostgreSQL embebido')
   if (process.env.TEST_POSTGRES_ADMIN_URL) return createExternalTestDb(process.env.TEST_POSTGRES_ADMIN_URL)
   const { default: EmbeddedPostgres } = await import('embedded-postgres')
-  const port = 40000 + Math.floor(Math.random() * 10000)
+  // Evita rangos reservados y el rango efímero de clientes de Windows; reserva durante initdb.
+  const { port, server } = await reserveTestPort()
   const databaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-pg-'))
 
   const pg = new EmbeddedPostgres({
@@ -43,7 +63,8 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
     persistent: options.preserveFiles === true
   })
 
-  await pg.initialise()
+  try { await pg.initialise() }
+  finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
   await pg.start()
   await pg.createDatabase('erp_dinamico_test')
 
@@ -85,7 +106,12 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
     appUrl,
     async stop() {
       await pg.stop()
-      if (!options.preserveFiles) fs.rmSync(databaseDir, { recursive: true, force: true })
+      if (!options.preserveFiles) {
+        const target = path.resolve(databaseDir)
+        if (path.dirname(target) !== path.resolve(os.tmpdir()) || !path.basename(target).startsWith('erp-test-pg-')) throw new Error('Directorio de pruebas fuera del temporal autorizado')
+        // Los procesos hijos de PostgreSQL pueden liberar archivos después de salir el padre en Windows.
+        fs.rmSync(target, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+      }
     }
   }
 }

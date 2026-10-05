@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
 import Stripe from 'stripe'
+import { clearRegistrationChoice, registrationEvent } from '~/server/utils/registrationIntent'
 import { db, withTenant } from '~/server/db'
 import { effectiveStorageLimit, getEffectivePlanLimits, getPlanByKey, listPlans, type PlanConcept, type PlanLimits } from '~/server/utils/plans'
 import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
@@ -332,6 +333,7 @@ export async function syncStripeSubscription(subscription: StripeSubscriptionSyn
     await installAgendaTemplate(resolvedTenantId)
   }
   if (['trialing', 'active'].includes(subscription.status)) {
+    await clearRegistrationChoice(resolvedTenantId)
     await withTenant(resolvedTenantId, tx => tx.update(tenants).set({ onboardingStatus: 'complete' }).where(and(eq(tenants.id, resolvedTenantId), sql`${tenants.onboardingStatus} <> 'complete'`)))
   }
   return getTenantSubscription(resolvedTenantId)
@@ -396,6 +398,9 @@ export async function createStripeCheckout(tenantId: string, planCode: string, i
     subscription_data: { metadata: { tenantId, planCode }, ...(!tenant.trialConsumedAt ? { trial_period_days: 30 } : {}) }
   })
   if (!session.url) throw new Error('Stripe no devolvió una URL de checkout')
+  registrationEvent('checkout_started', { plan: planCode, interval })
+  const choice = await db.select({ intent: tenants.registrationIntent }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+  if (choice[0]?.intent && (choice[0].intent.plan !== planCode || choice[0].intent.interval !== interval)) await clearRegistrationChoice(tenantId)
   if (onboarding) await withTenant(tenantId, tx => tx.update(tenants).set({ onboardingStatus: 'checkout_pending' }).where(eq(tenants.id, tenantId)))
   return { url: session.url }
 }

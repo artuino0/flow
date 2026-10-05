@@ -21,7 +21,8 @@ const bodySchema = z.object({
   organizationName: z.string().trim().min(1, 'Ingresa el nombre de tu organización'),
   slug: z.string().trim().toLowerCase().regex(TENANT_SLUG_PATTERN, 'El subdominio solo puede tener letras, números y guiones'),
   // Paso 3 "Invitá a tu equipo" - opcional, "Omitir por ahora" en el diseño.
-  invitees: z.array(z.object({ email: z.string().trim().email() })).max(20).optional()
+  invitees: z.array(z.object({ email: z.string().trim().email() })).max(20).optional(),
+  registrationChoice: z.unknown().optional()
 })
 
 export default defineEventHandler(async (event) => {

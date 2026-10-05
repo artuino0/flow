@@ -9,6 +9,7 @@ import { accessContrastPairs, isAccessContrast, themeContrasts } from '../helper
 import { auditThemeColors, auditThemeSource, migratedThemeFiles } from '../../scripts/auditThemeColors'
 import * as returnToRoute from '../../utils/returnToRoute'
 import * as passwordPolicy from '../../server/utils/passwordPolicy'
+import * as registrationIntent from '../../utils/registrationIntent'
 import baseline from '../fixtures/themeBaseline172.json'
 import colors from '../fixtures/themeAccess172.json'
 import deficits from '../fixtures/themeAccessDeficits172.json'
@@ -42,7 +43,7 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
   const loginWithTotp = vi.fn(async () => ({})), selectOrganization = vi.fn(async () => ({}))
   let finishPage: (() => void) | undefined
   navigate.mockImplementation(async () => { finishPage?.() })
-  const comp = compileVueComponent(`pages/${route}.vue`, { '~/utils/returnToRoute': returnToRoute, '~/server/utils/passwordPolicy': passwordPolicy }, {
+  const comp = compileVueComponent(`pages/${route}.vue`, { '~/utils/returnToRoute': returnToRoute, '~/server/utils/passwordPolicy': passwordPolicy, '~/utils/registrationIntent': registrationIntent }, {
     ref, computed, watch, onMounted, onBeforeUnmount, definePageMeta: meta, useHead: vi.fn(),
     useRoute: () => ({ params: { token: 'token-local' }, query: state.missingToken ? {} : { token: 'token-local' } }),
     useAuth: () => ({ user, fetchMe, login, loginWithTotp, selectOrganization }),

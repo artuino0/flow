@@ -49,6 +49,7 @@ async function mount(file: string, mode: 'light' | 'dark', state: State = {}) {
     throw new Error(`Petición no simulada: ${url}`)
   })
   const globals = { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount,
+    useState: <T>(_key: string, init: () => T) => ref(init()),
     definePageMeta: meta, useRoute: () => ({ params: { id: 'd' }, query: { preview: '1', tipo: state.tipo ?? 'I', ...state.query }, meta: {} }),
     useRouter: () => ({ push }), useToast: () => toast, useConfirm: () => ({ confirm: vi.fn(async () => false) }), $fetch: fetch,
     useRequestHeaders: () => ({}), useHead: vi.fn(), onBeforeRouteLeave: vi.fn(),

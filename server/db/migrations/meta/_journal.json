@@ -666,6 +666,13 @@
       "when": 1790607403000,
       "breakpoints": true,
       "tag": "0094_agenda_public"
+    },
+    {
+      "version": "7",
+      "idx": 95,
+      "when": 1790607404000,
+      "breakpoints": true,
+      "tag": "0095_registration_intent"
     }
   ]
 }
