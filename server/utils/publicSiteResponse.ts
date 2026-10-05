@@ -1,3 +1,4 @@
+import { analyzeAgendaMarkers } from '~/utils/agendaMarkers'
 import { renderSiteRobots } from './siteSeoDocument'
 import { sendRedirect, setResponseHeader, type H3Event } from 'h3'
 import { effectiveRequestURL } from './effectiveHost'
@@ -19,8 +20,9 @@ export async function sendSitePreview(event: H3Event, siteId: string, rawPath = 
   setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
   setResponseHeader(event, 'x-robots-tag', 'noindex, nofollow')
   const sandboxed = sandboxSitePreview(event, page)
-  const agenda = await siteAgendaPresentation(event, page, sandboxed)
+  const markers = analyzeAgendaMarkers(page.html)
+  const agenda = await siteAgendaPresentation(event, page, sandboxed, markers)
   if (agenda) setResponseHeader(event, 'cache-control', 'no-store')
-  const document = renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page), { origin: '', rootPath: '/', preview: true })
+  const document = renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page, markers), { origin: '', rootPath: '/', preview: true }, markers)
   return sandboxed ? sandboxSiteFormsDocument(document) : document
 }

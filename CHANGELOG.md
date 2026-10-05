@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.153.2] - 2026-10-05
+#### [bugfix]
+- [ERD-194](https://dydasoftware.atlassian.net/browse/ERD-194) - Los sitios con agenda incrustada también cargan rápido: se corrigió la causa de fondo de la lentitud (el análisis de marcadores de agenda repetía una conversión de todo el documento por cada carácter una vez que el motor optimizaba el código) y ahora el documento se analiza una sola vez por página, con un lector lineal.
+
 ### [0.153.1] - 2026-10-05
 #### [bugfix]
 - [ERD-192](https://dydasoftware.atlassian.net/browse/ERD-192) - Los sitios públicos vuelven a cargar rápido: una página sin agenda ya no recorre todo su contenido tres veces buscando marcadores de agenda, lo que tras un minuto de encendido llegaba a tardar varios segundos y congelaba el servidor.

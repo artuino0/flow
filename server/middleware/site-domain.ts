@@ -1,3 +1,4 @@
+import { analyzeAgendaMarkers } from '~/utils/agendaMarkers'
 import { defineEventHandler, getRequestURL, sendRedirect, setResponseHeader, setResponseStatus } from 'h3'
 import { getSiteSeoDomainContext, getSiteSitemapPages, publicSiteSeoContext } from '~/server/utils/siteSeoPublic'
 import { renderSiteRobots, renderSiteSitemap } from '~/server/utils/siteSeoDocument'
@@ -50,9 +51,10 @@ export default defineEventHandler(async event => {
     if (path !== canonicalPath) return sendRedirect(event, `https://${domain?.primary_host ?? hostname}${canonicalPath}${url.search}`, 301)
     setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
     setResponseHeader(event, 'cache-control', 'public, s-maxage=60, stale-while-revalidate=300')
-    const agenda = await siteAgendaPresentation(event, page)
+    const markers = analyzeAgendaMarkers(page.html)
+    const agenda = await siteAgendaPresentation(event, page, false, markers)
     if (agenda) setResponseHeader(event, 'cache-control', 'no-store')
-    return renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page), domain && active ? await publicSiteSeoContext(page, domain) : undefined)
+    return renderPublicSiteDocument(page, agenda, protectSiteAgendaDocument(event, page, markers), domain && active ? await publicSiteSeoContext(page, domain) : undefined, markers)
   }
   const assetName = /\.[a-z0-9]{2,8}$/i.test(path) || path.startsWith('/assets/') ? siteRelativeAssetName(path) : null
   if (assetName) {

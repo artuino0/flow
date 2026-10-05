@@ -6,10 +6,13 @@ export function agendaAlias(value: string) { return value.normalize('NFD').repla
 
 function marker(source: string, start: number, attribute: boolean): AgendaMarker | null {
   if (!source.startsWith('{{', start)) return null
-  const close = source.indexOf('}}', start + 2)
+  let prefix = start + 2
+  while (isMarkerSpace(source.charCodeAt(prefix))) prefix++
+  const head = source.slice(prefix, prefix + 10).toLowerCase()
+  if (!head.startsWith('agenda') && !head.startsWith('openagenda')) return null
+  const close = source.indexOf('}}', prefix)
   const end = close < 0 ? source.length : close + 2
   const raw = source.slice(start, end)
-  if (!/^\{\{\s*(?:agenda|openagenda)/i.test(raw)) return null
   const result: AgendaMarker = { start, end, raw, kind: 'invalid', params: {}, attribute }
   if (close < 0) return result
   const match = /^\{\{\s*(agenda-component|openagenda)\b([\s\S]*?)\}\}$/i.exec(raw)
@@ -28,44 +31,72 @@ function marker(source: string, start: number, attribute: boolean): AgendaMarker
   return result
 }
 
-/** Escáner con estados HTML; nunca interpreta texto en comentarios, raw text o atributos. */
+// WhiteSpace/LineTerminator de ECMAScript, sin RegExp por carácter.
+function isMarkerSpace(code: number): boolean {
+  return code === 32 || (code >= 9 && code <= 13) || code === 160 || code === 5760
+    || (code >= 8192 && code <= 8202) || code === 8232 || code === 8233
+    || code === 8239 || code === 8287 || code === 12288 || code === 65279
+}
+const rawTextTags = new Set(['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'template', 'svg', 'math'])
+
+/** Una pasada HTML. Solo se asignan cadenas al reconocer etiquetas o marcadores. */
 export function analyzeAgendaMarkers(html: string): AgendaMarker[] {
   const found: AgendaMarker[] = []
   if (!html.includes('{{')) return found
+  // Instancia por análisis: lastIndex nunca se comparte entre llamadas.
+  const tagPattern = /<\/?([a-z][\w:-]*)\b/iy
+  // Convertir solo al entrar en raw text y retener el resultado. En Node 22,
+  // TurboFan puede hundir una conversión ansiosa dentro del bucle (ERD-194).
+  let lower: string | undefined
   let i = 0
-  const lower = html.toLowerCase()
   while (i < html.length) {
-    if (html.startsWith('<!--', i)) { const end = html.indexOf('-->', i + 4); i = end < 0 ? html.length : end + 3; continue }
-    if (html[i] === '<') {
-      const tag = /^<\/?([a-z][\w:-]*)\b/i.exec(html.slice(i))
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i + 4)
+      i = end < 0 ? html.length : end + 3
+      continue
+    }
+    if (html.charCodeAt(i) === 60) {
+      tagPattern.lastIndex = i
+      const tag = tagPattern.exec(html)
       if (!tag) { i++; continue }
       const name = tag[1]!.toLowerCase()
-      const closing = html[i + 1] === '/'
-      let cursor = i + tag[0].length
-      while (cursor < html.length && html[cursor] !== '>') {
-        if (/\s/.test(html[cursor]!)) { cursor++; continue }
+      const closing = html.charCodeAt(i + 1) === 47
+      let cursor = tagPattern.lastIndex
+      while (cursor < html.length && html.charCodeAt(cursor) !== 62) {
+        if (isMarkerSpace(html.charCodeAt(cursor))) { cursor++; continue }
         const candidate = marker(html, cursor, true)
         if (candidate) {
-          const standalone = /\s/.test(html[cursor - 1]!) && /[\s/>]/.test(html[candidate.end] ?? '>')
-          if (closing || !['button', 'a'].includes(name) || !standalone) candidate.kind = 'invalid'
+          const after = html.charCodeAt(candidate.end)
+          const standalone = isMarkerSpace(html.charCodeAt(cursor - 1))
+            && (candidate.end >= html.length || isMarkerSpace(after) || after === 47 || after === 62)
+          if (closing || (name !== 'button' && name !== 'a') || !standalone) candidate.kind = 'invalid'
           found.push(candidate); cursor = candidate.end; continue
         }
-        // Leer un atributo entero, incluido su valor quoted/unquoted.
-        while (cursor < html.length && !/[\s=>]/.test(html[cursor]!)) {
+        // Nombre del atributo; los marcadores incrustados se conservan como inválidos.
+        while (cursor < html.length) {
+          const code = html.charCodeAt(cursor)
+          if (isMarkerSpace(code) || code === 61 || code === 62) break
           const embedded = marker(html, cursor, true)
-          if (embedded) { embedded.kind = 'invalid'; found.push(embedded); cursor = embedded.end } else cursor++
+          if (embedded) { embedded.kind = 'invalid'; found.push(embedded); cursor = embedded.end }
+          else cursor++
         }
-        while (/\s/.test(html[cursor] ?? '')) cursor++
-        if (html[cursor] === '=') {
-          cursor++; while (/\s/.test(html[cursor] ?? '')) cursor++
-          const quote = html[cursor]
-          if (quote === '"' || quote === "'") { cursor++; while (cursor < html.length && html[cursor] !== quote) cursor++; if (cursor < html.length) cursor++ }
-          else while (cursor < html.length && !/[\s>]/.test(html[cursor]!)) cursor++
+        while (isMarkerSpace(html.charCodeAt(cursor))) cursor++
+        if (html.charCodeAt(cursor) === 61) {
+          cursor++; while (isMarkerSpace(html.charCodeAt(cursor))) cursor++
+          const quote = html.charCodeAt(cursor)
+          if (quote === 34 || quote === 39) {
+            const end = html.indexOf(String.fromCharCode(quote), cursor + 1)
+            cursor = end < 0 ? html.length : end + 1
+          } else {
+            while (cursor < html.length && !isMarkerSpace(html.charCodeAt(cursor)) && html.charCodeAt(cursor) !== 62) cursor++
+          }
         }
       }
       i = Math.min(cursor + 1, html.length)
-      if (!closing && ['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'template', 'svg', 'math'].includes(name)) {
-        const end = lower.indexOf(`</${name}`, i); const finish = end < 0 ? -1 : html.indexOf('>', end)
+      if (!closing && rawTextTags.has(name)) {
+        lower ??= html.toLowerCase()
+        const end = lower.indexOf(`</${name}`, i)
+        const finish = end < 0 ? -1 : html.indexOf('>', end)
         i = finish < 0 ? html.length : finish + 1
       }
       continue
@@ -76,8 +107,7 @@ export function analyzeAgendaMarkers(html: string): AgendaMarker[] {
   return found
 }
 
-export function transformAgendaMarkers(html: string, config: AgendaMarkerConfig) {
-  const markers = analyzeAgendaMarkers(html)
+export function transformAgendaMarkers(html: string, config: AgendaMarkerConfig, markers: AgendaMarker[] = analyzeAgendaMarkers(html)) {
   const warnings: string[] = []
   let cursor = 0, output = '', inline = 0, active = 0
   if (markers.length && !config.enabled) warnings.push('Advertencia fuerte: esta página contiene marcadores y la agenda está desactivada.')

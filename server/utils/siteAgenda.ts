@@ -1,12 +1,12 @@
 import { setResponseHeader, type H3Event } from 'h3'
 import { effectiveRequestURL } from './effectiveHost'
-import { analyzeAgendaMarkers } from '~/utils/agendaMarkers'
+import { analyzeAgendaMarkers, type AgendaMarker } from '~/utils/agendaMarkers'
 import { hasSiteAuthorScripts } from '~/utils/siteAuthorScripts'
 import type { PublicSitePage } from './siteDomains'
 import { agendaFlowOrigin, publicAgendaPresentation, resolveAgendaContext } from './agendaPublic'
 
-export function protectSiteAgendaDocument(event: H3Event, page: PublicSitePage) {
-  if (!analyzeAgendaMarkers(page.html).length) return undefined
+export function protectSiteAgendaDocument(event: H3Event, page: PublicSitePage, markers: AgendaMarker[] = analyzeAgendaMarkers(page.html)) {
+  if (!markers.length) return undefined
   // La página pertenece al autor: Agenda no limita sus scripts ni enlaces.
   setResponseHeader(event, 'Cache-Control', 'no-store')
   return undefined
@@ -19,8 +19,8 @@ export function sandboxSitePreview(event: H3Event, page: PublicSitePage) {
   return true
 }
 
-export async function siteAgendaPresentation(event: H3Event, page: PublicSitePage, preview = false) {
-  if (!analyzeAgendaMarkers(page.html).length) return undefined
+export async function siteAgendaPresentation(event: H3Event, page: PublicSitePage, preview = false, markers: AgendaMarker[] = analyzeAgendaMarkers(page.html)) {
+  if (!markers.length) return undefined
   if (preview) return { enabled: true, services: [{ id: 'demo', name: 'Servicio de ejemplo' }], people: [{ id: 'demo-person', name: 'Persona de ejemplo' }],
     runtime: { site: page.siteId, page: page.pageId, locale: page.siteLocale, accent: 'rgb(0 110 132)', timezone: 'UTC', preview: true } }
   const url = effectiveRequestURL(event)
