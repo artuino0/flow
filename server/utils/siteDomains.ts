@@ -124,12 +124,17 @@ async function railwayRequest(query: string, variables: Record<string, unknown>)
     headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables })
   })
-  const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; errors?: { message?: string }[] }
+  const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; errors?: { message?: string; extensions?: { code?: string } }[] }
+  if (body.errors?.some(error => error.extensions?.code === 'GRAPHQL_VALIDATION_FAILED' || error.message?.includes('Cannot query field'))) {
+    console.error('[Sites Railway] Error de validación GraphQL:', body.errors.map(error => error.message).filter(Boolean).join('; '))
+    throw createError({ statusCode: 502, statusMessage: 'No pudimos registrar el dominio con el proveedor. Inténtalo más tarde o contacta a soporte.' })
+  }
   if (!response.ok || body.errors?.length) throw new Error(body.errors?.map(error => error.message).filter(Boolean).join('; ') || `Railway respondió ${response.status}`)
   return body.data ?? {}
 }
 
-const railwayDomainFields = `id domain edgeId verified certificateStatus status {
+const railwayDomainFields = `id domain edgeId status {
+  verified certificateStatus certificateErrorMessage
   verificationToken verificationDnsHost dnsRecords {
     currentValue fqdn hostlabel purpose recordType requiredValue status zone
   }
@@ -162,8 +167,9 @@ function railwayDnsVerified(data: Record<string, unknown>) {
 
 function railwayVerified(data: Record<string, unknown>) {
   const domain = (data.railway ?? data) as Record<string, unknown>
-  const certificate = String(domain.certificateStatus ?? '')
-  const dnsVerified = domain.verified === true || railwayDnsVerified(data)
+  const status = domain.status as Record<string, unknown> | null | undefined
+  const certificate = String(status?.certificateStatus ?? '')
+  const dnsVerified = railwayDnsVerified(data)
   return dnsVerified && (!certificate || /(?:ISSUED|VALID|COMPLETE)$/.test(certificate))
 }
 

@@ -1,0 +1,26 @@
+[
+  {
+    "label": "fragmento",
+    "html": "<form data-flow-form=\"contacto\"></form>",
+    "nonce": null,
+    "sha256": "804017c08894aeab6064c95f5a6d90d3aaee9e6cb344611736e90b771a61325a"
+  },
+  {
+    "label": "documento completo",
+    "html": "<html><head></head><body>Cliente</body></html>",
+    "nonce": null,
+    "sha256": "1938bea4fbabceeef4024cb59924caefeda6d11d46230bb7dafd8de03becfdd8"
+  },
+  {
+    "label": "documento sin head y con nonce",
+    "html": "<html lang=\"es\"><body>Cliente</body></html>",
+    "nonce": "nonce-test",
+    "sha256": "6ba5c27911d7bb5a9781496c564e36a5c216c2891c43411c7ccb9b973f9ef44f"
+  },
+  {
+    "label": "marcador de agenda deshabilitada",
+    "html": "<div data-flow-agenda=\"services\"></div>",
+    "nonce": null,
+    "sha256": "989f15e3b48235861d127bb20a8e7520859e641d1faf440bf94f349ac3fe520d"
+  }
+]

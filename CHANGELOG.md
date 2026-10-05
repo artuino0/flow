@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.148.2] - 2026-10-05
+#### [bugfix]
+- [ERD-184](https://dydasoftware.atlassian.net/browse/ERD-184) - Dominios de Sites con Railway: al agregar un dominio aparecía un error técnico («Cannot query field "verified"…») porque Railway cambió la forma de su API. Ahora el dominio se registra y se muestran los registros DNS que debe crear el cliente. Si el proveedor falla, ves un mensaje claro y el dominio no queda guardado a medias.
+
 ### [0.148.1] - 2026-10-05
 #### [bugfix]
 - [ERD-183](https://dydasoftware.atlassian.net/browse/ERD-183) - Inicio de sesión y navegación más rápidos: al iniciar sesión, la aplicación hacía unas 40 peticiones antes de mostrar el Tablero (entre ellas casi 20 repetidas solo para saber si eres administrador) y ahora hace 6. Saber si eres administrador ya no requiere consultar el servidor en cada pantalla, y los datos que no hacen falta para pintar (notificaciones, chat, facturación, uso del plan) se cargan después de ver el Tablero. El botón de inicio de sesión se queda en «Entrando…» hasta que cambia la pantalla.

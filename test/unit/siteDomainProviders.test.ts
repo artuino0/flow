@@ -47,12 +47,12 @@ describe('proveedores de dominios de Sites', () => {
     railwayEnv()
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { customDomainCreate: {
-        id: 'domain-id', domain: 'tienda.example.com', certificateStatus: 'PENDING',
-        status: { verificationToken: 'verify-token', verificationDnsHost: '_railway-verify.tienda.example.com', dnsRecords: [{ recordType: 'DNS_RECORD_TYPE_CNAME', fqdn: 'tienda.example.com', requiredValue: 'abc.up.railway.app', purpose: 'DNS_RECORD_PURPOSE_TRAFFIC_ROUTE', status: 'DNS_RECORD_STATUS_PENDING' }] }
+        id: 'domain-id', domain: 'tienda.example.com',
+        status: { certificateStatus: 'PENDING', verificationToken: 'verify-token', verificationDnsHost: '_railway-verify.tienda.example.com', dnsRecords: [{ recordType: 'DNS_RECORD_TYPE_CNAME', fqdn: 'tienda.example.com', requiredValue: 'abc.up.railway.app', purpose: 'DNS_RECORD_PURPOSE_TRAFFIC_ROUTE', status: 'DNS_RECORD_STATUS_PENDING' }] }
       } } })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { customDomain: {
-        id: 'domain-id', domain: 'tienda.example.com', certificateStatus: 'CERTIFICATE_STATUS_TYPE_VALID',
-        status: { verified: true, verificationToken: 'verify-token', dnsRecords: [{ recordType: 'DNS_RECORD_TYPE_CNAME', fqdn: 'tienda.example.com', requiredValue: 'abc.up.railway.app', purpose: 'DNS_RECORD_PURPOSE_TRAFFIC_ROUTE', status: 'DNS_RECORD_STATUS_PROPAGATED' }] }
+        id: 'domain-id', domain: 'tienda.example.com',
+        status: { certificateStatus: 'CERTIFICATE_STATUS_TYPE_VALID', verified: true, verificationToken: 'verify-token', dnsRecords: [{ recordType: 'DNS_RECORD_TYPE_CNAME', fqdn: 'tienda.example.com', requiredValue: 'abc.up.railway.app', purpose: 'DNS_RECORD_PURPOSE_TRAFFIC_ROUTE', status: 'DNS_RECORD_STATUS_PROPAGATED' }] }
       } } })))
     vi.stubGlobal('fetch', fetchMock)
     const provider = getSiteDomainProvider('railway')
