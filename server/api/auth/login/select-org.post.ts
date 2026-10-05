@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { issueSessionCookies, verifyPendingOrgToken } from '~/server/utils/auth'
 import { findActiveMembership } from '~/server/utils/peopleAuth'
+import { createLoginSession } from '~/server/utils/authUser'
 
 // POST /api/auth/login/select-org (HU multi-organizacion, 2026-09-04):
 // tercer paso del login SOLO cuando la persona pertenece a mas de una
@@ -34,7 +35,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'No tenes acceso a esa organización' })
   }
 
-  await issueSessionCookies(event, { sub: membership.userId, tenantId: body.tenantId, roleId: membership.roleId }, config.jwtSecret as string)
+  const payload = { sub: membership.userId, tenantId: body.tenantId, roleId: membership.roleId }
+  const user = await createLoginSession(event, payload)
+  await issueSessionCookies(event, { ...payload, sid: user.sessionId }, config.jwtSecret as string)
 
-  return { ok: true }
+  return { ok: true, user }
 })

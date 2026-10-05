@@ -3,7 +3,8 @@ import { gzipSync } from 'node:zlib'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 const root = process.cwd(), stage = process.argv[2] ?? 'after'
-if (!root.endsWith(`${path.sep}frontback-ci${path.sep}erd182-clean`)) throw new Error('Ejecutar en la copia limpia')
+const copyName = path.basename(root)
+if (!['erd182-clean', 'erd183-clean'].includes(copyName) || path.basename(path.dirname(root)) !== 'frontback-ci') throw new Error('Ejecutar en la copia limpia')
 const manifest = (await import(pathToFileURL(path.join(root, '.nuxt/dist/server/client.manifest.mjs')).href)).default
 const closure = keys => {
  const seen = new Set(), files = new Set()
@@ -19,7 +20,7 @@ for (const [name, keys] of [['entry',[entryKey]],['login',[entryKey,'pages/login
 }
 console.log(JSON.stringify(metrics,null,2))
 const docs='C:/desarrollo/ERP-Dinamico/DOCS/tareas'
-writeFileSync(`${docs}/erd182-bundle-${stage}.json`,JSON.stringify(metrics,null,2))
+writeFileSync(`${docs}/${copyName.split('-')[0]}-bundle-${stage}.json`,JSON.stringify(metrics,null,2))
 if(stage==='after') {
  const baseline=JSON.parse(readFileSync(path.join(root,'scripts/performance182-baseline.json'),'utf8')).bundle
  for(const name of ['entry','login','home']) if(metrics[name].gzip>baseline[name]*1.1) throw new Error(`Presupuesto ${name}: crecimiento superior al 10%`)

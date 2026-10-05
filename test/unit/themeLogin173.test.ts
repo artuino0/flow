@@ -33,10 +33,14 @@ async function mountLogin(mode: ThemeMode = 'system', systemDark = false) {
   theme = useTheme(); theme.initialize()
   const selector = compileVueComponent('components/ThemeSelector.vue', {}, { useTheme })
   const meta = vi.fn(), navigate = vi.fn(), login = vi.fn(async () => ({}))
+  let finishPage: (() => void) | undefined
+  navigate.mockImplementation(async () => { finishPage?.() })
   const page = compileVueComponent('pages/login.vue', { '~/utils/returnToRoute': returnToRoute }, {
     ref, computed, definePageMeta: meta,
     useAuth: () => ({ login, loginWithTotp: vi.fn(), selectOrganization: vi.fn(), user: ref({ role: 'administrador' }) }),
     useRoute: () => ({ query: {} }), navigateTo: navigate,
+    useState: () => ref(false),
+    useNuxtApp: () => ({ hook: (name: string, fn: () => void) => { if (name === 'page:finish') finishPage = fn; return () => { if (name === 'page:finish') finishPage = undefined } } }),
     useDeploymentConfig: async () => ({ data: ref({ appMode: 'shared' }) })
   })
   const app = createApp({ render: () => h(Suspense, {}, { default: () => h(page) }) })

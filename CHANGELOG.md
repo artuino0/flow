@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.148.1] - 2026-10-05
+#### [bugfix]
+- [ERD-183](https://dydasoftware.atlassian.net/browse/ERD-183) - Inicio de sesión y navegación más rápidos: al iniciar sesión, la aplicación hacía unas 40 peticiones antes de mostrar el Tablero (entre ellas casi 20 repetidas solo para saber si eres administrador) y ahora hace 6. Saber si eres administrador ya no requiere consultar el servidor en cada pantalla, y los datos que no hacen falta para pintar (notificaciones, chat, facturación, uso del plan) se cargan después de ver el Tablero. El botón de inicio de sesión se queda en «Entrando…» hasta que cambia la pantalla.
+
 ### [0.148.0] - 2026-10-04
 #### [feature]
 - [ERD-182](https://dydasoftware.atlassian.net/browse/ERD-182) - Rendimiento: la aplicación hace menos viajes a la base de datos y reutiliza durante unos segundos los datos que casi no cambian (módulos, campos, menú, permisos y ajustes), con la caché separada por organización y rol y renovada al instante cuando cambias el diseño o los permisos. Las pantallas de Ajustes, editar registro, sesión, menú y Tablero cargan con la mitad de viajes o menos, y las listas y el detalle de registros resuelven las relaciones en una sola consulta. El Tablero descarga 40 % menos JavaScript (el catálogo de iconos se carga bajo demanda) y ya no se precargan en segundo plano las demás pantallas. Para quien administra: se pueden activar mediciones de tiempo por petición (`REQUEST_PERFORMANCE_ENABLED`) y un precalentamiento opcional de la base de datos, ambos apagados por omisión.

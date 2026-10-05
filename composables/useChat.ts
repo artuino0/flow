@@ -36,9 +36,23 @@ export function useChat() {
     floatingIds: [], minimizedIds: [], typing: {}, presence: {}
   }))
   const { user } = useAuth()
+  const identity = () => [user.value?.tenantId, user.value?.id, user.value?.roleId, user.value?.sessionId].join(':')
+  const chatScope = useState('chat-scope', () => '')
+  watch(identity, value => {
+    if (chatScope.value === value) return
+    chatScope.value = value
+    state.value.permissions = null; state.value.ready = false; state.value.conversations = []; state.value.archived = []
+    state.value.messages = {}; state.value.nextCursor = {}; state.value.selectedId = null
+    state.value.floatingIds = []; state.value.minimizedIds = []; state.value.typing = {}; state.value.presence = {}
+    floatingRestored = false
+  }, { immediate: true, flush: 'sync' })
+  const permissionsResource = useShellResource<ResolvedChatPermissions>('chat-permissions', '/api/chat/permissions')
+  watch(permissionsResource.data, value => { state.value.permissions = value; state.value.ready = Boolean(value) }, { immediate: true })
   const realtime = useRealtime()
   const unreadCount = computed(() => state.value.conversations.reduce((sum, item) => sum + item.unreadCount, 0))
-  const canAccess = computed(() => Boolean(state.value.permissions?.effective.canAccess))
+  const canAccess = computed(() => Boolean(permissionsResource.data.value?.effective.canAccess))
+  const recentResource = useShellResource<{ items: ChatConversation[] }>('chat-recent', '/api/chat/conversations', () => canAccess.value)
+  const archivedResource = useShellResource<{ items: ChatConversation[] }>('chat-archived', '/api/chat/conversations?archived=true', () => canAccess.value)
   let active = false
   const isVisible = (id: string) =>
     (state.value.chatViewActive && state.value.selectedId === id)
@@ -106,20 +120,25 @@ export function useChat() {
     } catch { /* Ignore malformed local state. */ }
   }
   async function loadPermissions() {
-    try { state.value.permissions = await $fetch<ResolvedChatPermissions>('/api/chat/permissions') }
-    catch { state.value.permissions = null }
-    state.value.ready = true
+    const started = identity()
+    try {
+      const permissions = await permissionsResource.execute()
+      if (identity() === started) state.value.permissions = permissions
+    } catch { if (identity() === started) state.value.permissions = null }
+    if (identity() === started) state.value.ready = true
     return state.value.permissions
   }
 
-  async function refreshConversations() {
+  async function refreshConversations(force = true) {
     if (!canAccess.value) return
+    const started = identity()
     const [recent, archived] = await Promise.all([
-      $fetch<{ items: ChatConversation[] }>('/api/chat/conversations'),
-      $fetch<{ items: ChatConversation[] }>('/api/chat/conversations?archived=true')
+      force ? recentResource.refresh() : recentResource.execute(),
+      force ? archivedResource.refresh() : archivedResource.execute()
     ])
-    state.value.conversations = recent.items
-    state.value.archived = archived.items
+    if (identity() !== started) return
+    state.value.conversations = recent?.items ?? []
+    state.value.archived = archived?.items ?? []
     for (const conversation of [...state.value.conversations, ...state.value.archived]) {
       if (isVisible(conversation.id)) conversation.unreadCount = 0
     }
@@ -198,10 +217,10 @@ export function useChat() {
       ]
     }
     realtime.start()
-    if (!state.value.ready) await loadPermissions()
+    await loadPermissions()
     if (canAccess.value && !state.value.conversations.length) {
       state.value.loading = true
-      try { await refreshConversations() } finally { state.value.loading = false }
+      try { await refreshConversations(false) } finally { state.value.loading = false }
     }
     restoreFloating()
   }

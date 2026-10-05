@@ -24,6 +24,7 @@ let consumerCount = 0
 let stopped = true
 let sessionRequired = false
 let currentState: Ref<RealtimeConnectionState> | null = null
+let currentApp: ReturnType<typeof useNuxtApp> | null = null
 let transportPromise: Promise<'websocket' | 'polling'> | null = null
 const listeners = new Map<string, Set<RealtimeListener>>()
 
@@ -60,7 +61,9 @@ function stopPolling() {
 
 async function refreshAccessCookie() {
   try {
-    await $fetch('/api/auth/refresh', { method: 'POST' })
+    const { refresh, renewedAt } = await currentApp!.runWithContext(() => useAuth())
+    if (renewedAt.value && Date.now() - renewedAt.value < 30_000) return true
+    await refresh()
     return true
   } catch (error) {
     if (realtimeRefreshRequiresSession(error)) {
@@ -78,7 +81,8 @@ async function refreshAccessCookie() {
 
 async function resolveTransport(): Promise<'websocket' | 'polling'> {
   if (!transportPromise) {
-    transportPromise = $fetch<{ realtimeTransport?: 'websocket' | 'polling' }>('/api/config')
+    const cached = await currentApp!.runWithContext(() => useNuxtData<{ realtimeTransport?: 'websocket' | 'polling' }>('app-config').data.value)
+    transportPromise = (cached ? Promise.resolve(cached) : $fetch<{ realtimeTransport?: 'websocket' | 'polling' }>('/api/config'))
       .then(config => config.realtimeTransport === 'polling' ? 'polling' : 'websocket')
       .catch(() => window.location.hostname.endsWith('.vercel.app') ? 'polling' : 'websocket')
   }
@@ -162,6 +166,8 @@ function resumeSession() {
 }
 
 export function useRealtime() {
+  const app = useNuxtApp()
+  const afterPaint = useAfterFirstPaint()
   const state = useState<RealtimeConnectionState>('realtime-connection', () => ({ connected: false, reconnecting: false, everConnected: false, transport: 'unknown' }))
   let active = false
 
@@ -170,12 +176,13 @@ export function useRealtime() {
     active = true
     consumerCount += 1
     currentState = state
+    currentApp = app
     if (consumerCount === 1) {
       stopped = false
       sessionRequired = false
       window.addEventListener('online', wakeConnection)
       document.addEventListener('visibilitychange', wakeConnection)
-      void connect(state)
+      void afterPaint().then(() => { if (!stopped) return connect(state) })
     }
   }
 

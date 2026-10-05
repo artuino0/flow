@@ -5,7 +5,6 @@ import { FLOW_APP_LIST, type FlowAppKey } from '~/utils/flowApps'
 const { activeKey, activeApp, openApp } = useFlowApps()
 const chat = useChat()
 const open = ref(false)
-const requestHeaders = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 const { data: access, load: loadAccess } = useFlowAppAccess()
 await loadAccess()
 const { data: isAdmin } = await useIsAdmin()
@@ -15,12 +14,8 @@ const appRows = computed(() => FLOW_APP_LIST.map(app => ({
   enabled: availability.value.get(app.key)?.enabled ?? false,
   accessible: availability.value.get(app.key)?.accessible ?? false
 })))
-const canAccessSites = Boolean(availability.value.get('sites')?.enabled && availability.value.get('sites')?.accessible)
-const { data: siteData } = await useFetch<{ sites: Array<{ id: string }> }>('/api/sites', {
-  key: 'flow-app-launcher-sites',
-  headers: requestHeaders,
-  immediate: canAccessSites
-})
+const canAccessSites = () => Boolean(availability.value.get('sites')?.enabled && availability.value.get('sites')?.accessible)
+const { data: siteData } = useShellResource<{ sites: Array<{ id: string }> }>('flow-app-launcher-sites', '/api/sites', canAccessSites)
 
 function badge(key: FlowAppKey) { return key === 'communications' ? chat.unreadCount.value : 0 }
 function state(app: { key: FlowAppKey; enabled: boolean; accessible: boolean }) {

@@ -3,6 +3,7 @@
 // (Screen/Login), estilo definido en las variables del archivo Pencil.
 import { Check, ChevronDown, CircleAlert, ShieldCheck } from '@lucide/vue'
 import type { OrganizationOption } from '~/composables/useAuth'
+import { isNavigationFailure } from 'vue-router'
 import { IDLE_RETURN_KEY, postLoginRoute, type IdleReturn } from '~/utils/returnToRoute'
 
 definePageMeta({ layout: false, darkReady: true })
@@ -50,13 +51,31 @@ const totpCode = ref('')
 const pendingOrgToken = ref('')
 const organizations = ref<OrganizationOption[]>([])
 const inactivityNotice = route.query.reason === 'inactividad'
-function finishLogin() {
+async function finishLogin() {
   let saved: IdleReturn | null = null
   if (import.meta.client) {
     try { saved = JSON.parse(sessionStorage.getItem(IDLE_RETURN_KEY) || 'null') as IdleReturn | null } catch { saved = null }
     sessionStorage.removeItem(IDLE_RETURN_KEY)
   }
-  return navigateTo(postLoginRoute(route.query.redirect, saved, user.value, inactivityNotice))
+  const target = postLoginRoute(route.query.redirect, saved, user.value, inactivityNotice)
+  // router.push termina al confirmar la ruta; Nuxt todavía puede tener un Suspense pendiente.
+  let finish!: () => void
+  let fail!: (error: unknown) => void
+  const painted = new Promise<{ error: unknown } | null>(resolve => {
+    finish = () => resolve(null)
+    fail = error => resolve({ error })
+  })
+  const app = useNuxtApp()
+  const navigationPending = useState('auth-navigation-pending', () => false)
+  const stop = app.hook('page:finish', finish)
+  const stopVueError = app.hook('vue:error', fail)
+  const stopAppError = app.hook('app:error', fail)
+  try {
+    const result = await navigateTo(target)
+    if (isNavigationFailure(result) || result === false) throw new Error('La navegación no pudo completarse. Intenta de nuevo.')
+    const resultPage = await painted
+    if (resultPage) throw resultPage.error
+  } finally { navigationPending.value = false; stop(); stopVueError(); stopAppError() }
 }
 
 // HU multi-organizacion (2026-09-04), pantallas reales revisadas en Pencil
@@ -88,6 +107,7 @@ function pickOrganization(tenantId: string) {
 }
 
 async function onSubmit() {
+  if (loading.value) return
   errorMessage.value = ''
   loading.value = true
   try {
@@ -112,6 +132,7 @@ async function onSubmit() {
 }
 
 async function onSubmitTotp() {
+  if (loading.value) return
   errorMessage.value = ''
   loading.value = true
   try {
@@ -131,7 +152,7 @@ async function onSubmitTotp() {
 }
 
 async function onSubmitOrgSelect() {
-  if (!selectedTenantId.value) return
+  if (loading.value || !selectedTenantId.value) return
   errorMessage.value = ''
   loading.value = true
   try {
@@ -223,9 +244,10 @@ const brandTagline = computed(() =>
         <button
           type="submit"
           :disabled="loading"
+          :aria-busy="loading"
           class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {{ loading ? 'Ingresando...' : 'Iniciar sesión' }}
+          {{ loading ? 'Entrando…' : 'Iniciar sesión' }}
         </button>
 
         <p class="text-center text-[13px] text-brand-sites-muted">
@@ -274,6 +296,7 @@ const brandTagline = computed(() =>
         <button
           type="submit"
           :disabled="loading"
+          :aria-busy="loading"
           class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Verificando...' : 'Verificar' }}
@@ -336,6 +359,7 @@ const brandTagline = computed(() =>
         <button
           type="submit"
           :disabled="!selectedTenantId || loading"
+          :aria-busy="loading"
           class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {{ loading ? 'Entrando...' : 'Continuar' }}

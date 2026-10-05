@@ -4,6 +4,7 @@
 // esta logueado.
 export interface AuthUser {
   id: string
+  isAdmin: boolean
   sessionId?: string
   tenantName?: string
   // Dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md): país de la
@@ -55,14 +56,41 @@ export interface LoginResult {
 
 export function useAuth() {
   const user = useState<AuthUser | null>('auth-user', () => null)
+  const nuxtApp = useNuxtApp()
+  const flights = authFlights(nuxtApp)
+  const renewedAt = useState('auth-renewed-at', () => 0)
+  const generation = useState('auth-generation', () => 0)
+  const navigationPending = useState('auth-navigation-pending', () => false)
+
+  function acceptUser(value: AuthUser, navigating = false) {
+    generation.value++
+    if (navigating) navigationPending.value = true
+    user.value = value
+    renewedAt.value = Date.now()
+    if (import.meta.client) {
+      nuxtApp.runWithContext(() => {
+        useRealtime().resumeSession()
+        void preloadRouteComponents('/').catch(() => undefined)
+      })
+    }
+  }
 
   async function fetchMe(): Promise<AuthUser | null> {
+    if (flights.me) return flights.me
+    flights.me = loadMe().finally(() => { flights.me = undefined })
+    return flights.me
+  }
+
+  async function loadMe(): Promise<AuthUser | null> {
+    const started = generation.value
     // En SSR, $fetch a una ruta interna no reenvia automaticamente las
     // cookies de la request original - hay que pasarlas a mano.
     const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
     try {
-      user.value = await $fetch<AuthUser>('/api/auth/me', { headers })
+      const profile = await $fetch<AuthUser>('/api/auth/me', { headers })
+      if (generation.value === started) user.value = profile
     } catch {
+      if (generation.value !== started) return user.value
       // HU-ERD-83 (parte 2): el access token (15 min) puede haber expirado
       // aunque el refresh token (7 dias) siga vivo - antes de dar la sesion
       // por perdida, se intenta UNA renovacion silenciosa y se reintenta.
@@ -76,8 +104,7 @@ export function useAuth() {
       // inactividad) es poco frecuente.
       if (import.meta.client) {
         try {
-          await $fetch('/api/auth/refresh', { method: 'POST' })
-          user.value = await $fetch<AuthUser>('/api/auth/me')
+          await refresh()
         } catch {
           user.value = null
         }
@@ -85,7 +112,7 @@ export function useAuth() {
         user.value = null
       }
     }
-    if (user.value?.authenticated && import.meta.client) useRealtime().resumeSession()
+    if (user.value?.authenticated && import.meta.client) nuxtApp.runWithContext(() => useRealtime().resumeSession())
     return user.value
   }
 
@@ -104,6 +131,7 @@ export function useAuth() {
       requiresOrgSelection?: boolean
       pendingToken?: string
       organizations?: OrganizationOption[]
+      user: AuthUser
     }>('/api/auth/login', {
       method: 'POST',
       body: { email, password }
@@ -114,7 +142,7 @@ export function useAuth() {
     if (result.requiresOrgSelection) {
       return { requiresTotp: false, requiresOrgSelection: true, pendingToken: result.pendingToken, organizations: result.organizations }
     }
-    await fetchMe()
+    acceptUser(result.user, true)
     return { requiresTotp: false, requiresOrgSelection: false }
   }
 
@@ -126,14 +154,14 @@ export function useAuth() {
    * que login(), si la persona pertenece a mas de una organización.
    */
   async function loginWithTotp(tempToken: string, code: string): Promise<LoginResult> {
-    const result = await $fetch<{ ok: boolean; requiresOrgSelection?: boolean; pendingToken?: string; organizations?: OrganizationOption[] }>(
+    const result = await $fetch<{ ok: boolean; requiresOrgSelection?: boolean; pendingToken?: string; organizations?: OrganizationOption[]; user: AuthUser }>(
       '/api/auth/login/totp',
       { method: 'POST', body: { tempToken, code } }
     )
     if (result.requiresOrgSelection) {
       return { requiresTotp: false, requiresOrgSelection: true, pendingToken: result.pendingToken, organizations: result.organizations }
     }
-    await fetchMe()
+    acceptUser(result.user, true)
     return { requiresTotp: false, requiresOrgSelection: false }
   }
 
@@ -145,27 +173,37 @@ export function useAuth() {
    * pendingToken ya prueba que se validaron.
    */
   async function selectOrganization(pendingToken: string, tenantId: string): Promise<void> {
-    await $fetch('/api/auth/login/select-org', { method: 'POST', body: { pendingToken, tenantId } })
-    await fetchMe()
+    const result = await $fetch<{ user: AuthUser }>('/api/auth/login/select-org', { method: 'POST', body: { pendingToken, tenantId } })
+    acceptUser(result.user, true)
   }
 
   /** HU-ERD-83 (parte 2): renueva el access token via el refresh token (cookie httpOnly aparte). */
   async function refresh(): Promise<void> {
-    const policy = await $fetch<{ idleTimeoutMinutes: number; idleWarningMinutes: number }>('/api/auth/refresh', { method: 'POST' })
-    if (user.value) {
-      user.value.idleTimeoutMinutes = policy.idleTimeoutMinutes
-      user.value.idleWarningMinutes = policy.idleWarningMinutes
-    }
+    if (flights.refresh) return flights.refresh
+    const identity = user.value
+    flights.refresh = $fetch<{ user: AuthUser }>('/api/auth/refresh', { method: 'POST' }).then(result => {
+      if (user.value === identity) acceptUser(result.user)
+    }).finally(() => { flights.refresh = undefined })
+    return flights.refresh
   }
 
   async function logout(): Promise<void> {
     await $fetch('/api/auth/logout', { method: 'POST' })
+    generation.value++
+    navigationPending.value = false
     user.value = null
     useState('flow-app-access-cache').value = null
     useState('license-status-cache').value = null
     clearNuxtData()
   }
 
-  return { user, fetchMe, login, loginWithTotp, selectOrganization, refresh, logout }
+  return { user, renewedAt, fetchMe, login, loginWithTotp, selectOrganization, refresh, logout }
+}
+
+// Promesas fuera del payload serializado y aisladas por aplicación/petición SSR.
+const pendingAuth = new WeakMap<object, { me?: Promise<AuthUser | null>; refresh?: Promise<void> }>()
+function authFlights(app: object) {
+  if (!pendingAuth.has(app)) pendingAuth.set(app, {})
+  return pendingAuth.get(app)!
 }
 

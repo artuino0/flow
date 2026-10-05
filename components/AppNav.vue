@@ -11,10 +11,11 @@ const { activeKey } = useFlowApps()
 const { navigationTourId: activeTourId } = useOnboarding()
 const route = useRoute()
 const chat = useChat()
-const { data: nav } = await useFetch<{ groups: NavigationNode[]; unassigned: NavigationEntity[] }>('/api/nav/entities', { key: 'appnav-modules', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined })
+const { data: nav, execute: loadNav } = useShellResource<{ groups: NavigationNode[]; unassigned: NavigationEntity[] }>('appnav-modules', '/api/nav/entities', () => true, false)
+await loadNav()
 const { data: isAdmin } = await useIsAdmin()
 const { user } = useAuth()
-const { data: planUsage } = await useDesignerPlanUsage(isAdmin)
+const { data: planUsage } = useDesignerPlanUsage(isAdmin)
 
 interface NavItem { label: string; to: string; icon: typeof Blocks; badge?: number }
 interface NavSection { key: string; label: string; items: NavItem[] }

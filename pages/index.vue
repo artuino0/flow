@@ -11,6 +11,9 @@ interface DashboardData { from: string; to: string; modules: ModuleSummary[]; ac
 
 const { user } = useAuth()
 const loading = ref(true)
+const dashboardPending = useState('dashboard-first-paint-pending', () => false)
+dashboardPending.value = true
+onBeforeUnmount(() => { dashboardPending.value = false })
 const error = ref('')
 const shortcutError = ref('')
 const shortcutEditorOpen = ref(false)
@@ -57,6 +60,8 @@ async function loadDashboard() {
     error.value = 'No pudimos cargar el tablero. Intenta actualizar la página.'
   } finally {
     loading.value = false
+    await nextTick()
+    dashboardPending.value = false
   }
 }
 function toggleShortcut(slug: string) {

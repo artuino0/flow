@@ -21,10 +21,18 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let alertAudioContext: AudioContext | null = null
 
 export function useNotifications() {
+  const resource = useShellResource<{ items: NotificationItem[]; unreadCount: number }>('notifications-list', '/api/notifications?limit=30')
   const state = useState<NotificationState>('notification-center', () => ({ items: [], unreadCount: 0, connected: false }))
+  watch(resource.data, value => { state.value.items = value?.items ?? []; state.value.unreadCount = value?.unreadCount ?? 0 })
   const realtime = useRealtime()
   let unsubscribeRealtime: (() => void) | null = null
   let active = false
+
+  function syncSnapshot() {
+    if (!resource.data.value) return
+    resource.data.value.items = state.value.items
+    resource.data.value.unreadCount = state.value.unreadCount
+  }
 
   async function requestAlerts() {
     if (!import.meta.client || !('Notification' in window)) return
@@ -70,10 +78,11 @@ export function useNotifications() {
 
   watch(() => realtime.state.value.connected, connected => { state.value.connected = connected }, { immediate: true })
 
-  async function refresh() {
+  async function refresh(force = true) {
     if (!import.meta.client) return
     try {
-      const response = await $fetch<{ items: NotificationItem[]; unreadCount: number }>('/api/notifications?limit=30')
+      const response = await (force ? resource.refresh() : resource.execute())
+      if (!response) return
       state.value.items = response.items
       state.value.unreadCount = response.unreadCount
     } catch {
@@ -86,13 +95,14 @@ export function useNotifications() {
     if (state.value.items.some(existing => existing.id === item.id)) return
     state.value.items = [item, ...state.value.items].slice(0, 50)
     state.value.unreadCount += 1
+    syncSnapshot()
     alertIncoming(item)
   }
 
   function start() {
     if (!import.meta.client || active) return
     active = true
-    void refresh()
+    void refresh(false)
     unsubscribeRealtime = realtime.subscribe<NotificationItem>('notification.created', event => {
       addIncoming(event.payload)
     })
@@ -124,12 +134,14 @@ export function useNotifications() {
     if (!item || item.readAt) return
     item.readAt = new Date().toISOString()
     state.value.unreadCount = Math.max(0, state.value.unreadCount - 1)
+    syncSnapshot()
     try { await $fetch(`/api/notifications/${id}/read`, { method: 'PATCH' }) } catch { void refresh() }
   }
 
   async function markAllRead() {
     state.value.items.forEach(item => { item.readAt ||= new Date().toISOString() })
     state.value.unreadCount = 0
+    syncSnapshot()
     try { await $fetch('/api/notifications/read-all', { method: 'POST' }) } catch { void refresh() }
   }
 

@@ -40,10 +40,14 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
     return {}
   })
   const loginWithTotp = vi.fn(async () => ({})), selectOrganization = vi.fn(async () => ({}))
+  let finishPage: (() => void) | undefined
+  navigate.mockImplementation(async () => { finishPage?.() })
   const comp = compileVueComponent(`pages/${route}.vue`, { '~/utils/returnToRoute': returnToRoute, '~/server/utils/passwordPolicy': passwordPolicy }, {
     ref, computed, watch, onMounted, onBeforeUnmount, definePageMeta: meta, useHead: vi.fn(),
     useRoute: () => ({ params: { token: 'token-local' }, query: state.missingToken ? {} : { token: 'token-local' } }),
     useAuth: () => ({ user, fetchMe, login, loginWithTotp, selectOrganization }),
+    useState: () => ref(false),
+    useNuxtApp: () => ({ hook: (name: string, fn: () => void) => { if (name === 'page:finish') finishPage = fn; return () => { if (name === 'page:finish') finishPage = undefined } } }),
     useDeploymentConfig: async () => ({ data: ref({ appMode: 'shared' }) }), navigateTo: navigate, $fetch: fetch,
     useFetch: (url: string) => {
       if (url !== '/api/license/status') throw new Error(`useFetch no simulado: ${url}`)

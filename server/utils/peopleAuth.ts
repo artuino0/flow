@@ -3,6 +3,7 @@ import type { H3Event } from 'h3'
 import { db, withPerson } from '~/server/db'
 import { people, tenants, users } from '~/server/db/schema'
 import { issueSessionCookies, signPendingOrgToken } from '~/server/utils/auth'
+import { createLoginSession } from '~/server/utils/authUser'
 
 // HU multi-organizacion (2026-09-04): resolucion GLOBAL de identidad en el
 // momento del login, antes de que exista ningun tenant elegido - por
@@ -115,7 +116,7 @@ export async function findActiveMembership(personId: string, tenantId: string): 
 }
 
 export type LoginResolution =
-  | { ok: true; requiresTotp: false; requiresOrgSelection: false }
+  | { ok: true; requiresTotp: false; requiresOrgSelection: false; user: Awaited<ReturnType<typeof createLoginSession>> }
   | { ok: true; requiresTotp: false; requiresOrgSelection: true; pendingToken: string; organizations: { tenantId: string; tenantName: string }[] }
 
 /**
@@ -137,8 +138,10 @@ export async function resolveLoginResult(event: H3Event, personId: string, secre
   }
   if (memberships.length === 1) {
     const membership = memberships[0]
-    await issueSessionCookies(event, { sub: membership.userId, tenantId: membership.tenantId, roleId: membership.roleId }, secret)
-    return { ok: true, requiresTotp: false, requiresOrgSelection: false }
+    const payload = { sub: membership.userId, tenantId: membership.tenantId, roleId: membership.roleId }
+    const user = await createLoginSession(event, payload)
+    await issueSessionCookies(event, { ...payload, sid: user.sessionId }, secret)
+    return { ok: true, requiresTotp: false, requiresOrgSelection: false, user }
   }
   const pendingToken = signPendingOrgToken({ sub: personId }, secret)
   return {

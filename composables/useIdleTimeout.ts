@@ -1,13 +1,13 @@
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'] as const
 
 export function useIdleTimeout(onTimeout: () => void | Promise<void>) {
-  const { refresh, user } = useAuth()
+  const { refresh, user, renewedAt } = useAuth()
   const warningSeconds = computed(() => (user.value?.idleWarningMinutes ?? 2) * 60)
   const timeoutMs = computed(() => (user.value?.idleTimeoutMinutes ?? 30) * 60_000)
   const showWarning = ref(false)
   const countdown = ref(warningSeconds.value)
   let lastActivity = Date.now()
-  let lastRefresh = 0
+  let lastRefresh = renewedAt.value || Date.now()
   let refreshing = false
   let tickHandle: ReturnType<typeof setInterval> | null = null
   const storageKey = computed(() => 'flow-activity-' + user.value?.tenantId + '-' + (user.value?.sessionId || user.value?.email))
@@ -43,7 +43,7 @@ export function useIdleTimeout(onTimeout: () => void | Promise<void>) {
     if (remaining <= 0) { stop(); void onTimeout(); return }
     showWarning.value = remaining <= warningSeconds.value * 1000
     // Only real recent activity renews a managed session.
-    if (!showWarning.value && now - lastActivity < 30_000 && now - lastRefresh >= 30_000) void silentRefresh()
+    if (!showWarning.value && now - lastActivity < 30_000 && now - Math.max(lastRefresh, renewedAt.value) >= 30_000) void silentRefresh()
   }
   function confirmActive() {
     if (Date.now() - lastActivity >= timeoutMs.value) { stop(); void onTimeout(); return }

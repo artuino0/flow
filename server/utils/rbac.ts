@@ -260,6 +260,15 @@ export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload
     throw createError({ statusCode: 403, statusMessage: 'Las API keys no pueden administrar la organización' })
   }
 
+  if (!await isAdminUser(auth, Boolean(event.context.apiKeyId))) {
+    throw createError({ statusCode: 403, statusMessage: 'Requiere rol administrador' })
+  }
+  return auth
+}
+
+/** La misma decisión para el guard y la identidad de la interfaz; nunca autoriza una API key. */
+export async function isAdminUser(auth: AuthTokenPayload, apiKey = false): Promise<boolean> {
+  if (apiKey || !auth.roleId) return false
   const adminKey = `${auth.tenantId}:${auth.roleId}:admin`
   const cachedAdmin = accessCache.get(adminKey) as boolean | undefined
   const isAdmin = cachedAdmin ?? await withTenant(auth.tenantId, async (tx) => {
@@ -268,12 +277,14 @@ export async function requireAdminRole(event: H3Event): Promise<AuthTokenPayload
       .from(roles)
       .where(eq(roles.id, auth.roleId!))
       .limit(1)
-    return Boolean(role?.isSystem)
+    return adminRoleAllowed(role?.isSystem)
   })
   if (cachedAdmin === undefined) accessCache.set(adminKey, isAdmin)
 
-  if (!isAdmin) {
-    throw createError({ statusCode: 403, statusMessage: 'Requiere rol administrador' })
-  }
-  return auth
+  return isAdmin
+}
+
+/** Única regla de administrador: rol de sistema y sesión humana. */
+export function adminRoleAllowed(isSystem: boolean | null | undefined, apiKey = false): boolean {
+  return !apiKey && Boolean(isSystem)
 }

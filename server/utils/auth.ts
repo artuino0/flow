@@ -86,7 +86,7 @@ export function verifyRefreshToken(token: string, secret: string): { sub: string
  * puntos donde arranca o se renueva una sesion real, para no repetir las
  * opciones de cookie (httpOnly/sameSite/secure/path) tres veces.
  */
-export async function issueSessionCookies(event: H3Event, payload: AuthTokenPayload, secret: string): Promise<void> {
+export async function issueSessionCookies(event: H3Event, payload: AuthTokenPayload, secret: string): Promise<AuthTokenPayload> {
   payload = { ...payload, sid: payload.sid || await createSession(event, payload) }
   const accessToken = signAuthToken(payload, secret)
   const refreshToken = signRefreshToken({ sub: payload.sub, tenantId: payload.tenantId, sid: payload.sid }, secret)
@@ -100,6 +100,7 @@ export async function issueSessionCookies(event: H3Event, payload: AuthTokenPayl
 
   setCookie(event, AUTH_COOKIE_NAME, accessToken, { ...commonOptions, maxAge: AUTH_COOKIE_MAX_AGE_SECONDS })
   setCookie(event, REFRESH_COOKIE_NAME, refreshToken, { ...commonOptions, maxAge: REFRESH_COOKIE_MAX_AGE_SECONDS })
+  return payload
 }
 
 // HU-ERD-83 (parte 2): token intermedio de vida corta para el segundo paso

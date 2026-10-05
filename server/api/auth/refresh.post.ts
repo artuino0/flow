@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm'
-import { db, withTenant } from '~/server/db'
-import { users, tenants } from '~/server/db/schema'
+import { withTenant } from '~/server/db'
+import { users } from '~/server/db/schema'
+import { loadAuthUser } from '~/server/utils/authUser'
 import { REFRESH_COOKIE_NAME, verifyRefreshToken, issueSessionCookies } from '~/server/utils/auth'
 import { validateSession } from '~/server/utils/sessions'
 
@@ -46,8 +47,8 @@ export default defineEventHandler(async (event) => {
   if (!pending.sid) throw createError({ statusCode: 401, statusMessage: 'Vuelve a iniciar sesión para actualizar la seguridad de tu cuenta' })
 
   await validateSession(pending, true)
-  await issueSessionCookies(event, { sub: user.id, tenantId: user.tenantId, roleId: user.roleId, sid: pending.sid }, config.jwtSecret as string)
+  const auth = await issueSessionCookies(event, { sub: user.id, tenantId: user.tenantId, roleId: user.roleId, sid: pending.sid }, config.jwtSecret as string)
 
-  const [policy] = await db.select({ idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes }).from(tenants).where(eq(tenants.id, pending.tenantId)).limit(1)
-  return { ok: true, ...policy }
+  const profile = await loadAuthUser(auth)
+  return { ok: true, idleTimeoutMinutes: profile.idleTimeoutMinutes, idleWarningMinutes: profile.idleWarningMinutes, user: profile }
 })
