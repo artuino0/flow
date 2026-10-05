@@ -17,7 +17,7 @@ import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 //  - Un trabajo se identifica opcionalmente con una clave de idempotencia
 //    (p. ej. "recordatorio:<cita>:<programación>") y no se encola dos veces.
 
-export type JobKind = 'email' | 'platform_crm'
+export type JobKind = 'email' | 'platform_crm' | 'agenda_expire'
 export type JobStatus = 'pending' | 'processing' | 'succeeded' | 'dead'
 
 export interface ClaimedJob {
@@ -87,6 +87,7 @@ export const emailJobSchema = z.object({
   to: z.string().email(),
   subject: z.string().min(1).max(998),
   html: z.string().min(1).max(500_000),
+  text: z.string().max(500_000).optional(),
   recordUrl: z.string().max(2048).optional()
 })
 export type EmailJobPayload = z.infer<typeof emailJobSchema>
@@ -224,6 +225,8 @@ function envNumber(name: string, fallback: number): number {
  * ejecuta con un ritmo máximo, hasta agotar el tiempo o la cola.
  */
 export async function runJobQueueTick(options: TickOptions = {}): Promise<TickResult> {
+  try { await db.execute(sql`select purge_agenda_security_buckets(${(options.now?.() ?? new Date()).toISOString()}::timestamptz)`) }
+  catch { logger.warn('agenda_security_cleanup_failed') }
   if (process.env.PLATFORM_CRM_TENANT_SLUG) {
     try { await (await import('./platformCrmQueue')).drainPlatformCrmEvents() }
     catch { logger.warn('platform_crm_enqueue_failed') }

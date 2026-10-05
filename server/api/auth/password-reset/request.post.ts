@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { clientIp } from '~/server/utils/clientIp'
 import { requestPasswordReset } from '~/server/utils/passwordReset'
 import { checkPasswordResetRateLimit, recordPasswordResetAttempt } from '~/server/utils/rateLimit'
 import { logger } from '~/server/utils/logger'
@@ -10,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const startedAt = Date.now()
   const body = await readValidatedBody(event, schema.parse)
   const emailKey = `password-reset:email:${body.email.trim().toLowerCase()}`
-  const ipKey = `password-reset:ip:${getRequestIP(event) || 'unknown'}`
+  const ipKey = `password-reset:ip:${clientIp(event)}`
   const emailLimit = checkPasswordResetRateLimit(emailKey)
   const ipLimit = checkPasswordResetRateLimit(ipKey)
   if (emailLimit.blocked || ipLimit.blocked) {

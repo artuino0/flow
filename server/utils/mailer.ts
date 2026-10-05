@@ -310,6 +310,7 @@ export interface PlainEmailParams {
   subject: string
   html: string
   recordUrl?: string
+  text?: string
 }
 
 /** Marco común para todos los correos transaccionales de Flow. */
@@ -335,6 +336,7 @@ export async function sendPlainEmail(params: PlainEmailParams): Promise<void> {
     to: params.to,
     subject: params.subject,
     html: buildGeneralEmailHtml({ ...params, logoSrc: emailLogo.src }),
+    ...(params.text ? { text: params.text } : {}),
     attachments: emailLogo.attachments
   })
 }

@@ -128,4 +128,19 @@ describe('Sites SEO 189 con PostgreSQL, migrador propietario y RLS reales', () =
       expect((await seo.publicSiteSeoContext({ ...page, seo: { ogImageAssetId: imageId } }, context)).imagePath).toBeUndefined()
     } finally { await admin`update site_pages set status='published' where id=${pageId}` }
   })
+  it('Worker conserva sitio, canónico, sitemap y 301 aunque Railway sobrescriba forwarded', async () => {
+    vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'worker189')
+    const edge = (path: string, host: string, secret = 'worker189') => {
+      const e = request(path, 'app.dydasoftware.com')
+      Object.assign(e.node.req.headers, { 'x-forwarded-host': 'app.dydasoftware.com', 'x-flow-original-host': host, 'x-flow-client-ip': '198.51.100.189', 'x-flow-edge-secret': secret })
+      captureEdgeHost(e); return e
+    }
+    const html = new JSDOM(String(await handler(edge('/', 'principal189.test'))))
+    expect(html.window.document.querySelector('link[rel=canonical]')?.getAttribute('href')).toBe('https://principal189.test/')
+    expect(String(await handler(edge('/sitemap.xml', 'principal189.test')))).toContain('https://principal189.test/servicios')
+    expect(String(await handler(edge('/robots.txt', 'principal189.test')))).toContain('Sitemap: https://principal189.test/sitemap.xml')
+    const invalid = edge('/robots.txt', 'principal189.test', 'incorrecto'); expect(await handler(invalid)).toContain('Disallow: /')
+    const alternate = edge('/servicios/?x=1', 'alterno189.test'); await handler(alternate)
+    expect(alternate.node.res.statusCode).toBe(301); expect(alternate.node.res.getHeader('location')).toBe('https://principal189.test/servicios/?x=1')
+  })
 })

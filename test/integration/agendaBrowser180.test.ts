@@ -24,10 +24,11 @@ let book: typeof import('../../server/api/public/agenda/book.post').default
 let cancel: typeof import('../../server/api/public/agenda/cancel.post').default
 let reschedule: typeof import('../../server/api/public/agenda/reschedule.post').default
 let dom: JSDOM | undefined, dispose: (() => void) | undefined
-let edgeTransport = false
+let edgeTransport: false | true | 'worker' = false
 
 function event(url: string, method: string, headers: Record<string, string>, body?: unknown) {
   const req = new IncomingMessage(new Socket()); req.url = url; req.method = method; req.headers = edgeTransport ? { ...headers, host: 'origin.flow.test', 'x-forwarded-host': headers.host!, 'x-flow-edge-secret': 'simulated-edge' } : headers
+  if (edgeTransport === 'worker') Object.assign(req.headers, { 'x-forwarded-host': 'origin.flow.test', 'x-flow-original-host': headers.host!, 'x-flow-client-ip': '198.51.100.190' })
   if (body !== undefined) req.push(typeof body === 'string' ? body : JSON.stringify(body))
   req.push(null); const result = createEvent(req, new ServerResponse(req)); captureEdgeHost(result); return result
 }
@@ -80,8 +81,8 @@ describe('Agenda 180: runtime y handlers reales con cabeceras de navegador', () 
   it.each(invalidHeaders)('rechaza cabeceras ajenas o ausentes %j sin revelar el motivo', async headers => {
     await expect(slots(event(query, 'GET', { ...headers, 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }))).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Agenda no disponible.', stack: '' })
   })
-  it.each([{ origin: flow, edge: false }, { origin: custom, edge: false }, { origin: custom, edge: true }])('modal → catálogo → lunes → reserva → gestión y cambios desde $origin, borde=$edge', async ({ origin, edge }) => {
-    if (edge) { vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge'); edgeTransport = true }
+  it.each([{ origin: flow, edge: false }, { origin: custom, edge: false }, { origin: custom, edge: true }, { origin: custom, edge: 'worker' as const }])('modal → catálogo → lunes → reserva → gestión y cambios desde $origin, borde=$edge', async ({ origin, edge }) => {
+    if (edge) { vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge'); edgeTransport = edge }
     dom = new JSDOM('<button data-flow-agenda-open>Agenda tu cita</button>', { url: `${origin}/site-preview/${site}?email=privado#dato=secreto`, pretendToBeVisual: true })
     for (const key of ['document', 'location', 'history', 'HTMLElement', 'Element', 'Event', 'getComputedStyle'] as const) vi.stubGlobal(key, dom.window[key])
     const calls: Array<{ url: string; init: RequestInit; headers: Record<string, string> }> = []
@@ -136,6 +137,10 @@ describe('Agenda 180: runtime y handlers reales con cabeceras de navegador', () 
       expect(request.node.res.getHeader('content-security-policy')).toContain("script-src-attr 'none'")
       expect(request.node.res.getHeader('cache-control')).toBe('no-store')
       expect(request.node.req.headers['x-flow-edge-secret']).toBeUndefined()
+      if (edge === 'worker') {
+        expect(request.node.req.headers['x-flow-original-host']).toBeUndefined()
+        expect(request.node.req.headers['x-flow-client-ip']).toBeUndefined()
+      }
     }
     dispose(); dom.window.document.body.innerHTML = '<main data-flow-agenda-management></main>'
     dom.window.history.replaceState(null, '', `/agenda-manage/${site}/${page}?descartar=1#agenda=${confirmation.token}`)

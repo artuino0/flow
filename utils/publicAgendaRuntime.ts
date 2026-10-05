@@ -1,4 +1,4 @@
-export interface AgendaRuntimeConfig { site: string; page: string; locale: string; accent: string; timezone: string; assignmentMode?: string; maxDaysAhead?: number; fields?: string[]; requiredFields?: string[]; preview?: boolean; management?: boolean; unavailable?: boolean }
+export interface AgendaRuntimeConfig { site: string; page: string; locale: string; accent: string; timezone: string; assignmentMode?: string; maxDaysAhead?: number; fields?: string[]; requiredFields?: string[]; preview?: boolean; management?: boolean; unavailable?: boolean; turnstileSiteKey?: string; confirmationToken?: string }
 export function agendaButtonContrast(rgb: number[]) {
   const lum = rgb.slice(0, 3).map(v => { const s = v / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4 })
   const l = lum[0]! * .2126 + lum[1]! * .7152 + lum[2]! * .0722
@@ -28,7 +28,7 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
   type Named = { id: string; name: string; duration?: number }
   type Slot = { date: string; time: string; timezone: string; personal: string; name?: string }
   type Catalog = { services: Named[]; people: Named[]; mode: string; requiredFields: string[]; requireConsent: boolean; formToken: string; slots: Slot[]; automatic: Slot[]; cancellationHours?: number }
-  type Confirmation = { date: string; time: string; timezone: string; services: string[]; personal: string; message?: string; token?: string }
+  type Confirmation = { date: string; time: string; timezone: string; services: string[]; personal: string; message?: string; token?: string; pending?: boolean }
   const fake: Catalog = { services: [{ id: 'demo', name: 'Servicio de ejemplo', duration: 45 }], people: [{ id: 'demo-person', name: 'Persona de ejemplo' }], mode: 'both', requiredFields: ['name', 'email'], requireConsent: false, formToken: 'preview', slots: [], automatic: [] }
   function node<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) { const result = document.createElement(tag); if (text) result.textContent = text; return result }
   function button(text: string, action: () => void, primary = false) { const b = node('button', text); b.type = 'button'; if (primary) b.className = 'primary'; b.addEventListener('click', action); return b }
@@ -42,7 +42,7 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
     // GET del mismo origen no lleva Origin. Referer solo a este origen y sin
     // query/fragmento; el documento y los POST mantienen no-referrer.
     const response = await fetch('/api/public/agenda/' + path, { method: body ? 'POST' : 'GET', headers, ...(body ? { body: JSON.stringify({ site: cfg.site, page: cfg.page, ...body }) } : { referrer: location.origin + location.pathname }), credentials: 'omit', cache: 'no-store', referrerPolicy: body ? 'no-referrer' : 'same-origin' })
-    if (!response.ok) throw Object.assign(new Error('agenda'), { status: response.status })
+    if (!response.ok) { const data = await response.json().catch(() => ({})) as { data?: { challengeRequired?: boolean } }; throw Object.assign(new Error('agenda'), { status: response.status, challengeRequired: data.data?.challengeRequired === true }) }
     return await response.json() as T
   }
   function message(error: unknown, management = false) { const status = (error as { status?: number }).status; return status === 429 ? t.limit : status === 409 ? (management ? t.changeUnavailable : t.occupied) : status === 422 ? t.invalid : status === 404 ? (management ? t.expired : t.unavailable) : t.network }
@@ -70,6 +70,41 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
     const root = host.attachShadow({ mode: 'open' }), css = node('style'); css.textContent = style; root.append(css)
     const panel = node('section'); panel.className = 'agenda'; panel.setAttribute('aria-label', t.title); root.append(panel)
     const progress = div('progress'), mobileProgress = div('mobile-progress'), content = div('content'), footer = div('footer'), status = node('p'); status.className = 'status live'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); panel.append(progress, mobileProgress, content, status, footer)
+    async function challenge(action: string): Promise<string> {
+      if (!cfg.turnstileSiteKey || cfg.preview) return ''
+      type Turnstile = { render: (element: HTMLElement, options: { sitekey: string; action: string; theme: string; callback: (token: string) => void; 'error-callback': () => void; 'expired-callback': () => void }) => string; remove: (id: string) => void }
+      const browser = window as Window & { turnstile?: Turnstile }
+      status.textContent = 'Comprobando que eres una persona…'
+      // Light DOM controlado, distribuido por slot: el proveedor puede localizar
+      // su contenedor y la interacción se mantiene junto al formulario aislado.
+      const container = node('div'); container.slot = 'flow-challenge'; container.setAttribute('aria-label', 'Comprobación contra bots'); host.append(container)
+      const slot = node('slot'); slot.name = 'flow-challenge'; panel.insertBefore(slot, status)
+      let widget: string | undefined
+      return new Promise<string>(resolve => {
+        let finished = false
+        const finish = (value: string) => { if (finished) return; finished = true; clearTimeout(timer); if (widget) browser.turnstile?.remove(widget); container.remove(); slot.remove(); resolve(value) }
+        const timer = setTimeout(() => finish(''), 120000)
+        const render = () => {
+          if (finished) return
+          if (!browser.turnstile) { finish(''); return }
+          try { widget = browser.turnstile.render(container, { sitekey: cfg.turnstileSiteKey!, action, theme: 'light', callback: finish, 'error-callback': () => finish(''), 'expired-callback': () => finish('') }) }
+          catch { finish('') }
+        }
+        if (browser.turnstile) render()
+        else {
+          let script = document.querySelector<HTMLScriptElement>('script[data-flow-turnstile]')
+          if (!script) { script = node('script'); script.dataset.flowTurnstile = ''; script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; const nonce = document.querySelector<HTMLScriptElement>('script[data-flow-agenda-runtime]')?.nonce; if (nonce) script.nonce = nonce; document.head.append(script) }
+          script.addEventListener('load', render, { once: true }); script.addEventListener('error', () => { script?.remove(); finish('') }, { once: true })
+        }
+      })
+    }
+    async function protectedManage(action: 'cancel' | 'reschedule', body: object) {
+      try { return await api<Confirmation>(action, body) }
+      catch (error) {
+        if (!(error as { challengeRequired?: boolean }).challengeRequired) throw error
+        return api<Confirmation>(action, { ...body, turnstileToken: await challenge(action) })
+      }
+    }
     let catalog: Catalog | undefined, selected: Slot | undefined, token = managementToken, moving = false, busy = false, sequence = 0, issuedAt = 0, step = 0, monthValue = dateToday().slice(0, 7), lastConfirmation: Confirmation | undefined
     let serviceValue = host.dataset.flowAgendaServicio ?? '', personalValue = cfg.assignmentMode === 'auto' ? 'any' : host.dataset.flowAgendaPersonal ?? '', dateValue = dateToday()
     let client = { name: '', email: '', phone: '' }, clientConsent = false, honeypot = ''
@@ -88,7 +123,8 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
     function infoSummary(data?: Confirmation) { const info = div('result-summary'); info.setAttribute('aria-label', t.summary); info.append(detail(t.service, data?.services.join(', ') ?? serviceInfo()?.name ?? '', '✂'), detail(t.person, data?.personal ?? personName(), '♙'), detail(t.day, `${data?.date ?? selected?.date ?? dateValue} · ${data?.time ?? selected?.time ?? ''}`, '▦')); const duration = serviceInfo()?.duration; if (duration) info.append(detail(t.duration, `${duration} ${t.minutes}`, '◷')); info.append(detail(t.zone, data?.timezone ?? cfg.timezone, '◎')); return info }
     function summary(data: Confirmation) {
       lastConfirmation = data; step = 3; drawProgress(true); content.replaceChildren(); footer.replaceChildren(); footer.hidden = true; status.textContent = data.message ?? ''; panel.classList.remove('management')
-      const result = div('result'), mark = div('success-mark'); mark.append(node('span', '✓')); const mail = node('p', cfg.preview ? t.preview : t.mail); mail.className = 'muted'; result.append(mark, heading(moving ? t.moved : t.confirmed), mail, infoSummary(data)); const actions = div('actions'); actions.append(button(t.another, reset, true)); if (token) actions.append(button(t.manage, () => { moving = false; void manage() })); result.append(actions); content.append(result); onDirty?.(false); focusHeading()
+      if (data.pending) { const label = mobileProgress.querySelector('strong'); if (label) label.textContent = 'Por confirmar' }
+      const result = div('result'), mark = div('success-mark'); mark.append(node('span', '✓')); const mail = node('p', data.pending ? 'Abre el enlace de tu correo para confirmar antes de que venza. Si no confirmas, liberaremos el horario.' : cfg.preview ? t.preview : t.mail); mail.className = 'muted'; result.append(mark, heading(data.pending ? 'Tu cita está por confirmar' : moving ? t.moved : t.confirmed), mail, infoSummary(data)); const actions = div('actions'); actions.append(button(t.another, reset, true)); if (token) actions.append(button(t.manage, () => { moving = false; void manage() })); result.append(actions); content.append(result); onDirty?.(false); focusHeading()
     }
     function reset() { token = ''; moving = false; selected = undefined; client = { name: '', email: '', phone: '' }; clientConsent = false; honeypot = ''; step = 0; panel.classList.remove('management'); void load() }
     function managementSummary(data: Confirmation, canceled = false) {
@@ -109,7 +145,7 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
     }
     async function cancel() {
       if (busy) return; busy = true; content.querySelectorAll('button').forEach(b => { b.disabled = true }); status.textContent = t.confirmedBusy
-      try { const result = await api<Confirmation>('cancel', { token }); token = ''; managementSummary(lastConfirmation ?? result, true); onDirty?.(false) }
+      try { const result = await protectedManage('cancel', { token }); token = ''; managementSummary(lastConfirmation ?? result, true); onDirty?.(false) }
       catch (error) { issue(error, () => { void manage() }) } finally { busy = false }
     }
     function field(form: HTMLElement, name: keyof typeof client, type: string, label: string) {
@@ -169,11 +205,26 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
       if (!selected || !catalog || busy) return; if (!moving && !client.email && !client.phone) { status.textContent = t.contact; return } if (!moving && Date.now() - issuedAt < 2100) { status.textContent = t.wait; return }
       if (cfg.preview) { summary({ ...selected, services: [serviceInfo()!.name], personal: personName(), message: t.preview }); return }
       busy = true; panel.setAttribute('aria-busy', 'true'); status.textContent = t.confirmedBusy; content.querySelectorAll('button').forEach(b => { b.disabled = true }); footer.querySelectorAll('button').forEach(b => { b.disabled = true }); const submit = footer.querySelector('button.primary'); if (submit) submit.textContent = t.confirmedBusy
-      try { const selection = { services: [serviceValue], date: selected.date, time: selected.time, personal: selected.personal }; const result = await api<Confirmation>(moving ? 'reschedule' : 'book', moving ? { ...selection, token } : { ...selection, client, consent: clientConsent, _flow_honeypot: honeypot, formToken: catalog.formToken }); token = result.token ?? ''; client = { name: '', email: '', phone: '' }; summary(result) }
+      try { const selection = { services: [serviceValue], date: selected.date, time: selected.time, personal: selected.personal }; const result = moving ? await protectedManage('reschedule', { ...selection, token }) : await api<Confirmation>('book', { ...selection, client, consent: clientConsent, _flow_honeypot: honeypot, formToken: catalog.formToken, ...(cfg.turnstileSiteKey ? { turnstileToken: await challenge('book') } : {}) }); token = result.token ?? ''; client = { name: '', email: '', phone: '' }; summary(result) }
       catch (error) { const code = (error as { status?: number }).status; if (code === 409) { selected = undefined; await load(); issue(error, () => { step = 2; draw(); focusHeading() }) } else if (code === 422) { status.textContent = t.invalid } else issue(error, () => { draw(); focusHeading() }) }
       finally { busy = false; panel.removeAttribute('aria-busy'); if (!footer.hidden) footerActions() }
     }
     if (invalidManagement) { progress.hidden = mobileProgress.hidden = true; issue({ status: 404 }, () => { issue({ status: 404 }, () => {}) }) }
+    else if (cfg.confirmationToken) {
+      progress.hidden = mobileProgress.hidden = footer.hidden = true
+      content.append(heading('Confirma tu cita', 'Pulsa el botón para confirmar el horario reservado temporalmente.'))
+      const confirm = button('Confirmar mi cita', async () => {
+        if (busy) return; busy = true; confirm.disabled = true
+        try {
+          const result = await api<Confirmation & { alreadyConfirmed?: boolean }>('confirm', { token: cfg.confirmationToken })
+          if (result.alreadyConfirmed) { content.replaceChildren(heading('Esta cita ya está confirmada', 'Usa el enlace de gestión que enviamos a tu correo.')); return }
+          token = result.token ?? ''; managementSummary(result)
+        } catch (error) {
+          if ((error as { status?: number }).status === 410) content.replaceChildren(heading('El enlace venció', 'El horario ya fue liberado. Puedes agendar una nueva cita.'))
+          else status.textContent = message(error, true)
+        } finally { busy = false; confirm.disabled = false }
+      }, true); content.append(confirm)
+    }
     else if (token) void manage(); else if (cfg.unavailable) issue({ status: 404 }, () => { void load() }); else void load()
     return root
   }
@@ -185,10 +236,10 @@ export function bootPublicAgenda(cfg: AgendaRuntimeConfig) {
     function remove() { host.remove(); modal = undefined; document.body.style.overflow = overflow; inactive.forEach(({ el, inert }) => { el.inert = inert }); opener.focus() }
     function close() { if (dirty) confirmDialog(root, t.discard, t.discardText, t.exit, t.stay, remove); else remove() }
     const closer = button('×', close); closer.className = 'close'; closer.setAttribute('aria-label', t.close); head.append(node('h2', t.title), closer); dialog.append(handle, head, section); overlay.append(dialog); root.append(overlay); overlay.addEventListener('click', e => { if (e.target === overlay) close() })
-    root.addEventListener('keydown', event => { const e = event as KeyboardEvent; if (root.querySelector('.confirm-overlay')) return; if (e.key === 'Escape') { e.preventDefault(); close() } if (e.key === 'Tab') { const focusable = Array.from(root.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled):not([tabindex="-1"]),select:not(:disabled),summary,[tabindex="0"]')).filter(el => !el.closest('[hidden]')); const first = focusable[0], last = focusable[focusable.length - 1]; if (e.shiftKey && (root.activeElement === first || root.activeElement === dialog)) { e.preventDefault(); last?.focus() } else if (!e.shiftKey && root.activeElement === last) { e.preventDefault(); first?.focus() } } }); closer.focus()
+    root.addEventListener('keydown', event => { const e = event as KeyboardEvent; if (root.querySelector('.confirm-overlay')) return; if (e.key === 'Escape') { e.preventDefault(); close() } if (e.key === 'Tab') { const focusable = Array.from(root.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled):not([tabindex="-1"]),select:not(:disabled),summary,[tabindex="0"],slot[name="flow-challenge"]')).flatMap(el => el instanceof HTMLSlotElement ? el.assignedElements({ flatten: true }).flatMap(assigned => Array.from(assigned.querySelectorAll<HTMLElement>('iframe,button:not(:disabled),[tabindex="0"]'))) : [el]).filter(el => !el.closest('[hidden]')); const first = focusable[0], last = focusable[focusable.length - 1], focused = root.activeElement ?? document.activeElement; if (e.shiftKey && (focused === first || focused === dialog)) { e.preventDefault(); last?.focus() } else if (!e.shiftKey && focused === last) { e.preventDefault(); first?.focus() } } }); closer.focus()
   }
   if (cfg.management && cfg.preview) { const host = document.querySelector<HTMLElement>('[data-flow-agenda-management]'); if (host) mount(host) }
-  else if (cfg.management) { const token = new URLSearchParams(location.hash.slice(1)).get('agenda') ?? ''; history.replaceState(null, '', location.pathname); const host = document.querySelector<HTMLElement>('[data-flow-agenda-management]'); if (host) mount(host, !cfg.unavailable && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : '', undefined, cfg.unavailable || !/^[A-Za-z0-9_-]{43}$/.test(token)) }
+  else if (cfg.management) { const hash = new URLSearchParams(location.hash.slice(1)), token = hash.get('agenda') ?? '', confirmation = hash.get('confirm') ?? ''; history.replaceState(null, '', location.pathname); if (/^[A-Za-z0-9_-]{43}$/.test(confirmation)) cfg.confirmationToken = confirmation; const host = document.querySelector<HTMLElement>('[data-flow-agenda-management]'); if (host) mount(host, !cfg.unavailable && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : '', undefined, cfg.unavailable || !cfg.confirmationToken && !/^[A-Za-z0-9_-]{43}$/.test(token)) }
   document.querySelectorAll<HTMLElement>('[data-flow-agenda="inline"]').forEach(host => { mount(host) })
   const delegatedClick = (event: MouseEvent) => { const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-flow-agenda-open]') : null; if (target) { event.preventDefault(); open(target) } }; document.addEventListener('click', delegatedClick); return () => document.removeEventListener('click', delegatedClick)
 }

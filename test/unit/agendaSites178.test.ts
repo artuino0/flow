@@ -16,7 +16,7 @@ const disposers: Array<() => void> = []
 Object.defineProperty(HTMLElement.prototype, 'inert', { configurable: true, get() { return this.hasAttribute('inert') }, set(value: boolean) { this.toggleAttribute('inert', value) } })
 function mockApi(failure?: { path: string; status?: number; network?: boolean }, empty = false) {
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
-    if (failure && input.includes(failure.path)) { if (failure.network) throw new TypeError('offline'); return { ok: false, status: failure.status } }
+    if (failure && input.includes(failure.path)) { if (failure.network) throw new TypeError('offline'); return { ok: false, status: failure.status, json: async () => ({}) } }
     return { ok: true, status: 200, json: async () => input.includes('/slots?') ? { ...catalog(), ...(empty ? { slots: [], automatic: [] } : {}) } : confirmation }
   }); vi.stubGlobal('fetch', fetch); return fetch
 }

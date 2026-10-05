@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import { db, withTenant } from '~/server/db'
-import { agendaPublicBookings, agendaSchedules, agendaSiteSettings, entities, entityFields, people, records, recordActivities, roles, siteDomains, sitePages, sites, users } from '~/server/db/schema'
+import { agendaPublicBookings, agendaSchedules, agendaSiteSettings, entities, entityFields, jobQueue, people, records, recordActivities, roles, siteDomains, sitePages, sites, users } from '~/server/db/schema'
 import { agendaSiteSettingsSchema, normalizeAgendaPhone, type AgendaSiteConfig, type PublicBook, type PublicReschedule } from '~/utils/agendaPublic'
 import { agendaStaff } from './agendaStaff'
 import { agendaAccentPresentation } from '~/utils/agendaAccent'
@@ -20,6 +20,10 @@ import { defaultRecordValues } from './fieldValidations/references'
 import { generateIncrementalValue } from './incrementalField'
 import { applyCalculatedFields, recalculateCalculatedDependents } from './calculatedFields'
 import type { AuthTokenPayload } from './auth'
+import { agendaTurnstileKey, verifyAgendaTurnstile } from './agendaTurnstile'
+import { agendaPrivateKey } from './agendaPersistentLimit'
+import { expireAgendaConfirmations } from './agendaConfirmation'
+import { stateWorkflowSchema } from './stateWorkflow'
 
 export interface PublicAgendaOrigin { origin: string; host: string; ip: string; userAgent: string }
 function unavailableAgenda(reason: string): never {
@@ -62,7 +66,7 @@ export async function publicAgendaPresentation(context: PublicAgendaContext, loc
     const accent = agendaAccentPresentation(catalog.config.accent, catalog.config.accentColor).css
     return { enabled: true, mode: catalog.mode, services: catalog.services.map(s => ({ id: agendaOpaqueId(context.site, 'service', s.id), name: s.name })),
       people: catalog.people.map(p => ({ id: agendaOpaqueId(context.site, 'person', p.id), name: p.name })),
-      runtime: { site: context.site, page: context.page, locale, accent, timezone: catalog.timezone, assignmentMode: catalog.mode, maxDaysAhead: catalog.settings.maxDaysAhead, fields: catalog.config.visibleFields } }
+      runtime: { site: context.site, page: context.page, locale, accent, timezone: catalog.timezone, assignmentMode: catalog.mode, maxDaysAhead: catalog.settings.maxDaysAhead, fields: catalog.config.visibleFields, ...(agendaTurnstileKey(catalog.config) ? { turnstileSiteKey: agendaTurnstileKey(catalog.config) } : {}) } }
   }))
 }
 async function catalogInTx(tx: typeof db, context: PublicAgendaContext) {
@@ -114,6 +118,7 @@ async function availabilityFor(tx: typeof db, context: PublicAgendaContext, cata
   return availabilityInTx(tx, context.tenantId, { from, to, service: serviceIds.join(','), personal }, now, { people: catalog.people, assignmentMode: catalog.mode })
 }
 export async function publicAgendaSlots(context: PublicAgendaContext, input: { from: string; to: string; service?: string; personal?: string }, now = Date.now()) {
+  await expireAgendaConfirmations(context.tenantId, now)
   return withSystemRecordAccess(() => withTenant(context.tenantId, async tx => {
     const catalog = await catalogInTx(tx, context)
     const services = input.service ? selectServices(catalog, context, [input.service]) : [catalog.services[0]!]
@@ -212,10 +217,14 @@ export async function publicAgendaBook(context: PublicAgendaContext, input: Publ
   if (input._flow_honeypot || !validAgendaFormToken(input.formToken, context.site, context.page, now)) throw createError({ statusCode: 422, statusMessage: 'No se pudo completar la reserva.' })
   const prepared = await withSystemRecordAccess(() => prepare(context))
   const token = newAgendaToken()
+  await verifyAgendaTurnstile(context, prepared.catalog.config, 'book', input.turnstileToken, now)
+  await expireAgendaConfirmations(context.tenantId, now)
+  const confirmationToken = newAgendaToken()
   const result = await withSystemRecordAccess(() => withTenant(context.tenantId, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${context.tenantId},175))`)
     const catalog = await catalogInTx(tx, context)
     for (const field of catalog.config.requiredFields) if (!input.client[field]) throw createError({ statusCode: 422, statusMessage: 'Revisa los datos de la reserva.' })
+    if (catalog.config.botProtection !== prepared.catalog.config.botProtection || catalog.config.turnstileOutage !== prepared.catalog.config.turnstileOutage || catalog.config.confirmEmail !== prepared.catalog.config.confirmEmail) throw createError({ statusCode: 409, statusMessage: 'La agenda cambió. Intenta nuevamente.' })
     if ((!input.client.email && !input.client.phone) || (catalog.config.requireConsent && !input.consent)) throw createError({ statusCode: 422, statusMessage: 'Revisa los datos de la reserva.' })
     const services = selectServices(catalog, context, input.services), personal = selectPerson(catalog, context, input.personal)
     await contactLock(tx, context.tenantId, input.client.email, input.client.phone)
@@ -228,13 +237,60 @@ export async function publicAgendaBook(context: PublicAgendaContext, input: Publ
     const client = await findOrCreateClient(tx, context, catalog, metadata, prepared.clientSchema, input.client)
     const row = await reserveSlotInTx(tx, { tenantId: context.tenantId, userId: selected.userId, date: input.date, time: input.time, service: services.map(service => service.id).join(','), customData: { asunto: services.map(service => service.name).join(', ').slice(0, 160), cliente: client }, now }, catalog.base.id, prepared.schema)
     await writeServiceLines(tx, context, prepared, row.id, services)
+    const pending = catalog.config.confirmEmail
+    const confirmationExpiresAt = new Date(Math.min(now + catalog.config.confirmationMinutes * 60000, localInstant(`${input.date}T${input.time}`, catalog.timezone)!))
+    if (pending) {
+      if (!input.client.email) throw createError({ statusCode: 422, statusMessage: 'Revisa los datos de la reserva.' })
+      const delivery = await tx.execute(sql`insert into agenda_security_buckets(tenant_id,key_hash,attempts,expires_at)
+        values (${context.tenantId}::uuid,${agendaPrivateKey(`confirmation:${input.client.email}:${input.date}:${input.time}`)},1,${new Date(Math.max(now, localInstant(`${input.date}T${input.time}`, catalog.timezone)!) + 86400000).toISOString()}::timestamptz)
+        on conflict(tenant_id,key_hash) do nothing returning key_hash`)
+      if (!delivery.length) throw createError({ statusCode: 429, statusMessage: 'Demasiadas solicitudes. Intenta más tarde.' })
+      const data = { ...row.customData as Record<string, unknown>, estado: 'por_confirmar' }
+      await tx.update(records).set({ customData: data }).where(eq(records.id, row.id)); row.customData = data
+    }
     await tx.insert(agendaPublicBookings).values({ tenantId: context.tenantId, siteId: context.site, pageId: context.page, recordId: row.id, tokenHash: agendaHash(token),
+      confirmationHash: pending ? agendaHash(confirmationToken) : null, confirmationExpiresAt: pending ? confirmationExpiresAt : null, confirmationState: pending ? 'pending' : 'none',
       clientEmailHash: input.client.email ? agendaHash(input.client.email) : null, clientPhoneHash: input.client.phone ? agendaHash(input.client.phone) : null,
       serviceIds: services.map(service => service.id), expiresAt: new Date(localInstant(`${input.date}T${input.time}`, catalog.timezone)!), originHash: context.fingerprint, userAgent: context.userAgent })
     await tx.insert(recordActivities).values({ tenantId: context.tenantId, recordId: row.id, userId: selected.userId, actionType: 'PUBLIC_BOOKING', details: { source: 'Sitio web', siteId: context.site, pageId: context.page } })
+    if (pending) {
+      const confirmation = publicConfirmation(catalog, context, row.customData as Record<string, unknown>, services.map(service => service.id))
+      const link = `${agendaFlowOrigin()}/agenda-manage/${context.site}/${context.page}#confirm=${confirmationToken}`
+      const text = `Confirma tu cita del ${confirmation.date} a las ${confirmation.time} (${confirmation.timezone}) antes de ${Math.max(1, Math.ceil((confirmationExpiresAt.getTime() - now) / 60000))} minutos. Si no fuiste tú, ignora este mensaje. El horario se liberará automáticamente.\n${link}`
+      if (prepared.quota.exceeded) throw createError({ statusCode: 422, statusMessage: 'No se pudo completar la reserva.' })
+      const job = await enqueueCriticalEmailInTx(tx, context.tenantId, { to: input.client.email, subject: 'Confirma tu cita', text,
+        html: `<div style="color:CanvasText;background:Canvas;color-scheme:light"><h1>Confirma tu cita</h1><p>${escape(text.split('\n')[0]!)}</p><p><a href="${escape(link)}">Confirmar mi cita</a></p></div>` }, prepared.quota)
+      await tx.insert(jobQueue).values({ tenantId: context.tenantId, kind: 'agenda_expire', payload: { recordId: row.id }, runAt: confirmationExpiresAt, idempotencyKey: `agenda-expire:${row.id}` })
+      return { confirmation: { ...confirmation, message: 'Revisa tu correo para confirmar la cita. El horario se guarda temporalmente.', pending: true }, jobs: [job], row, entityId: catalog.base.id, pending: true }
+    }
     return { ...(await queueNotifications(tx, prepared, context, catalog, row.customData as Record<string, unknown>, services.map(service => service.id), input.client.email, 'book', token)), row, entityId: catalog.base.id }
   }))
-  fireTriggersForRecord(context.tenantId, result.entityId, 'on_create', result.row.id, result.row.customData as Record<string, unknown>)
+  if (!('pending' in result)) fireTriggersForRecord(context.tenantId, result.entityId, 'on_create', result.row.id, result.row.customData as Record<string, unknown>)
+  await Promise.all(result.jobs.map(job => sendQueuedCriticalEmail(context.tenantId, job.id, job.payload)))
+  return { ...result.confirmation, token: 'pending' in result ? '' : token }
+}
+export async function publicAgendaConfirm(context: PublicAgendaContext, confirmationToken: string, now = Date.now()) {
+  await expireAgendaConfirmations(context.tenantId, now)
+  const prepared = await withSystemRecordAccess(() => prepare(context)), token = newAgendaToken()
+  const result = await withSystemRecordAccess(() => withTenant(context.tenantId, async tx => {
+    const [booking] = await tx.select().from(agendaPublicBookings).where(and(eq(agendaPublicBookings.tenantId, context.tenantId), eq(agendaPublicBookings.siteId, context.site), eq(agendaPublicBookings.pageId, context.page), eq(agendaPublicBookings.confirmationHash, agendaHash(confirmationToken)))).for('update')
+    if (!booking) throw publicAgendaNotFound()
+    if (booking.confirmationState === 'expired' || booking.confirmationState === 'pending' && (!booking.confirmationExpiresAt || booking.confirmationExpiresAt.getTime() <= now)) throw createError({ statusCode: 410, statusMessage: 'El enlace venció. El horario ya fue liberado.' })
+    if (booking.confirmationState === 'confirmed') return { alreadyConfirmed: true as const }
+    if (booking.confirmationState !== 'pending' || booking.status !== 'active') throw publicAgendaNotFound()
+    const [record] = await tx.select().from(records).where(and(eq(records.id, booking.recordId), eq(records.tenantId, context.tenantId), isNull(records.deletedAt))).for('update')
+    if (!record || (record.customData as Record<string, unknown>).estado !== 'por_confirmar') throw publicAgendaNotFound()
+    const catalog = await catalogInTx(tx, context)
+    const data: Record<string, unknown> = { ...record.customData as Record<string, unknown>, estado: 'agendada' }
+    await tx.update(records).set({ customData: data, updatedAt: new Date(now), isDirty: true }).where(eq(records.id, record.id))
+    await tx.update(agendaPublicBookings).set({ confirmationState: 'confirmed', tokenHash: agendaHash(token) }).where(eq(agendaPublicBookings.id, booking.id))
+    const metadata = await clientMetadata(tx, context.tenantId, catalog.base.id, catalog.config)
+    const [client] = await tx.select({ data: records.customData }).from(records).where(and(eq(records.id, String(data.cliente)), eq(records.tenantId, context.tenantId), eq(records.entityId, metadata.entityId), isNull(records.deletedAt)))
+    const email = String((client?.data as Record<string, unknown> | undefined)?.[catalog.config.clientFields.email] ?? '')
+    return { ...(await queueNotifications(tx, prepared, context, catalog, data, booking.serviceIds, email, 'book', token)), data, id: record.id, entity: record.entityId }
+  }))
+  if ('alreadyConfirmed' in result) return result
+  fireTriggersForRecord(context.tenantId, result.entity, 'on_create', result.id, result.data)
   await Promise.all(result.jobs.map(job => sendQueuedCriticalEmail(context.tenantId, job.id, job.payload)))
   return { ...result.confirmation, token }
 }
@@ -255,8 +311,9 @@ export async function publicAgendaBooking(context: PublicAgendaContext, token: s
     return confirmation
   }))
 }
-export async function publicAgendaManage(context: PublicAgendaContext, token: string, replacement?: PublicReschedule, now = Date.now()) {
+export async function publicAgendaManage(context: PublicAgendaContext, token: string, replacement?: PublicReschedule, now = Date.now(), turnstileToken?: string) {
   const prepared = await withSystemRecordAccess(() => prepare(context))
+  await verifyAgendaTurnstile(context, prepared.catalog.config, replacement ? 'reschedule' : 'cancel', replacement?.turnstileToken ?? turnstileToken, now)
   const newToken = replacement ? newAgendaToken() : undefined
   const result = await withSystemRecordAccess(() => withTenant(context.tenantId, async tx => {
     const catalog = await catalogInTx(tx, context)
@@ -304,6 +361,14 @@ export async function agendaSiteAdministration(auth: AuthTokenPayload, site: str
       const services = await tx.select({ id: records.id }).from(records).innerJoin(entities, eq(entities.id, records.entityId)).where(and(eq(records.tenantId, auth.tenantId), eq(entities.tenantId, auth.tenantId), eq(entities.slug, 'agenda-servicios'), eq(entities.templateKey, 'agenda'), isNull(records.deletedAt), isNull(entities.deletedAt)))
       if (config.personalIds.some(id => !staff.some(person => person.id === id)) || config.serviceIds.some(id => !services.some(service => service.id === id))) throw createError({ statusCode: 422, statusMessage: 'Selecciona servicios y personal de esta organización.' })
       if (config.enabled && base) await clientMetadata(tx, auth.tenantId, base.id, config)
+      if (config.botProtection === 'disabled' && process.env.TURNSTILE_ALLOW_DISABLED !== 'true') throw createError({ statusCode: 422, statusMessage: 'La plataforma no permite desactivar la protección contra bots.' })
+      if (config.confirmEmail && base) {
+        const [field] = await tx.select().from(entityFields).where(and(eq(entityFields.entityId, base.id), eq(entityFields.name, 'estado'))).for('update')
+        const rules = (field?.validationRules ?? {}) as { options?: Array<{ value: string; label: string }> }
+        if (field && !rules.options?.some(option => option.value === 'por_confirmar')) await tx.update(entityFields).set({ validationRules: { ...rules, options: [...rules.options ?? [], { value: 'por_confirmar', label: 'Por confirmar' }] } }).where(eq(entityFields.id, field.id))
+        const workflow = stateWorkflowSchema.safeParse(base.workflowConfig)
+        if (workflow.success && workflow.data.field === 'estado' && !workflow.data.states.por_confirmar) await tx.update(entities).set({ workflowConfig: { ...workflow.data, states: { ...workflow.data.states, por_confirmar: { locked: true, editableFields: [] } } } }).where(eq(entities.id, base.id))
+      }
       await tx.insert(agendaSiteSettings).values({ tenantId: auth.tenantId, siteId: site, config }).onConflictDoUpdate({ target: agendaSiteSettings.siteId, set: { config, updatedAt: new Date() } })
     }
     const [saved] = await tx.select({ config: agendaSiteSettings.config }).from(agendaSiteSettings).where(eq(agendaSiteSettings.siteId, site)).limit(1)
@@ -315,7 +380,7 @@ export async function agendaSiteAdministration(auth: AuthTokenPayload, site: str
     const catalogServices = await tx.select({ id: records.id, data: records.customData }).from(records).innerJoin(entities, eq(entities.id, records.entityId))
       .where(and(eq(records.tenantId, auth.tenantId), eq(entities.tenantId, auth.tenantId), eq(entities.slug, 'agenda-servicios'), eq(entities.templateKey, 'agenda'), eq(entities.isActive, true), isNull(entities.deletedAt), isNull(records.deletedAt)))
     const own = staff.find(person => person.id === auth.sub)
-    return { settings: agendaSiteSettingsSchema.parse(saved?.config ?? {}), available: !!base && hasSchedules, ownStaff: own ? { id: own.id, administrator: own.isSystem === true, scheduled: own.scheduled } : null, scheduledOtherRoles: staff.filter(person => person.scheduled && person.roleName !== 'Personal' && !person.isSystem).map(person => person.name || person.email), reason: !base ? 'Instala Citas base.' : !hasSchedules ? 'Configura horarios del personal.' : null, recent,
+    return { settings: agendaSiteSettingsSchema.parse(saved?.config ?? {}), botProtectionCanDisable: process.env.TURNSTILE_ALLOW_DISABLED === 'true', available: !!base && hasSchedules, ownStaff: own ? { id: own.id, administrator: own.isSystem === true, scheduled: own.scheduled } : null, scheduledOtherRoles: staff.filter(person => person.scheduled && person.roleName !== 'Personal' && !person.isSystem).map(person => person.name || person.email), reason: !base ? 'Instala Citas base.' : !hasSchedules ? 'Configura horarios del personal.' : null, recent,
       services: catalogServices.map(s => ({ id: s.id, name: String((s.data as Record<string, unknown>).nombre ?? ''), duration: Number((s.data as Record<string, unknown>).duracion_minutos) })).filter(s => s.name && s.duration > 0),
       people: catalogPeople.filter(p => p.name?.trim()).map(p => ({ id: p.id, name: p.name!, scheduled: p.scheduled })) }
   })

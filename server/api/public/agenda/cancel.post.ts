@@ -4,5 +4,5 @@ import { publicAgendaManage } from '~/server/utils/agendaPublic'
 import { agendaHttp, agendaHttpContext, readAgendaBody } from '~/server/utils/agendaPublicHttp'
 export default defineEventHandler(event => agendaHttp(event, 'cancel', async () => {
   const input = publicTokenSchema.parse(await readAgendaBody(event))
-  return publicAgendaManage(await agendaHttpContext(event, 'cancel', input), input.token)
+  return publicAgendaManage(await agendaHttpContext(event, 'cancel', input), input.token, undefined, Date.now(), input.turnstileToken)
 }))

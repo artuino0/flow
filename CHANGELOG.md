@@ -1,5 +1,11 @@
 # Changelog
 
+### [0.153.0] - 2026-10-05
+#### [feature]
+- [ERD-190](https://dydasoftware.atlassian.net/browse/ERD-190) - Agenda pública más segura: los límites de uso distinguen a cada visitante por su IP real (ya no se bloquean entre sí quienes comparten proxy) y se guardan en la base de datos, de modo que sobreviven a los despliegues; protección contra bots con Cloudflare Turnstile al reservar (apagada si no se configura); y confirmación opcional de la cita por correo: la cita queda «por confirmar», bloquea el horario unos minutos y se libera sola si no se confirma. El personal recibe el aviso cuando la cita queda confirmada.
+#### [bugfix]
+- [ERD-190](https://dydasoftware.atlassian.net/browse/ERD-190) - Dominios propios detrás de Cloudflare: Flow reconoce el dominio del visitante mediante un encabezado propio autenticado, porque el proxy de la plataforma sobrescribía el anterior y el sitio no se mostraba.
+
 ### [0.152.0] - 2026-10-05
 #### [feature]
 - [ERD-189](https://dydasoftware.atlassian.net/browse/ERD-189) - SEO de Sites: panel «SEO y compartir» por página (título, descripción, imagen social, canónico, no indexar) con vista previa de búsqueda y de tarjeta social; etiquetas públicas completas (canonical, robots, Open Graph y Twitter) sin duplicar las que el autor ya puso en su HTML; `sitemap.xml` y `robots.txt` por sitio; dominio principal por sitio con redirección 301 desde los demás y una sola forma de URL; códigos de verificación de Google Search Console y Bing; y un checklist de SEO por página («N de M listos») que indica qué falta y cómo arreglarlo, con el aviso de que no garantiza una posición en buscadores. La aplicación (`app.`) queda sin indexar.

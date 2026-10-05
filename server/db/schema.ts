@@ -2,8 +2,13 @@
 // Ver DOCS/Motor_ERP_Dinamico_v1.1.docx seccion 3.1 para el detalle de arquitectura.
 import type { DesignerWarningItem } from '~/utils/designerWarnings'
 
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint, time } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex, index, integer, numeric, date, bigint, time, primaryKey } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+
+export const agendaSecurityBuckets = pgTable('agenda_security_buckets', {
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  keyHash: text('key_hash').notNull(), attempts: integer('attempts').notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+}, table => ({ tenantKey: primaryKey({ columns: [table.tenantId, table.keyHash] }), expiry: index('agenda_security_expiry_idx').on(table.expiresAt) }))
 
 export const agendaSiteSettings = pgTable('agenda_site_settings', {
   siteId: uuid('site_id').primaryKey().references(() => sites.id), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
@@ -15,6 +20,8 @@ export const agendaPublicBookings = pgTable('agenda_public_bookings', {
   tokenHash: text('token_hash').notNull(), clientEmailHash: text('client_email_hash'), clientPhoneHash: text('client_phone_hash'), serviceIds: jsonb('service_ids').$type<string[]>().notNull(),
   status: text('status').$type<'active' | 'canceled'>().notNull().default('active'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   canceledAt: timestamp('canceled_at', { withTimezone: true }), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  confirmationHash: text('confirmation_hash'), confirmationExpiresAt: timestamp('confirmation_expires_at', { withTimezone: true }),
+  confirmationState: text('confirmation_state').$type<'none' | 'pending' | 'confirmed' | 'expired'>().notNull().default('none'),
   originHash: text('origin_hash').notNull(), userAgent: text('user_agent').notNull(), rescheduleCount: integer('reschedule_count').notNull().default(0)
 })
 

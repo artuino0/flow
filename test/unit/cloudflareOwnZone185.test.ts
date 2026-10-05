@@ -107,4 +107,22 @@ describe('zona propia y dominio de app separado, completamente simulado', () => 
     expect(event.node.res.getHeader('cache-control')).toBe('no-store')
     expect(() => proofHandler(request('incorrecto'))).toThrow(expect.objectContaining({ statusCode: 404 }))
   })
+  it('sondeo completo usa prueba del Worker y rechaza el host de origen, sin red real', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async input => {
+      const url = new URL(String(input))
+      const req = new IncomingMessage(new Socket()); req.url = url.pathname + url.search; req.method = 'GET'
+      req.headers = { host: 'app.dydasoftware.com', 'x-forwarded-host': 'app.dydasoftware.com', 'x-flow-original-host': url.host, 'x-flow-client-ip': '198.51.100.185', 'x-flow-edge-secret': 'mock-edge' }
+      const event = createEvent(req, new ServerResponse(req)); captureEdgeHost(event)
+      const proof = await proofHandler(event)
+      expect(req.headers['x-flow-original-host']).toBeUndefined(); expect(req.headers['x-flow-client-ip']).toBeUndefined()
+      return new Response(JSON.stringify(proof), { headers: { 'cf-ray': 'mock-ray' } })
+    }))
+    const provider = getSiteDomainProvider()
+    expect(provider.verified({ cloudflare: await provider.register('flow.dydasoftware.com') })).toBe(true)
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async input => {
+      const url = new URL(String(input))
+      return new Response(JSON.stringify({ edge: true, hostname: 'app.dydasoftware.com', nonce: url.searchParams.get('nonce') }), { headers: { 'cf-ray': 'mock-ray' } })
+    }))
+    expect(provider.verified({ cloudflare: await provider.register('flow.dydasoftware.com') })).toBe(false)
+  })
 })

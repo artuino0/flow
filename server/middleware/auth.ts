@@ -36,6 +36,7 @@ const PUBLIC_PATHS = new Set([
   '/api/public/agenda/cancel',
   '/api/public/agenda/reschedule',
   '/api/public/agenda/booking',
+  '/api/public/agenda/confirm',
   // Lo invoca Vercel Cron / un cron externo con `Authorization: Bearer CRON_SECRET`.
   '/api/cron/job-queue',
   '/api/cron/trigger-retries',

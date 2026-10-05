@@ -6,16 +6,21 @@ export const publicAgendaNotFound = () => createError({ statusCode: 404, statusM
 export function agendaHash(value: string) { return createHash('sha256').update(value).digest('hex') }
 export function agendaOpaqueId(site: string, kind: 'person' | 'service', id: string) { return agendaHash(`${site}:${kind}:${id}`).slice(0, 32) }
 export function newAgendaToken() { return randomBytes(32).toString('base64url') }
-const formSecret = randomBytes(32)
+export function agendaServerSecret() {
+  const secret = process.env.JWT_SECRET
+  if (secret) return createHmac('sha256', secret).update('flow:agenda:security:v190').digest()
+  if (process.env.NODE_ENV === 'production') throw new Error('Falta el secreto estable de Agenda')
+  return createHash('sha256').update('flow:agenda:local-development-only:v190').digest()
+}
 export function agendaFormToken(site: string, page: string, now = Date.now()) {
   const payload = `${now}.${randomBytes(12).toString('hex')}`
-  return `${payload}.${createHmac('sha256', formSecret).update(`${site}:${page}:${payload}`).digest('hex')}`
+  return `${payload}.${createHmac('sha256', agendaServerSecret()).update(`${site}:${page}:${payload}`).digest('hex')}`
 }
 export function validAgendaFormToken(token: string, site: string, page: string, now = Date.now()) {
   const [issued, nonce, signature, extra] = token.split('.')
   if (extra || !issued || !nonce || !signature || !/^\d{13}$/.test(issued) || !/^[a-f0-9]{24}$/.test(nonce) || !/^[a-f0-9]{64}$/.test(signature)) return false
   const elapsed = now - Number(issued)
-  const expected = createHmac('sha256', formSecret).update(`${site}:${page}:${issued}.${nonce}`).digest('hex')
+  const expected = createHmac('sha256', agendaServerSecret()).update(`${site}:${page}:${issued}.${nonce}`).digest('hex')
   return elapsed >= 2000 && elapsed <= 7200000 && timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
 }
 export function agendaRequestLimit(operation: string, ip: string, site: string, contacts: string[] = [], now = Date.now()) {

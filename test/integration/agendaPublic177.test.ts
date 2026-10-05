@@ -261,6 +261,7 @@ describe('Agenda pública 177 con PostgreSQL real y SMTP simulado', () => {
     await expect(bookingHandler(makeEvent(`/api/public/agenda/booking?site=${site}&page=${page}`, 'GET', undefined, { 'x-flow-agenda-token': 'invalid' }))).rejects.toMatchObject({ statusCode: 404, stack: '' })
     await expect(bookingHandler(makeEvent(`/api/public/agenda/booking?site=${site}&page=${page}&token=secret`))).rejects.toMatchObject({ statusCode: 422, stack: '' })
     resetPublicRateLimits()
+    await admin`delete from agenda_security_buckets where tenant_id=${tenant}`
     for (let index = 0; index < 60; index++) await slotsHandler(makeEvent(`/api/public/agenda/slots?site=${site}&page=${page}&from=${today}&to=${today}`))
     const limited = makeEvent('/api/public/agenda/slots' + query)
     await expect(slotsHandler(limited)).rejects.toMatchObject({ statusCode: 429, stack: '' })

@@ -34,5 +34,10 @@ export function registerDefaultJobHandlers(): void {
   if (registered) return
   registerJobHandler('email', handleEmailJob)
   registerJobHandler('platform_crm', async job => (await import('./platformCrmQueue')).handlePlatformCrmJob(job))
+  registerJobHandler('agenda_expire', async job => {
+    if (typeof job.payload.recordId !== 'string') return { ok: false, retryable: false, error: 'Trabajo de expiración inválido' }
+    await (await import('./agendaConfirmation')).expireAgendaConfirmations(job.tenantId, Date.now(), job.payload.recordId)
+    return { ok: true }
+  })
   registered = true
 }

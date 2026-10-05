@@ -22,6 +22,6 @@ export default defineEventHandler(async event => {
   }
   if (config.unavailable) setResponseStatus(event, 404)
   const nonce = randomBytes(24).toString('base64')
-  setResponseHeader(event, 'Content-Security-Policy', `script-src 'nonce-${nonce}'; script-src-attr 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`)
+  setResponseHeader(event, 'Content-Security-Policy', `script-src 'nonce-${nonce}'${config.turnstileSiteKey ? ' https://challenges.cloudflare.com' : ''};${config.turnstileSiteKey ? ' frame-src https://challenges.cloudflare.com;' : ''} script-src-attr 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`)
   return renderAgendaManagementDocument(config).replace('<script data-flow-agenda-runtime>', `<script data-flow-agenda-runtime nonce="${nonce}">`)
 })

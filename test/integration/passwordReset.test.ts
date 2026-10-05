@@ -3,6 +3,9 @@ import postgres from 'postgres'
 import bcrypt from 'bcryptjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { createEvent } from 'h3'
+import { IncomingMessage, ServerResponse } from 'node:http'
+import { Socket } from 'node:net'
 
 const { enqueueEmail } = vi.hoisted(() => ({ enqueueEmail: vi.fn(async (_tenantId: string, _payload: { to: string; subject: string; html: string }) => 'email-job') }))
 vi.mock('../../server/utils/jobQueue', () => ({ enqueueEmail }))
@@ -40,8 +43,16 @@ beforeAll(async () => {
   vi.stubGlobal('useRuntimeConfig', () => ({ jwtSecret: 'password-reset-test-secret' }))
   ;({ requestPasswordReset, confirmPasswordReset, passwordResetRateKey } = await import('../../server/utils/passwordReset'))
   ;({ resetAllRateLimits } = await import('../../server/utils/rateLimit'))
-  ;({ default: requestHandler } = await import('../../server/api/auth/password-reset/request.post'))
-  ;({ default: confirmHandler } = await import('../../server/api/auth/password-reset/confirm.post'))
+  const request = (await import('../../server/api/auth/password-reset/request.post')).default
+  const confirm = (await import('../../server/api/auth/password-reset/confirm.post')).default
+  const httpEvent = (fixture: { context: { body: unknown; ip: string } }) => {
+    const socket = new Socket(); Object.defineProperty(socket, 'remoteAddress', { value: fixture.context.ip })
+    const req = new IncomingMessage(socket); req.headers.host = 'localhost:3000'
+    const event = createEvent(req, new ServerResponse(req)); event.context.body = fixture.context.body
+    return event
+  }
+  requestHandler = event => request(httpEvent(event))
+  confirmHandler = event => confirm(httpEvent(event))
   ;({ default: loginHandler } = await import('../../server/api/auth/login.post'))
 }, 60_000)
 

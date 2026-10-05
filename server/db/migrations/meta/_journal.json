@@ -687,6 +687,13 @@
       "when": 1790607406000,
       "breakpoints": true,
       "tag": "0097_sites_seo"
+    },
+    {
+      "version": "7",
+      "idx": 98,
+      "when": 1790607407000,
+      "breakpoints": true,
+      "tag": "0098_agenda_security"
     }
   ]
 }

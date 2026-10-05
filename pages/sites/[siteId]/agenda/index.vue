@@ -7,7 +7,7 @@ import { agendaAdministrationError, agendaReadiness, publishedDocumentHasAgenda 
 
 definePageMeta({ layout: 'default', darkReady: true })
 interface Entry { id: string; name: string; scheduled?: boolean }
-interface Administration { ownStaff?: { id: string; administrator: boolean; scheduled: boolean } | null; scheduledOtherRoles?: string[]; settings: AgendaSiteConfig; available: boolean; reason: string | null; services: Entry[]; people: Entry[]; recent: Array<{ id: string; status: string; date: string; time: string; personal: string; services: string[] }> }
+interface Administration { botProtectionCanDisable?: boolean; ownStaff?: { id: string; administrator: boolean; scheduled: boolean } | null; scheduledOtherRoles?: string[]; settings: AgendaSiteConfig; available: boolean; reason: string | null; services: Entry[]; people: Entry[]; recent: Array<{ id: string; status: string; date: string; time: string; personal: string; services: string[] }> }
 const route = useRoute(), siteId = String(route.params.siteId)
 const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 const { data, error, pending, refresh } = await useFetch<Administration>('/api/agenda/site-settings', { query: { site: siteId }, headers })
@@ -129,6 +129,15 @@ function serviceNames(ids: string[]) { return ids.map(id => data.value?.services
             <h3 class="field-group-title">Datos que se piden al cliente</h3>
             <div class="client-fields"><div v-for="(label, key) in fieldNames" :key="key" class="client-field-row"><span>{{ label }}</span><div><label class="check-row"><input v-model="form.visibleFields" class="agenda-switch" role="switch" type="checkbox" :value="key" />Pedir {{ label }}</label><label class="check-row"><input v-model="form.requiredFields" type="checkbox" :value="key" />{{ label }} obligatorio</label></div></div></div>
             <p>Siempre se exige al menos un contacto.</p>
+            <h3 class="field-group-title">Protección de las reservas</h3>
+            <div class="settings-grid">
+              <label for="agenda-bots">Protección contra bots<select id="agenda-bots" v-model="form.botProtection" class="control"><option value="automatic">Automática</option><option value="always">Siempre</option><option v-if="data.botProtectionCanDisable" value="disabled">Desactivada</option></select></label>
+              <label for="agenda-outage">Si la comprobación no responde<select id="agenda-outage" v-model="form.turnstileOutage" class="control"><option value="allow_strict">Permitir con límites más estrictos</option><option value="deny">Pausar las reservas</option></select></label>
+            </div>
+            <p class="mt-3">Automática comprueba cada reserva y pide una comprobación adicional tras varios intentos de gestionar citas. La protección depende de que esté disponible en la plataforma.</p>
+            <label class="check-row mt-4"><input v-model="form.confirmEmail" type="checkbox" :disabled="!form.requiredFields.includes('email')" aria-describedby="agenda-confirm-help" />Confirmar la cita por correo (recomendado)</label>
+            <p id="agenda-confirm-help">{{ form.requiredFields.includes('email') ? 'El visitante debe abrir el enlace de su correo. Hasta entonces, el horario se guarda temporalmente y no avisamos al personal.' : 'Activa Correo obligatorio para usar esta opción. La confirmación por teléfono aún no está disponible.' }}</p>
+            <label v-if="form.confirmEmail" for="agenda-confirm-minutes" class="mt-3 block">Minutos para confirmar<input id="agenda-confirm-minutes" v-model.number="form.confirmationMinutes" class="control" type="number" min="5" max="60" required /></label>
             <details class="mt-4"><summary>Opciones avanzadas de reservas</summary>
             <label class="check-row mt-4"><input v-model="form.requireConsent" type="checkbox" />Pedir consentimiento para gestionar la cita</label>
             <details class="mt-5"><summary>Campos del módulo de clientes</summary><div class="settings-grid mt-3"><label v-for="(label, key) in fieldNames" :key="key">{{ label }}<input v-model="form.clientFields[key]" required pattern="[a-z][a-z0-9_]{0,63}" class="control" /></label></div></details>

@@ -1,11 +1,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { isIP } from 'node:net'
 import { createError, getHeader, getRequestURL, type H3Event } from 'h3'
 
 export function cloudflareHostMode() {
   return process.env.SITE_DOMAIN_PROVIDER?.trim().toLowerCase() === 'cloudflare'
 }
 
-function trustedEdge(read: (name: string) => string | undefined | null) {
+export function trustedEdge(read: (name: string) => string | undefined | null) {
   const expected = process.env.CLOUDFLARE_EDGE_SECRET?.trim()
   const supplied = read('x-flow-edge-secret')
   if (!expected || !supplied) return false
@@ -14,24 +15,39 @@ function trustedEdge(read: (name: string) => string | undefined | null) {
 }
 
 export function effectiveHostFromHeaders(read: (name: string) => string | undefined | null, legacyForwarded = true) {
-  const forwarded = cloudflareHostMode() ? trustedEdge(read) : legacyForwarded
-  const raw = (forwarded ? read('x-forwarded-host')?.split(',')[0]?.trim() : '') || read('host') || ''
+  const cloudflare = cloudflareHostMode()
+  const forwarded = cloudflare ? trustedEdge(read) : legacyForwarded
+  const original = cloudflare && forwarded ? read('x-flow-original-host') : undefined
+  const raw = original ?? ((forwarded ? read('x-forwarded-host')?.split(',')[0]?.trim() : '') || read('host') || '')
   // Una autoridad, nunca URL, credenciales, ruta o cabeceras concatenadas.
   if (!raw || /[\s/@\\?#,]/.test(raw)) return ''
   try { return new URL(`http://${raw}`).host.toLowerCase().replace(/\.(?=:|$)/, '') } catch { return '' }
 }
 
-interface EdgeHost { host: string; trusted: boolean }
+interface EdgeHost { host: string; trusted: boolean; clientIp?: string }
+export function trustedEdgeClientIpFromHeaders(read: (name: string) => string | undefined | null) {
+  for (const name of ['x-flow-client-ip', 'cf-connecting-ip']) {
+    const value = read(name)?.trim()
+    if (value && isIP(value) && !value.includes('%')) return value
+  }
+}
+export function capturedEdgeClientIp(event: H3Event) {
+  const captured = event.context.flowEdgeHost as EdgeHost | undefined
+  return captured?.trusted ? captured.clientIp : undefined
+}
 export function isTrustedCloudflareRequest(event: H3Event) {
   return cloudflareHostMode() && ((event.context.flowEdgeHost as EdgeHost | undefined)?.trusted ?? trustedEdge(name => getHeader(event, name)))
 }
 export function captureEdgeHost(event: H3Event) {
   if (!cloudflareHostMode() || event.context.flowEdgeHost) return
   const read = (name: string) => getHeader(event, name)
-  event.context.flowEdgeHost = { host: effectiveHostFromHeaders(read), trusted: trustedEdge(read) } satisfies EdgeHost
+  const trusted = trustedEdge(read)
+  event.context.flowEdgeHost = { host: effectiveHostFromHeaders(read), trusted, clientIp: trusted ? trustedEdgeClientIpFromHeaders(read) : undefined } satisfies EdgeHost
   // Ningún consumidor posterior puede reenviar o reflejar estas cabeceras.
   delete event.node.req.headers['x-flow-edge-secret']
   delete event.node.req.headers['x-forwarded-host']
+  delete event.node.req.headers['x-flow-original-host']
+  delete event.node.req.headers['x-flow-client-ip']
 }
 
 export function effectiveRequestHost(event: H3Event, legacyForwarded = true) {
