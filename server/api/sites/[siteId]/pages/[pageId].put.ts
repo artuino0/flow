@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import { siteSeoSchema } from '~/utils/siteSeo'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { DuplicateSiteError, saveSitePageDraft } from '~/server/utils/sites'
-const schema = z.object({ title: z.string().trim().min(1, 'El título es obligatorio').max(160), path: z.string().trim().min(1, 'La ruta es obligatoria').max(220), html: z.string().max(200000, 'El HTML excede el límite permitido'), css: z.string().max(100000, 'El CSS excede el límite permitido') })
+const schema = z.object({ title: z.string().trim().min(1, 'El título es obligatorio').max(160), path: z.string().trim().min(1, 'La ruta es obligatoria').max(220), html: z.string().max(200000, 'El HTML excede el límite permitido'), css: z.string().max(100000, 'El CSS excede el límite permitido'), seo: siteSeoSchema.optional() })
 export default defineEventHandler(async event => {
   const auth = await requireAdminRole(event)
   try {

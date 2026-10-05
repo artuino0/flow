@@ -1244,6 +1244,7 @@ export const sitePageVersions = pgTable('site_page_versions', {
   html: text('html').notNull().default(''),
   css: text('css').notNull().default(''),
   formManifest: jsonb('form_manifest').notNull().default([]),
+  seo: jsonb('seo'),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()

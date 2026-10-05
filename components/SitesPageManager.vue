@@ -129,6 +129,7 @@ function statusLabel(value: string) {
       </template>
     </ListPageHeader>
 
+    <SitesSeoSummary v-if="siteId" :site-id="siteId" />
     <div class="manager-tabs">
       <button v-for="tab in [{ key: 'all', label: 'Todas' }, { key: 'published', label: 'Publicadas' }, { key: 'draft', label: 'Borradores' }, { key: 'archived', label: 'Archivadas' }]" :key="tab.key" type="button" :class="{ active: status === tab.key }" @click="status = tab.key">
         {{ tab.label }} <span>{{ countFor(tab.key) }}</span>

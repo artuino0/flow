@@ -133,7 +133,7 @@ describe('Sites 181: respuestas reales, RLS y biblioteca pública', () => {
     expect(await domainHandler(forwarded('/', 'simulated-edge', 'app.flow.test'))).toBeUndefined()
     expect(await domainHandler(forwarded('/agenda-manage/site/page', 'simulated-edge'))).toBeUndefined()
   })
-  it('zona propia: flow y raíz sirven el mismo sitio y /agenda; app queda reservado', async () => {
+  it('zona propia: alternos redirigen al principal que sirve el sitio y /agenda; app queda reservado', async () => {
     vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge')
     vi.stubEnv('APP_BASE_URL', 'https://app.dydasoftware.com'); vi.stubEnv('RAILWAY_PUBLIC_DOMAIN', 'app.dydasoftware.com')
     vi.stubEnv('CLOUDFLARE_ZONE_NAME', 'dydasoftware.com'); vi.stubEnv('CLOUDFLARE_FALLBACK_ORIGIN', 'app.dydasoftware.com')
@@ -148,8 +148,13 @@ describe('Sites 181: respuestas reales, RLS y biblioteca pública', () => {
       const request = (path: string) => {
         const e = event(path, 'app.dydasoftware.com'); e.node.req.headers['x-forwarded-host'] = hostname; e.node.req.headers['x-flow-edge-secret'] = 'simulated-edge'; captureEdgeHost(e); return e
       }
-      expect(await domainHandler(request('/'))).toContain('<script>window.autor=true</script>')
-      expect(await domainHandler(request('/agenda'))).toContain('<h1>Agenda propia</h1>')
+      for (const path of ['/', '/agenda']) {
+        const alternate = request(path); await domainHandler(alternate)
+        expect(alternate.node.res.statusCode).toBe(301)
+        expect(alternate.node.res.getHeader('location')).toBe(`https://cliente181.test${path}`)
+        const primary = event(path, 'app.dydasoftware.com'); primary.node.req.headers['x-forwarded-host'] = 'cliente181.test'; primary.node.req.headers['x-flow-edge-secret'] = 'simulated-edge'; captureEdgeHost(primary)
+        expect(await domainHandler(primary)).toContain(path === '/' ? '<script>window.autor=true</script>' : '<h1>Agenda propia</h1>')
+      }
     }
     expect(await domainHandler(event('/', 'app.dydasoftware.com'))).toBeUndefined()
     await expect(domains.createSiteDomain(first.tenant, first.user, { siteId: first.site, hostname: 'app.dydasoftware.com' })).rejects.toMatchObject({ statusCode: 422, statusMessage: expect.stringContaining('reservado') })

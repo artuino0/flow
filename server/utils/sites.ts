@@ -1,6 +1,7 @@
 import { and, desc, eq, max, sql } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
-import { entities, entityFields, siteFormConnections, sitePages, sitePageVersions, sites } from '~/server/db/schema'
+import { entities, entityFields, siteAssets, siteFormConnections, sitePages, sitePageVersions, sites } from '~/server/db/schema'
+import { siteSeoSchema, siteVerificationSchema, type SiteSeo, type SiteVerification } from '~/utils/siteSeo'
 import { agendaMarkerWarnings, agendaEditorPreviewState } from './agendaMarkerWarnings'
 
 export const SITE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -212,10 +213,11 @@ export async function listSiteForms(tenantId: string, siteId: string) {
   })
 }
 
-export async function updateSite(tenantId: string, siteId: string, input: { name: string; slug: string; locale: string }) {
+export async function updateSite(tenantId: string, siteId: string, input: { name: string; slug: string; locale: string; searchVerification?: SiteVerification }) {
   return withTenant(tenantId, async tx => {
     try {
-      const [site] = await tx.update(sites).set({ ...input, updatedAt: new Date() })
+      const { searchVerification, ...identity } = input
+      const [site] = await tx.update(sites).set({ ...identity, ...(searchVerification === undefined ? {} : { settings: sql`jsonb_set(coalesce(${sites.settings}, '{}'::jsonb), '{searchVerification}', ${JSON.stringify(siteVerificationSchema.parse(searchVerification))}::jsonb, true)` }), updatedAt: new Date() })
         .where(and(eq(sites.id, siteId), eq(sites.tenantId, tenantId))).returning()
       return site ?? null
     } catch (error) {
@@ -267,21 +269,29 @@ export async function getSitePage(tenantId: string, siteId: string, pageId: stri
   })
 }
 
-export async function saveSitePageDraft(tenantId: string, userId: string, siteId: string, pageId: string, input: { title: string; path: string; html: string; css: string }) {
+export async function saveSitePageDraft(tenantId: string, userId: string, siteId: string, pageId: string, input: { title: string; path: string; html: string; css: string; seo?: SiteSeo }) {
   return withTenant(tenantId, async tx => {
     const [page] = await tx.select().from(sitePages).where(and(eq(sitePages.id, pageId), eq(sitePages.siteId, siteId), eq(sitePages.tenantId, tenantId))).limit(1)
     if (!page) return null
     const path = normalizeSitePath(input.path)
+    const seo = input.seo === undefined ? page.seo : { ...(page.seo as Record<string, unknown>), ...siteSeoSchema.parse(input.seo) }
+    if (input.seo !== undefined) {
+      for (const key of Object.keys(siteSeoSchema.shape)) if (!Object.hasOwn(input.seo, key)) delete (seo as Record<string, unknown>)[key]
+      if (input.seo.ogImageAssetId) {
+        const [asset] = await tx.select({ id: siteAssets.id }).from(siteAssets).where(and(eq(siteAssets.id, input.seo.ogImageAssetId), eq(siteAssets.siteId, siteId), eq(siteAssets.tenantId, tenantId), sql`${siteAssets.mimeType} in ('image/png','image/jpeg','image/webp','image/gif','image/avif')`)).limit(1)
+        if (!asset) throw createError({ statusCode: 422, statusMessage: 'Elige una imagen de este sitio' })
+      }
+    }
     try {
       let draftId = page.draftVersionId
       const formManifest = extractSiteForms(input.html)
-      if (draftId) await tx.update(sitePageVersions).set({ html: input.html, css: input.css, formManifest, updatedAt: new Date() }).where(and(eq(sitePageVersions.id, draftId), eq(sitePageVersions.tenantId, tenantId)))
+      if (draftId) await tx.update(sitePageVersions).set({ html: input.html, css: input.css, seo, formManifest, updatedAt: new Date() }).where(and(eq(sitePageVersions.id, draftId), eq(sitePageVersions.tenantId, tenantId)))
       else {
         const [latest] = await tx.select({ value: max(sitePageVersions.version) }).from(sitePageVersions).where(and(eq(sitePageVersions.pageId, pageId), eq(sitePageVersions.tenantId, tenantId)))
-        const [version] = await tx.insert(sitePageVersions).values({ tenantId, siteId, pageId, version: (latest?.value ?? 0) + 1, html: input.html, css: input.css, formManifest, createdBy: userId }).returning()
+        const [version] = await tx.insert(sitePageVersions).values({ tenantId, siteId, pageId, version: (latest?.value ?? 0) + 1, html: input.html, css: input.css, seo, formManifest, createdBy: userId }).returning()
         draftId = version.id
       }
-      const [updated] = await tx.update(sitePages).set({ title: input.title, path, draftVersionId: draftId, updatedAt: new Date() }).where(eq(sitePages.id, pageId)).returning()
+      const [updated] = await tx.update(sitePages).set({ title: input.title, path, seo, draftVersionId: draftId, updatedAt: new Date() }).where(eq(sitePages.id, pageId)).returning()
       return { ...updated, agendaWarnings: await agendaMarkerWarnings(tx, tenantId, siteId, input.html) }
     } catch (error) {
       if (pgCode(error) === '23505') throw new DuplicateSiteError(`Ya existe una página con la ruta "${path}"`)
@@ -403,7 +413,8 @@ export async function publishSitePage(tenantId: string, userId: string, siteId: 
         eq(sitePageVersions.tenantId, tenantId)
       ))
     }
-    await tx.update(sitePageVersions).set({ status: 'published', updatedAt: new Date() }).where(eq(sitePageVersions.id, draft.id))
+    const publishedSeo = { ...((draft.seo ?? page.seo) as Record<string, unknown>), _flowAssetTenantId: tenantId }
+    await tx.update(sitePageVersions).set({ status: 'published', seo: publishedSeo, updatedAt: new Date() }).where(eq(sitePageVersions.id, draft.id))
     const [nextDraft] = await tx.insert(sitePageVersions).values({
       tenantId,
       siteId,
@@ -413,6 +424,7 @@ export async function publishSitePage(tenantId: string, userId: string, siteId: 
       html: draft.html,
       css: draft.css,
       formManifest: draft.formManifest,
+      seo: publishedSeo,
       createdBy: userId
     }).returning()
     const [updated] = await tx.update(sitePages).set({

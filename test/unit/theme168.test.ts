@@ -18,6 +18,7 @@ import * as codeTheme from '../../utils/sitesCodeTheme'
 import { lightTokens, darkTokens, rgbChannels } from '../../utils/themeTokens'
 import { contentNeedsLight } from '../../utils/theme'
 import { agendaSiteSettingsSchema } from '../../utils/agendaPublic'
+import * as siteSeo from '../../utils/siteSeo'
 import * as agendaPreview from '../../utils/sitesAgendaPreview'
 import { buildPreviewDocument, joinSiteScript, splitSiteScript } from '../../utils/sitesEditorScript'
 import { auditThemeColors, auditThemeSource, migratedThemeFiles, themeColorExceptions } from '../../scripts/auditThemeColors'
@@ -30,11 +31,12 @@ import deficits from '../fixtures/themeEditorDeficits168.json'
 const apps: App[] = []
 const files = ['pages/sites/[siteId]/pages/[pageId].vue', 'components/SitesCodeEditor.client.vue', 'components/SitesEditorForms.vue', 'components/SitesAssetLibrary.vue', 'utils/sitesCodeTheme.ts']
 const flush = async () => { await new Promise(resolve => setTimeout(resolve, 25)); await nextTick() }
-const imports = { '~/utils/sitesAgendaPreview': agendaPreview, codemirror: cm, '@codemirror/state': state, '@codemirror/view': view, '@codemirror/commands': commands, '@codemirror/lang-html': htmlLanguage, '@codemirror/lang-css': cssLanguage, '@codemirror/lang-javascript': jsLanguage, '~/utils/sitesCodeTheme': codeTheme, '~/utils/sitesEditorScript': { buildPreviewDocument, joinSiteScript, splitSiteScript } }
+const imports = { '~/utils/siteSeo': siteSeo, '~/utils/sitesAgendaPreview': agendaPreview, codemirror: cm, '@codemirror/state': state, '@codemirror/view': view, '@codemirror/commands': commands, '@codemirror/lang-html': htmlLanguage, '@codemirror/lang-css': cssLanguage, '@codemirror/lang-javascript': jsLanguage, '~/utils/sitesCodeTheme': codeTheme, '~/utils/sitesEditorScript': { buildPreviewDocument, joinSiteScript, splitSiteScript } }
 const page = { agendaPreview: undefined as agendaPreview.AgendaEditorPreviewState | undefined, id: 'p', title: 'Contacto', path: '/contacto', status: 'draft', kind: 'website', draft: { version: 1, html: '<main style="background:#ffeecc;color:#102030">Mi sitio</main>', css: 'body{background:#fafafa}', updatedAt: '2026-10-02T12:00:00Z' }, versions: [] }
 const form = { id: 'contacto', name: 'Contacto', siteId: 's', pageId: 'p', pageTitle: 'Contacto', pagePath: '/contacto', fields: [{ name: 'nombre', label: 'Nombre', type: 'text', required: true }], connection: { entityId: 'e', entityName: 'Clientes', entitySlug: 'clientes', fieldMapping: { nombre: 'nombre' }, defaultValues: {}, valueMappings: {} } }
 const asset = { id: 'a', fileName: 'imagen.svg', mimeType: 'image/svg+xml', sizeBytes: 2000, publicUrl: 'https://ejemplo.invalid/imagen.svg', createdAt: '' }
 function response(url: string) {
+  if (url === '/api/sites/s/seo-audit') return { pages: [] }
   if (url === '/api/sites/s/pages/p') return structuredClone(page)
   if (url.endsWith('/forms')) return { forms: [structuredClone(form)] }
   if (url.endsWith('/assets')) return { assets: [asset] }

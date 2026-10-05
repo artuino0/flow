@@ -680,6 +680,13 @@
       "when": 1790607405000,
       "breakpoints": true,
       "tag": "0096_platform_crm"
+    },
+    {
+      "version": "7",
+      "idx": 97,
+      "when": 1790607406000,
+      "breakpoints": true,
+      "tag": "0097_sites_seo"
     }
   ]
 }

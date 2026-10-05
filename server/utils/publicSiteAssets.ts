@@ -5,6 +5,7 @@ import type { PublicSitePage } from './siteDomains'
 
 export function sitePublicNotFound(event: H3Event) {
   setResponseStatus(event, 404)
+  setResponseHeader(event, 'X-Robots-Tag', 'noindex')
   setResponseHeader(event, 'Content-Type', 'text/plain; charset=utf-8')
   setResponseHeader(event, 'X-Content-Type-Options', 'nosniff')
   return 'Archivo o página no encontrados.'

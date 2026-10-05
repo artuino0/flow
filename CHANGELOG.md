@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.152.0] - 2026-10-05
+#### [feature]
+- [ERD-189](https://dydasoftware.atlassian.net/browse/ERD-189) - SEO de Sites: panel «SEO y compartir» por página (título, descripción, imagen social, canónico, no indexar) con vista previa de búsqueda y de tarjeta social; etiquetas públicas completas (canonical, robots, Open Graph y Twitter) sin duplicar las que el autor ya puso en su HTML; `sitemap.xml` y `robots.txt` por sitio; dominio principal por sitio con redirección 301 desde los demás y una sola forma de URL; códigos de verificación de Google Search Console y Bing; y un checklist de SEO por página («N de M listos») que indica qué falta y cómo arreglarlo, con el aviso de que no garantiza una posición en buscadores. La aplicación (`app.`) queda sin indexar.
+
 ### [0.151.1] - 2026-10-05
 #### [bugfix]
 - [ERD-188](https://dydasoftware.atlassian.net/browse/ERD-188) - La migración del CRM (0096) ya se puede aplicar en Neon: las funciones de captura no declaran parámetros personalizados en su definición (PostgreSQL no lo permite a un rol no superusuario) y fijan y restauran su contexto en el cuerpo. Las pruebas de base de datos ahora migran con un rol propietario no superusuario, como Neon, y una prueba estática impide repetir el error.

@@ -1,11 +1,13 @@
 import { z } from 'zod'
+import { siteVerificationSchema } from '~/utils/siteSeo'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { DuplicateSiteError, SITE_SLUG_PATTERN, updateSite } from '~/server/utils/sites'
 
 const schema = z.object({
   name: z.string().trim().min(2, 'El nombre es obligatorio').max(120),
   slug: z.string().trim().regex(SITE_SLUG_PATTERN, 'Usa minúsculas, números y guiones'),
-  locale: z.string().trim().min(2).max(16)
+  locale: z.string().trim().min(2).max(16),
+  searchVerification: siteVerificationSchema.optional()
 })
 
 export default defineEventHandler(async event => {

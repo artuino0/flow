@@ -80,6 +80,12 @@ async function verifyDomain(domain: Domain) {
   } catch (cause: any) { feedback.value = cause?.data?.statusMessage || cause?.statusMessage || 'No se pudo verificar el dominio.' }
   finally { checking.value = null }
 }
+async function makePrimary(domain: Domain) {
+  checking.value = domain.id
+  try { await $fetch(`/api/sites/domains/${domain.id}/primary`, { method: 'POST' }); await refresh(); feedback.value = `${domain.hostname} es el dominio principal.` }
+  catch { feedback.value = 'No se pudo elegir el dominio principal.' }
+  finally { checking.value = null }
+}
 async function removeDomain(domain: Domain) {
   if (!await confirmAction({ title: 'Desconectar dominio', message: `¿Desconectar ${domain.hostname}?`, confirmLabel: 'Desconectar', destructive: true })) return
   try { await $fetch(`/api/sites/domains/${domain.id}`, { method: 'DELETE' }); await refresh() }
@@ -131,7 +137,7 @@ function domainState(domain: Domain) {
         <div v-for="domain in filteredDomains" :key="domain.id" class="domain-block">
           <div class="row data">
             <div class="site"><span><Globe2 /></span><div><strong>{{ domain.siteName }}</strong><small v-if="domain.isPrimary">Dominio principal</small></div></div>
-            <div><a class="domain-link" :href="`https://${domain.hostname}`" target="_blank">{{ domain.hostname }} <ExternalLink /></a><small>Dominio personalizado</small></div>
+            <div><a class="domain-link" :href="`https://${domain.hostname}`" target="_blank">{{ domain.hostname }} <ExternalLink /></a><small>Dominio personalizado</small><button v-if="domain.status === 'active' && !domain.isPrimary" type="button" class="text-xs text-brand-blue underline" :disabled="checking === domain.id" @click="makePrimary(domain)">Usar como principal</button></div>
             <div>{{ domain.rootPageTitle || 'Ruta / del sitio' }}</div>
             <div><span class="status" :class="{ active: domain.status === 'active' && checking !== domain.id, failed: domain.status === 'error' || !!domain.validationError || !!domain.providerData?.providerError }"><ShieldCheck v-if="domain.status === 'active'" /><AlertCircle v-else-if="domain.validationError || domain.providerData?.providerError || domain.status === 'error'" /><Clock v-else />{{ checking === domain.id ? 'Verificando…' : domain.status === 'error' ? 'Error de dominio' : domainState(domain) }}</span><small v-if="domain.providerName === 'cloudflare'">Propiedad: {{ domain.ownershipVerified ? 'Verificada' : 'Pendiente' }} · Certificado: {{ domain.certificateVerified ? 'Activo' : 'Pendiente' }}</small></div>
             <div class="actions"><button title="Verificar DNS" aria-label="Verificar ahora" :disabled="checking === domain.id" @click="verifyDomain(domain)"><RefreshCw :class="{ spin: checking === domain.id }" /></button><button title="Desconectar" @click="removeDomain(domain)"><Trash2 /></button></div>
