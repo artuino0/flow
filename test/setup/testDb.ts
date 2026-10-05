@@ -14,10 +14,12 @@ import { createServer } from 'node:net'
 // producción - unico modo de que "confirma aislamiento... incluso si el
 // filtro de Drizzle se omite" sea una prueba real y no un acto de fe.
 //
-// El bootstrap (extensiones + rol erp_app) replica erp-dinamico-database/
+// El bootstrap (extensiones + roles) replica erp-dinamico-database/
 // init/001_extensions.sql y init/002_app_role.sql - son repos separados, asi
 // que esto se mantiene sincronizado a mano; si esos scripts cambian, replicar
 // el cambio aca tambien.
+// BUG-ERD-188: el migrador es erp_owner NOSUPERUSER BYPASSRLS; erp_admin
+// se usa exclusivamente para bootstrap/fixtures, nunca para migrar.
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../server/db/migrations')
 
@@ -40,8 +42,10 @@ async function reserveTestPort() {
 }
 
 export interface TestDb {
-  /** Conexion como erp_admin (superusuario) - migraciones, setup. */
+  /** Conexion de bootstrap (superusuario) - solo fixtures y administración local. */
   adminUrl: string
+  /** Propietario no superusuario con BYPASSRLS - todas las migraciones reales. */
+  ownerUrl: string
   /** Conexion como erp_app (sin superusuario) - la app real usa este rol, RLS aplica. */
   appUrl: string
   stop(): Promise<void>
@@ -49,7 +53,7 @@ export interface TestDb {
 
 export async function createTestDb(options: { preserveFiles?: boolean; throughMigration?: string } = {}): Promise<TestDb> {
   if (options.preserveFiles && process.env.TEST_POSTGRES_ADMIN_URL) throw new Error('Esta prueba requiere PostgreSQL embebido')
-  if (process.env.TEST_POSTGRES_ADMIN_URL) return createExternalTestDb(process.env.TEST_POSTGRES_ADMIN_URL)
+  if (process.env.TEST_POSTGRES_ADMIN_URL) return createExternalTestDb(process.env.TEST_POSTGRES_ADMIN_URL, options)
   const { default: EmbeddedPostgres } = await import('embedded-postgres')
   // Evita rangos reservados y el rango efímero de clientes de Windows; reserva durante initdb.
   const { port, server } = await reserveTestPort()
@@ -70,6 +74,7 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
 
   const adminUrl = `postgresql://erp_admin:changeme@localhost:${port}/erp_dinamico_test`
   const appUrl = `postgresql://erp_app:changeme_app@localhost:${port}/erp_dinamico_test`
+  const ownerUrl = `postgresql://erp_owner:changeme_owner@localhost:${port}/erp_dinamico_test`
 
   const admin = postgres(adminUrl, { onnotice: () => {} })
   try {
@@ -87,22 +92,17 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
       END
       $$;
     `)
-    await admin.unsafe('GRANT USAGE ON SCHEMA public TO erp_app')
-    await admin.unsafe('ALTER DEFAULT PRIVILEGES FOR ROLE erp_admin IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app')
-    await admin.unsafe('ALTER DEFAULT PRIVILEGES FOR ROLE erp_admin IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO erp_app')
-
-    // ---- migraciones reales del proyecto, en orden ----
-    const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && (!options.throughMigration || f <= options.throughMigration)).sort()
-    for (const file of files) {
-      const sqlText = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8')
-      await admin.unsafe(sqlText)
-    }
+    await migrateAsOwner(admin, ownerUrl, options.throughMigration)
+  } catch (error) {
+    await pg.stop()
+    throw error
   } finally {
     await admin.end()
   }
 
   return {
     adminUrl,
+    ownerUrl,
     appUrl,
     async stop() {
       await pg.stop()
@@ -118,7 +118,7 @@ export async function createTestDb(options: { preserveFiles?: boolean; throughMi
 
 // Optional local Docker PostgreSQL fallback when embedded binaries are absent.
 // Every suite gets a fresh database; the application database is never used.
-async function createExternalTestDb(connection: string): Promise<TestDb> {
+async function createExternalTestDb(connection: string, options: { throughMigration?: string }): Promise<TestDb> {
   const url = new URL(connection)
   if (!['localhost', '127.0.0.1'].includes(url.hostname)) throw new Error('La base de pruebas debe ser local')
   const databaseName = 'flowerp_test_' + randomUUID().replaceAll('-', '')
@@ -127,18 +127,17 @@ async function createExternalTestDb(connection: string): Promise<TestDb> {
   url.pathname = '/' + databaseName
   const adminUrl = url.toString()
   const admin = postgres(adminUrl, { onnotice: () => {} })
+  const ownerConnection = new URL(adminUrl)
+  ownerConnection.username = 'erp_owner'
+  ownerConnection.password = 'changeme_owner'
+  const ownerUrl = ownerConnection.toString()
   async function stop() {
     await host.unsafe(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
     await host.end()
   }
   try {
     await admin.unsafe('CREATE EXTENSION IF NOT EXISTS "pgcrypto"; CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
-    await admin.unsafe('GRANT USAGE ON SCHEMA public TO erp_app')
-    await admin.unsafe('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app')
-    await admin.unsafe('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO erp_app')
-    for (const file of fs.readdirSync(MIGRATIONS_DIR).filter(file => file.endsWith('.sql')).sort()) {
-      await admin.unsafe(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'))
-    }
+    await migrateAsOwner(admin, ownerUrl, options.throughMigration)
   } catch (error) {
     await admin.end()
     await stop()
@@ -147,5 +146,32 @@ async function createExternalTestDb(connection: string): Promise<TestDb> {
   await admin.end()
   url.username = 'erp_app'
   url.password = process.env.TEST_POSTGRES_APP_PASSWORD || 'changeme_app'
-  return { adminUrl, appUrl: url.toString(), stop }
+  return { adminUrl, ownerUrl, appUrl: url.toString(), stop }
+}
+
+async function migrateAsOwner(admin: postgres.Sql, ownerUrl: string, throughMigration?: string) {
+  // El superusuario solo prepara extensiones/roles; no ejecuta SQL de migraciones.
+  await admin.unsafe(`DO $$ BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'erp_owner') THEN
+      CREATE ROLE erp_owner LOGIN PASSWORD 'changeme_owner' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+    END IF;
+  END $$`)
+  const [database] = await admin`select current_database() as name`
+  await admin.unsafe(`ALTER DATABASE "${String(database!.name).replaceAll('"', '""')}" OWNER TO erp_owner`)
+  await admin.unsafe('ALTER SCHEMA public OWNER TO erp_owner')
+  await admin.unsafe('GRANT USAGE ON SCHEMA public TO erp_app')
+  await admin.unsafe('ALTER DEFAULT PRIVILEGES FOR ROLE erp_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app')
+  await admin.unsafe('ALTER DEFAULT PRIVILEGES FOR ROLE erp_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO erp_app')
+  const owner = postgres(ownerUrl, { onnotice: () => {} })
+  try {
+    const [role] = await owner`select rolsuper, rolbypassrls, rolcreatedb, rolcreaterole from pg_roles where rolname = current_user`
+    if (!role || role.rolsuper || !role.rolbypassrls || role.rolcreatedb || role.rolcreaterole) throw new Error('El migrador debe ser propietario no superusuario con BYPASSRLS')
+    const [app] = await owner`select rolsuper, rolbypassrls, rolcreatedb, rolcreaterole from pg_roles where rolname = 'erp_app'`
+    if (!app || app.rolsuper || app.rolbypassrls || app.rolcreatedb || app.rolcreaterole) throw new Error('erp_app debe carecer de privilegios especiales')
+    for (const file of fs.readdirSync(MIGRATIONS_DIR).filter(file => file.endsWith('.sql') && (!throughMigration || file <= throughMigration)).sort()) {
+      await owner.begin(async tx => { await tx.unsafe(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8')) })
+    }
+  } finally {
+    await owner.end()
+  }
 }

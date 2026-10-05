@@ -23,7 +23,7 @@ beforeAll(async () => {
   vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
   vi.stubGlobal('createError', createError)
   fixture = await createTestDb()
-  admin = postgres(fixture.adminUrl)
+  admin = postgres(fixture.ownerUrl)
   app = postgres(fixture.appUrl)
   process.env.APP_DATABASE_URL = fixture.appUrl
   process.env.DB_POOL_MAX = '3'
@@ -83,7 +83,7 @@ it('desactivada, slug inexistente y autoexclusión no escriben', async () => {
 })
 it('scripts reales son read-only por omisión, aceptan entorno inyectado y resumen sin identidad', async () => {
   const before = await admin`select count(*)::int as count from records`
-  const run = (script: string, args: string[] = []) => JSON.parse(execFileSync(process.execPath, [resolve(__dirname, '../../scripts', script), ...args], { env: { ...process.env, DATABASE_URL: fixture.adminUrl, APP_DATABASE_URL: fixture.appUrl, DB_POOL_MAX: '1' }, encoding: 'utf8', timeout: 30_000 }).trim()) as Record<string, unknown>
+  const run = (script: string, args: string[] = []) => JSON.parse(execFileSync(process.execPath, [resolve(__dirname, '../../scripts', script), ...args], { env: { ...process.env, DATABASE_URL: fixture.ownerUrl, APP_DATABASE_URL: fixture.appUrl, DB_POOL_MAX: '1' }, encoding: 'utf8', timeout: 30_000 }).trim()) as Record<string, unknown>
   expect(run('installPlatformCrm.mjs')).toEqual({ apply: false, enabled: true, installed: true })
   expect(run('installPlatformCrm.mjs', ['--apply'])).toEqual({ apply: true, enabled: true, installed: true })
   expect(run('syncPlatformClients.mjs')).toMatchObject({ apply: false, errors: 0, incomplete: false })

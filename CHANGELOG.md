@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.151.1] - 2026-10-05
+#### [bugfix]
+- [ERD-188](https://dydasoftware.atlassian.net/browse/ERD-188) - La migración del CRM (0096) ya se puede aplicar en Neon: las funciones de captura no declaran parámetros personalizados en su definición (PostgreSQL no lo permite a un rol no superusuario) y fijan y restauran su contexto en el cuerpo. Las pruebas de base de datos ahora migran con un rol propietario no superusuario, como Neon, y una prueba estática impide repetir el error.
+
 ### [0.151.0] - 2026-10-05
 #### [feature]
 - [ERD-187](https://dydasoftware.atlassian.net/browse/ERD-187) - CRM de la empresa: las organizaciones de Flow aparecen como clientes en la organización de la plataforma. Se instala un módulo «Clientes» (con Origen: Flow, Desarrollo a la medida u Otro) y los clientes de Flow se crean y se actualizan solos: plan, intervalo, estado (en prueba, activo, impago o cancelado), ingreso mensual recurrente, fin de prueba, próximo cobro, usuarios, módulos, última actividad y la fuente del registro (campaña y plan elegido desde la landing). Tus notas, contacto y teléfono, y los clientes de desarrollo a la medida, nunca se sobrescriben. La propia organización de la plataforma se excluye, y la función queda apagada hasta definir la organización destino. Un fallo del CRM nunca afecta al registro, al inicio de sesión ni a los pagos. Incluye scripts para instalar el módulo y rellenar las organizaciones existentes.

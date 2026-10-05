@@ -29,9 +29,10 @@ CREATE TRIGGER platform_crm_attribution BEFORE INSERT OR UPDATE OF registration_
   FOR EACH ROW EXECUTE FUNCTION capture_platform_crm_attribution();
 --> statement-breakpoint
 CREATE FUNCTION capture_platform_crm_event() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET app.platform_crm_worker = 'on' SET lock_timeout = '100ms' AS $$
-DECLARE source_id uuid;
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET lock_timeout = '100ms' AS $$
+DECLARE source_id uuid; previous_worker text := current_setting('app.platform_crm_worker', true);
 BEGIN
+  PERFORM set_config('app.platform_crm_worker', 'on', true);
   IF TG_TABLE_NAME = 'tenants' THEN
     source_id := NEW.id;
   ELSE
@@ -42,8 +43,10 @@ BEGIN
   -- Los DELETE en cascada de las suscripciones no sustituyen la lápida del tenant.
   INSERT INTO public.platform_crm_events (tenant_id) VALUES (source_id)
     ON CONFLICT (tenant_id) DO UPDATE SET generation = gen_random_uuid();
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   RETURN NULL;
 EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   -- Solo la captura auxiliar falla: el cobro/registro/transacción principal continúa.
   RAISE WARNING 'platform_crm_event_capture_failed';
   RETURN NULL;
@@ -60,11 +63,15 @@ CREATE TRIGGER platform_crm_override_event AFTER INSERT OR UPDATE OR DELETE ON t
 --> statement-breakpoint
 -- Solo la baja necesita un contexto UUID de lectura; las altas/cobros no lo alteran.
 CREATE FUNCTION capture_platform_crm_delete() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET app.platform_crm_worker = 'on' SET lock_timeout = '100ms'
-  SET app.tenant_id = '00000000-0000-0000-0000-000000000000' SET app.person_id = '00000000-0000-0000-0000-000000000000' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET lock_timeout = '100ms' AS $$
 DECLARE owner_email text; data jsonb;
+  previous_worker text := current_setting('app.platform_crm_worker', true);
+  previous_tenant text := current_setting('app.tenant_id', true);
+  previous_person text := current_setting('app.person_id', true);
 BEGIN
+  PERFORM set_config('app.platform_crm_worker', 'on', true);
   PERFORM set_config('app.tenant_id', OLD.id::text, true);
+  PERFORM set_config('app.person_id', '00000000-0000-0000-0000-000000000000', true);
   SELECT p.email INTO owner_email FROM public.users u JOIN public.people p ON p.id = u.person_id
     JOIN public.roles r ON r.id = u.role_id WHERE u.tenant_id = OLD.id AND r.is_system
     ORDER BY u.created_at LIMIT 1;
@@ -72,8 +79,14 @@ BEGIN
     'fecha_alta', OLD.created_at, 'fecha_baja', now(), 'attribution', OLD.platform_crm_attribution));
   INSERT INTO public.platform_crm_events (tenant_id, payload) VALUES (OLD.id, data)
     ON CONFLICT (tenant_id) DO UPDATE SET generation = gen_random_uuid(), payload = EXCLUDED.payload;
+  PERFORM set_config('app.tenant_id', coalesce(previous_tenant, ''), true);
+  PERFORM set_config('app.person_id', coalesce(previous_person, ''), true);
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   RETURN OLD;
 EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.tenant_id', coalesce(previous_tenant, ''), true);
+  PERFORM set_config('app.person_id', coalesce(previous_person, ''), true);
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   RAISE WARNING 'platform_crm_event_capture_failed';
   RETURN OLD;
 END $$;
@@ -81,13 +94,17 @@ REVOKE ALL ON FUNCTION capture_platform_crm_delete() FROM PUBLIC;
 CREATE TRIGGER platform_crm_tenant_delete BEFORE DELETE ON tenants FOR EACH ROW EXECUTE FUNCTION capture_platform_crm_delete();
 --> statement-breakpoint
 CREATE FUNCTION capture_platform_crm_plan_event() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET app.platform_crm_worker = 'on' SET lock_timeout = '100ms' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public SET lock_timeout = '100ms' AS $$
+DECLARE previous_worker text := current_setting('app.platform_crm_worker', true);
 BEGIN
+  PERFORM set_config('app.platform_crm_worker', 'on', true);
   INSERT INTO public.platform_crm_events (tenant_id)
     SELECT id FROM public.tenants
     ON CONFLICT (tenant_id) DO UPDATE SET generation = gen_random_uuid();
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   RETURN NULL;
 EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.platform_crm_worker', coalesce(previous_worker, ''), true);
   RAISE WARNING 'platform_crm_event_capture_failed';
   RETURN NULL;
 END $$;
