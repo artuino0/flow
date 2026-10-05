@@ -33,5 +33,6 @@ let registered = false
 export function registerDefaultJobHandlers(): void {
   if (registered) return
   registerJobHandler('email', handleEmailJob)
+  registerJobHandler('platform_crm', async job => (await import('./platformCrmQueue')).handlePlatformCrmJob(job))
   registered = true
 }

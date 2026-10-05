@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
+import { logger } from './logger'
 import Stripe from 'stripe'
 import { clearRegistrationChoice, registrationEvent } from '~/server/utils/registrationIntent'
 import { db, withTenant } from '~/server/db'
@@ -227,6 +228,10 @@ export async function captureTenantUsage(tenantId: string, capturedOn = isoDate(
 }
 
 export async function captureAllTenantUsage() {
+  if (process.env.PLATFORM_CRM_TENANT_SLUG) {
+    try { await (await import('./platformCrmQueue')).refreshPlatformCrm() }
+    catch { logger.warn('platform_crm_refresh_failed') }
+  }
   const rows = await db.select({ id: tenants.id }).from(tenants)
   const results = await Promise.allSettled(rows.map(({ id }) => captureTenantUsage(id)))
   return { captured: results.filter(row => row.status === 'fulfilled').length, failed: results.filter(row => row.status === 'rejected').length }

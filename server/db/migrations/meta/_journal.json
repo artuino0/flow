@@ -673,6 +673,13 @@
       "when": 1790607404000,
       "breakpoints": true,
       "tag": "0095_registration_intent"
+    },
+    {
+      "version": "7",
+      "idx": 96,
+      "when": 1790607405000,
+      "breakpoints": true,
+      "tag": "0096_platform_crm"
     }
   ]
 }

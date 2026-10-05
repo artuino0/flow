@@ -367,6 +367,7 @@ export const tenants = pgTable('tenants', {
   onboardingStatus: text('onboarding_status').notNull().default('complete'),
   trialConsumedAt: timestamp('trial_consumed_at', { withTimezone: true }),
   registrationIntent: jsonb('registration_intent').$type<import('../../utils/registrationIntent').RegistrationIntent>(),
+  platformCrmAttribution: jsonb('platform_crm_attribution').$type<import('../../utils/registrationIntent').RegistrationChoice>(),
   phone: text('phone'),
   defaultCurrency: text('default_currency').notNull().default('MXN'),
   timezone: text('timezone').notNull().default('America/Mexico_City'),
@@ -395,6 +396,13 @@ export const tenants = pgTable('tenants', {
 }, (table) => ({
   slugUnique: uniqueIndex('tenants_slug_unique').on(table.slug)
 }))
+
+// Eventos internos de plataforma: la llave histórica no tiene FK para conservar bajas.
+export const platformCrmEvents = pgTable('platform_crm_events', {
+  tenantId: uuid('tenant_id').primaryKey(), generation: uuid('generation').notNull().defaultRandom(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+})
 
 // Pedido directo del usuario (2026-09-04): "la organizacion en el login no
 // debe pedirse a fuerza... siempre y cuando tuviera mas de una organizacion

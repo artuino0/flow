@@ -17,7 +17,7 @@ import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 //  - Un trabajo se identifica opcionalmente con una clave de idempotencia
 //    (p. ej. "recordatorio:<cita>:<programación>") y no se encola dos veces.
 
-export type JobKind = 'email'
+export type JobKind = 'email' | 'platform_crm'
 export type JobStatus = 'pending' | 'processing' | 'succeeded' | 'dead'
 
 export interface ClaimedJob {
@@ -224,6 +224,10 @@ function envNumber(name: string, fallback: number): number {
  * ejecuta con un ritmo máximo, hasta agotar el tiempo o la cola.
  */
 export async function runJobQueueTick(options: TickOptions = {}): Promise<TickResult> {
+  if (process.env.PLATFORM_CRM_TENANT_SLUG) {
+    try { await (await import('./platformCrmQueue')).drainPlatformCrmEvents() }
+    catch { logger.warn('platform_crm_enqueue_failed') }
+  }
   const clock = options.now ?? (() => new Date())
   const budgetMs = options.budgetMs ?? envNumber('JOB_QUEUE_BUDGET_MS', 45_000)
   const batchSize = options.batchSize ?? envNumber('JOB_QUEUE_BATCH_SIZE', 40)

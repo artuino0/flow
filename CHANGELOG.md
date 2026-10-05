@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.151.0] - 2026-10-05
+#### [feature]
+- [ERD-187](https://dydasoftware.atlassian.net/browse/ERD-187) - CRM de la empresa: las organizaciones de Flow aparecen como clientes en la organización de la plataforma. Se instala un módulo «Clientes» (con Origen: Flow, Desarrollo a la medida u Otro) y los clientes de Flow se crean y se actualizan solos: plan, intervalo, estado (en prueba, activo, impago o cancelado), ingreso mensual recurrente, fin de prueba, próximo cobro, usuarios, módulos, última actividad y la fuente del registro (campaña y plan elegido desde la landing). Tus notas, contacto y teléfono, y los clientes de desarrollo a la medida, nunca se sobrescriben. La propia organización de la plataforma se excluye, y la función queda apagada hasta definir la organización destino. Un fallo del CRM nunca afecta al registro, al inicio de sesión ni a los pagos. Incluye scripts para instalar el módulo y rellenar las organizaciones existentes.
+
 ### [0.150.0] - 2026-10-05
 #### [feature]
 - [ERD-186](https://dydasoftware.atlassian.net/browse/ERD-186) - Registro con plan elegido desde tu página: un enlace como `/registro?plan=starter&interval=year` lleva al visitante a crear su cuenta con el plan ya elegido (Agenda, Starter, Crecimiento o Escala, mensual o anual). La elección se guarda con la organización, sobrevive a confirmar el correo desde otro dispositivo y, al entrar, la pantalla de elegir plan la muestra resaltada con un botón «Continuar al pago» (el pago y los 30 días de prueba funcionan como antes y no se abre Stripe sin tu acción). También se guardan la fuente de la visita (UTM y referencia) para medir de dónde llegan los registros. Si tu organización ya tiene un plan, la elección se ignora.
