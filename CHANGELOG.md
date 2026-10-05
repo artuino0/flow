@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.153.1] - 2026-10-05
+#### [bugfix]
+- [ERD-192](https://dydasoftware.atlassian.net/browse/ERD-192) - Los sitios públicos vuelven a cargar rápido: una página sin agenda ya no recorre todo su contenido tres veces buscando marcadores de agenda, lo que tras un minuto de encendido llegaba a tardar varios segundos y congelaba el servidor.
+
 ### [0.153.0] - 2026-10-05
 #### [feature]
 - [ERD-190](https://dydasoftware.atlassian.net/browse/ERD-190) - Agenda pública más segura: los límites de uso distinguen a cada visitante por su IP real (ya no se bloquean entre sí quienes comparten proxy) y se guardan en la base de datos, de modo que sobreviven a los despliegues; protección contra bots con Cloudflare Turnstile al reservar (apagada si no se configura); y confirmación opcional de la cita por correo: la cita queda «por confirmar», bloquea el horario unos minutos y se libera sola si no se confirma. El personal recibe el aviso cuando la cita queda confirmada.

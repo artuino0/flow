@@ -31,6 +31,7 @@ function marker(source: string, start: number, attribute: boolean): AgendaMarker
 /** Escáner con estados HTML; nunca interpreta texto en comentarios, raw text o atributos. */
 export function analyzeAgendaMarkers(html: string): AgendaMarker[] {
   const found: AgendaMarker[] = []
+  if (!html.includes('{{')) return found
   let i = 0
   const lower = html.toLowerCase()
   while (i < html.length) {
