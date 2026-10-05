@@ -1,27 +1,17 @@
-import { defineEventHandler, getHeader, getRequestURL, setResponseHeader, setResponseStatus, type H3Event } from 'h3'
+import { defineEventHandler, getRequestURL, setResponseHeader, setResponseStatus } from 'h3'
+import { effectiveRequestHostname } from '~/server/utils/effectiveHost'
+import { isReservedSiteHostname } from '~/server/utils/siteDomainHostnames'
 import { siteRelativeAssetName, siteRequestHasTraversal } from '~/utils/siteAssetPath'
 import { sendRelativeSiteAsset, sitePublicNotFound } from '~/server/utils/publicSiteAssets'
 import { normalizeSitePath } from '~/server/utils/sites'
 import { isActiveSiteDomain, renderPublicSiteDocument, resolvePublishedDomain } from '~/server/utils/siteDomains'
 import { protectSiteAgendaDocument, siteAgendaPresentation } from '~/server/utils/siteAgenda'
 
-function requestHostname(event: H3Event) {
-  const forwarded = getHeader(event, 'x-forwarded-host')?.split(',')[0]?.trim()
-  return (forwarded || getHeader(event, 'host') || '').split(':')[0].toLowerCase().replace(/\.$/, '')
-}
-function reservedHostnames() {
-  const values = new Set(['localhost', '127.0.0.1', '::1'])
-  for (const raw of [process.env.APP_BASE_URL, process.env.VERCEL_URL, process.env.RAILWAY_PUBLIC_DOMAIN]) {
-    if (!raw) continue
-    try { values.add(new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase()) } catch { /* configuración incompleta */ }
-  }
-  return values
-}
 export default defineEventHandler(async event => {
   const path = getRequestURL(event).pathname
-  if (path.startsWith('/api/') || path.startsWith('/_nuxt/') || path.startsWith('/site-preview/') || path.startsWith('/agenda-manage/')) return
-  const hostname = requestHostname(event)
-  if (!hostname || reservedHostnames().has(hostname) || hostname.endsWith('.vercel.app')) return
+  if (path.startsWith('/api/') || path.startsWith('/_nuxt/') || path.startsWith('/site-preview/') || path.startsWith('/agenda-manage/') || path === '/.well-known/flow-site-edge') return
+  const hostname = effectiveRequestHostname(event)
+  if (!hostname || isReservedSiteHostname(hostname)) return
   if (siteRequestHasTraversal(event.node.req.url ?? '')) {
     if (await isActiveSiteDomain(hostname)) return sitePublicNotFound(event)
     return

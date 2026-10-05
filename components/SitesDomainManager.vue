@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Copy, ExternalLink, Globe2, Plus, RefreshCw, ShieldCheck, Trash2, X } from '@lucide/vue'
+import { Check, Copy, ExternalLink, Globe2, Plus, RefreshCw, ShieldCheck, Trash2, X, AlertCircle, Clock } from '@lucide/vue'
 const props = defineProps<{ siteId?: string }>()
 const { confirm: confirmAction } = useConfirm()
 interface Page { id: string; title: string; path: string; status: string }
@@ -9,12 +9,13 @@ interface Domain {
   isPrimary: boolean; rootPageId: string | null; rootPageTitle: string | null; recordType: 'apex' | 'subdomain'
   dns: DnsRecord; dnsRecords: DnsRecord[]; providerConfigured: boolean; ownershipVerified: boolean; dnsVerified: boolean; lastCheckedAt: string | null
   providerData?: { providerError?: string }
+  providerName?: string; certificateVerified?: boolean; verificationState?: string; validationError?: string | null; managedByZone?: boolean
 }
 interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; purpose: 'routing' | 'ownership' }
 const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
 const { data: sitesData } = await useFetch<{ sites: Site[] }>('/api/sites', { headers })
 const domainUrl = computed(() => props.siteId ? `/api/sites/domains?siteId=${props.siteId}` : '/api/sites/domains')
-const { data: domainData, pending, error, refresh } = await useFetch<{ domains: Domain[] }>(domainUrl, { headers })
+const { data: domainData, pending, error, refresh } = await useFetch<{ domains: Domain[]; providerConfigured?: boolean }>(domainUrl, { headers })
 const sites = computed(() => (sitesData.value?.sites ?? []).filter(site => !props.siteId || site.id === props.siteId))
 const domains = computed(() => domainData.value?.domains ?? [])
 const query = ref('')
@@ -89,6 +90,11 @@ async function copyValue(key: string, value: string) {
   window.setTimeout(() => { if (copied.value === key) copied.value = '' }, 1400)
 }
 function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId}${path === '/' ? '' : path}` }
+function domainState(domain: Domain) {
+  if (domain.validationError || domain.providerData?.providerError) return 'Error'
+  if (domain.status === 'active') return 'Activo'
+  return domain.verificationState === 'certificate' ? 'Emitiendo certificado' : 'Esperando DNS'
+}
 </script>
 
 <template>
@@ -109,6 +115,7 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
     </ListPageHeader>
 
     <div v-if="feedback" class="feedback">{{ feedback }}</div>
+    <p v-if="domainData?.providerConfigured === false" class="provider-warning">El administrador debe configurar la conexión del proveedor de dominios de Flow Sites.</p>
     <div class="table-wrap">
       <div class="row head"><div>Sitio</div><div>Dirección</div><div>Inicio</div><div>Estado</div><div>Acciones</div></div>
       <div v-if="pending" class="state">Cargando dominios…</div>
@@ -126,15 +133,18 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
             <div class="site"><span><Globe2 /></span><div><strong>{{ domain.siteName }}</strong><small v-if="domain.isPrimary">Dominio principal</small></div></div>
             <div><a class="domain-link" :href="`https://${domain.hostname}`" target="_blank">{{ domain.hostname }} <ExternalLink /></a><small>Dominio personalizado</small></div>
             <div>{{ domain.rootPageTitle || 'Ruta / del sitio' }}</div>
-            <div><span class="status" :class="{ active: domain.status === 'active' && checking !== domain.id, failed: domain.status === 'error' && checking !== domain.id }"><i />{{ checking === domain.id ? 'Verificando…' : domain.status === 'active' ? 'Activo' : domain.status === 'error' ? 'Error de dominio' : 'Esperando DNS' }}</span></div>
-            <div class="actions"><button title="Verificar DNS" :disabled="checking === domain.id" @click="verifyDomain(domain)"><RefreshCw :class="{ spin: checking === domain.id }" /></button><button title="Desconectar" @click="removeDomain(domain)"><Trash2 /></button></div>
+            <div><span class="status" :class="{ active: domain.status === 'active' && checking !== domain.id, failed: domain.status === 'error' || !!domain.validationError || !!domain.providerData?.providerError }"><ShieldCheck v-if="domain.status === 'active'" /><AlertCircle v-else-if="domain.validationError || domain.providerData?.providerError || domain.status === 'error'" /><Clock v-else />{{ checking === domain.id ? 'Verificando…' : domain.status === 'error' ? 'Error de dominio' : domainState(domain) }}</span><small v-if="domain.providerName === 'cloudflare'">Propiedad: {{ domain.ownershipVerified ? 'Verificada' : 'Pendiente' }} · Certificado: {{ domain.certificateVerified ? 'Activo' : 'Pendiente' }}</small></div>
+            <div class="actions"><button title="Verificar DNS" aria-label="Verificar ahora" :disabled="checking === domain.id" @click="verifyDomain(domain)"><RefreshCw :class="{ spin: checking === domain.id }" /></button><button title="Desconectar" @click="removeDomain(domain)"><Trash2 /></button></div>
           </div>
-          <div v-if="domain.status !== 'active'" class="dns-panel">
+          <div v-if="domain.status !== 'active' || domain.providerName === 'cloudflare'" class="dns-panel">
             <p v-if="!domain.providerConfigured" class="provider-warning">Flow Sites no tiene configurada la conexión administrativa con el proveedor de dominios seleccionado. El administrador de la plataforma debe completar esa conexión.</p>
             <p v-if="domain.providerData?.providerError" class="provider-warning">{{ domain.providerData.providerError }}</p>
+            <p v-if="domain.validationError" class="provider-warning" role="alert">Error: {{ domain.validationError }}</p>
             <div class="dns-intro">
+              <p v-if="domain.managedByZone">Gestionado por la zona propia: el operador debe crear este DNS con proxy en Cloudflare. No requiere un Custom Hostname. Para el raíz usa CNAME flattening de Cloudflare.</p>
               <b>Agrega estos registros en tu proveedor de dominio</b>
               <span>Configura los registros indicados por el proveedor para {{ domain.hostname }}. Agrega todos los registros de enrutamiento y verificación que aparecen abajo.</span>
+              <button v-if="domain.providerName === 'cloudflare'" class="secondary" :disabled="checking === domain.id" @click="verifyDomain(domain)">{{ checking === domain.id ? 'Verificando…' : 'Verificar ahora' }}</button>
             </div>
             <div v-for="(record, index) in domain.dnsRecords" :key="`${record.type}-${record.name}`" class="dns-record">
               <span class="dns-purpose">{{ record.purpose === 'ownership' ? 'Verificar propiedad' : 'Dirigir el dominio a Flow' }}</span>
@@ -145,6 +155,7 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
             <div class="dns-help">
               <p>Estos registros aplican a <strong>{{ domain.hostname }}</strong>. Sigue los tipos, nombres y valores que proporciona el proveedor activo.</p>
               <p>Conserva los registros MX y TXT de correo. Reemplaza únicamente registros A o CNAME anteriores que usen exactamente el mismo nombre.</p>
+              <p v-if="domain.providerName === 'cloudflare'">Un dominio raíz (cliente.com) requiere CNAME aplanado o ALIAS. Si tu DNS no lo permite, conecta www y redirige el raíz a www. Flow no proporciona registros A para esta conexión.</p>
             </div>
           </div>
         </div>
@@ -175,4 +186,5 @@ function previewUrl(siteId: string, path = '/') { return `/site-preview/${siteId
 .dns-help{display:grid;gap:4px;margin-top:8px;border-top:1px solid rgb(var(--brand-border-light));padding-top:10px;color:rgb(var(--brand-text-secondary));line-height:1.5}.dns-help p{margin:0}.dns-help strong{color:rgb(var(--brand-text));font-weight:700}
 .status.failed{background:rgb(var(--brand-error-bg));color:rgb(var(--brand-error-text))}
 input,select,textarea{color-scheme:inherit}
+.status svg{height:13px;width:13px;flex:none}
 </style>

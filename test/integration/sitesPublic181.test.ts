@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { createEvent, createError } from 'h3'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
+import { captureEdgeHost } from '../../server/utils/effectiveHost'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import { withRecordActor } from '../../server/utils/recordActorContext'
 import { setStoredObjectAdapter, StoredObjectNotFoundError } from '../../server/utils/objectStorage'
@@ -113,6 +114,45 @@ describe('Sites 181: respuestas reales, RLS y biblioteca pública', () => {
     expect(await sendPreview(request, first.site, '/otra')).toContain('<h1>Otra página</h1>'); expect(request.node.res.getHeader('content-type')).toBe('text/html; charset=utf-8')
     vi.stubEnv('NODE_ENV', 'production'); const production = event(`/site-preview/${first.site}/otra`)
     await sendPreview(production, first.site, '/otra'); expect(production.node.res.getHeader('content-security-policy')).toBeUndefined()
+  })
+  it('Cloudflare sirve HTML y archivos solo con borde autenticado y respeta hosts reservados', async () => {
+    vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge')
+    const forwarded = (path: string, secret: string, hostname = 'cliente181.test') => {
+      const request = event(path, 'origin.flow.test')
+      request.node.req.headers['x-forwarded-host'] = hostname; request.node.req.headers['x-flow-edge-secret'] = secret
+      captureEdgeHost(request); return request
+    }
+    for (const secret of ['', 'incorrecto']) expect(await domainHandler(forwarded('/', secret))).toBeUndefined()
+    expect(await domainHandler(forwarded('/', 'simulated-edge'))).toContain('<script>window.autor=true</script>')
+    const asset = forwarded('/script.js', 'simulated-edge')
+    expect(String(await domainHandler(asset))).toBe('window.sitio=0')
+    expect(asset.node.res.getHeader('content-type')).toBe('text/javascript')
+    expect(asset.node.req.headers['x-flow-edge-secret']).toBeUndefined()
+    expect(await domainHandler(forwarded('/', 'simulated-edge', 'localhost'))).toBeUndefined()
+    vi.stubEnv('APP_BASE_URL', 'https://app.flow.test')
+    expect(await domainHandler(forwarded('/', 'simulated-edge', 'app.flow.test'))).toBeUndefined()
+    expect(await domainHandler(forwarded('/agenda-manage/site/page', 'simulated-edge'))).toBeUndefined()
+  })
+  it('zona propia: flow y raíz sirven el mismo sitio y /agenda; app queda reservado', async () => {
+    vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge')
+    vi.stubEnv('APP_BASE_URL', 'https://app.dydasoftware.com'); vi.stubEnv('RAILWAY_PUBLIC_DOMAIN', 'app.dydasoftware.com')
+    vi.stubEnv('CLOUDFLARE_ZONE_NAME', 'dydasoftware.com'); vi.stubEnv('CLOUDFLARE_FALLBACK_ORIGIN', 'app.dydasoftware.com')
+    const first = bindings[0]!
+    for (const hostname of ['flow.dydasoftware.com', 'dydasoftware.com', 'www.dydasoftware.com']) {
+      await admin`insert into site_domains(tenant_id,site_id,hostname,status,provider,provider_data) values (${first.tenant},${first.site},${hostname},'active','cloudflare','{"cloudflare":{"managedByZone":true,"managementReason":"own_zone","dnsVerified":true,"edgeVerified":true}}')`
+    }
+    const child = await actor(0, () => sites.createSitePage(first.tenant, first.user, first.site, { title: 'Agenda propia', path: '/agenda' }))
+    await actor(0, () => sites.saveSitePageDraft(first.tenant, first.user, first.site, child!.id, { title: 'Agenda propia', path: '/agenda', html: '<h1>Agenda propia</h1>', css: '' }))
+    await actor(0, () => sites.publishSitePage(first.tenant, first.user, first.site, child!.id))
+    for (const hostname of ['flow.dydasoftware.com', 'dydasoftware.com', 'www.dydasoftware.com']) {
+      const request = (path: string) => {
+        const e = event(path, 'app.dydasoftware.com'); e.node.req.headers['x-forwarded-host'] = hostname; e.node.req.headers['x-flow-edge-secret'] = 'simulated-edge'; captureEdgeHost(e); return e
+      }
+      expect(await domainHandler(request('/'))).toContain('<script>window.autor=true</script>')
+      expect(await domainHandler(request('/agenda'))).toContain('<h1>Agenda propia</h1>')
+    }
+    expect(await domainHandler(event('/', 'app.dydasoftware.com'))).toBeUndefined()
+    await expect(domains.createSiteDomain(first.tenant, first.user, { siteId: first.site, hostname: 'app.dydasoftware.com' })).rejects.toMatchObject({ statusCode: 422, statusMessage: expect.stringContaining('reservado') })
   })
   it('duplicados, objeto ausente, clave privada, límite y sitio sin referencia fallan cerrado', async () => {
     const first = bindings[0]!, published = (await domains.resolvePublishedPreview(first.site, '/'))!

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.149.0] - 2026-10-05
+#### [feature]
+- [ERD-185](https://dydasoftware.atlassian.net/browse/ERD-185) - Dominios propios de clientes con Cloudflare: Flow puede registrar los dominios de tus clientes en Cloudflare (que emite y renueva el certificado) en lugar de depender del límite de dominios del hosting, y mostrar los registros DNS que debe crear cada cliente. El dominio real del cliente solo se acepta cuando la petición trae el secreto de borde de Cloudflare, para que nadie pueda suplantarlo. El dominio de la propia empresa (por ejemplo `flow.` y el raíz) se asigna a un sitio sin darlo de alta como dominio de cliente, y la dirección de la aplicación queda reservada. Incluye un script de solo lectura que detecta dominios huérfanos entre Flow y el proveedor, y una guía de operación con los pasos de configuración en Cloudflare.
+
 ### [0.148.2] - 2026-10-05
 #### [bugfix]
 - [ERD-184](https://dydasoftware.atlassian.net/browse/ERD-184) - Dominios de Sites con Railway: al agregar un dominio aparecía un error técnico («Cannot query field "verified"…») porque Railway cambió la forma de su API. Ahora el dominio se registra y se muestran los registros DNS que debe crear el cliente. Si el proveedor falla, ves un mensaje claro y el dominio no queda guardado a medias.

@@ -1,4 +1,5 @@
-import { getRequestURL, type H3Event } from 'h3'
+import type { H3Event } from 'h3'
+import { effectiveRequestURL } from './effectiveHost'
 
 function permittedProtocol(url: URL, production: boolean) {
  return url.protocol === 'https:' || (!production && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))
@@ -26,7 +27,7 @@ export function allowedRequestOrigins(event: H3Event): ReadonlySet<string> {
  // Fuera de Railway (incluido Nuxt local directo) ignoramos ambas cabeceras.
  const railwayProxy = Boolean(process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL)
  try {
-  const url = getRequestURL(event, { xForwardedHost: railwayProxy, xForwardedProto: railwayProxy })
+  const url = effectiveRequestURL(event, railwayProxy, railwayProxy)
   if (permittedProtocol(url, production)) origins.add(url.origin)
  } catch { /* Un host inválido no invalida los orígenes configurados. */ }
  // APP_BASE_URL conserva la extracción de origen aunque incluya una ruta.

@@ -1,4 +1,5 @@
 import type { Peer } from 'crossws'
+import { effectiveHostFromHeaders } from '~/server/utils/effectiveHost'
 import { defineWebSocketHandler } from 'h3'
 import { AUTH_COOKIE_NAME, resolveAuthToken, type AuthTokenPayload, verifyAuthToken } from '~/server/utils/auth'
 import { logger } from '~/server/utils/logger'
@@ -57,8 +58,7 @@ function allowedOrigin(request: Request): boolean {
   if (configured.includes(origin.replace(/\/$/, ''))) return true
 
   try {
-    const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-    const expectedHost = forwardedHost || request.headers.get('host') || new URL(request.url).host
+    const expectedHost = effectiveHostFromHeaders(name => request.headers.get(name)) || new URL(request.url).host
     return new URL(origin).host === expectedHost
   } catch {
     return false

@@ -1,5 +1,6 @@
 import { createError, getHeader, getQuery, setResponseHeader, type H3Event } from 'h3'
 import { z } from 'zod'
+import { effectiveRequestHost } from './effectiveHost'
 import { agendaRequestLimit, publicAgendaNotFound } from './agendaPublicSecurity'
 import { resolveAgendaContext } from './agendaPublic'
 
@@ -42,7 +43,7 @@ export async function agendaHttpContext(event: H3Event, operation: string, input
   // bucket. En un proxy varios visitantes comparten IP (límite conservador).
   const ip = event.node.req.socket.remoteAddress ?? 'unknown'
   agendaRequestLimit(operation, ip, input.site, input.client ? [input.client.email, input.client.phone] : [])
-  const host = getHeader(event, 'host') ?? ''
+  const host = effectiveRequestHost(event, false)
   const origin = getHeader(event, 'origin') || (() => {
     // GET de mismo origen no lleva Origin en todos los navegadores; exigir
     // Referer válido y comprobarlo contra Host, sin confiar en href del cuerpo.

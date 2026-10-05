@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { effectiveRequestURL } from '~/server/utils/effectiveHost'
 import { requirePermission, getPermissionFlags } from '~/server/utils/rbac'
 import { withTenant } from '~/server/db'
 import { entityFields } from '~/server/db/schema'
@@ -14,7 +15,7 @@ export default defineEventHandler(async (event) => {
     .where(eq(entityFields.entityId, entity.id))
     .orderBy(entityFields.sortOrder, entityFields.createdAt))
   const permissions = await getPermissionFlags(auth, entity.id)
-  const origin = getRequestURL(event).origin
+  const origin = effectiveRequestURL(event).origin
   const collectionPath = `/records/${entity.slug}`
   const itemPath = `${collectionPath}/{id}`
   return {

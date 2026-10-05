@@ -7,6 +7,8 @@ import { db, withTenant } from '~/server/db'
 import { siteDomains, sitePages, sites } from '~/server/db/schema'
 import { transformAgendaMarkers, type AgendaMarkerConfig } from '~/utils/agendaMarkers'
 import { publicAgendaRuntime, type AgendaRuntimeConfig } from '~/utils/publicAgendaRuntime'
+import { cloudflarePresentation, cloudflarePublicData, cloudflareSiteDomainProvider } from './cloudflareSiteDomains'
+import { isReservedSiteHostname } from './siteDomainHostnames'
 
 export type DomainRecordType = 'apex' | 'subdomain'
 
@@ -22,15 +24,15 @@ export interface PublicSitePage {
   css: string
 }
 
-interface DnsInstruction {
+export interface DnsInstruction {
   type: 'A' | 'CNAME' | 'TXT'
   name: string
   value: string
   purpose: 'routing' | 'ownership'
 }
 
-export type SiteDomainProviderName = 'vercel' | 'railway'
-interface SiteDomainProvider {
+export type SiteDomainProviderName = 'vercel' | 'railway' | 'cloudflare'
+export interface SiteDomainProvider {
   name: SiteDomainProviderName
   configured: boolean
   register(hostname: string): Promise<Record<string, unknown>>
@@ -98,8 +100,8 @@ export function domainDnsInstructions(hostname: string, recordType = inferDomain
 
 export function providerName(): SiteDomainProviderName {
   const requested = process.env.SITE_DOMAIN_PROVIDER?.trim().toLowerCase()
-  if (requested && requested !== 'vercel' && requested !== 'railway') {
-    throw createError({ statusCode: 503, statusMessage: 'SITE_DOMAIN_PROVIDER debe ser vercel o railway' })
+  if (requested && requested !== 'vercel' && requested !== 'railway' && requested !== 'cloudflare') {
+    throw createError({ statusCode: 503, statusMessage: 'SITE_DOMAIN_PROVIDER debe ser vercel o railway o cloudflare' })
   }
   if (requested) return requested as SiteDomainProviderName
   if (process.env.VERCEL_TOKEN?.trim()) return 'vercel'
@@ -190,6 +192,7 @@ async function railwayDomain(hostname: string, existing?: Record<string, unknown
 }
 
 export function getSiteDomainProvider(name = providerName()): SiteDomainProvider {
+  if (name === 'cloudflare') return cloudflareSiteDomainProvider()
   if (name === 'railway') return {
     name, configured: Boolean(railwayConfig()),
     register: async hostname => await railwayDomain(hostname) as Record<string, unknown>,
@@ -344,7 +347,8 @@ function presentDomain(row: DomainPresentationRow) {
     providerConfigured: provider?.configured ?? false,
     providerName: provider?.name ?? row.provider,
     ownershipVerified: provider?.name === 'railway' ? railwayVerified(providerData) : (providerData.vercel as VercelDomainResponse | undefined)?.verified !== false,
-    dnsVerified: providerData.dnsVerified === true
+    dnsVerified: providerData.dnsVerified === true,
+    ...(provider?.name === 'cloudflare' ? { ...cloudflarePresentation(providerData), providerData: cloudflarePublicData(providerData) } : {})
   }
 }
 
@@ -380,6 +384,7 @@ export async function createSiteDomain(
   input: { siteId: string; hostname: string; rootPageId?: string | null }
 ) {
   const hostname = normalizeHostname(input.hostname)
+  if (isReservedSiteHostname(hostname)) throw createError({ statusCode: 422, statusMessage: 'Este dominio está reservado para la aplicación o su infraestructura. Usa un dominio distinto para el sitio.' })
   const recordType = inferDomainRecordType(hostname)
   const binding = await withTenant(tenantId, async tx => {
     const [site] = await tx.select({ id: sites.id })
@@ -439,6 +444,7 @@ export async function createSiteDomain(
   const dnsRecords = provider.dns(hostname, { [provider.name]: registration })
   const dnsVerified = provider.name === 'railway'
     ? railwayVerified(registration)
+    : provider.name === 'cloudflare' ? registration.managedByZone === true ? registration.dnsVerified === true : registration.status === 'active'
     : await verifyDns(hostname, recordType)
   const active = provider.verified({ [provider.name]: registration }) && dnsVerified
   const providerData: Record<string, unknown> = {
@@ -501,6 +507,7 @@ export async function verifySiteDomain(tenantId: string, domainId: string) {
     }
     dnsVerified = provider.name === 'railway'
       ? railwayDnsVerified({ railway: providerResult })
+      : provider.name === 'cloudflare' ? providerResult.managedByZone === true ? providerResult.dnsVerified === true : providerResult.status === 'active'
       : await verifyDns(current.hostname, recordType)
   } catch (error) {
     providerError = error instanceof Error ? error.message : 'No se pudo verificar el dominio'

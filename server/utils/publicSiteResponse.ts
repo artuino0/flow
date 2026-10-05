@@ -1,4 +1,5 @@
-import { getRequestURL, sendRedirect, setResponseHeader, type H3Event } from 'h3'
+import { sendRedirect, setResponseHeader, type H3Event } from 'h3'
+import { effectiveRequestURL } from './effectiveHost'
 import { siteRequestHasTraversal } from '~/utils/siteAssetPath'
 import { normalizeSitePath } from '~/server/utils/sites'
 import { renderPublicSiteDocument, resolvePublishedPreview } from '~/server/utils/siteDomains'
@@ -7,7 +8,7 @@ import { sendRelativeSiteAsset, sitePublicNotFound } from './publicSiteAssets'
 import { sandboxSiteFormsDocument } from './sitePreviewForms'
 export async function sendSitePreview(event: H3Event, siteId: string, rawPath = '/') {
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(siteId) || siteRequestHasTraversal(event.node.req.url ?? '')) return sitePublicNotFound(event)
-  const url = getRequestURL(event)
+  const url = effectiveRequestURL(event)
   if (url.pathname === `/site-preview/${siteId}`) return sendRedirect(event, `${url.pathname}/${url.search}`, 308)
   let path: string | undefined
   try { path = normalizeSitePath(rawPath) } catch { path = undefined }

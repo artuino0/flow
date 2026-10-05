@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
 import { createEvent } from 'h3'
+import { captureEdgeHost } from '../../server/utils/effectiveHost'
 import { JSDOM } from 'jsdom'
 import { createTestDb, type TestDb } from '../setup/testDb'
 import { withRecordActor } from '../../server/utils/recordActorContext'
@@ -23,11 +24,12 @@ let book: typeof import('../../server/api/public/agenda/book.post').default
 let cancel: typeof import('../../server/api/public/agenda/cancel.post').default
 let reschedule: typeof import('../../server/api/public/agenda/reschedule.post').default
 let dom: JSDOM | undefined, dispose: (() => void) | undefined
+let edgeTransport = false
 
 function event(url: string, method: string, headers: Record<string, string>, body?: unknown) {
-  const req = new IncomingMessage(new Socket()); req.url = url; req.method = method; req.headers = headers
+  const req = new IncomingMessage(new Socket()); req.url = url; req.method = method; req.headers = edgeTransport ? { ...headers, host: 'origin.flow.test', 'x-forwarded-host': headers.host!, 'x-flow-edge-secret': 'simulated-edge' } : headers
   if (body !== undefined) req.push(typeof body === 'string' ? body : JSON.stringify(body))
-  req.push(null); return createEvent(req, new ServerResponse(req))
+  req.push(null); const result = createEvent(req, new ServerResponse(req)); captureEdgeHost(result); return result
 }
 beforeAll(async () => {
   database = await createTestDb(); admin = postgres(database.adminUrl, { onnotice: () => {} })
@@ -51,7 +53,7 @@ beforeAll(async () => {
   cancel = (await import('../../server/api/public/agenda/cancel.post')).default
   reschedule = (await import('../../server/api/public/agenda/reschedule.post')).default
 }, 90000)
-beforeEach(() => { resetPublicRateLimits(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now) })
+beforeEach(() => { edgeTransport = false; resetPublicRateLimits(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now) })
 afterEach(() => { dispose?.(); dispose = undefined; dom?.window.close(); dom = undefined; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); resetPublicRateLimits() })
 afterAll(async () => { await connection?.client.end(); await admin?.end(); await database?.stop(); delete process.env.APP_DATABASE_URL; delete process.env.APP_BASE_URL })
 const query = `/api/public/agenda/slots?site=${site}&page=${page}&from=2026-10-05&to=2026-10-05`
@@ -78,7 +80,8 @@ describe('Agenda 180: runtime y handlers reales con cabeceras de navegador', () 
   it.each(invalidHeaders)('rechaza cabeceras ajenas o ausentes %j sin revelar el motivo', async headers => {
     await expect(slots(event(query, 'GET', { ...headers, 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }))).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Agenda no disponible.', stack: '' })
   })
-  it.each([flow, custom])('modal → catálogo → lunes → reserva → gestión y cambios desde %s', async origin => {
+  it.each([{ origin: flow, edge: false }, { origin: custom, edge: false }, { origin: custom, edge: true }])('modal → catálogo → lunes → reserva → gestión y cambios desde $origin, borde=$edge', async ({ origin, edge }) => {
+    if (edge) { vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge'); edgeTransport = true }
     dom = new JSDOM('<button data-flow-agenda-open>Agenda tu cita</button>', { url: `${origin}/site-preview/${site}?email=privado#dato=secreto`, pretendToBeVisual: true })
     for (const key of ['document', 'location', 'history', 'HTMLElement', 'Element', 'Event', 'getComputedStyle'] as const) vi.stubGlobal(key, dom.window[key])
     const calls: Array<{ url: string; init: RequestInit; headers: Record<string, string> }> = []
@@ -123,6 +126,17 @@ describe('Agenda 180: runtime y handlers reales con cabeceras de navegador', () 
     const tokenHeader = { 'X-Flow-Agenda-Token': confirmation.token }
     await expect(booking(event(bookingUrl, 'GET', agendaBrowserHeaders(dom.window.location.href, bookingUrl, { headers: tokenHeader, referrerPolicy: 'no-referrer' })))).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Agenda no disponible.' })
     await expect(booking(event(bookingUrl, 'GET', agendaBrowserHeaders(dom.window.location.href, bookingUrl, { headers: tokenHeader, referrerPolicy: 'same-origin' })))).resolves.toMatchObject({ services: ['Consulta'], personal: 'Ana visible' })
+    if (edge) {
+      const manage = (await import('../../server/routes/agenda-manage/[site]/[page].get')).default
+      const request = event(`/agenda-manage/${site}/${page}`, 'GET', { host: new URL(origin).host })
+      request.context.params = { site, page }
+      const html = await manage(request)
+      expect(html).toContain('data-flow-agenda-runtime'); expect(html).not.toContain('"unavailable":true')
+      expect(request.node.res.getHeader('content-security-policy')).toContain("frame-ancestors 'none'")
+      expect(request.node.res.getHeader('content-security-policy')).toContain("script-src-attr 'none'")
+      expect(request.node.res.getHeader('cache-control')).toBe('no-store')
+      expect(request.node.req.headers['x-flow-edge-secret']).toBeUndefined()
+    }
     dispose(); dom.window.document.body.innerHTML = '<main data-flow-agenda-management></main>'
     dom.window.history.replaceState(null, '', `/agenda-manage/${site}/${page}?descartar=1#agenda=${confirmation.token}`)
     dispose = bootPublicAgenda({ ...cfg, management: true }); await settle()
@@ -146,6 +160,17 @@ describe('Agenda 180: runtime y handlers reales con cabeceras de navegador', () 
       else { expect(call.headers.origin).toBe(origin); expect(call.headers.referer).toBeUndefined() }
     }
     expect(calls.some(call => call.url.endsWith('/reschedule'))).toBe(true); expect(calls.some(call => call.url.endsWith('/cancel'))).toBe(true)
+  })
+  it('Cloudflare rechaza host suplantado, secreto incorrecto, null y dominio inactivo', async () => {
+    vi.stubEnv('SITE_DOMAIN_PROVIDER', 'cloudflare'); vi.stubEnv('CLOUDFLARE_EDGE_SECRET', 'simulated-edge')
+    for (const secret of ['', 'incorrecto']) {
+      await expect(slots(event(query, 'GET', { host: 'origin.flow.test', 'x-forwarded-host': new URL(custom).host, 'x-flow-edge-secret': secret, origin: custom }))).rejects.toMatchObject({ statusCode: 404 })
+    }
+    await expect(slots(event(query, 'GET', { host: 'origin.flow.test', 'x-forwarded-host': new URL(custom).host, 'x-flow-edge-secret': 'simulated-edge', origin: 'null', referer: custom }))).rejects.toMatchObject({ statusCode: 404 })
+    await admin`update site_domains set status='pending' where site_id=${site}`
+    try {
+      await expect(slots(event(query, 'GET', { host: 'origin.flow.test', 'x-forwarded-host': new URL(custom).host, 'x-flow-edge-secret': 'simulated-edge', origin: custom }))).rejects.toMatchObject({ statusCode: 404 })
+    } finally { await admin`update site_domains set status='active' where site_id=${site}` }
   })
   it('diagnóstico solo en consola de desarrollo, motivos fijos y respuesta genérica', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

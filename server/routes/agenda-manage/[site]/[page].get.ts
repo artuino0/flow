@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { effectiveRequestURL } from '~/server/utils/effectiveHost'
 import { randomBytes } from 'node:crypto'
-import { defineEventHandler, getHeader, getRequestURL, getRouterParam, setResponseHeader, setResponseStatus } from 'h3'
+import { defineEventHandler, getRouterParam, setResponseHeader, setResponseStatus } from 'h3'
 import type { AgendaRuntimeConfig } from '~/utils/publicAgendaRuntime'
 import { renderAgendaManagementDocument } from '~/server/utils/agendaManagementDocument'
 import { publicAgendaPresentation, resolveAgendaContext } from '~/server/utils/agendaPublic'
@@ -13,7 +14,7 @@ export default defineEventHandler(async event => {
   let config: AgendaRuntimeConfig = { site: '', page: '', timezone: 'UTC', locale: 'es', accent: 'rgb(0 110 132)', unavailable: true }
   if (parsed.success) {
     const { site, page } = parsed.data
-    const url = getRequestURL(event), host = getHeader(event, 'host') ?? url.host
+    const url = effectiveRequestURL(event), host = url.host
     try {
       const context = await resolveAgendaContext(site, page, { origin: `${url.protocol}//${host}`, host, ip: '', userAgent: '' })
       config = (await publicAgendaPresentation(context, 'es')).runtime

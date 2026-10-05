@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { effectiveRequestHostname } from '~/server/utils/effectiveHost'
 import { submitSiteForm, type SiteFormPayload } from '~/server/utils/siteFormSubmissions'
 import { withSystemRecordAccess } from '~/server/utils/recordActorContext'
 
@@ -18,11 +19,6 @@ const schema = z.object({
   referrer: z.string().max(2_048).optional()
 }).strict()
 
-function requestHostname(event: Parameters<typeof getRequestURL>[0]) {
-  const forwarded = getHeader(event, 'x-forwarded-host')?.split(',')[0]?.trim()
-  return (forwarded || getHeader(event, 'host') || '').split(':')[0].toLowerCase().replace(/\.$/, '')
-}
-
 function originData(event: Parameters<typeof getRequestURL>[0], href?: string, referrer?: string) {
   let url: URL | null = null
   try { if (href) url = new URL(href) } catch { /* URL manipulada: se ignora */ }
@@ -32,7 +28,7 @@ function originData(event: Parameters<typeof getRequestURL>[0], href?: string, r
     if (value) utm[key] = value
   }
   return {
-    domain: requestHostname(event),
+    domain: effectiveRequestHostname(event),
     path: url?.pathname || '/',
     referrer: referrer || getHeader(event, 'referer') || null,
     userAgent: getHeader(event, 'user-agent')?.slice(0, 1000) || null,
