@@ -247,7 +247,14 @@ type RecordView = 'table' | 'board' | 'calendar'
 const initialView: RecordView = calendarEnabled.value ? 'calendar' : boardEnabled.value && meta.value?.boardConfig.defaultView === 'board' ? 'board' : 'table'
 const viewMode = ref<RecordView>(initialView)
 const initialCalendarView = meta.value?.calendarConfig?.defaultView ?? 'month'
-const calendarRangeValue = ref(calendarRange(new Date(), initialCalendarView))
+type CalendarView = 'day' | 'week' | 'month'
+const calendarView = ref<CalendarView>(initialCalendarView)
+const calendarViewReady = ref(false)
+const calendarRangeValue = ref(calendarRange(new Date(), calendarView.value))
+function onCalendarViewChange(value: CalendarView) {
+  calendarView.value = value
+  if (import.meta.client) localStorage.setItem(`flow-record-calendar-view:${slug}`, value)
+}
 function onCalendarRangeChange(range: { from: string; to: string }) {
   if (range.from !== calendarRangeValue.value.from || range.to !== calendarRangeValue.value.to) calendarRangeValue.value = range
 }
@@ -283,6 +290,12 @@ const { data: calendarData, pending: calendarPending, error: calendarError, refr
 onMounted(() => {
   const saved = localStorage.getItem(`flow-record-view:${slug}`)
   if (saved === 'table' || (saved === 'board' && boardEnabled.value) || (saved === 'calendar' && calendarEnabled.value)) viewMode.value = saved
+  const savedCalendarView = localStorage.getItem(`flow-record-calendar-view:${slug}`)
+  if (savedCalendarView === 'day' || savedCalendarView === 'week' || savedCalendarView === 'month') {
+    calendarView.value = savedCalendarView
+    calendarRangeValue.value = calendarRange(new Date(), savedCalendarView)
+  }
+  calendarViewReady.value = true
 })
 watch(viewMode, value => {
   if (import.meta.client) localStorage.setItem(`flow-record-view:${slug}`, value)
@@ -598,7 +611,7 @@ async function onDelete(id: string) {
     </div>
 
     <main class="records-content" :class="{ 'board-content': viewMode === 'board' }">
-      <p v-if="metaPending || (viewMode === 'table' && recordsPending) || (viewMode === 'board' && boardPending) || (viewMode === 'calendar' && calendarPending && !calendarData)" class="content-message">Cargando...</p>
+      <p v-if="metaPending || (viewMode === 'table' && recordsPending) || (viewMode === 'board' && boardPending) || (viewMode === 'calendar' && (!calendarViewReady || (calendarPending && !calendarData)))" class="content-message">Cargando...</p>
       <p v-else-if="metaError" class="content-message text-brand-error-text">
         {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
       </p>
@@ -627,10 +640,11 @@ async function onDelete(id: string) {
           @updated="reconcileBoardRecord"
         />
         <RecordCalendar
-          v-else-if="viewMode === 'calendar' && calendarData && meta.calendarConfig"
+          v-else-if="viewMode === 'calendar' && calendarViewReady && calendarData && meta.calendarConfig"
           :entity-slug="slug"
           :entity-name="meta.entity.name"
           :config="calendarData.config"
+          :initial-view="calendarView"
           :fields="meta.fields"
           :events="calendarData.events"
           :timezone="calendarData.timezone"
@@ -638,6 +652,7 @@ async function onDelete(id: string) {
           :can-update="meta.permissions.canUpdate"
           :assigned-to-me="assignedToMe"
           @range-change="onCalendarRangeChange"
+          @view-change="onCalendarViewChange"
           @create-record="onCalendarCreate"
           @open-record="onCalendarOpen"
           @updated="onCalendarUpdated"

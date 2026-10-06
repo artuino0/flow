@@ -10,7 +10,22 @@ import * as relativeTime from '../../utils/relativeTime'
 
 const apps: App[] = []
 const flush = async () => { for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() } }
-afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks() })
+afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.restoreAllMocks() })
+
+function mountStandaloneCalendar(onCreate: (payload: { date: string; time: string }) => void = vi.fn(), events: Array<{ id: string; customData: Record<string, unknown>; updatedAt: string; date: string; time: string; durationMinutes: number; title: string; color: string | null; groupValue: string; groupLabel: string }> = []) {
+  const config = { enabled: true, startDateField: 'fecha', startTimeField: 'hora', durationField: null, endField: null, titleField: 'fecha', colorField: null, groupByField: 'recurso', defaultView: 'day' as const }
+  const component = compileVueComponent('components/RecordCalendar.vue', { '~/utils/calendar': calendar }, { ...vue, useToast: () => ({ error: vi.fn(), success: vi.fn() }) })
+  const root = vue.defineComponent({ setup: () => () => vue.h(component, {
+    entitySlug: 'agenda-citas', entityName: 'Citas', config, initialView: 'day', fields: [], events, timezone: 'UTC',
+    canUpdate: true, assignedToMe: false, onCreateRecord: onCreate
+  }) })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = vue.createApp(root)
+  app.mount(host)
+  apps.push(app)
+  return { host, app }
+}
 
 function mountCalendarPage() {
   const config = { enabled: true, startDateField: 'fecha', startTimeField: null, durationField: null, endField: null, titleField: 'fecha', colorField: null, groupByField: null, defaultView: 'day' as const }
@@ -68,8 +83,89 @@ function mountCalendarPage() {
   document.body.append(host)
   app.mount(host)
   apps.push(app)
-  return { host, requests, calendarPending, calendarData }
+  return { app, host, requests, calendarPending, calendarData }
 }
+
+it('recuerda Semana al remontar y consulta el rango semanal actual con una sola actualización extra como máximo', async () => {
+  localStorage.setItem('flow-record-calendar-view:agenda-citas', 'week')
+  const first = mountCalendarPage()
+  await flush()
+  expect(first.host.querySelector('.calendar-views button.active')?.textContent).toBe('Semana')
+  expect(first.requests.length).toBeLessThanOrEqual(2)
+  const expectedRange = calendar.calendarRange(new Date(), 'week')
+  expect(first.requests.at(-1)).toEqual(expectedRange)
+  first.app.unmount()
+
+  const remounted = mountCalendarPage()
+  await flush()
+  expect(remounted.host.querySelector('.calendar-views button.active')?.textContent).toBe('Semana')
+  expect(remounted.requests.length).toBeLessThanOrEqual(2)
+  expect(remounted.requests.at(-1)).toEqual(calendar.calendarRange(new Date(), 'week'))
+})
+
+it('ignora una vista de calendario inválida guardada y conserva la configuración', async () => {
+  localStorage.setItem('flow-record-calendar-view:agenda-citas', 'year')
+  const { host, requests } = mountCalendarPage()
+  await flush()
+  expect(host.querySelector('.calendar-views button.active')?.textContent).toBe('Día')
+  expect(requests).toHaveLength(1)
+  expect(requests[0]).toEqual(calendar.calendarRange(new Date(), 'day'))
+})
+
+it('alinea las 24 horas sin reservar una fila vacía y permite crear a las 20:00', async () => {
+  const onCreate = vi.fn()
+  const { host } = mountStandaloneCalendar(onCreate)
+  await flush()
+  expect(host.querySelectorAll('.calendar-hours span')).toHaveLength(24)
+  expect(host.querySelectorAll('.calendar-time-slot')).toHaveLength(24)
+  expect(host.querySelector('.calendar-hours span')?.textContent).toBe('00:00')
+  expect(host.querySelectorAll('.calendar-hours span')[23].textContent).toBe('23:00')
+  expect(host.querySelector('.calendar-resource-spacer')).toBeNull()
+  expect(host.querySelector('.calendar-resource-heading')).toBeNull()
+  ;([...host.querySelectorAll<HTMLButtonElement>('.calendar-time-slot button')].find(button => button.getAttribute('aria-label')?.includes('20:00')) as HTMLButtonElement).click()
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ time: '20:00' }))
+  expect(calendar.calendarBlockPosition('20:00', 60, 0).top).toBe(20 * 64)
+})
+
+it('marca la hora actual del calendario, actualiza cada minuto y solo la muestra para hoy', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-06T12:34:00.000Z'))
+  const { host } = mountStandaloneCalendar()
+  await flush()
+  expect(host.querySelectorAll('.calendar-current-time')).toHaveLength(1)
+  const todayColumn = [...host.querySelectorAll('.calendar-day-column')].find(column => column.contains(host.querySelector('.calendar-current-time')))
+  expect(todayColumn).toBeDefined()
+  expect(Number.parseFloat((host.querySelector('.calendar-current-time') as HTMLElement).style.top)).toBeCloseTo((12 * 60 + 34) / 60 * 64)
+  await vi.advanceTimersByTimeAsync(60_000)
+  await flush()
+  expect(Number.parseFloat((host.querySelector('.calendar-current-time') as HTMLElement).style.top)).toBeCloseTo((12 * 60 + 35) / 60 * 64)
+  ;(host.querySelector('[aria-label="Periodo anterior"]') as HTMLButtonElement).click()
+  await flush()
+  expect(host.querySelector('.calendar-current-time')).toBeNull()
+  ;(host.querySelector('[aria-label="Periodo siguiente"]') as HTMLButtonElement).click()
+  await flush()
+  expect(host.querySelectorAll('.calendar-current-time')).toHaveLength(1)
+  ;([...host.querySelectorAll('.calendar-views button')].find(button => button.textContent === 'Semana') as HTMLButtonElement).click()
+  await flush()
+  expect(host.querySelectorAll('.calendar-current-time')).toHaveLength(1)
+  expect(host.querySelectorAll('.calendar-day-column')).toHaveLength(7)
+})
+
+it('alinea filas con registros en Semana y compensa la cabecera de recursos en Día', async () => {
+  const today = calendar.localDateKey(new Date())
+  const event = { id: 'cita-1', customData: {}, updatedAt: '', date: today, time: '20:00', durationMinutes: 60, title: 'Cita', color: null, groupValue: 'sala-1', groupLabel: 'Sala 1' }
+  const { host } = mountStandaloneCalendar(vi.fn(), [event])
+  await flush()
+  expect(host.querySelectorAll('.calendar-hours span')).toHaveLength(24)
+  expect(host.querySelectorAll('.calendar-time-slot')).toHaveLength(24)
+  expect(host.querySelector('.calendar-resource-spacer')).not.toBeNull()
+  expect((host.querySelector('.calendar-event') as HTMLElement).style.top).toBe(`${20 * 64 + 38}px`)
+  ;([...host.querySelectorAll('.calendar-views button')].find(button => button.textContent === 'Semana') as HTMLButtonElement).click()
+  await flush()
+  expect(host.querySelectorAll('.calendar-hours span')).toHaveLength(24)
+  expect(host.querySelectorAll('.calendar-time-slot')).toHaveLength(7 * 24)
+  expect(host.querySelector('.calendar-event')).not.toBeNull()
+})
 
 it('calendario conserva vista y fecha durante cargas y consulta solo al cambiar el rango', async () => {
   const { host, requests, calendarPending } = mountCalendarPage()

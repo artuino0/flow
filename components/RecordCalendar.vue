@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight, Clock, Plus } from '@lucide/vue'
 import type { CalendarConfig, EntityFieldMeta } from '~/composables/useEntityFields'
-import { calendarBlockPosition, calendarRange, localDateKey, localDateTimeToIso, type CalendarView } from '~/utils/calendar'
+import { calendarBlockPosition, calendarRange, localDateKey, localDateTimeToIso, minutesFromTime, type CalendarView } from '~/utils/calendar'
 
 interface CalendarEvent {
   id: string
@@ -20,6 +20,7 @@ const props = defineProps<{
   entitySlug: string
   entityName: string
   config: CalendarConfig
+  initialView?: CalendarView
   fields: EntityFieldMeta[]
   events: CalendarEvent[]
   timezone: string
@@ -30,12 +31,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'range-change': [range: { from: string; to: string }]
+  'view-change': [view: CalendarView]
   'open-record': [id: string]
   'create-record': [payload: { date: string; time: string }]
   updated: [event: CalendarEvent]
 }>()
 
-const view = ref<CalendarView>(props.config.defaultView)
+const view = ref<CalendarView>(props.initialView ?? props.config.defaultView)
+watch(view, value => emit('view-change', value))
 const anchor = ref(new Date())
 const range = computed(() => calendarRange(anchor.value, view.value))
 watch(range, value => emit('range-change', value), { immediate: true })
@@ -51,13 +54,64 @@ const heading = computed(() => {
   const options: Intl.DateTimeFormatOptions = view.value === 'day' ? { dateStyle: 'full', timeZone: props.timezone } : { month: 'long', year: 'numeric', timeZone: props.timezone }
   return new Intl.DateTimeFormat('es-MX', options).format(anchor.value)
 })
-const timeRows = Array.from({ length: 15 }, (_, index) => index + 7)
+const timeRows = Array.from({ length: 24 }, (_, index) => index)
+const timeView = ref<HTMLElement | null>(null)
+const currentTime = ref<{ date: string; minutes: number } | null>(null)
+let currentTimeTimer: ReturnType<typeof setInterval> | undefined
+function dateInCalendarTimezone(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: props.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value ?? '00'
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+function updateCurrentTime() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: props.timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date())
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value ?? '00'
+  currentTime.value = {
+    date: `${part('year')}-${part('month')}-${part('day')}`,
+    minutes: Number(part('hour')) * 60 + Number(part('minute'))
+  }
+}
+function setInitialTimeScroll(element: HTMLElement) {
+  const earliestBeforeSeven = props.events
+    .filter(event => dates.value.some(date => localDateKey(date) === event.date))
+    .map(event => minutesFromTime(event.time))
+    .filter(minutes => minutes < 7 * 60)
+    .sort((left, right) => left - right)[0]
+  let startMinutes = earliestBeforeSeven ?? 7 * 60
+  if (currentTime.value?.minutes !== undefined && dates.value.some(date => dateInCalendarTimezone(date) === currentTime.value?.date)) {
+    const todayMinutes = currentTime.value.minutes
+    if (todayMinutes < 7 * 60) startMinutes = todayMinutes
+    else {
+      const visibleMinutes = ((element.clientHeight || 10 * 64) / 64) * 60
+      startMinutes = Math.max(startMinutes, todayMinutes - visibleMinutes + 60)
+    }
+  }
+  const headingHeight = element.querySelector('.calendar-time-heading')?.getBoundingClientRect().height || 44
+  element.scrollTop = headingHeight + (startMinutes / 60) * 64
+}
+function currentTimePosition() {
+  const resourceHeaderHeight = view.value === 'day' && groups.value.some(group => group.label) ? 38 : 0
+  return ((currentTime.value?.minutes ?? 0) / 60) * 64 + resourceHeaderHeight
+}
+watch(timeView, element => {
+  if (element) setInitialTimeScroll(element)
+})
+onMounted(() => {
+  updateCurrentTime()
+  if (timeView.value) setInitialTimeScroll(timeView.value)
+  currentTimeTimer = setInterval(updateCurrentTime, 60_000)
+})
+onBeforeUnmount(() => { if (currentTimeTimer) clearInterval(currentTimeTimer) })
 const groups = computed(() => {
   if (!props.config.groupByField) return [{ value: '', label: '' }]
   const known = new Map<string, string>()
   for (const event of props.events) if (event.groupValue) known.set(event.groupValue, event.groupLabel || event.groupValue)
   if (props.events.some(event => !event.groupValue)) known.set('__unset__', 'Sin asignar')
-  if (known.size === 0) known.set('__unset__', 'Sin registros')
+  if (known.size === 0) known.set('__unset__', '')
   return [...known].map(([value, label]) => ({ value, label }))
 })
 const dragId = ref<string | null>(null)
@@ -135,8 +189,9 @@ function eventsFor(date: Date, groupValue = '') {
   return props.events.filter(event => event.date === key && (!props.config.groupByField || event.groupValue === (groupValue === '__unset__' ? '' : groupValue)))
 }
 function blockStyle(event: CalendarEvent) {
-  const position = calendarBlockPosition(event.time, event.durationMinutes)
-  return { top: `${position.top}px`, height: `${position.height}px`, borderLeftColor: event.color ?? 'rgb(var(--brand-blue))' }
+  const resourceHeaderHeight = view.value === 'day' && props.config.groupByField && groups.value.some(group => group.label) ? 38 : 0
+  const position = calendarBlockPosition(event.time, event.durationMinutes, 0)
+  return { top: `${position.top + resourceHeaderHeight}px`, height: `${position.height}px`, borderLeftColor: event.color ?? 'rgb(var(--brand-blue))' }
 }
 </script>
 
@@ -170,23 +225,24 @@ function blockStyle(event: CalendarEvent) {
       </div>
     </div>
 
-    <div v-else class="calendar-time-view">
+    <div v-else ref="timeView" class="calendar-time-view">
       <div class="calendar-time-heading" :style="view === 'day' ? { gridTemplateColumns: `56px repeat(${config.groupByField ? groups.length : 1}, minmax(220px, 1fr))` } : undefined">
         <div class="calendar-time-spacer" />
         <template v-if="view === 'day' && config.groupByField"><div v-for="group in groups" :key="group.value" class="calendar-day-heading"><span>{{ group.label }}</span><strong>{{ dates[0].getDate() }}</strong></div></template>
         <div v-else v-for="date in dates" :key="localDateKey(date)" class="calendar-day-heading"><span>{{ new Intl.DateTimeFormat('es-MX', { weekday: 'short', timeZone: timezone }).format(date) }}</span><strong>{{ date.getDate() }}</strong></div>
       </div>
       <div v-for="group in (config.groupByField && view !== 'day' ? groups : [{ value: '__all__', label: '' }])" :key="group.value" class="calendar-group">
-        <h3 v-if="config.groupByField && view !== 'day'" class="calendar-group-title">{{ group.label }}</h3>
+        <h3 v-if="config.groupByField && view !== 'day' && group.label" class="calendar-group-title">{{ group.label }}</h3>
         <div v-if="view === 'day' && config.groupByField" class="calendar-time-grid calendar-resource-grid" :style="{ gridTemplateColumns: `56px repeat(${groups.length}, minmax(220px, 1fr))` }">
-          <div class="calendar-hours"><span v-for="hour in timeRows" :key="hour">{{ `${String(hour).padStart(2, '0')}:00` }}</span></div>
+          <div class="calendar-hours" :class="{ 'calendar-hours-resource': view === 'day' && groups.some(item => item.label) }"><div v-if="view === 'day' && groups.some(item => item.label)" class="calendar-resource-spacer" /><span v-for="hour in timeRows" :key="hour">{{ `${String(hour).padStart(2, '0')}:00` }}</span></div>
           <div v-for="resource in groups" :key="resource.value" class="calendar-day-column">
-            <h4 class="calendar-resource-heading">{{ resource.label }}</h4>
+            <h4 v-if="resource.label" class="calendar-resource-heading">{{ resource.label }}</h4>
             <div v-for="hour in timeRows" :key="hour" class="calendar-time-slot" @dragover.prevent @drop.prevent="onDrop(dates[0], hour, resource.value)"><button type="button" :aria-label="`Crear registro con ${resource.label} a las ${cellTime(hour)}`" @click="createAt(dates[0], cellTime(hour))" /></div>
             <article v-for="event in eventsFor(dates[0], resource.value)" :key="event.id" class="calendar-event" :class="{ saving: savingIds.has(event.id) }" :style="blockStyle(event)" :draggable="canUpdate" @dragstart="dragId = event.id" @click="openEvent(event.id)">
               <strong>{{ event.title }}</strong><span v-if="event.time"><Clock class="inline h-3 w-3" /> {{ event.time }}</span>
               <div v-if="canUpdate && (config.durationField || config.endField)" class="calendar-duration-actions" @click.stop><button type="button" aria-label="Reducir duración 15 minutos" @click="persistMove(event, event.date, event.time || '09:00', Math.max(15, event.durationMinutes - 15))">−15</button><button type="button" aria-label="Aumentar duración 15 minutos" @click="persistMove(event, event.date, event.time || '09:00', event.durationMinutes + 15)">+15</button></div>
             </article>
+            <div v-if="currentTime && currentTime.date === dateInCalendarTimezone(dates[0])" class="calendar-current-time" :style="{ top: `${currentTimePosition()}px` }" aria-hidden="true" />
           </div>
         </div>
         <div v-else class="calendar-time-grid" :class="{ 'calendar-single-day': view === 'day' }">
@@ -197,6 +253,7 @@ function blockStyle(event: CalendarEvent) {
               <strong>{{ event.title }}</strong><span v-if="event.time"><Clock class="inline h-3 w-3" /> {{ event.time }}</span>
               <div v-if="canUpdate && (config.durationField || config.endField)" class="calendar-duration-actions" @click.stop><button type="button" aria-label="Reducir duración 15 minutos" @click="persistMove(event, event.date, event.time || '09:00', Math.max(15, event.durationMinutes - 15))">−15</button><button type="button" aria-label="Aumentar duración 15 minutos" @click="persistMove(event, event.date, event.time || '09:00', event.durationMinutes + 15)">+15</button></div>
             </article>
+            <div v-if="currentTime && currentTime.date === dateInCalendarTimezone(date)" class="calendar-current-time" :style="{ top: `${currentTimePosition()}px` }" aria-hidden="true" />
           </div>
         </div>
       </div>
@@ -220,6 +277,7 @@ function blockStyle(event: CalendarEvent) {
 .calendar-views{display:flex;gap:2px;border-radius:5px;background:rgb(var(--brand-bg));padding:3px}.calendar-views button{border-radius:4px;padding:5px 10px;font-size:12px;font-weight:600;color:rgb(var(--brand-text-secondary))}.calendar-views button.active{background:rgb(var(--brand-surface));color:rgb(var(--brand-blue));box-shadow:0 1px 3px rgb(var(--brand-shadow) / .09411764705882353)}.calendar-filter-tag{border-radius:99px;background:rgb(var(--brand-blue-bg));padding:5px 9px;font-size:11px;font-weight:650;color:rgb(var(--brand-blue))}
 .calendar-message{padding:24px;color:rgb(var(--brand-text-muted));font-size:13px}.calendar-month{min-width:760px}.calendar-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid rgb(var(--brand-border-light))}.calendar-weekdays span{padding:10px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;color:rgb(var(--brand-text-muted))}.calendar-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.calendar-month-cell{position:relative;min-height:106px;border-right:1px solid rgb(var(--brand-border-light));border-bottom:1px solid rgb(var(--brand-border-light));padding:6px}.calendar-month-cell.muted{background:rgb(var(--brand-bg))}.calendar-date{display:grid;height:25px;width:25px;place-items:center;border-radius:50%;font-size:12px;font-weight:650}.calendar-month-cell:not(.muted) .calendar-date{color:rgb(var(--brand-text))}.calendar-date:hover{background:rgb(var(--brand-blue-bg))}.calendar-month-event{display:block;width:100%;overflow:hidden;border-left:3px solid;border-radius:3px;margin-top:3px;background:rgb(var(--brand-bg));padding:3px 5px;text-align:left;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:600}.calendar-month-event span{margin-left:4px;font-size:9px;font-weight:500;color:rgb(var(--brand-text-muted))}.calendar-more{padding:3px 5px;font-size:10px;color:rgb(var(--brand-blue))}.calendar-add{position:absolute;right:5px;top:6px;display:none;align-items:center;justify-content:center;border-radius:4px;padding:3px;color:rgb(var(--brand-text-secondary))}.calendar-month-cell:hover .calendar-add{display:flex}
 .calendar-time-view{overflow:auto}.calendar-time-heading{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:56px repeat(7,minmax(120px,1fr));min-width:896px;border-bottom:1px solid rgb(var(--brand-border-light));background:rgb(var(--brand-surface))}.calendar-time-spacer{grid-column:1}.calendar-day-heading{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:12px;text-transform:capitalize;color:rgb(var(--brand-text-secondary))}.calendar-day-heading strong{display:grid;height:26px;width:26px;place-items:center;border-radius:50%;background:rgb(var(--brand-bg));font-size:12px;color:rgb(var(--brand-text))}.calendar-time-grid{display:grid;grid-template-columns:56px repeat(7,minmax(120px,1fr));min-width:896px;position:relative}.calendar-time-grid.calendar-single-day{grid-template-columns:56px minmax(250px,1fr)}.calendar-hours{display:grid;grid-template-rows:repeat(15,64px)}.calendar-hours span{position:relative;top:-7px;padding-right:9px;text-align:right;font-size:10px;color:rgb(var(--brand-text-muted))}.calendar-day-column{position:relative;min-height:960px;border-left:1px solid rgb(var(--brand-border-light))}.calendar-time-slot{height:64px;border-bottom:1px solid rgb(var(--brand-border-light))}.calendar-time-slot button{display:block;height:100%;width:100%;cursor:pointer}.calendar-time-slot:hover{background:rgb(var(--brand-blue-bg))}.calendar-event{position:absolute;z-index:1;right:3px;left:3px;display:flex;overflow:hidden;flex-direction:column;gap:3px;border-left:3px solid;border-radius:4px;background:rgb(var(--brand-blue-bg));padding:5px 6px;cursor:pointer;box-shadow:0 1px 3px rgb(var(--brand-shadow) / .08235294117647059)}.calendar-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:1.3}.calendar-event>span{font-size:10px;color:rgb(var(--brand-text-secondary))}.calendar-event.saving{opacity:.55}.calendar-duration-actions{display:flex;gap:4px}.calendar-duration-actions button{border-radius:3px;background:rgb(var(--brand-surface) / .7215686274509804);padding:1px 4px;font-size:9px;color:rgb(var(--brand-text-secondary))}.calendar-group+.calendar-group{border-top:1px solid rgb(var(--brand-border))}.calendar-group-title{position:sticky;left:0;z-index:2;margin:0;background:rgb(var(--brand-bg));padding:6px 12px;font-size:11px;font-weight:700;color:rgb(var(--brand-text-secondary))}
+.calendar-time-view{max-height:70vh}.calendar-hours{grid-template-rows:repeat(24,64px)}.calendar-hours.calendar-hours-resource{grid-template-rows:38px repeat(24,64px)}.calendar-resource-spacer{height:38px}.calendar-hours span{top:0}.calendar-day-column{min-height:1536px}.calendar-current-time{position:absolute;z-index:2;right:0;left:0;height:2px;pointer-events:none;background:rgb(var(--brand-error-text))}.calendar-current-time::before{position:absolute;top:-3px;left:-4px;height:8px;width:8px;border-radius:50%;background:rgb(var(--brand-error-text));content:"";pointer-events:none}
 .calendar-resource-grid{min-width:max-content}.calendar-resource-heading{position:sticky;top:0;z-index:2;height:38px;margin:0;background:rgb(var(--brand-surface));padding:10px;text-align:center;font-size:11px;font-weight:700;color:rgb(var(--brand-text-secondary))}
 .calendar-mobile-list{display:none}
 @media(max-width:720px){.calendar-head{align-items:flex-start;flex-direction:column}.calendar-head-actions{width:100%;justify-content:space-between}.calendar-time-view,.calendar-month{display:none}.calendar-mobile-list{display:flex;flex-direction:column}.calendar-mobile-day{padding:12px 14px;border-bottom:1px solid rgb(var(--brand-border-light))}.calendar-mobile-day>header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;text-transform:capitalize}.calendar-mobile-day>header strong{font-size:12px}.calendar-mobile-day>header button{display:flex;align-items:center;gap:4px;color:rgb(var(--brand-blue));font-size:11px;font-weight:650}.calendar-mobile-event{display:flex;width:100%;align-items:center;gap:9px;border-radius:5px;padding:9px 5px;text-align:left}.calendar-mobile-event:hover{background:rgb(var(--brand-bg))}.calendar-mobile-event>span:nth-child(2){display:flex;flex-direction:column;gap:3px}.calendar-mobile-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.calendar-mobile-event small{font-size:10px;color:rgb(var(--brand-text-muted))}.calendar-mobile-dot{height:8px;width:8px;flex:none;border-radius:50%}.calendar-empty-day{padding:8px 5px;font-size:11px;color:rgb(var(--brand-text-muted))}}

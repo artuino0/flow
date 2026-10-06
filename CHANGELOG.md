@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.157.2] - 2026-10-06
+#### [bugfix]
+- [ERD-202](https://dydasoftware.atlassian.net/browse/ERD-202) - Calendario de registros: recuerda la vista elegida (Día, Semana o Mes) en cada módulo; las horas quedan alineadas con sus líneas; se muestran las 24 horas con el desplazamiento inicial en las 07:00; y una línea roja marca la hora actual en el día de hoy.
+
 ### [0.157.1] - 2026-10-06
 #### [bugfix]
 - [ERD-201](https://dydasoftware.atlassian.net/browse/ERD-201) - Calendario de registros: al cambiar entre Día, Semana y Mes la pantalla ya no se queda en «Cargando…» ni repite la misma consulta sin fin; la vista y la fecha elegidas se conservan mientras se actualizan los datos. También se corrigió un aviso de carga del botón «+» del encabezado.
