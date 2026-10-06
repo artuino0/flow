@@ -403,7 +403,10 @@ async function runEmailAction(tenantId: string, config: unknown, data: Record<st
     // Revisión previa: si el correo no está configurado (o el dominio no está
     // verificado / SES pausó el envío) se informa ya en el registro del disparador,
     // en vez de descubrirlo horas después en la cola.
-    await resolveSmtpConfig(tenantId)
+    const { resolveMailTransport } = await import('./mailTransport')
+    const { transport } = await resolveMailTransport(tenantId)
+    const configuration = await transport.check()
+    if (configuration.status !== 'ok') throw new SmtpNotConfiguredError(configuration.reason)
     await enqueueEmail(tenantId, { to, subject, html, recordUrl })
     return { ok: true, retryable: false }
   } catch (err) {

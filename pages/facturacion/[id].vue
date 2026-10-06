@@ -120,7 +120,7 @@ async function enviar() {
   accionCorriendo.value = 'enviar'
   try {
     const res = await $fetch<{ para: string }>(`/api/facturacion/documents/${documentId}/enviar`, { method: 'POST', body: { para: enviarPara.value.trim() || null } })
-    toast.success('CFDI enviado', `XML y PDF enviados a ${res.para}.`)
+    toast.success('CFDI en cola', `XML y PDF pendientes de envío a ${res.para}.`)
     mostrarEnviar.value = false
     await load()
   } catch (err: any) {
@@ -138,7 +138,8 @@ const EVENTO_LABEL: Record<string, string> = {
   verificacion_getstatus: 'Verificación con el PAC',
   cancelacion_solicitada: 'Cancelación solicitada',
   cancelacion_confirmada: 'Cancelación confirmada',
-  email_enviado: 'Enviado por correo'
+  email_enviado: 'Enviado por correo',
+  email_encolado: 'Correo pendiente de envío'
 }
 
 function timelineTone(tipo: string) {

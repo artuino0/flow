@@ -41,14 +41,14 @@ export function readSesPlatformConfig(env: NodeJS.ProcessEnv = process.env): Ses
   const region = env.SES_REGION?.trim()
   const smtpUser = env.SES_SMTP_USER?.trim()
   const smtpPassword = env.SES_SMTP_PASSWORD
-  if (!region || !smtpUser || !smtpPassword) return null
+  if (!region || ((!smtpUser || !smtpPassword) && !(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) && !env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI && !env.AWS_CONTAINER_CREDENTIALS_FULL_URI && !env.AWS_WEB_IDENTITY_TOKEN_FILE)) return null
   const port = Number(env.SES_SMTP_PORT || 587)
   return {
     region,
     smtpHost: env.SES_SMTP_HOST?.trim() || `email-smtp.${region}.amazonaws.com`,
     smtpPort: Number.isInteger(port) && port > 0 ? port : 587,
-    smtpUser,
-    smtpPassword
+    smtpUser: smtpUser ?? '',
+    smtpPassword: smtpPassword ?? ''
   }
 }
 
@@ -87,8 +87,8 @@ export type SesSendingStatus = 'enabled' | 'paused'
 
 let cachedClient: { region: string; client: SESv2Client } | null = null
 export function getSesClient(config = readSesPlatformConfig()): SESv2Client {
-  if (!config) throw new SesNotConfiguredError('Amazon SES no está configurado en este servidor. Completa SES_REGION, SES_SMTP_USER y SES_SMTP_PASSWORD.')
-  if (!cachedClient || cachedClient.region !== config.region) cachedClient = { region: config.region, client: new SESv2Client({ region: config.region }) }
+  if (!config) throw new SesNotConfiguredError('Amazon SES no está configurado. Completa SES_REGION y configura credenciales IAM o un rol AWS.')
+  if (!cachedClient || cachedClient.region !== config.region) cachedClient = { region: config.region, client: new SESv2Client({ region: config.region, requestHandler: { connectionTimeout: 10000, requestTimeout: 10000 }, maxAttempts: 1 }) }
   return cachedClient.client
 }
 

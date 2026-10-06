@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, createApp, h, nextTick, onBeforeUnmount, onMounted, ref, Suspense, watch, type App, type Component } from 'vue'
+import { computed, createApp, h, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, Suspense, watch, type App, type Component } from 'vue'
 import { readFileSync, readdirSync } from 'node:fs'
 import { compileVueComponent } from '../helpers/vueComponent'
 import { darkTokens, lightTokens, rgbChannels } from '../../utils/themeTokens'
@@ -44,13 +44,14 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
   let finishPage: (() => void) | undefined
   navigate.mockImplementation(async () => { finishPage?.() })
   const comp = compileVueComponent(`pages/${route}.vue`, { '~/utils/returnToRoute': returnToRoute, '~/server/utils/passwordPolicy': passwordPolicy, '~/utils/registrationIntent': registrationIntent }, {
-    ref, computed, watch, onMounted, onBeforeUnmount, definePageMeta: meta, useHead: vi.fn(),
+    ref, computed, watch, onMounted, onBeforeUnmount, onUnmounted, definePageMeta: meta, useHead: vi.fn(),
     useRoute: () => ({ params: { token: 'token-local' }, query: state.missingToken ? {} : { token: 'token-local' } }),
     useAuth: () => ({ user, fetchMe, login, loginWithTotp, selectOrganization }),
     useState: () => ref(false),
     useNuxtApp: () => ({ hook: (name: string, fn: () => void) => { if (name === 'page:finish') finishPage = fn; return () => { if (name === 'page:finish') finishPage = undefined } } }),
     useDeploymentConfig: async () => ({ data: ref({ appMode: 'shared' }) }), navigateTo: navigate, $fetch: fetch,
     useFetch: (url: string) => {
+      if (url === '/api/auth/email-verification/status') return { data: ref({ delivery: 'sent', retryAfter: 0 }), refresh: vi.fn() }
       if (url !== '/api/license/status') throw new Error(`useFetch no simulado: ${url}`)
       return { data: ref({ required: true, activated: !!state.ready, requestCode: 'LOCAL', customer: 'Prueba', expiresAt: '2027-01-01' }), refresh: vi.fn() }
     }

@@ -1,5 +1,10 @@
 import { emailJobSchema, registerJobHandler, type ClaimedJob, type JobOutcome } from '~/server/utils/jobQueue'
 import { sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { MailError } from './mail/types'
+import { decryptSetting } from './settingsCrypto'
+import { db, withJobWorker } from '~/server/db'
+import { emailVerificationTokens, jobQueue } from '~/server/db/schema'
+import { eq } from 'drizzle-orm'
 
 /**
  * ¿Un error de envío merece reintento? Las direcciones inválidas y la mala
@@ -8,6 +13,7 @@ import { sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
  * (límite de envío, servidor ocupado) sí se reintentan con retroceso.
  */
 export function classifyEmailError(error: unknown): JobOutcome {
+  if (error instanceof MailError) return { ok: false, retryable: error.retryable && (!error.uncertain || error.safeReplay), error: error.message }
   const message = error instanceof Error ? error.message : String(error)
   if (error instanceof SmtpNotConfiguredError) return { ok: false, retryable: false, error: message }
   const { responseCode, code } = (error ?? {}) as { responseCode?: number; code?: string }
@@ -21,7 +27,17 @@ export async function handleEmailJob(job: ClaimedJob): Promise<JobOutcome> {
   const parsed = emailJobSchema.safeParse(job.payload)
   if (!parsed.success) return { ok: false, retryable: false, error: 'El contenido del correo en la cola es inválido' }
   try {
-    await sendPlainEmail({ tenantId: job.tenantId, ...parsed.data })
+    const [receipt] = await withJobWorker(tx => tx.select({ deliveryId: jobQueue.deliveryId, provider: jobQueue.deliveryProvider, startedAt: jobQueue.deliveryStartedAt }).from(jobQueue).where(eq(jobQueue.id, job.id)).limit(1))
+    if (receipt?.deliveryId) return { ok: true }
+    if (receipt?.startedAt && (receipt.provider !== 'resend' || receipt.startedAt.getTime() < Date.now() - 23 * 60 * 60 * 1000)) {
+      return { ok: false, retryable: false, error: 'Resultado de entrega desconocido; comprueba el proveedor antes de reintentar para evitar duplicados.' }
+    }
+    if (parsed.data.verificationId) {
+      const [verification] = await db.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.id, parsed.data.verificationId))
+      if (!verification || verification.usedAt || !verification.codeExpiresAt || verification.codeExpiresAt <= new Date()) return { ok: true }
+    }
+    await sendPlainEmail({ tenantId: job.tenantId, ...parsed.data, html: parsed.data.encryptedHtml ? decryptSetting(parsed.data.encryptedHtml) : parsed.data.html,
+      jobId: job.id, fallback: job.attempts > 1 && !receipt?.startedAt, retryProvider: receipt?.startedAt ? receipt.provider ?? undefined : undefined })
     return { ok: true }
   } catch (error) {
     return classifyEmailError(error)

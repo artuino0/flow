@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import postgres from 'postgres'
 import { randomUUID } from 'node:crypto'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { drainEmails195 } from '../helpers/drainEmails195'
 import { withRecordActor } from '../../server/utils/recordActorContext'
 import { agendaSiteSettingsSchema, publicBookSchema } from '../../utils/agendaPublic'
 import { agendaFormToken, agendaHash, agendaOpaqueId } from '../../server/utils/agendaPublicSecurity'
@@ -51,6 +52,11 @@ beforeAll(async () => {
   await actor(() => api.agendaSiteAdministration(auth, site, { enabled: true, personalIds: [staff], cancellationHours: 1 }))
   await admin`insert into agenda_site_settings(tenant_id,site_id,config) values (${other},${otherSite},'{"enabled":true}')`
   context = await api.resolveAgendaContext(site, page, origin)
+  const original = api
+  api = { ...original,
+    publicAgendaBook: async (...args) => { const result = await original.publicAgendaBook(...args); await drainEmails195(admin); return result },
+    publicAgendaManage: async (...args) => { const result = await original.publicAgendaManage(...args); await drainEmails195(admin); return result }
+  }
 }, 90000)
 afterAll(async () => { await connection?.client.end(); await app?.end(); await admin?.end(); await database?.stop(); delete process.env.APP_DATABASE_URL; delete process.env.APP_BASE_URL })
 describe('Agenda pública 177 con PostgreSQL real y SMTP simulado', () => {

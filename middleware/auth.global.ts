@@ -51,6 +51,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (to.path.startsWith('/invitacion/')) return
   if (to.path === '/registro') {
+    if (!user.value) await fetchMe()
+    if (user.value?.authenticated && !user.value.emailVerified && !landingChoice.value) return navigateTo('/confirmar-correo')
     if (landingChoice.value) {
       if (!user.value) await fetchMe()
       if (user.value?.authenticated) {

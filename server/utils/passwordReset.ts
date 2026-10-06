@@ -3,8 +3,9 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db, withPerson } from '~/server/db'
 import { passwordResetTokens, people, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
-import { sendCriticalEmail } from '~/server/utils/criticalEmail'
-import { escapeHtml, getAppBaseUrl, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { enqueueCriticalEmailInTx } from '~/server/utils/criticalEmail'
+import { escapeHtml, getAppBaseUrl } from '~/server/utils/mailer'
+import { encryptSetting } from './settingsCrypto'
 import { invalidateTenantSessions } from '~/server/utils/shortCache'
 import { logger } from '~/server/utils/logger'
 
@@ -19,24 +20,16 @@ export async function requestPasswordReset(email: string): Promise<void> {
   if (!memberships.length) return
 
   const token = randomBytes(32).toString('base64url')
+  const link = `${getAppBaseUrl()}/restablecer/${token}`
+  const html = `<p>Recibimos una solicitud para cambiar la contraseña de tu cuenta.</p><p><a href="${escapeHtml(link)}">Crear una contraseña nueva</a></p><p>Este enlace vence en 60 minutos. Si no solicitaste el cambio, puedes ignorar este correo.</p>`
   await db.transaction(async tx => {
     // Serializa solicitudes de la misma persona para que solo quede un enlace vigente.
     await tx.execute(sql`SELECT id FROM people WHERE id = ${person.id}::uuid FOR UPDATE`)
     await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(and(eq(passwordResetTokens.personId, person.id), isNull(passwordResetTokens.usedAt)))
     await tx.insert(passwordResetTokens).values({ personId: person.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60 * 60 * 1000) })
+    await tx.execute(sql`select set_config('app.tenant_id', ${memberships[0]!.tenantId}, true)`)
+    await enqueueCriticalEmailInTx(tx as unknown as typeof db, memberships[0]!.tenantId, { to: person.email, platform: true, purpose: 'password-reset', subject: 'Restablece tu contraseña', html: 'Recuperación protegida', encryptedHtml: encryptSetting(html) })
   })
-  const link = `${getAppBaseUrl()}/restablecer/${token}`
-  const html = `<p>Recibimos una solicitud para cambiar la contraseña de tu cuenta.</p><p><a href="${escapeHtml(link)}">Crear una contraseña nueva</a></p><p>Este enlace vence en 60 minutos. Si no solicitaste el cambio, puedes ignorar este correo.</p>`
-  try {
-    await resolveSmtpConfig(memberships[0].tenantId)
-  } catch (error) {
-    if (error instanceof SmtpNotConfiguredError && process.env.NODE_ENV === 'development') {
-      logger.info('development_password_reset_link', { link })
-      return
-    }
-    throw error
-  }
-  await sendCriticalEmail(memberships[0].tenantId, { to: person.email, subject: 'Restablece tu contraseña', html })
 }
 
 export async function passwordResetRateKey(token: string): Promise<string> {

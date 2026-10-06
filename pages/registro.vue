@@ -138,6 +138,7 @@ function removeInvitee(index: number) {
 const result = ref<{ tenantName: string; slug: string; invitationsSent: number } | null>(null)
 
 async function onSubmit() {
+  if (loading.value) return
   errorMessage.value = ''
   accountExists.value = false
   loading.value = true
@@ -162,9 +163,11 @@ async function onSubmit() {
 
     result.value = { tenantName: response.tenantName, slug: response.slug, invitationsSent: response.invitationsSent }
     step.value = 4
-  } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.data?.message || 'No se pudo crear tu organización.'
-    accountExists.value = errorMessage.value.startsWith('Ya existe una cuenta con el correo')
+    await navigateTo('/confirmar-correo')
+  } catch (err: unknown) {
+    const failure = err as { data?: { statusMessage?: string; message?: string }; statusCode?: number }
+    errorMessage.value = failure.data?.statusMessage || failure.data?.message || 'No pudimos confirmar la respuesta. Reintenta con los mismos datos para continuar tu registro.'
+    accountExists.value = failure.statusCode === 409
   } finally {
     loading.value = false
   }
@@ -197,6 +200,7 @@ const brandText = computed(() => {
     </div>
 
     <div class="flex flex-1 flex-col items-center justify-center gap-6 bg-brand-surface px-4 py-10">
+      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
       <section v-if="chosenPlan" aria-label="Plan elegido" class="w-full max-w-[380px] rounded border border-brand-control-border bg-brand-blue-bg px-4 py-3 text-sm text-brand-text">
         <p>Plan elegido: <strong>{{ chosenPlan.name }}</strong> · {{ chosenPrice }} MXN {{ choice?.interval === 'year' ? 'al año' : 'al mes' }} · 30 días de prueba</p>
         <button type="button" :disabled="loading" class="mt-2 font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-brand-blue disabled:opacity-50" @click="changePlan">Cambiar plan</button>
@@ -483,7 +487,7 @@ const brandText = computed(() => {
             <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
           </div>
           <h2 class="text-2xl font-bold text-brand-text">Confirma tu correo</h2>
-          <p class="text-sm text-brand-text-secondary">Enviamos un enlace de un solo uso a {{ email }}. Vence en 24 horas.</p>
+          <p class="text-sm text-brand-text-secondary">Tu organización está creada. Solicitamos el envío de un código a {{ email }} para continuar.</p>
         </div>
 
         <div class="rounded bg-brand-surface">
@@ -500,7 +504,7 @@ const brandText = computed(() => {
           <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Users class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Equipo</span>
-            <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones enviadas</span>
+            <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones pendientes de envío</span>
           </div>
         </div>
 

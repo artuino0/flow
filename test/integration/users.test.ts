@@ -30,7 +30,7 @@ import type {
 // responsabilidad de mailer.test.ts (unit, sin Postgres).
 const sendMailMock = vi.fn().mockResolvedValue({ messageId: 'test' })
 vi.mock('nodemailer', () => ({
-  default: { createTransport: () => ({ sendMail: sendMailMock }) }
+  default: { createTransport: () => ({ sendMail: sendMailMock, close: vi.fn() }) }
 }))
 
 const TENANT_A = randomUUID()
@@ -58,6 +58,7 @@ let roleBId: string
 let adminUserId: string
 
 beforeAll(async () => {
+  vi.stubEnv('JWT_SECRET', 'local-users-fixture-195')
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
 
@@ -104,11 +105,27 @@ beforeAll(async () => {
     InvalidInvitationTokenError,
     InvitationExpiredError
   } = await import('../../server/utils/users'))
+  // El negocio ahora confirma el outbox. Estos casos de contenido/token
+  // ejecutan explícitamente el worker simulado antes de leer su correo.
+  const originalInvite = inviteUser, originalResend = resendInvitation
+  const { handleEmailJob } = await import('../../server/utils/jobHandlers')
+  const { completeJob } = await import('../../server/utils/jobQueue')
+  const drain = async () => {
+    const rows = await admin`update job_queue set status='processing',attempts=1 where status='pending' returning id,tenant_id,payload`
+    for (const row of rows) {
+      const result = await handleEmailJob({ id: row.id, tenantId: row.tenant_id, kind: 'email', payload: row.payload, attempts: 1, maxAttempts: 6 })
+      expect(result).toEqual({ ok: true })
+      await completeJob(row.id)
+    }
+  }
+  inviteUser = async (...args) => { const result = await originalInvite(...args); await drain(); return result }
+  resendInvitation = async (...args) => { const result = await originalResend(...args); await drain(); return result }
 }, 60_000)
 
 afterAll(async () => {
   await admin.end()
   await testDb.stop()
+  vi.unstubAllEnvs()
 })
 
 function lastInviteUrl(): string {

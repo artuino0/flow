@@ -7,7 +7,9 @@ import { CfdiDocumentError, CfdiDocumentNotFoundError, mapConceptoRow, round2 } 
 import { buildStampInput, snapshotEmisor, validarReceptorParaTimbrar, type EmisorSnapshot } from '~/server/utils/cfdi/payloadBuilder'
 import type { PacPaymentStampInput, PacProvider, PacStampInput, PacStampResult } from '~/server/utils/pac/provider'
 import { PacProviderError } from '~/server/utils/pac/provider'
-import { createTransporter, resolveSmtpConfig, SmtpNotConfiguredError } from '~/server/utils/mailer'
+import { emailQuota } from '~/server/utils/jobQueue'
+import { enqueueCriticalEmailInTx } from '~/server/utils/criticalEmail'
+import { resolveMailTransport } from '~/server/utils/mailTransport'
 import { getStoredObject, putStoredObject, StoredObjectNotFoundError } from '~/server/utils/objectStorage'
 
 // Fases D/F/G de DOCS/HU_Timbrado_CFDI_PAC.md: el motor de timbrado.
@@ -306,29 +308,23 @@ export async function sendCfdiEmail(tenantId: string, documentId: string, para?:
   const xml = doc.documento.xmlStorageKey ? await loadCfdiBinary(tenantId, documentId, 'xml') : null
   const pdf = doc.documento.pdfStorageKey ? await loadCfdiBinary(tenantId, documentId, 'pdf') : null
   if (!xml || !pdf) throw new CfdiStampError('Los archivos timbrados ya no están en disco; no se puede enviar', 409)
-
-  let smtp
-  try {
-    smtp = await resolveSmtpConfig(tenantId)
-  } catch (err) {
-    if (err instanceof SmtpNotConfiguredError) throw new CfdiStampError('Configura el correo saliente en Ajustes → API e integraciones', 422)
-    throw err
-  }
+  const { transport } = await resolveMailTransport(tenantId)
+  if ((await transport.check()).status !== 'ok') throw new CfdiStampError('Configura el correo saliente en Ajustes → API e integraciones', 422)
+  const quota = await emailQuota(tenantId)
 
   const folioTexto = `${doc.serieLetter}-${String(doc.documento.folio ?? 0).padStart(6, '0')}`
   const uuidCorto = doc.documento.uuidFiscal ?? ''
-  const transporter = createTransporter(smtp)
-  await transporter.sendMail({
-    from: smtp.fromName ? `"${smtp.fromName}" <${smtp.from}>` : smtp.from,
-    replyTo: smtp.replyTo,
+  await withTenant(tenantId, async tx => {
+    await enqueueCriticalEmailInTx(tx, tenantId, {
     to: destino,
     subject: `CFDI ${folioTexto} de ${doc.documento.emisorNombre ?? 'tu proveedor'}`,
     html: `<p>Hola, ${doc.documento.receptorNombre ?? ''}:</p><p>Adjuntamos el comprobante fiscal digital <strong>${folioTexto}</strong> (UUID ${uuidCorto}) en sus versiones XML y PDF.</p><p>Saludos.</p>`,
     attachments: [
-      { filename: `${folioTexto}_${uuidCorto}.xml`.replace(/\s/g, ''), contentType: 'application/xml', content: xml.body },
-      { filename: `${folioTexto}_${uuidCorto}.pdf`.replace(/\s/g, ''), contentType: 'application/pdf', content: pdf.body }
+      { filename: `${folioTexto}_${uuidCorto}.xml`.replace(/\s/g, ''), contentType: 'application/xml', content: xml.body.toString('base64') },
+      { filename: `${folioTexto}_${uuidCorto}.pdf`.replace(/\s/g, ''), contentType: 'application/pdf', content: pdf.body.toString('base64') }
     ]
+    }, quota)
+    await logEvent(tx, tenantId, documentId, 'email_encolado', { para: destino }, null)
   })
-  await withTenant(tenantId, (tx) => logEvent(tx, tenantId, documentId, 'email_enviado', { para: destino }, null))
   return { para: destino }
 }

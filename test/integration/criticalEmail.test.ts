@@ -41,8 +41,11 @@ afterAll(async () => {
 })
 
 describe('correo crítico inmediato', () => {
-  it('envía directamente y registra una sola fila exitosa que cuenta para el plan', async () => {
+  it('encola sin enviar y el worker entrega una sola fila exitosa que cuenta para el plan', async () => {
     await sendCriticalEmail(tenantId, payload)
+    expect(sendPlainEmail).not.toHaveBeenCalled()
+    registerJobHandler('email', handleEmailJob)
+    expect((await runJobQueueTick({ budgetMs: 2_000 })).succeeded).toBe(1)
     expect(sendPlainEmail).toHaveBeenCalledTimes(1)
     const rows = await admin`select status, attempts from job_queue where tenant_id = ${tenantId}`
     expect(rows).toHaveLength(1)
@@ -55,6 +58,9 @@ describe('correo crítico inmediato', () => {
   it('si falla SMTP, deja una sola fila pendiente para reintento, sin doble envío', async () => {
     sendPlainEmail.mockRejectedValueOnce(new Error('conexión rota'))
     await sendCriticalEmail(tenantId, payload)
+    expect(sendPlainEmail).not.toHaveBeenCalled()
+    registerJobHandler('email', handleEmailJob)
+    expect((await runJobQueueTick({ budgetMs: 2_000 })).retried).toBe(1)
     expect(sendPlainEmail).toHaveBeenCalledTimes(1)
     const rows = await admin`select status, attempts, run_at, last_error from job_queue where tenant_id = ${tenantId}`
     expect(rows).toHaveLength(1)

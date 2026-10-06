@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import postgres from 'postgres'
 import { createTestDb, type TestDb } from '../setup/testDb'
+import { decryptSetting } from '../../server/utils/settingsCrypto'
 
 const checkoutCalls = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 vi.mock('../../server/utils/mailer', async (importOriginal) => ({
@@ -27,6 +28,7 @@ let authMiddleware: (event: { path: string; context: Record<string, unknown> }) 
 let signAuthToken: typeof import('../../server/utils/auth').signAuthToken
 
 beforeAll(async () => {
+  vi.stubEnv('JWT_SECRET', 'local-registration-115-fixture-195')
   vi.stubGlobal('createError', (options: Record<string, unknown>) => Object.assign(new Error(String(options.statusMessage ?? 'Error')), options))
   vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
   vi.stubGlobal('getRequestURL', (event: { path: string }) => new URL(`http://localhost${event.path}`))
@@ -49,6 +51,7 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
+  vi.unstubAllEnvs()
   if (admin) await admin.end()
   if (testDb) await testDb.stop()
   for (const key of ['APP_DATABASE_URL', 'PLAN_CACHE_TTL_MS', 'STRIPE_SECRET_KEY', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM']) delete process.env[key]
@@ -66,7 +69,7 @@ describe('registro, prueba y plantilla Agenda', () => {
     })
     await verification.issueEmailVerification(account.personId, account.tenantId)
     const [oldMail] = await admin`select payload from job_queue where tenant_id = ${account.tenantId} and kind = 'email' order by created_at desc limit 1`
-    const oldLink = String(oldMail!.payload.html).match(/https?:\/\/[^"<> ]+/)?.[0]
+    const oldLink = decryptSetting(oldMail!.payload.encryptedHtml).match(/https?:\/\/[^"<> ]+/)?.[0]
     const oldToken = new URL(oldLink!).searchParams.get('token')!
     await verification.issueEmailVerification(account.personId, account.tenantId, true, 'nuevo115@local.test')
     expect(await verification.confirmEmailVerification(oldToken)).toBe(false)
@@ -95,7 +98,7 @@ describe('registro, prueba y plantilla Agenda', () => {
 
     await verification.issueEmailVerification(account.personId, account.tenantId)
     const [mail] = await admin`select payload from job_queue where tenant_id = ${account.tenantId} and kind = 'email' order by created_at desc limit 1`
-    const link = String(mail!.payload.html).match(/https?:\/\/[^"<> ]+/)?.[0]
+    const link = decryptSetting(mail!.payload.encryptedHtml).match(/https?:\/\/[^"<> ]+/)?.[0]
     expect(link).toBeTruthy()
     const token = new URL(link!).searchParams.get('token')!
     expect(await verification.confirmEmailVerification(token)).toBe(true)

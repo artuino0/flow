@@ -1,7 +1,8 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '~/server/db'
 import { people, roles, tenants, users } from '~/server/db/schema'
-import { hashPassword } from '~/server/utils/auth'
+import { hashPassword, verifyPassword } from '~/server/utils/auth'
+import { issueEmailVerificationInTx } from './emailVerification'
 import { registrationEvent, validateRegistrationChoice } from '~/server/utils/registrationIntent'
 
 // HU multi-organizacion (2026-09-04): "Registro" (Screen/Registro Paso 1-4
@@ -53,6 +54,7 @@ export interface RegisterInput {
   organizationName: string
   slug: string
   registrationChoice?: unknown
+  prepareVerification?: boolean
 }
 
 export interface RegisterResult {
@@ -63,6 +65,7 @@ export interface RegisterResult {
   userId: string
   adminRoleId: string
   memberRoleId: string
+  resumed?: boolean
 }
 
 /**
@@ -80,9 +83,25 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
   registrationEvent('registration_started', choice)
 
   return db.transaction(async (tx) => {
-    const [existingPerson] = await tx.select({ id: people.id }).from(people).where(eq(people.email, normalizedEmail)).limit(1)
+    // Serializa también los dobles envíos antes de que exista una fila que bloquear.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${normalizedEmail},195))`)
+    const [existingPerson] = await tx.select().from(people).where(eq(people.email, normalizedEmail)).limit(1)
     if (existingPerson) {
-      throw new RegistrationEmailExistsError(`Ya existe una cuenta con el correo "${normalizedEmail}"`)
+      const [tenant] = await tx.select().from(tenants).where(eq(tenants.slug, normalizedSlug)).limit(1)
+      if (tenant?.onboardingStatus === 'email_pending' && !existingPerson.emailVerifiedAt
+        && tenant.name === input.organizationName.trim() && existingPerson.fullName === input.fullName.trim()
+        && await verifyPassword(input.password, existingPerson.passwordHash)) {
+        await tx.execute(sql`select set_config('app.person_id', ${existingPerson.id}, true),set_config('app.tenant_id', ${tenant.id}, true)`)
+        const [membership] = await tx.select().from(users).where(and(eq(users.personId, existingPerson.id), eq(users.tenantId, tenant.id))).limit(1)
+        const tenantRoles = await tx.select().from(roles).where(eq(roles.tenantId, tenant.id))
+        const admin = tenantRoles.find(role => role.name === 'Administrador'), member = tenantRoles.find(role => role.name === 'Miembro')
+        if (membership?.tenantId === tenant.id && membership.roleId === admin?.id && admin && member) {
+          const issued = await tx.execute(sql`select id from email_verification_tokens where person_id=${existingPerson.id}::uuid and tenant_id=${tenant.id}::uuid and used_at is null limit 1`)
+          if (input.prepareVerification && !issued.length) await issueEmailVerificationInTx(tx as unknown as typeof db, existingPerson.id, tenant.id, true)
+          return { tenantId: tenant.id, tenantName: tenant.name, slug: tenant.slug!, personId: existingPerson.id, userId: membership.id, adminRoleId: admin.id, memberRoleId: member.id, resumed: true }
+        }
+      }
+      throw new RegistrationEmailExistsError('No se pudo completar el registro con estos datos. Inicia sesión o recupera tu acceso.')
     }
 
     let tenant: typeof tenants.$inferSelect
@@ -91,12 +110,12 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
     } catch (err) {
       const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code
       if (code === PG_UNIQUE_VIOLATION) {
-        throw new SlugTakenError(`El subdominio "${normalizedSlug}" ya está en uso`)
+        throw new SlugTakenError('No se pudo completar el registro con estos datos. Inicia sesión o recupera tu acceso.')
       }
       throw err
     }
 
-    await tx.execute(sql`select set_config('app.tenant_id', ${tenant.id}, true)`)
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenant.id}, true),set_config('app.person_id','00000000-0000-0000-0000-000000000000',true)`)
 
     const [adminRole] = await tx.insert(roles).values({ tenantId: tenant.id, name: 'Administrador', isSystem: true }).returning()
     const [memberRole] = await tx.insert(roles).values({ tenantId: tenant.id, name: 'Miembro', isSystem: false }).returning()
@@ -105,6 +124,7 @@ export async function registerTenant(input: RegisterInput): Promise<RegisterResu
     const [person] = await tx.insert(people).values({ email: normalizedEmail, passwordHash, fullName: input.fullName.trim(), emailVerifiedAt: null }).returning()
 
     const [membership] = await tx.insert(users).values({ tenantId: tenant.id, personId: person.id, roleId: adminRole.id, isActive: true }).returning()
+    if (input.prepareVerification) await issueEmailVerificationInTx(tx as unknown as typeof db, person.id, tenant.id, true)
 
     return {
       tenantId: tenant.id,

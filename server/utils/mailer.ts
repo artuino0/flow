@@ -7,6 +7,8 @@ import { db, withTenant } from '~/server/db'
 import { tenantEmailSettings } from '~/server/db/schema'
 import { decryptSetting } from '~/server/utils/settingsCrypto'
 import { readSesPlatformConfig } from '~/server/utils/sesTenants'
+import { deliverMail } from './mailTransport'
+import { mailTimeout } from './mail/types'
 
 // HU-ERD-84: utilidad SMTP minima para el correo de invitacion de usuarios.
 // La plataforma no tenia NINGUNA capacidad de enviar correos reales hasta
@@ -63,7 +65,7 @@ export function readSmtpConfig(): SmtpConfig {
   const port = process.env.SMTP_PORT
   const user = process.env.SMTP_USER
   const password = process.env.SMTP_PASSWORD
-  const from = process.env.SMTP_FROM
+  const from = process.env.MAIL_FROM || process.env.SMTP_FROM
 
   if (!host || !port || !from || Boolean(user) !== Boolean(password)) {
     throw new SmtpNotConfiguredError(
@@ -270,24 +272,21 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
  * persiste (createTransport/sendMail no tocan la base).
  */
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<void> {
-  const smtp = await resolveSmtpConfig(params.tenantId)
   const inviteUrl = `${getAppBaseUrl()}/invitacion/${params.token}`
-
-  const transporter = createTransporter(smtp)
-
   const emailLogo = await resolveEmailLogo(params.tenantId)
-  await transporter.sendMail({
-    from: smtp.from,
-    replyTo: smtp.replyTo,
+  await deliverMail({
     to: params.to,
     subject: `Te invitaron a unirte a ${params.tenantName} en Flow`,
     html: buildInvitationEmailHtml({ ...params, inviteUrl, logoSrc: emailLogo.src }),
-    attachments: emailLogo.attachments
-  })
+    attachments: emailLogo.attachments.map(attachment => ({ ...attachment, content: attachment.content ?? fs.readFileSync(attachment.path!) }))
+  }, params.tenantId, true)
 }
 
 export function createTransporter(smtp: SmtpConfig) {
   const transporter = nodemailer.createTransport({
+    connectionTimeout: mailTimeout(),
+    greetingTimeout: mailTimeout(),
+    socketTimeout: mailTimeout(),
     host: smtp.host,
     port: smtp.port,
     secure: smtp.security === 'ssl' || (!smtp.security && smtp.port === 465),
@@ -311,6 +310,11 @@ export interface PlainEmailParams {
   html: string
   recordUrl?: string
   text?: string
+  platform?: boolean
+  jobId?: string
+  fallback?: boolean
+  retryProvider?: string
+  attachments?: Array<{ filename: string; content: string; contentType?: string; cid?: string }>
 }
 
 /** Marco común para todos los correos transaccionales de Flow. */
@@ -326,19 +330,17 @@ export function buildGeneralEmailHtml(params: PlainEmailParams & { logoSrc?: str
  * propio HTML interpolando variables del record. Usa la configuración SMTP
  * personalizada del tenant y cae a las variables de entorno si no existe.
  */
-export async function sendPlainEmail(params: PlainEmailParams): Promise<void> {
-  const smtp = await resolveSmtpConfig(params.tenantId)
-  const transporter = createTransporter(smtp)
+export async function sendPlainEmail(params: PlainEmailParams) {
   const emailLogo = await resolveEmailLogo(params.tenantId)
-  await transporter.sendMail({
-    from: smtp.from,
-    replyTo: smtp.replyTo,
+  return deliverMail({
     to: params.to,
     subject: params.subject,
     html: buildGeneralEmailHtml({ ...params, logoSrc: emailLogo.src }),
     ...(params.text ? { text: params.text } : {}),
-    attachments: emailLogo.attachments
-  })
+    attachments: [...emailLogo.attachments.map(attachment => ({ ...attachment, content: attachment.content ?? fs.readFileSync(attachment.path!) })),
+      ...(params.attachments ?? []).map(attachment => ({ ...attachment, content: Buffer.from(attachment.content, 'base64') }))],
+    jobId: params.jobId
+  }, params.tenantId, params.platform, params.fallback, params.retryProvider)
 }
 
 

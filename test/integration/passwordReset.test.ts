@@ -9,7 +9,11 @@ import { Socket } from 'node:net'
 
 const { enqueueEmail } = vi.hoisted(() => ({ enqueueEmail: vi.fn(async (_tenantId: string, _payload: { to: string; subject: string; html: string }) => 'email-job') }))
 vi.mock('../../server/utils/jobQueue', () => ({ enqueueEmail }))
-vi.mock('../../server/utils/criticalEmail', () => ({ sendCriticalEmail: enqueueEmail }))
+vi.mock('../../server/utils/criticalEmail', async () => {
+  const { decryptSetting } = await import('../../server/utils/settingsCrypto')
+  return { enqueueCriticalEmailInTx: async (_tx: unknown, tenantId: string, payload: { to: string; subject: string; html: string; encryptedHtml?: string }) =>
+    enqueueEmail(tenantId, { ...payload, html: payload.encryptedHtml ? decryptSetting(payload.encryptedHtml) : payload.html }) }
+})
 
 let testDb: TestDb
 let admin: postgres.Sql
@@ -25,6 +29,7 @@ let tenantId: string
 let userId: string
 
 beforeAll(async () => {
+  vi.stubEnv('JWT_SECRET', 'local-password-reset-fixture-195')
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
   tenantId = randomUUID()
@@ -62,6 +67,7 @@ beforeEach(() => {
 })
 
 afterAll(async () => {
+  vi.unstubAllEnvs()
   await admin.end()
   await testDb.stop()
   for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM']) delete process.env[key]

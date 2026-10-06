@@ -694,6 +694,13 @@
       "when": 1790607407000,
       "breakpoints": true,
       "tag": "0098_agenda_security"
+    },
+    {
+      "version": "7",
+      "idx": 99,
+      "when": 1790607408000,
+      "breakpoints": true,
+      "tag": "0099_registration_otp"
     }
   ]
 }

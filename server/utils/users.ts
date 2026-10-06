@@ -3,7 +3,9 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
 import { chatParticipants, people, roles, tenants, users } from '~/server/db/schema'
 import { hashPassword } from '~/server/utils/auth'
-import { escapeHtml, getAppBaseUrl, sendInvitationEmail, sendPlainEmail } from '~/server/utils/mailer'
+import { escapeHtml, getAppBaseUrl, buildInvitationEmailHtml } from '~/server/utils/mailer'
+import { enqueueCriticalEmailInTx } from './criticalEmail'
+import { encryptSetting } from './settingsCrypto'
 import { publishRealtime, realtimeUserTopic } from '~/server/utils/realtime'
 
 // HU-ERD-84: logica de gestion de usuarios (listar, invitar, editar rol/estado,
@@ -177,6 +179,8 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
         }
         throw err
       }
+      await enqueueCriticalEmailInTx(tx, tenantId, { to: existingPerson.email, platform: true, purpose: 'invitation', subject: `Te agregaron a ${tenantName} en Flow`,
+        html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(tenantName)} con el rol de ${escapeHtml(role.name)}. Inicia sesión con tu contraseña habitual para elegir esta organización.</p>` })
       return { kind: 'existing' as const, membershipRow, person: existingPerson, tenantName, roleName: role.name }
     }
 
@@ -186,7 +190,7 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
     // esto es solo para satisfacer la columna hasta que acceptInvitation()
     // fije la contraseña real elegida.
     const placeholderPassword = randomBytes(24).toString('hex')
-    const placeholderHash = await hashPassword(placeholderPassword)
+    const placeholderHash = `!invited:${placeholderPassword}`
     const [newPerson] = await tx.insert(people).values({ email: normalizedEmail, passwordHash: placeholderHash }).returning()
 
     const token = generateInvitationToken(tenantId)
@@ -198,25 +202,10 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
       .values({ tenantId, personId: newPerson.id, roleId, isActive: false, invitationTokenHash: tokenHash, invitationExpiresAt: expiresAt })
       .returning()
 
+    await enqueueCriticalEmailInTx(tx, tenantId, { to: newPerson.email, platform: true, purpose: 'invitation', subject: `Te invitaron a unirte a ${tenantName} en Flow`, html: 'Invitación protegida',
+      encryptedHtml: encryptSetting(buildInvitationEmailHtml({ token, to: newPerson.email, tenantName, inviterName: inviterFullName, roleName: role.name, inviteUrl: `${getAppBaseUrl()}/invitacion/${token}` })) })
     return { kind: 'new' as const, membershipRow, person: newPerson, tenantName, roleName: role.name, token }
   })
-
-  if (outcome.kind === 'new') {
-    await sendInvitationEmail({ tenantId, to: outcome.person.email, tenantName: outcome.tenantName, inviterName: inviterFullName, roleName: outcome.roleName, token: outcome.token })
-  } else {
-    try {
-      await sendPlainEmail({
-        tenantId,
-        to: outcome.person.email,
-        subject: `Te agregaron a ${outcome.tenantName} en Flow`,
-        html: `<p>${escapeHtml(inviterFullName)} te agregó al espacio de trabajo de ${escapeHtml(outcome.tenantName)} con el rol de ${escapeHtml(outcome.roleName)}. Iniciá sesión con tu contraseña habitual y vas a poder elegir esta organización.</p>`
-      })
-    } catch {
-      // Best-effort (ver comentario largo de la funcion) - la persona ya
-      // tiene contraseña propia, este correo es solo un aviso, no el unico
-      // camino para poder entrar.
-    }
-  }
 
   return {
     user: {
@@ -267,11 +256,11 @@ export async function resendInvitation(tenantId: string, userId: string, inviter
       .returning()
 
     const [person] = await tx.select().from(people).where(eq(people.id, existing.personId)).limit(1)
+    await enqueueCriticalEmailInTx(tx, tenantId, { to: person!.email, platform: true, purpose: 'invitation', subject: `Te invitaron a unirte a ${tenantName} en Flow`, html: 'Invitación protegida',
+      encryptedHtml: encryptSetting(buildInvitationEmailHtml({ token, to: person!.email, tenantName, inviterName: inviterFullName, roleName: role.name, inviteUrl: `${getAppBaseUrl()}/invitacion/${token}` })) })
 
     return { membershipRow, person: person!, tenantName, roleName: role.name }
   })
-
-  await sendInvitationEmail({ tenantId, to: person.email, tenantName, inviterName: inviterFullName, roleName, token })
 
   return {
     user: {

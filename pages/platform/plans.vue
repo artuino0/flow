@@ -186,7 +186,7 @@ function formatDate(value: string | null) {
   <main class="h-full overflow-y-auto bg-brand-bg text-brand-text">
     <header class="flex flex-wrap items-center justify-between gap-4 border-b border-brand-border-light bg-brand-surface px-5 py-5 sm:px-7">
       <div>
-        <p class="text-[11px] font-semibold text-brand-text-muted">Plataforma <span class="mx-1">›</span> Planes y límites</p>
+        <p class="text-[11px] font-semibold text-brand-text-muted"><NuxtLink to="/platform" class="text-brand-blue hover:underline">Plataforma</NuxtLink> <span class="mx-1">›</span> Planes y límites</p>
         <h1 class="mt-1 text-xl font-bold">Planes y límites</h1>
         <p class="mt-1 text-[13px] text-brand-text-secondary">Define precios, límites y excepciones por organización.</p>
       </div>

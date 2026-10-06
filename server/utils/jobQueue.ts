@@ -88,7 +88,12 @@ export const emailJobSchema = z.object({
   subject: z.string().min(1).max(998),
   html: z.string().min(1).max(500_000),
   text: z.string().max(500_000).optional(),
-  recordUrl: z.string().max(2048).optional()
+  recordUrl: z.string().max(2048).optional(),
+  encryptedHtml: z.string().max(1_000_000).optional(),
+  platform: z.boolean().optional(),
+  verificationId: z.string().uuid().optional(),
+  purpose: z.enum(['verification', 'invitation', 'password-reset']).optional(),
+  attachments: z.array(z.object({ filename: z.string().max(255), content: z.string().max(10_000_000), contentType: z.string().max(255).optional(), cid: z.string().max(255).optional() })).max(20).optional()
 })
 export type EmailJobPayload = z.infer<typeof emailJobSchema>
 
@@ -182,8 +187,11 @@ export async function failJob(job: Pick<ClaimedJob, 'id' | 'attempts' | 'maxAtte
 export async function recoverStuckJobs(olderThanMs = 10 * 60_000, now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - olderThanMs)
   const rows = await withJobWorker(tx => tx.execute(sql`
-    UPDATE job_queue SET status = 'pending', locked_at = NULL, locked_by = NULL, updated_at = ${now.toISOString()}::timestamptz,
-      last_error = COALESCE(last_error, 'El proceso se interrumpió durante el envío')
+    UPDATE job_queue SET status = CASE WHEN delivery_started_at IS NOT NULL AND delivery_id IS NULL AND (delivery_provider<>'resend' OR delivery_started_at < ${now.toISOString()}::timestamptz-interval '23 hours') THEN 'dead' ELSE 'pending' END,
+      completed_at = CASE WHEN delivery_started_at IS NOT NULL AND delivery_id IS NULL AND (delivery_provider<>'resend' OR delivery_started_at < ${now.toISOString()}::timestamptz-interval '23 hours') THEN ${now.toISOString()}::timestamptz ELSE completed_at END,
+      locked_at = NULL, locked_by = NULL, updated_at = ${now.toISOString()}::timestamptz,
+      last_error = CASE WHEN delivery_started_at IS NOT NULL AND delivery_id IS NULL AND (delivery_provider<>'resend' OR delivery_started_at < ${now.toISOString()}::timestamptz-interval '23 hours')
+        THEN 'Resultado de entrega desconocido; comprueba el proveedor antes de reintentar para evitar duplicados.' ELSE COALESCE(last_error, 'El proceso se interrumpió durante el envío') END
     WHERE status = 'processing' AND locked_at < ${cutoff.toISOString()}::timestamptz
     RETURNING id`))
   return [...rows].length
@@ -225,7 +233,11 @@ function envNumber(name: string, fallback: number): number {
  * ejecuta con un ritmo máximo, hasta agotar el tiempo o la cola.
  */
 export async function runJobQueueTick(options: TickOptions = {}): Promise<TickResult> {
-  try { await db.execute(sql`select purge_agenda_security_buckets(${(options.now?.() ?? new Date()).toISOString()}::timestamptz)`) }
+  if (process.env.REGISTRATION_PENDING_CLEANUP_ENABLED === 'true') {
+    try { await (await import('./pendingRegistrationCleanup')).cleanupPendingRegistrations() }
+    catch { logger.warn('pending_registration_cleanup_failed') }
+  }
+  try { await db.execute(sql`select purge_agenda_security_buckets(${(options.now?.() ?? new Date()).toISOString()}::timestamptz),purge_auth_security_buckets()`) }
   catch { logger.warn('agenda_security_cleanup_failed') }
   if (process.env.PLATFORM_CRM_TENANT_SLUG) {
     try { await (await import('./platformCrmQueue')).drainPlatformCrmEvents() }
@@ -309,7 +321,7 @@ export async function summarizeQueue(tenantId: string, limit = 50): Promise<Queu
 export async function retryDeadJob(tenantId: string, jobId: string): Promise<boolean> {
   const rows = await withTenant(tenantId, tx => tx.update(jobQueue)
     .set({ status: 'pending', attempts: 0, runAt: new Date(), lockedAt: null, lockedBy: null, completedAt: null, updatedAt: new Date() })
-    .where(and(eq(jobQueue.id, jobId), eq(jobQueue.tenantId, tenantId), eq(jobQueue.status, 'dead')))
+    .where(and(eq(jobQueue.id, jobId), eq(jobQueue.tenantId, tenantId), eq(jobQueue.status, 'dead'), sql`(delivery_started_at IS NULL OR delivery_id IS NOT NULL)`))
     .returning({ id: jobQueue.id }))
   return rows.length > 0
 }

@@ -5,7 +5,7 @@ import { issueSessionCookies } from '~/server/utils/auth'
 import { RegistrationEmailExistsError, SlugTakenError, TENANT_SLUG_PATTERN, registerTenant } from '~/server/utils/registration'
 import { DuplicateEmailError, RoleNotFoundError, inviteUser } from '~/server/utils/users'
 import { SmtpNotConfiguredError } from '~/server/utils/mailer'
-import { assertVerificationDelivery, issueEmailVerification } from '~/server/utils/emailVerification'
+import { authRequestLimit } from '~/server/utils/authPersistentLimit'
 
 // POST /api/auth/register (HU multi-organizacion, 2026-09-04): "Registro"
 // (Screen/Registro Paso 1-4 del .pen) - crea la persona + su primera
@@ -32,15 +32,11 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, bodySchema.parse)
 
-  try { await assertVerificationDelivery() }
-  catch (error) {
-    if (error instanceof SmtpNotConfiguredError) throw createError({ statusCode: 503, statusMessage: error.message })
-    throw error
-  }
+  await authRequestLimit(event, 'register', body.email.toLowerCase())
 
   let result
   try {
-    result = await registerTenant(body)
+    result = await registerTenant({ ...body, prepareVerification: true })
   } catch (err) {
     if (err instanceof RegistrationEmailExistsError) {
       throw createError({ statusCode: 409, statusMessage: err.message })
@@ -51,14 +47,12 @@ export default defineEventHandler(async (event) => {
     throw err
   }
 
-  await issueEmailVerification(result.personId, result.tenantId)
-
   // Paso 3: invitaciones opcionales - best-effort, cada una independiente
   // (si una falla - ej. correo repetido en la lista - las demas y la
   // organización recien creada NO se pierden). Reusa inviteUser() tal cual
   // (server/utils/users.ts) con el rol "Miembro" creado en registerTenant().
   const invitationResults: { email: string; ok: boolean }[] = []
-  for (const invitee of body.invitees ?? []) {
+  for (const invitee of result.resumed ? [] : body.invitees ?? []) {
     try {
       await inviteUser(result.tenantId, invitee.email, result.memberRoleId, body.fullName)
       invitationResults.push({ email: invitee.email, ok: true })
@@ -67,7 +61,8 @@ export default defineEventHandler(async (event) => {
         invitationResults.push({ email: invitee.email, ok: false })
         continue
       }
-      throw err
+      // La cuenta ya está confirmada; el fallo de una invitación no falsifica el alta.
+      invitationResults.push({ email: invitee.email, ok: false })
     }
   }
 
@@ -84,6 +79,10 @@ export default defineEventHandler(async (event) => {
     tenantId: result.tenantId,
     tenantName: result.tenantName,
     slug: result.slug,
-    invitationsSent: invitationResults.filter((r) => r.ok).length
+    invitationsSent: invitationResults.filter((r) => r.ok).length,
+    invitationsQueued: invitationResults.filter((r) => r.ok).length,
+    invitationsFailed: invitationResults.filter((r) => !r.ok).length,
+    verificationDelivery: 'queued',
+    resumed: Boolean(result.resumed)
   }
 })

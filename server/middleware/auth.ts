@@ -103,7 +103,7 @@ export default defineEventHandler(async (event) => {
   const onboarding = !membership?.verifiedAt ? 'email_pending' : membership.status ?? 'complete'
   if (onboarding === 'complete' || path === '/api/auth/me' || path === '/api/billing/registration-intent') return
   if (onboarding === 'email_pending') {
-    if (path === '/api/auth/email-verification/resend' || path === '/api/auth/email-verification/change-email') return
+    if (['/api/auth/email-verification/resend', '/api/auth/email-verification/change-email', '/api/auth/email-verification/code', '/api/auth/email-verification/status'].includes(path)) return
     throw createError({ statusCode: 403, statusMessage: 'Confirma tu correo antes de continuar' })
   }
   if (path === '/api/billing/plans' || path === '/api/billing/checkout') return

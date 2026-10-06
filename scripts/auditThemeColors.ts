@@ -34,6 +34,7 @@ export const migratedThemeFiles = [
   'pages/ajustes/index.vue', 'pages/mi-cuenta.vue', 'pages/organizacion.vue',
   'pages/usuarios/index.vue', 'pages/usuarios/[id].vue', 'pages/roles/index.vue',
   'pages/platform/plans.vue', 'pages/registros/[entity]/importar.vue',
+  'pages/platform/index.vue',
   'components/SettingsProfile.vue', 'components/SettingsSessions.vue', 'components/SettingsApiKeys.vue',
   'components/SettingsBillingSummary.vue', 'components/SettingsEmailAccordion.vue',
   'components/SettingsFiscalModuleMapping.vue', 'components/SettingsNotificationGroups.vue',

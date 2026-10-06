@@ -1,5 +1,11 @@
 # Changelog
 
+### [0.154.0] - 2026-10-05
+#### [feature]
+- [ERD-195](https://dydasoftware.atlassian.net/browse/ERD-195) - Registro más rápido y confiable: el correo se verifica con un código de 6 dígitos dentro del mismo asistente (con reenvío y cambio de correo), sin salir a un enlace; y el proveedor de correo de la plataforma se elige con una variable (SMTP, Mailtrap, Amazon SES, Resend o Postmark por API), con proveedor de respaldo opcional y una pantalla de diagnóstico con «Enviar correo de prueba» para el administrador de la plataforma.
+#### [bugfix]
+- [ERD-195](https://dydasoftware.atlassian.net/browse/ERD-195) - El registro ya no se queda colgado cuando el correo no responde: la cuenta se crea y el correo sale por la cola con límite de tiempo y reintentos. El mensaje «No se pudo crear tu organización» solo aparece cuando de verdad no se creó, y reintentar retoma la misma cuenta. Lo mismo aplica a invitaciones, recuperación de contraseña y envío de facturas.
+
 ### [0.153.2] - 2026-10-05
 #### [bugfix]
 - [ERD-194](https://dydasoftware.atlassian.net/browse/ERD-194) - Los sitios con agenda incrustada también cargan rápido: se corrigió la causa de fondo de la lentitud (el análisis de marcadores de agenda repetía una conversión de todo el documento por cada carácter una vez que el motor optimizaba el código) y ahora el documento se analiza una sola vez por página, con un lector lineal.

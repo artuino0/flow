@@ -723,6 +723,9 @@ export const tenantEmailSettings = pgTable('tenant_email_settings', {
 // las toma con FOR UPDATE SKIP LOCKED (server/utils/jobQueue.ts). RLS: cada
 // organizacion ve solo los suyos; el proceso de la cola usa withJobWorker().
 export const jobQueue = pgTable('job_queue', {
+  deliveryProvider: text('delivery_provider'),
+  deliveryId: text('delivery_id'),
+  deliveryStartedAt: timestamp('delivery_started_at', { withTimezone: true }),
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   kind: text('kind').notNull(),
@@ -1618,6 +1621,9 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 }, table => ({ personIdx: index('password_reset_tokens_person_idx').on(table.personId) }))
 
 export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  codeHash: text('code_hash'),
+  codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }),
+  attempts: integer('attempts').notNull().default(0),
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),

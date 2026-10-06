@@ -11,6 +11,7 @@ import type { AuthTokenPayload } from '../../server/utils/auth'
 import { createEvent } from 'h3'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
+import { drainEmails195 } from '../helpers/drainEmails195'
 const { send, trigger } = vi.hoisted(() => ({ send: vi.fn(async (_payload: { to: string }) => {}), trigger: vi.fn() }))
 vi.mock('../../server/utils/mailer', async original => ({ ...await original<typeof import('../../server/utils/mailer')>(), sendPlainEmail: send }))
 vi.mock('../../server/utils/triggers', () => ({ fireTriggersForRecord: trigger }))
@@ -52,6 +53,11 @@ beforeAll(async () => {
     await actor(() => api.agendaSiteAdministration(auth, sid!, { enabled: true, personalIds: [staff], cancellationHours: 0, confirmEmail: sid === site }))
   }
   context = await api.resolveAgendaContext(site, page, origin)
+  const original = api
+  api = { ...original,
+    publicAgendaBook: async (...args) => { const result = await original.publicAgendaBook(...args); await drainEmails195(admin); return result },
+    publicAgendaConfirm: async (...args) => { const result = await original.publicAgendaConfirm(...args); await drainEmails195(admin); return result }
+  }
 }, 120000)
 afterAll(async () => { await connection?.client.end(); await admin?.end(); await database?.stop(); delete process.env.APP_DATABASE_URL; delete process.env.APP_BASE_URL })
 it('migración no superusuario, ACL cerrada, nueva RLS y FK cascade', async () => {
