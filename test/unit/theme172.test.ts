@@ -57,6 +57,9 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
     }
   })
   const app = createApp({ render: () => h(Suspense, {}, { default: () => h(comp) }) })
+  app.component('ThemeSelector', { render: () => null })
+  app.component('RegistrationStepIndicator', compileVueComponent('components/RegistrationStepIndicator.vue'))
+  app.component('RegistrationOtpStep', compileVueComponent('components/RegistrationOtpStep.vue'))
   const link: Component = { setup(_, { attrs, slots }) { return () => h('a', { ...attrs, href: attrs.to }, slots.default?.()) } }
   app.component('NuxtLink', link)
   const host = document.createElement('div'); document.body.append(host); apps.push(app); app.mount(host); await flush()
@@ -182,7 +185,7 @@ describe.each(['light', 'dark'] as const)('acceso montado en %s sin red', mode =
     expect(fetch).toHaveBeenCalledWith('/api/users/accept-invitation', { method: 'POST', body: { token: 'token-local', password: 'Clave-local-1', fullName: undefined } })
   })
   it('confirmar permite cambiar correo y muestra resultado textual', async () => {
-    const { host, fetch } = await mount('confirmar-correo', mode); await click(host, 'Cambiar correo'); await input(host, 'new-email', 'nuevo@ejemplo.invalid'); await submit(host)
+    const { host, fetch } = await mount('confirmar-correo', mode); await click(host, 'Usar otro correo'); await input(host, 'new-email', 'nuevo@ejemplo.invalid'); await submit(host)
     expect(host.querySelector('[role="status"]')?.textContent).toContain('nuevo@ejemplo.invalid')
     expect(fetch).toHaveBeenCalledWith('/api/auth/email-verification/change-email', { method: 'PUT', body: { email: 'nuevo@ejemplo.invalid' } })
   })

@@ -25,7 +25,7 @@ import { mailTimeout } from './mail/types'
 // Diseno real (Email/Invitación Usuario en ERPDinamico.pen, revisado con las
 // herramientas de Pencil junto con Screen/Usuarios) - copy y estructura
 // tomados tal cual del .pen, incluida la ruta del enlace de aceptacion
-// (app.erpdinamico.com/invitacion/<token>, nodo hOZJI) que fija la
+// (app.dydasoftware.com/invitacion/<token>, nodo hOZJI) que fija la
 // convencion real de ruta: /invitacion/:token, NO /aceptar-invitacion?token=.
 
 export class SmtpNotConfiguredError extends Error {}

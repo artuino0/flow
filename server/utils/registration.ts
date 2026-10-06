@@ -25,9 +25,8 @@ export class SlugTakenError extends Error {}
 
 const PG_UNIQUE_VIOLATION = '23505'
 
-// Mismo criterio de forma que un subdominio real (letras/digitos en
-// minuscula y guiones, sin empezar/terminar en guion) - el .pen lo muestra
-// como "acme" en "acme.erpdinamico.com". No hay resolucion real por host
+// Identificador de organización (letras/dígitos en minúscula y guiones,
+// sin empezar/terminar en guion). No forma parte del host: no hay resolución real por host
 // detras (ver el comentario largo en tenants.slug, server/db/schema.ts) -
 // esto solo garantiza que el valor mostrado sea unico y con buena forma.
 export const TENANT_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/

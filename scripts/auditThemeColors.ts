@@ -13,6 +13,7 @@ export const migratedThemeFiles = [
   'components/AgendaBaseModal.vue',
   // HU-172: acceso temático; identidad de Flow en assets intactos.
   'assets/css/access.css', 'pages/login.vue', 'pages/registro.vue',
+  'components/RegistrationStepIndicator.vue', 'components/RegistrationOtpStep.vue',
   'pages/registro-completo.vue', 'pages/recuperar.vue', 'pages/restablecer/[token].vue',
   'pages/activar.vue', 'pages/verificar-correo.vue', 'pages/confirmar-correo.vue',
   'pages/invitacion/[token].vue',

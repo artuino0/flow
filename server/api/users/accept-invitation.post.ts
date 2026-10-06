@@ -5,7 +5,7 @@ import { InvalidInvitationTokenError, InvitationExpiredError, acceptInvitation }
 // POST /api/users/accept-invitation { token, password, fullName? } - PUBLICO
 // (ver server/middleware/auth.ts): el invitado todavia no tiene sesion.
 // pages/invitacion/[token].vue (fiel al enlace real del correo,
-// app.erpdinamico.com/invitacion/<token> en el .pen). La contraseña se valida
+// app.dydasoftware.com/invitacion/<token> en el .pen). La contraseña se valida
 // contra el mismo passwordPolicySchema que cualquier otro cambio de
 // contraseña (HU-ERD-83).
 const bodySchema = z.object({

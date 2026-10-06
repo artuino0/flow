@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.154.1] - 2026-10-05
+#### [bugfix]
+- [ERD-196](https://dydasoftware.atlassian.net/browse/ERD-196) - Registro: el asistente ya no promete un subdominio que no existe (`nombre.erpdinamico.com`). El campo es ahora el «Identificador de tu organización» y el resumen muestra la dirección real de acceso. Se aplicó el diseño nuevo del asistente: cabecera móvil, indicador de cinco pasos y pantalla del código de verificación con seis casillas.
+
 ### [0.154.0] - 2026-10-05
 #### [feature]
 - [ERD-195](https://dydasoftware.atlassian.net/browse/ERD-195) - Registro más rápido y confiable: el correo se verifica con un código de 6 dígitos dentro del mismo asistente (con reenvío y cambio de correo), sin salir a un enlace; y el proveedor de correo de la plataforma se elige con una variable (SMTP, Mailtrap, Amazon SES, Resend o Postmark por API), con proveedor de respaldo opcional y una pantalla de diagnóstico con «Enviar correo de prueba» para el administrador de la plataforma.

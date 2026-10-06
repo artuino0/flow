@@ -10,13 +10,14 @@ import { getAppMode, isFeatureEnabled } from '~/server/utils/appConfig'
 // no con el nombre de variable que use el resto del proyecto). Un endpoint
 // evita esa trampa por completo y mantiene un unico nombre de variable por
 // concepto (APP_MODE, FEATURE_DASHBOARD) en vez de necesitar dos.
-export default defineEventHandler(() => {
+export default defineEventHandler((event) => {
   const configuredTransport = process.env.REALTIME_TRANSPORT?.trim().toLowerCase()
   const realtimeTransport = configuredTransport === 'websocket' || configuredTransport === 'polling'
     ? configuredTransport
     : (process.env.VERCEL || process.env.VERCEL_ENV ? 'polling' : 'websocket')
 
   return {
+    appBaseUrl: process.env.APP_BASE_URL?.trim() || getRequestURL(event).origin,
     appMode: getAppMode(),
     realtimeTransport,
     featureFlags: {

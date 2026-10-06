@@ -4,7 +4,7 @@ import { TENANT_SLUG_PATTERN, isSlugAvailable } from '~/server/utils/registratio
 
 // GET /api/tenants/check-slug?slug=acme (HU multi-organizacion, 2026-09-04):
 // Paso 2 del wizard de Registro ("Disponible — tu equipo entrará por
-// acme.erpdinamico.com" del .pen) - publico (no hay sesion todavia), no
+// "acme" como identificador independiente del dominio - publico (no hay sesion todavia), no
 // filtra nada sensible (solo si un slug ya esta tomado).
 const querySchema = z.object({ slug: z.string().trim().toLowerCase() })
 

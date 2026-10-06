@@ -8,7 +8,7 @@
 //
 // Ruta /invitacion/:token (no /aceptar-invitacion?token=) porque asi es como
 // el correo real arma el enlace (Email/Invitación Usuario, nodo hOZJI:
-// "app.erpdinamico.com/invitacion/8f3a2c91").
+// "app.dydasoftware.com/invitacion/8f3a2c91").
 import { CircleAlert, CircleCheck } from '@lucide/vue'
 
 definePageMeta({ layout: false, darkReady: true })

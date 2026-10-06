@@ -5,6 +5,7 @@
 // necesita el forwarding manual de cookie en SSR (HU-ERD-32) que si hace
 // falta en los demas composables de este estilo.
 export interface PublicAppConfig {
+  appBaseUrl: string
   appMode: 'saas' | 'dedicated'
   realtimeTransport: 'websocket' | 'polling'
   featureFlags: {

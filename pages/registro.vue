@@ -9,7 +9,7 @@
 // (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
 // registerTenant() solo crea ese rol de arranque además de "Administrador",
 // así que se dibuja fijo, sin dropdown funcional.
-import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Building2, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
 import { normalizeRegistrationChoice, type RegistrationChoice } from '~/utils/registrationIntent'
 
 definePageMeta({ layout: false, darkReady: true })
@@ -19,11 +19,16 @@ definePageMeta({ layout: false, darkReady: true })
 // devuelve 403 ahí). Se resuelve en runtime via GET /api/config, igual que
 // pages/login.vue.
 const { data: appConfig } = await useDeploymentConfig()
+const accessAddress = computed(() => {
+  try { return new URL(appConfig.value?.appBaseUrl || '').host }
+  catch { return '' }
+})
 if (appConfig.value?.appMode === 'dedicated') {
   await navigateTo('/login')
 }
 
 const step = ref(1)
+const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organización', 'Invita a tu equipo', 'Listo']
 const loading = ref(false)
 const errorMessage = ref('')
 const accountExists = ref(false)
@@ -102,10 +107,12 @@ function onSlugInput() {
 
 const slugChecking = ref(false)
 const slugAvailable = ref<boolean | null>(null)
+const slugReason = ref<string | null>(null)
 let slugCheckTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(slug, (val) => {
   slugAvailable.value = null
+  slugReason.value = null
   if (slugCheckTimer) clearTimeout(slugCheckTimer)
   if (!val) return
   slugCheckTimer = setTimeout(async () => {
@@ -113,6 +120,7 @@ watch(slug, (val) => {
     try {
       const result = await $fetch<{ available: boolean; reason?: string }>('/api/tenants/check-slug', { query: { slug: val } })
       slugAvailable.value = result.available
+      slugReason.value = result.reason ?? null
     } catch {
       slugAvailable.value = null
     } finally {
@@ -189,6 +197,12 @@ const brandText = computed(() => {
 
 <template>
   <div class="access-page flex min-h-screen font-sans">
+    <div class="access-brand flex items-center gap-3 rounded-b-[28px] px-5 py-5 text-brand-tooltip-fg lg:hidden">
+      <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-switch-thumb/15">
+        <img src="/brand/isotipo-white.png" alt="Flow" class="h-8 w-8 object-contain" />
+      </div>
+      <span class="text-xl font-bold">Flow</span>
+    </div>
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
     >
@@ -210,19 +224,7 @@ const brandText = computed(() => {
       <!-- Paso 1: Tu cuenta -->
       <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <template v-for="n in 5" :key="n">
-              <div
-                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
-              >
-                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
-                <span v-else>{{ n }}</span>
-              </div>
-              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
-            </template>
-          </div>
-          <p class="text-xs font-semibold text-brand-sites-muted">Paso 1 de 5</p>
+          <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="1" />
         </div>
 
         <div>
@@ -308,19 +310,7 @@ const brandText = computed(() => {
       <!-- Paso 2: Tu organización -->
       <div v-else-if="step === 2" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <template v-for="n in 5" :key="n">
-              <div
-                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
-              >
-                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
-                <span v-else>{{ n }}</span>
-              </div>
-              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
-            </template>
-          </div>
-          <p class="text-xs font-semibold text-brand-sites-muted">Paso 2 de 5</p>
+          <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="3" />
         </div>
 
         <div>
@@ -346,7 +336,7 @@ const brandText = computed(() => {
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="slug" class="text-[13px] font-semibold text-brand-text">Subdominio de tu organización</label>
+          <label for="slug" class="text-[13px] font-semibold text-brand-text">Identificador de tu organización</label>
           <div
             class="flex items-center gap-2 rounded border px-3 py-[9px]"
             :class="slugAvailable === false ? 'border-brand-error-text' : slugAvailable === true ? 'border-brand-success-text' : 'border-brand-control-border'"
@@ -357,16 +347,19 @@ const brandText = computed(() => {
               type="text"
               required
               placeholder="acme"
+              aria-describedby="slug-help"
               class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-brand-text placeholder:text-brand-sites-muted focus:outline-none focus:ring-0"
               @input="onSlugInput"
             />
-            <span class="shrink-0 text-sm text-brand-sites-muted">.erpdinamico.com</span>
             <CircleCheck v-if="slugAvailable === true" class="h-4 w-4 shrink-0 text-brand-success-text" :stroke-width="2" />
           </div>
+          <p id="slug-help" class="text-xs text-brand-text-secondary">Un nombre corto y único, en minúsculas. Lo usarás para identificar tu organización.</p>
+          <p v-if="slugChecking" role="status" class="text-xs text-brand-text-secondary">Comprobando disponibilidad…</p>
           <p v-if="slugAvailable === true" class="flex items-center gap-1 text-xs font-medium text-brand-success-text">
-            <CircleCheck class="h-3.5 w-3.5" :stroke-width="2" /> Disponible — tu equipo entrará por {{ slug }}.erpdinamico.com
+            <CircleCheck class="h-3.5 w-3.5" :stroke-width="2" /> Disponible
           </p>
-          <p v-else-if="slugAvailable === false" class="text-xs font-medium text-brand-error-text">Ese subdominio ya está en uso, prueba con otro.</p>
+          <p v-else-if="slugAvailable === false && slugReason === 'formato'" role="alert" class="text-xs font-medium text-brand-error-text">Usa solo letras minúsculas, números y guiones; empieza y termina con una letra o número.</p>
+          <p v-else-if="slugAvailable === false" role="alert" class="text-xs font-medium text-brand-error-text">Ese identificador ya está en uso, prueba con otro.</p>
         </div>
 
         <!-- Cosmetico: no hay ningun campo/backend detras (ver el comentario
@@ -409,19 +402,7 @@ const brandText = computed(() => {
       <!-- Paso 3: Invita a tu equipo -->
       <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <template v-for="n in 5" :key="n">
-              <div
-                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-                :class="n < step ? 'bg-brand-success-text text-brand-primary-fg' : n === step ? 'bg-brand-orange text-brand-primary-fg' : 'border border-brand-control-border text-brand-sites-muted'"
-              >
-                <Check v-if="n < step" class="h-3.5 w-3.5" :stroke-width="2.5" />
-                <span v-else>{{ n }}</span>
-              </div>
-              <div v-if="n < 5" class="h-px flex-1 bg-brand-border" />
-            </template>
-          </div>
-          <p class="text-xs font-semibold text-brand-sites-muted">Paso 3 de 5</p>
+          <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="4" />
         </div>
 
         <div>
@@ -482,12 +463,13 @@ const brandText = computed(() => {
 
       <!-- Paso 4: Confirmación de correo -->
       <div v-else-if="step === 4 && result" class="flex w-full max-w-[380px] flex-col gap-5">
+        <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="5" />
         <div class="flex flex-col items-center gap-3 text-center">
           <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-success-bg">
             <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
           </div>
-          <h2 class="text-2xl font-bold text-brand-text">Confirma tu correo</h2>
-          <p class="text-sm text-brand-text-secondary">Tu organización está creada. Solicitamos el envío de un código a {{ email }} para continuar.</p>
+          <h2 class="text-2xl font-bold text-brand-text">Tu organización está creada</h2>
+          <p class="text-sm text-brand-text-secondary">Confirma tu correo para activar el acceso. Enviamos un código a {{ email }}.</p>
         </div>
 
         <div class="rounded bg-brand-surface">
@@ -498,8 +480,13 @@ const brandText = computed(() => {
           </div>
           <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
-            <span class="flex-1 text-[13px] text-brand-text-secondary">URL</span>
-            <span class="text-sm font-semibold text-brand-text">{{ result.slug }}.erpdinamico.com</span>
+            <span class="flex-1 text-[13px] text-brand-text-secondary">Identificador</span>
+            <span class="text-sm font-semibold text-brand-text">{{ result.slug }}</span>
+          </div>
+          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
+            <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+            <span class="flex-1 text-[13px] text-brand-text-secondary">Acceso</span>
+            <span class="break-all text-sm font-semibold text-brand-text">{{ accessAddress }}</span>
           </div>
           <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
             <Users class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
