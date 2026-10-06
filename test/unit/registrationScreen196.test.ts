@@ -37,14 +37,27 @@ function button(host: Element, text: string) { return [...host.querySelectorAll<
 
 it('identificador disponible permite continuar y el resumen separa el acceso real del identificador', async () => {
   const { host, fetch } = await mountSlugScenario({ available: true })
+  const steps = [...host.querySelectorAll<HTMLElement>('[role="progressbar"] > .rounded-full')]
+  expect(steps).toHaveLength(5)
+  expect(steps[0].className).toContain('h-[26px]')
   await input(host, '#fullName', 'Ana Pérez'); await input(host, '#email', 'ana@example.com')
   await input(host, '#password', 'clave1234'); await input(host, '#confirmPassword', 'clave1234')
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 1 de 5: Tu cuenta')
   host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush(); button(host, 'Continuar').click(); await flush()
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 3 de 5: Tu organización')
   await input(host, '#organizationName', 'Acme'); await new Promise(resolve => setTimeout(resolve, 450)); await flush()
   expect(fetch).toHaveBeenCalledWith('/api/tenants/check-slug', { query: { slug: 'acme' } })
   expect(host.textContent).toContain('Disponible')
   expect(host.textContent).toContain('Un nombre corto y único, en minúsculas.')
-  button(host, 'Continuar').click(); await flush(); button(host, 'Continuar').click(); await flush()
+  button(host, 'Continuar').click(); await flush()
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 4 de 5: Invita a tu equipo')
+  expect(button(host, 'Agregar otro correo').className).toContain('w-full')
+  button(host, 'Continuar').click(); await flush()
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 5 de 5: Listo')
+  expect(host.querySelector('div.bg-brand-bg')).toBeTruthy()
+  const completed = [...host.querySelectorAll<HTMLElement>('[role="progressbar"] > .rounded-full')]
+  expect(completed).toHaveLength(5)
+  expect(completed.every(node => node.className.includes('bg-brand-orange') && node.querySelector('svg'))).toBe(true)
   expect(host.textContent).toContain('Identificador')
   expect(host.textContent).toContain('acme')
   expect(host.textContent).toContain('Acceso')

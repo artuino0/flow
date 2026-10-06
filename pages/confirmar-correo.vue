@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { BatteryFull, Signal, Wifi } from '@lucide/vue'
 definePageMeta({ layout: false, darkReady: true })
 const { user, fetchMe } = useAuth()
 const email = ref(''), code = ref('')
@@ -58,13 +59,22 @@ const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organiza
       <h1 class="text-[28px] font-bold">Flow</h1>
       <p class="w-[340px] text-center text-[15px] leading-6 text-brand-access-description">Un último paso: confirma que tu correo es tuyo para proteger tu organización.</p>
     </aside>
-    <div class="access-brand flex items-center gap-3 rounded-b-[28px] px-5 py-5 text-brand-tooltip-fg lg:hidden">
-      <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-switch-thumb/15"><img src="/brand/isotipo-white.png" alt="Flow" class="h-8 w-8 object-contain" /></div>
-      <span class="text-xl font-bold">Flow</span>
+    <div class="access-brand flex w-full shrink-0 flex-col rounded-b-[28px] text-brand-tooltip-fg lg:hidden">
+      <div class="flex h-[54px] w-full items-center justify-between px-6">
+        <span class="text-[15px] font-semibold">9:41</span>
+        <div class="flex items-center gap-1.5" aria-hidden="true">
+          <Signal class="h-4 w-4" :stroke-width="2" />
+          <Wifi class="h-4 w-4" :stroke-width="2" />
+          <BatteryFull class="h-4 w-4" :stroke-width="2" />
+        </div>
+      </div>
+      <div class="flex items-center gap-3 px-5 pb-6 pt-1">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-switch-thumb/15"><img src="/brand/isotipo-white.png" alt="Flow" class="h-8 w-8 object-contain" /></div>
+        <span class="text-[22px] font-bold">Flow</span>
+      </div>
     </div>
-    <section class="flex flex-1 flex-col items-center justify-center gap-5 bg-brand-surface px-4 py-8 sm:px-8">
-      <div class="flex w-full max-w-lg justify-end"><ThemeSelector /></div>
-      <div class="w-full max-w-lg rounded border border-brand-control-border bg-brand-surface px-5 py-6 sm:px-8">
+    <section class="flex flex-1 flex-col items-center justify-center gap-5 bg-brand-surface px-5 py-7 pb-8 lg:px-8 lg:py-10">
+      <div class="w-full max-w-[380px]">
         <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="2" />
         <div class="mt-6">
           <RegistrationOtpStep
@@ -78,6 +88,7 @@ const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organiza
           />
         </div>
       </div>
+      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
     </section>
   </main>
 </template>

@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.154.2] - 2026-10-05
+#### [bugfix]
+- [ERD-198](https://dydasoftware.atlassian.net/browse/ERD-198) - Registro: las pantallas del asistente ahora siguen el diseño nuevo. La tarjeta del plan elegido se reconstruyó (icono, etiqueta «Plan elegido», nombre y precio, «30 días de prueba gratis» y botón «Cambiar») y se muestra bajo el título del paso 1; se ajustaron el indicador de pasos, la cabecera móvil, la pantalla del código y el resumen final.
+
 ### [0.154.1] - 2026-10-05
 #### [bugfix]
 - [ERD-196](https://dydasoftware.atlassian.net/browse/ERD-196) - Registro: el asistente ya no promete un subdominio que no existe (`nombre.erpdinamico.com`). El campo es ahora el «Identificador de tu organización» y el resumen muestra la dirección real de acceso. Se aplicó el diseño nuevo del asistente: cabecera móvil, indicador de cinco pasos y pantalla del código de verificación con seis casillas.

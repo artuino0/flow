@@ -27,6 +27,7 @@ async function mount(file: string, options: { choice?: boolean; blocked?: boolea
   const app = vue.createApp({ render: () => vue.h(vue.Suspense, {}, { default: () => vue.h(page) }) })
   app.component('NuxtLink', vue.defineComponent({ setup(_, { slots }) { return () => vue.h('a', {}, slots.default?.()) } }))
   app.component('RegistrationStepIndicator', compileVueComponent('components/RegistrationStepIndicator.vue'))
+  app.component('ThemeSelector', { render: () => null })
   app.mount(host); apps.push(app); await flush()
   return { host, fetch, navigate }
 }
@@ -38,14 +39,32 @@ function button(host: Element, text: string) {
 it.each(['light', 'dark', 'system'] as const)('registro con resumen y sin él funciona en %s', async mode => {
   new Function('localStorage', 'window', 'document', themeBootstrap)({ getItem: () => mode }, { matchMedia: () => ({ matches: true }) }, document)
   const { host, navigate } = await mount('pages/registro.vue', { choice: true })
-  expect(host.querySelector('[aria-label="Plan elegido"]')?.textContent).toContain('Starter')
-  expect(host.textContent).toContain('$6,990 MXN al año')
+  const planCard = host.querySelector<HTMLElement>('[aria-label="Plan elegido"]')
+  expect(planCard?.textContent).toContain('PLAN ELEGIDO')
+  expect(planCard?.textContent).toContain('Starter · $6,990 MXN al año')
+  expect(planCard?.textContent).toContain('30 días de prueba gratis')
+  expect(planCard?.querySelector('button[aria-label="Cambiar plan"]')?.textContent).toBe('Cambiar')
+  const heading = host.querySelector('h2')
+  expect(heading).toBeTruthy()
+  expect(heading!.compareDocumentPosition(planCard!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 1 de 5: Tu cuenta')
+  expect(host.querySelector('[role="progressbar"] + p')?.textContent).toBe('Paso 1 de 5')
+  expect(host.querySelector('.access-brand.lg\\:hidden')?.textContent).toContain('9:41')
+  expect(host.querySelector('#password')?.parentElement?.parentElement?.className).toContain('grid-cols-1')
+  expect(host.querySelector('#password')?.parentElement?.parentElement?.className).toContain('sm:grid-cols-2')
   expect(host.querySelector('#email')).toBeTruthy()
-  button(host, 'Cambiar plan').click(); await flush()
+  planCard?.querySelector<HTMLButtonElement>('button[aria-label="Cambiar plan"]')?.click(); await flush()
   expect(host.querySelector('[aria-label="Plan elegido"]')).toBeNull()
   expect(navigate).toHaveBeenCalledWith('/registro', { replace: true })
   const normal = await mount('pages/registro.vue')
   expect(normal.host.querySelector('[aria-label="Plan elegido"]')).toBeNull()
+  for (const [selector, value] of [['#fullName', 'Ana Pérez'], ['#email', 'ana@example.com'], ['#password', 'Clave1234'], ['#confirmPassword', 'Clave1234']] as const) {
+    const field = host.querySelector<HTMLInputElement>(selector)!
+    field.value = value; field.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush()
+  button(host, 'Continuar').click(); await flush()
+  expect(host.querySelector('[aria-label="Plan elegido"]')).toBeNull()
   expect(document.documentElement.dataset.theme).toBe(mode === 'light' ? 'light' : 'dark')
   expect(auditThemeSource('pages/registro.vue', readFileSync('pages/registro.vue', 'utf8'))).toEqual([])
 })

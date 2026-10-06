@@ -9,7 +9,7 @@
 // (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
 // registerTenant() solo crea ese rol de arranque además de "Administrador",
 // así que se dibuja fijo, sin dropdown funcional.
-import { ArrowLeft, ArrowRight, Building2, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Users, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BatteryFull, Building2, CalendarCheck, ChevronDown, CircleAlert, CircleCheck, Layers, Link2, Plus, Signal, Users, Wifi, X } from '@lucide/vue'
 import { normalizeRegistrationChoice, type RegistrationChoice } from '~/utils/registrationIntent'
 
 definePageMeta({ layout: false, darkReady: true })
@@ -196,12 +196,22 @@ const brandText = computed(() => {
 </script>
 
 <template>
-  <div class="access-page flex min-h-screen font-sans">
-    <div class="access-brand flex items-center gap-3 rounded-b-[28px] px-5 py-5 text-brand-tooltip-fg lg:hidden">
-      <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-switch-thumb/15">
-        <img src="/brand/isotipo-white.png" alt="Flow" class="h-8 w-8 object-contain" />
+  <div class="access-page flex min-h-screen flex-col font-sans lg:flex-row">
+    <div class="access-brand flex w-full shrink-0 flex-col rounded-b-[28px] text-brand-tooltip-fg lg:hidden">
+      <div class="flex h-[54px] w-full items-center justify-between px-6">
+        <span class="text-[15px] font-semibold">9:41</span>
+        <div class="flex items-center gap-1.5" aria-hidden="true">
+          <Signal class="h-4 w-4" :stroke-width="2" />
+          <Wifi class="h-4 w-4" :stroke-width="2" />
+          <BatteryFull class="h-4 w-4" :stroke-width="2" />
+        </div>
       </div>
-      <span class="text-xl font-bold">Flow</span>
+      <div class="flex items-center gap-3 px-5 pb-6 pt-1">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-switch-thumb/15">
+          <img src="/brand/isotipo-white.png" alt="Flow" class="h-8 w-8 object-contain" />
+        </div>
+        <span class="text-[22px] font-bold">Flow</span>
+      </div>
     </div>
     <div
       class="hidden w-[560px] shrink-0 flex-col justify-center gap-5 access-brand px-16 lg:flex"
@@ -213,13 +223,7 @@ const brandText = computed(() => {
       <p class="w-[340px] text-[15px] text-brand-access-description">{{ brandText }}</p>
     </div>
 
-    <div class="flex flex-1 flex-col items-center justify-center gap-6 bg-brand-surface px-4 py-10">
-      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
-      <section v-if="chosenPlan" aria-label="Plan elegido" class="w-full max-w-[380px] rounded border border-brand-control-border bg-brand-blue-bg px-4 py-3 text-sm text-brand-text">
-        <p>Plan elegido: <strong>{{ chosenPlan.name }}</strong> · {{ chosenPrice }} MXN {{ choice?.interval === 'year' ? 'al año' : 'al mes' }} · 30 días de prueba</p>
-        <button type="button" :disabled="loading" class="mt-2 font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-brand-blue disabled:opacity-50" @click="changePlan">Cambiar plan</button>
-        <p v-if="choiceError" role="alert" class="mt-2 text-brand-error-text">{{ choiceError }}</p>
-      </section>
+    <div class="flex flex-1 flex-col items-center justify-center gap-6 bg-brand-surface px-5 py-7 pb-8 lg:px-4 lg:py-10">
       <NuxtLink v-if="accountExists" :to="loginLink" class="w-full max-w-[380px] text-sm font-semibold text-brand-blue underline">{{ chosenPlan ? 'Inicia sesión para continuar con el plan elegido' : 'Inicia sesión para continuar' }}</NuxtLink>
       <!-- Paso 1: Tu cuenta -->
       <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
@@ -231,6 +235,19 @@ const brandText = computed(() => {
           <h2 class="text-2xl font-bold text-brand-text">Crea tu cuenta</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Empieza con tus datos personales. Después configuramos tu organización.</p>
         </div>
+
+        <section v-if="chosenPlan" aria-label="Plan elegido" class="flex w-full items-center gap-3 rounded-lg bg-brand-blue-bg px-[14px] py-3 text-brand-text">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-surface">
+            <CalendarCheck class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-[10px] font-bold tracking-[0.06em] text-brand-blue">PLAN ELEGIDO</p>
+            <p class="text-sm font-bold">{{ chosenPlan.name }} · {{ chosenPrice }} MXN {{ choice?.interval === 'year' ? 'al año' : 'al mes' }}</p>
+            <p class="text-xs text-brand-text-secondary">30 días de prueba gratis</p>
+          </div>
+          <button type="button" :disabled="loading" aria-label="Cambiar plan" class="shrink-0 rounded bg-brand-surface px-2.5 py-1.5 text-xs font-bold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue disabled:opacity-50" @click="changePlan">Cambiar</button>
+          <p v-if="choiceError" role="alert" class="basis-full text-xs text-brand-error-text">{{ choiceError }}</p>
+        </section>
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
           <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
@@ -262,7 +279,7 @@ const brandText = computed(() => {
           />
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="flex flex-col gap-1.5">
             <label for="password" class="text-[13px] font-semibold text-brand-text">Contraseña</label>
             <input
@@ -289,7 +306,7 @@ const brandText = computed(() => {
         <p class="-mt-3 text-xs text-brand-sites-muted">Al menos 8 caracteres, con letras y números.</p>
 
         <label class="flex cursor-pointer items-start gap-2">
-          <input v-model="acceptedTerms" type="checkbox" class="mt-0.5 h-[18px] w-[18px] rounded-[3px] border-brand-control-border text-brand-orange focus:ring-brand-orange" />
+          <input v-model="acceptedTerms" type="checkbox" class="mt-0.5 h-4 w-4 rounded-[3px] border-brand-control-border accent-brand-orange focus:ring-brand-orange" />
           <span class="text-sm text-brand-text">Acepto los Términos y Condiciones y la Política de Privacidad</span>
         </label>
 
@@ -433,7 +450,7 @@ const brandText = computed(() => {
           </div>
         </div>
 
-        <button type="button" class="flex items-center gap-1.5 self-start text-[13px] font-semibold text-brand-blue hover:underline" @click="addInvitee">
+        <button type="button" class="flex w-full items-center justify-center gap-1.5 rounded border border-brand-control-border bg-brand-surface px-3.5 py-[9px] text-[13px] font-semibold text-brand-text-secondary hover:bg-brand-surface" @click="addInvitee">
           <Plus class="h-3.5 w-3.5" :stroke-width="2.5" /> Agregar otro correo
         </button>
 
@@ -464,34 +481,34 @@ const brandText = computed(() => {
       <!-- Paso 4: Confirmación de correo -->
       <div v-else-if="step === 4 && result" class="flex w-full max-w-[380px] flex-col gap-5">
         <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="5" />
-        <div class="flex flex-col items-center gap-3 text-center">
-          <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-success-bg">
-            <CircleCheck class="h-6 w-6 text-brand-success-text" :stroke-width="1.75" />
+        <div class="flex flex-col items-center gap-[14px] text-center">
+          <div class="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-brand-success-bg">
+            <CircleCheck class="h-7 w-7 text-brand-success-text" :stroke-width="1.75" />
           </div>
-          <h2 class="text-2xl font-bold text-brand-text">Tu organización está creada</h2>
+          <h2 class="text-[22px] font-bold text-brand-text">Tu organización está creada</h2>
           <p class="text-sm text-brand-text-secondary">Confirma tu correo para activar el acceso. Enviamos un código a {{ email }}.</p>
         </div>
 
-        <div class="rounded bg-brand-surface">
-          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
-            <Building2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+        <div class="w-full rounded bg-brand-bg px-[14px] py-1">
+          <div class="flex items-center gap-2.5 border-b border-brand-border-light py-2.5">
+            <Building2 class="h-[15px] w-[15px] shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Organización</span>
-            <span class="text-sm font-semibold text-brand-text">{{ result.tenantName }}</span>
+            <span class="text-[13px] font-semibold text-brand-text">{{ result.tenantName }}</span>
           </div>
-          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
-            <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+          <div class="flex items-center gap-2.5 border-b border-brand-border-light py-2.5">
+            <Link2 class="h-[15px] w-[15px] shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Identificador</span>
-            <span class="text-sm font-semibold text-brand-text">{{ result.slug }}</span>
+            <span class="text-[13px] font-semibold text-brand-text">{{ result.slug }}</span>
           </div>
-          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
-            <Link2 class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+          <div class="flex items-center gap-2.5 border-b border-brand-border-light py-2.5">
+            <Link2 class="h-[15px] w-[15px] shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Acceso</span>
-            <span class="break-all text-sm font-semibold text-brand-text">{{ accessAddress }}</span>
+            <span class="break-all text-[13px] font-semibold text-brand-text">{{ accessAddress }}</span>
           </div>
-          <div class="flex items-center gap-3 border-b border-brand-control-border px-4 py-3">
-            <Users class="h-4 w-4 shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
+          <div class="flex items-center gap-2.5 py-2.5">
+            <Users class="h-[15px] w-[15px] shrink-0 text-brand-text-secondary" :stroke-width="1.75" />
             <span class="flex-1 text-[13px] text-brand-text-secondary">Equipo</span>
-            <span class="text-sm font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones pendientes de envío</span>
+            <span class="text-[13px] font-semibold text-brand-text">{{ result.invitationsSent }} invitaciones pendientes de envío</span>
           </div>
         </div>
 
@@ -502,6 +519,7 @@ const brandText = computed(() => {
           Ver estado de mi correo <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </NuxtLink>
       </div>
+      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
     </div>
   </div>
 </template>
