@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.156.1] - 2026-10-06
+#### [bugfix]
+- [ERD-200](https://dydasoftware.atlassian.net/browse/ERD-200) - Registro: la tarjeta «Plan elegido» ahora aparece una sola vez, arriba del indicador de pasos y en el mismo lugar durante todo el asistente; antes se repetía dentro de cada paso.
+
 ### [0.156.0] - 2026-10-05
 #### [feature]
 - [ERD-191](https://dydasoftware.atlassian.net/browse/ERD-191) - Ciclo de vida de la cuenta: una organización con el pago vencido tiene 7 días de gracia y después queda suspendida; ve una pantalla para regularizar su pago, puede exportar sus datos y recibe avisos por correo. Al pagar recupera el acceso de inmediato. El administrador de la plataforma tiene una pantalla de cuentas para ver su estado, simular y aplicar acciones. El borrado definitivo de cuentas queda apagado por omisión.

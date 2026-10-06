@@ -48,7 +48,10 @@ it.each(['light', 'dark', 'system'] as const)('registro con resumen y sin él fu
   expect(planCard?.querySelector('button[aria-label="Cambiar plan"]')?.textContent).toBe('Cambiar')
   const heading = host.querySelector('h2')
   expect(heading).toBeTruthy()
-  expect(heading!.compareDocumentPosition(planCard!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  const indicator = host.querySelector('[role="progressbar"]')!
+  expect(host.querySelectorAll('[aria-label="Plan elegido"]')).toHaveLength(1)
+  expect(planCard!.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(indicator.compareDocumentPosition(heading!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 1 de 5: Tu cuenta')
   expect(host.querySelector('[role="progressbar"] + p')?.textContent).toBe('Paso 1 de 5')
   expect(host.querySelector('.access-brand.lg\\:hidden')?.textContent).toContain('9:41')

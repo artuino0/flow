@@ -314,6 +314,7 @@ const brandText = computed(() => {
 
     <div class="flex flex-1 flex-col items-center justify-center gap-6 bg-brand-surface px-5 py-7 pb-8 lg:px-4 lg:py-10">
       <NuxtLink v-if="accountExists" :to="loginLink" class="w-full max-w-[380px] text-sm font-semibold text-brand-blue underline">{{ chosenPlan ? 'Inicia sesión para continuar con el plan elegido' : 'Inicia sesión para continuar' }}</NuxtLink>
+      <RegistrationChosenPlan v-if="chosenPlan" :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" class="w-full max-w-[380px]" @change="changePlan" />
       <!-- Paso 1: Tu cuenta -->
       <div v-if="step === 1" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
@@ -324,8 +325,6 @@ const brandText = computed(() => {
           <h2 class="text-2xl font-bold text-brand-text">Crea tu cuenta</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Empieza con tus datos personales. Después configuramos tu organización.</p>
         </div>
-
-        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
           <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
@@ -405,7 +404,6 @@ const brandText = computed(() => {
       <!-- Paso 2: Tu organización -->
       <div v-else-if="step === 2" class="flex w-full max-w-[380px] flex-col gap-5">
         <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="2" />
-        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
         <RegistrationOtpStep :email="email" :code="code" :new-email="newEmail" :changing="changing" :busy="loading" :busy-action="busyAction" :seconds="seconds" :message="otpMessage" :error="errorMessage" :delivery="delivery" :invitation-failures="0" :verified="emailConfirmed" provisional
           @update:code="code = $event.replace(/\D/g, '').slice(0, 6)" @update:new-email="newEmail = $event" @confirm-code="verifyCode" @resend-code="resendCode" @start-email-change="changing = true; newEmail = email" @change-email="changeEmail" @cancel-email-change="changing = false" />
         <button type="button" :disabled="loading" class="flex items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface disabled:opacity-60" @click="changing = true; newEmail = email"><ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás</button>
@@ -415,8 +413,6 @@ const brandText = computed(() => {
         <div class="flex flex-col gap-2">
           <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="3" />
         </div>
-        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
-
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Crea tu organización</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Este será el espacio de trabajo de tu equipo, con sus propios datos.</p>
@@ -508,8 +504,6 @@ const brandText = computed(() => {
         <div class="flex flex-col gap-2">
           <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="4" />
         </div>
-        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
-
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Invita a tu equipo</h2>
           <p class="mt-1 text-sm text-brand-text-secondary">Puedes invitar ahora o hacerlo después desde Usuarios.</p>
@@ -569,7 +563,6 @@ const brandText = computed(() => {
       <!-- Paso 4: Confirmación de correo -->
       <div v-else-if="step === 5 && result" class="flex w-full max-w-[380px] flex-col gap-5">
         <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="5" />
-        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
         <div class="flex flex-col items-center gap-[14px] text-center">
           <div class="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-brand-success-bg">
             <CircleCheck class="h-7 w-7 text-brand-success-text" :stroke-width="1.75" />

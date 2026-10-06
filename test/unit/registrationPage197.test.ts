@@ -7,9 +7,10 @@ import { themeBootstrap } from '../../utils/theme'
 const apps: vue.App[] = []
 const flush = async () => { await new Promise(resolve => setTimeout(resolve,0)); await vue.nextTick() }
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()); sessionStorage.clear(); document.body.innerHTML=''; vi.restoreAllMocks() })
-async function mount(verified = false, fail = false) {
+async function mount(verified = false, fail = false, pending = true, selectedFromQuery = false) {
   const fetch = vi.fn(async (url: string) => {
-    if (url === '/api/auth/register/status') return { pending: true, verified, email: 'ana@local.test', fullName: 'Ana', registrationChoice: { plan: 'agenda', interval: 'year' }, retryAfter: 0, delivery: 'queued' }
+    if (url === '/api/auth/register/status') return { pending, verified, email: 'ana@local.test', fullName: 'Ana', registrationChoice: { plan: 'agenda', interval: 'year' }, retryAfter: 0, delivery: 'queued' }
+    if (url === '/api/auth/register/start') return { retryAfter: 60, delivery: 'queued' }
     if (url === '/api/tenants/check-slug') return { available: true }
     if (url === '/api/auth/register/change-email') return { email: 'otra@local.test', retryAfter: 60, delivery: 'queued' }
     if (url === '/api/auth/register/verify' && fail) throw { data: { statusMessage: 'El código no es válido o ya venció. Solicita uno nuevo.' } }
@@ -20,7 +21,7 @@ async function mount(verified = false, fail = false) {
   const navigate = vi.fn()
   const page = compileVueComponent('pages/registro.vue', { '~/utils/registrationIntent': intent }, { ...vue,
     definePageMeta: vi.fn(), $fetch: fetch, navigateTo: navigate, useAuth: () => ({ fetchMe: vi.fn() }),
-    useRoute: () => ({ query: {} }), useState: () => vue.ref(null), useDeploymentConfig: async () => ({ data: vue.ref({ appMode: 'saas', appBaseUrl: 'https://flow.local.test' }) }),
+    useRoute: () => ({ query: selectedFromQuery ? { plan: 'agenda', interval: 'year' } : {} }), useState: () => vue.ref(null), useDeploymentConfig: async () => ({ data: vue.ref({ appMode: 'saas', appBaseUrl: 'https://flow.local.test' }) }),
     useFetch: async () => ({ data: vue.ref({ plans: [{ key:'agenda',name:'Agenda',monthlyPriceCents:69900,annualPriceCents:699000,currency:'MXN' }] }) })
   })
   const host = document.createElement('div'); document.body.append(host)
@@ -32,6 +33,13 @@ async function mount(verified = false, fail = false) {
 }
 function button(host: Element,text: string) { const value = [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes(text)); expect(value).toBeTruthy(); return value! }
 async function input(host: Element,selector: string,value: string) { const item=host.querySelector<HTMLInputElement>(selector)!; expect(item).toBeTruthy(); item.value=value; item.dispatchEvent(new Event('input',{ bubbles:true })); await flush() }
+function expectPlanBeforeStep(host: Element, step: number) {
+  const cards = host.querySelectorAll('[aria-label="Plan elegido"]')
+  const card = cards[0], indicator = host.querySelector('[role="progressbar"]')
+  expect(cards).toHaveLength(1)
+  expect(indicator?.getAttribute('aria-valuenow')).toBe(String(step))
+  expect(card!.compareDocumentPosition(indicator!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+}
 it.each(['light','dark','system'] as const)('recarga paso 2 y conserva plan anual sin contraseña en %s, 390/1440', async mode => {
   new Function('localStorage','window','document',themeBootstrap)({ getItem: () => mode },{ matchMedia: () => ({ matches:true }) },document)
   for (const width of [390,1440]) {
@@ -80,6 +88,18 @@ it('borrador sin testigo no autoriza pasos 3/4; otro correo tampoco restaura un 
   const second=await mount(true)
   expect(second.host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('3')
   expect(second.host.querySelector<HTMLInputElement>('#organizationName')?.value).toBe('')
+})
+it('muestra una tarjeta de plan antes del indicador en los cinco pasos', async () => {
+  const { host } = await mount(false, false, false, true)
+  expectPlanBeforeStep(host, 1)
+  await input(host, '#fullName', 'Ana Pérez'); await input(host, '#email', 'ana@local.test')
+  await input(host, '#password', 'Clave1234'); await input(host, '#confirmPassword', 'Clave1234')
+  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush()
+  button(host, 'Continuar').click(); await flush(); expectPlanBeforeStep(host, 2)
+  await input(host, '#verification-code', '123456'); button(host, 'Verificar correo').click(); await flush(); expectPlanBeforeStep(host, 3)
+  await input(host, '#organizationName', 'Acme'); await new Promise(resolve => setTimeout(resolve, 450)); await flush()
+  button(host, 'Continuar').click(); await flush(); expectPlanBeforeStep(host, 4)
+  button(host, 'Continuar').click(); await flush(); expectPlanBeforeStep(host, 5)
 })
 it('Atrás en OTP corrige correo; el siguiente código usa el endpoint provisional y mantiene el plan', async () => {
   const { host,fetch }=await mount()
