@@ -14,6 +14,8 @@ import { assertWritableRelations } from '~/server/utils/relationWriteGuard'
 import { fireTriggersForRecord } from '~/server/utils/triggers'
 import { applyCalculatedFields, recalculateCalculatedDependents, stripCalculatedValues } from '~/server/utils/calculatedFields'
 import { assertPlanCapacity } from '~/server/utils/billing'
+import { accountLifecycle } from '~/server/utils/accountLifecycle'
+import { accountBlocked } from '~/utils/accountLifecycle'
 
 type PublicValue = string | number | boolean | null | string[]
 export type SiteFormPayload = Record<string, PublicValue>
@@ -146,6 +148,7 @@ export async function submitSiteForm(input: {
   origin: SiteFormOrigin
 }) {
   const context = await resolveContext(input.siteId, input.pageId, input.formKey)
+  if (context && accountBlocked(await accountLifecycle(context.tenant_id))) throw createError({ statusCode: 404, statusMessage: 'Formulario no disponible.' })
   if (!context) throw createError({ statusCode: 404, statusMessage: 'El formulario no está publicado o no tiene un destino activo.' })
   await assertPlanCapacity(context.tenant_id, 'formSubmissions')
   assertRequiredFormFields(context.form_manifest, input.payload)

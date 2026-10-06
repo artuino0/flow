@@ -1,10 +1,11 @@
 {
   "name": "erp-dinamico-frontback",
-  "version": "0.155.0",
+  "version": "0.156.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "nuxt dev",
+    "dev:lan": "nuxt dev --host 0.0.0.0 --port 3000",
     "build": "nuxt build",
     "build:onprem": "node scripts/buildOnprem.mjs",
     "license:keys": "node scripts/licenseKeys.mjs",

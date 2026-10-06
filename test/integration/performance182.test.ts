@@ -147,7 +147,7 @@ it('cachés reales aíslan tenant/rol e invalidan navegación, campos, módulos 
   const copy=await modules.listVisibleEntities(tenant,role); copy[0]!.name='Contaminado'
   expect((await modules.listVisibleEntities(tenant,role))[0]!.name).not.toBe('Contaminado')
   expect(await modules.listVisibleEntities(tenant,otherRole!.id)).toEqual([])
-  expect(await modules.listVisibleEntities(randomUUID(),role)).toEqual([])
+  await expect(modules.listVisibleEntities(randomUUID(),role)).rejects.toMatchObject({ statusCode: 403 })
   await permissions.setRolePermissions(tenant,role,[{ entityId:entity,canRead:false,canCreate:false,canUpdate:false,canDelete:false }])
   expect((await modules.listVisibleEntities(tenant,role)).some(item=>item.id===entity)).toBe(false)
   await permissions.setRolePermissions(tenant,role,[{ entityId:entity,canRead:true,canCreate:true,canUpdate:true,canDelete:true }])

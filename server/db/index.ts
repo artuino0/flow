@@ -1,9 +1,12 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
+import type { PgTransactionConfig } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import * as schema from './schema'
 import { currentRecordActor } from '~/server/utils/recordActorContext'
 import { instrumentDatabase } from '~/server/utils/requestPerformance'
+import { createError } from 'h3'
+import { accountRecoveryAccess, withAccountRecovery } from '~/server/utils/accountContext'
 
 // En runtime la app debe conectarse con APP_DATABASE_URL (rol "erp_app", sin
 // privilegios de superusuario) para que las politicas RLS (HU-ERD-12) apliquen.
@@ -36,6 +39,11 @@ export const db = drizzle(client, { schema })
 // largo de withPerson() mas abajo para el porque.
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 
+/** Identidad, recuperación y tareas de ciclo de vida: no abre RLS de otros tenants. */
+export function withTenantRecovery<T>(tenantId: string, fn: (tx: typeof db) => Promise<T>, config?: PgTransactionConfig): Promise<T> {
+  return withAccountRecovery(() => withTenant(tenantId, fn, config))
+}
+
 /**
  * Corre `fn` dentro de una transaccion con `app.tenant_id` seteado via
  * set_config(), para que las politicas RLS filtren por ese tenant.
@@ -43,7 +51,8 @@ const NIL_UUID = '00000000-0000-0000-0000-000000000000'
  */
 export async function withTenant<T>(
   tenantId: string,
-  fn: (tx: typeof db) => Promise<T>
+  fn: (tx: typeof db) => Promise<T>,
+  config?: PgTransactionConfig
 ): Promise<T> {
   const actor = currentRecordActor()
   return db.transaction(async (tx) => {
@@ -62,9 +71,15 @@ export async function withTenant<T>(
     // ninguna persona real) para que self_membership_lookup_users evalue
     // limpio a "false" en vez de reventar.
     // Un solo viaje a la base: fija ambos GUC en la misma sentencia.
-    await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${actor?.userId ?? NIL_UUID}, true), set_config('app.role_id', ${actor?.roleId ?? NIL_UUID}, true), set_config('app.record_system', ${actor?.system === true ? 'on' : 'off'}, true)`)
+    if (accountRecoveryAccess()) {
+      await tx.execute(sql`select set_config('app.person_id', ${NIL_UUID}, true), set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${actor?.userId ?? NIL_UUID}, true), set_config('app.role_id', ${actor?.roleId ?? NIL_UUID}, true), set_config('app.record_system', ${actor?.system === true ? 'on' : 'off'}, true)`)
+    } else {
+      const rows = await tx.execute(sql`select account_tenant_context(${tenantId}::uuid,${actor?.userId ?? NIL_UUID}::uuid,${actor?.roleId ?? NIL_UUID}::uuid,${actor?.system === true},${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''}) as account`)
+      const phase = (rows[0]?.account as { phase?: string } | undefined)?.phase
+      if (!phase || phase === 'suspended' || phase === 'pending_deletion') throw createError({ statusCode: 403, statusMessage: 'La cuenta está suspendida, contacta al administrador.' })
+    }
     return fn(tx as unknown as typeof db)
-  })
+  }, config)
 }
 
 /**

@@ -9,6 +9,7 @@ import { sendRelativeSiteAsset, sitePublicNotFound } from '~/server/utils/public
 import { normalizeSitePath } from '~/server/utils/sites'
 import { isActiveSiteDomain, renderPublicSiteDocument, resolvePublishedDomain } from '~/server/utils/siteDomains'
 import { protectSiteAgendaDocument, siteAgendaPresentation } from '~/server/utils/siteAgenda'
+import { publicAccountBlocked } from '~/server/utils/accountLifecycle'
 
 export default defineEventHandler(async event => {
   const path = getRequestURL(event).pathname
@@ -19,6 +20,14 @@ export default defineEventHandler(async event => {
     if (path === '/robots.txt') { setResponseHeader(event, 'content-type', 'text/plain; charset=utf-8'); return renderSiteRobots() }
     if (path === '/sitemap.xml') return sitePublicNotFound(event)
     return
+  }
+  if (await publicAccountBlocked(hostname)) {
+    setResponseStatus(event, 503)
+    setResponseHeader(event, 'x-robots-tag', 'noindex, nofollow')
+    setResponseHeader(event, 'cache-control', 'no-store')
+    setResponseHeader(event, 'retry-after', 3600)
+    setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Sitio no disponible</title></head><body><h1>Sitio no disponible</h1><p>Vuelve a intentarlo más tarde.</p></body></html>'
   }
   if (siteRequestHasTraversal(event.node.req.url ?? '')) {
     if (await isActiveSiteDomain(hostname)) return sitePublicNotFound(event)

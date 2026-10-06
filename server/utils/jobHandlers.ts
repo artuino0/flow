@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { emailJobSchema, registerJobHandler, type ClaimedJob, type JobOutcome } from '~/server/utils/jobQueue'
 import { sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
 import { MailError } from './mail/types'
@@ -53,6 +54,15 @@ let registered = false
 export function registerDefaultJobHandlers(): void {
   if (registered) return
   registerJobHandler('email', handleEmailJob)
+  registerJobHandler('account_notice', async job => (await import('./accountNotices')).handleAccountNotice(job))
+  registerJobHandler('account_export', async job => (await import('./accountExport')).handleAccountExport(job))
+  registerJobHandler('olap_sync', async job => {
+    if (!job.tenantId) return { ok: false, retryable: false, error: 'Trabajo sin organización inválido' }
+    const input = z.object({ recordIds: z.array(z.string().uuid()).min(1).max(10000) }).strict().safeParse(job.payload)
+    if (!input.success) return { ok: false, retryable: false, error: 'Lote OLAP inválido' }
+    await (await import('./olapEtl')).runOlapEtl(new Date(), { tenantId: job.tenantId, recordIds: input.data.recordIds })
+    return { ok: true }
+  })
   registerJobHandler('platform_crm', async job => (await import('./platformCrmQueue')).handlePlatformCrmJob(job))
   registerJobHandler('agenda_expire', async job => {
     if (typeof job.payload.recordId !== 'string') return { ok: false, retryable: false, error: 'Trabajo de expiración inválido' }

@@ -31,14 +31,28 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Los errores de apps se propagan solo si las guardias anteriores dejan llegar a esa comprobación.
   const appsPromise = !publicRoute && to.path !== '/login' && user.value?.emailVerified && user.value.onboardingStatus === 'complete' && !knownBlockedLicense
     ? load().then(value => ({ value, error: null }), error => ({ value: null, error })) : null
+  const accountPromise = !publicRoute && user.value?.authenticated && !needsMe
+    ? useRequestFetch()<{ account: import('~/utils/accountLifecycle').AccountLifecycle }>('/api/account/status').then(result => {
+      if (!result.account?.phase) throw createError({ statusCode: 503, statusMessage: 'No se pudo comprobar el estado de la cuenta.' })
+      if (user.value) user.value.accountLifecycle = result.account
+    }) : Promise.resolve()
   await Promise.all([
     !licenseIsFresh || to.path === '/activar'
       ? $fetch<{ required: boolean; activated: boolean }>('/api/license/status').then(status => {
         licenseCache.value = { ...status, fetchedAt: Date.now() }
       }) : Promise.resolve(),
-    needsMe ? fetchMe() : Promise.resolve()
+    needsMe ? fetchMe() : Promise.resolve(),
+    accountPromise
   ])
   const license = licenseCache.value!
+  // La etapa se refresca sin volver a consultar el perfil estable de HU-183.
+  const accountPaused = ['suspended', 'pending_deletion'].includes(user.value?.accountLifecycle?.phase ?? '')
+  if (accountPaused && !publicRoute) {
+    if (user.value?.isPlatformAdmin && to.path.startsWith('/platform')) return
+    if (to.path === '/cuenta-suspendida') return
+    return navigateTo('/cuenta-suspendida')
+  }
+  if (!accountPaused && to.path === '/cuenta-suspendida') return navigateTo(user.value?.authenticated ? '/' : '/login')
 
   if (license.required && !license.activated) {
     if (to.path !== '/activar') return navigateTo({ path: '/activar', query: { redirect: to.fullPath } })

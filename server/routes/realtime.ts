@@ -7,6 +7,7 @@ import { makeRealtimeEnvelope, realtimeUserTopic, subscribeRealtime } from '~/se
 import { validateSession } from '~/server/utils/sessions'
 import { publishChatPresence, publishTyping } from '~/server/utils/chat'
 import { getLicenseStatus } from '~/server/utils/license'
+import { assertAccountActive } from '~/server/utils/accountLifecycle'
 
 const HEARTBEAT_MS = 25_000
 const STALE_CONNECTION_MS = 75_000
@@ -120,6 +121,7 @@ async function heartbeat(peer: Peer): Promise<void> {
   context.checkingSession = true
   context.lastSessionCheckAt = now
   try {
+    await assertAccountActive(context.auth.tenantId)
     await validateSession(context.auth)
   } catch {
     send(peer, 'session.expired', {})
@@ -146,6 +148,7 @@ export default defineWebSocketHandler({
       const auth = verifyAuthToken(token, config.jwtSecret as string)
       if ((auth as AuthTokenPayload & { purpose?: string }).purpose) throw new Error('Token pendiente')
       await validateSession(auth)
+      await assertAccountActive(auth.tenantId)
       request.context.auth = auth
       request.context.tokenExpiresAt = typeof (auth as AuthTokenPayload & { exp?: number }).exp === 'number'
         ? (auth as AuthTokenPayload & { exp: number }).exp * 1000
@@ -167,12 +170,16 @@ export default defineWebSocketHandler({
     userConnectionCounts.set(context.auth.sub, connections)
     if (connections === 1) void publishChatPresence(context.auth, true)
     peer.subscribe(topic)
-    context.unsubscribe = subscribeRealtime(topic, event => peer.send(JSON.stringify(event)))
+    context.unsubscribe = subscribeRealtime(topic, event => {
+      void assertAccountActive(context.auth.tenantId).then(() => peer.send(JSON.stringify(event)), () => { peer.close(4003, 'Cuenta suspendida'); cleanup(peer) })
+    })
     context.heartbeat = setInterval(() => void heartbeat(peer), HEARTBEAT_MS)
     send(peer, 'connection.ready', { userId: context.auth.sub, tenantId: context.auth.tenantId })
   },
 
   async message(peer, message) {
+    try { await assertAccountActive(peerContext(peer).auth.tenantId) }
+    catch { peer.close(4003, 'Cuenta suspendida'); cleanup(peer); return }
     const raw = message.text()
     if (raw.length > MAX_CLIENT_MESSAGE_BYTES) {
       peer.close(1009, 'Mensaje demasiado grande')

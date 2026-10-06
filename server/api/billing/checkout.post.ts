@@ -1,10 +1,11 @@
 import { z } from 'zod'
+import { withAccountRecovery } from '~/server/utils/accountContext'
 import { requireAdminRole } from '~/server/utils/rbac'
 import { BillingNotConfiguredError, createStripeCheckout, PlanChangeNotAllowedError, PlanNotAvailableError } from '~/server/utils/billing'
 
 const bodySchema = z.object({ planCode: z.string().min(1).max(64), interval: z.enum(['month', 'year']) })
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(event => withAccountRecovery(async () => {
   const auth = await requireAdminRole(event)
   const body = bodySchema.parse(await readBody(event))
   try {
@@ -18,4 +19,4 @@ export default defineEventHandler(async event => {
     }
     throw error
   }
-})
+}))

@@ -29,6 +29,7 @@ function harness(client = true) {
     await Promise.resolve()
     if (url === '/api/auth/login') return { ok: true, requiresTotp: false, requiresOrgSelection: false, user }
     if (url === '/api/auth/me') return { ...user }
+    if (url === '/api/account/status') return { account: { phase: 'active' } }
     if (url === '/api/auth/refresh') return { user }
     if (url === '/api/config') return { realtimeTransport: 'websocket' }
     if (url === '/api/license/status') return { required: false, activated: false }
@@ -148,7 +149,7 @@ it('conteo del login, cascarón real y navegación: sin roles por red ni duplica
   expect(h.counts['/api/chat/conversations?archived=true']).toBe(1)
   expect(Object.values(beforePaint).reduce((sum, n) => sum + n, 0)).toBeLessThanOrEqual(10)
   for (const [url, count] of Object.entries(afterIdle)) expect(count, url).toBe(1)
-  expect(navigation).toEqual({ '/api/entities?moduleKind=hecho&deleted=exclude': 1 })
+  expect(navigation).toEqual({ '/api/account/status': 1, '/api/entities?moduleKind=hecho&deleted=exclude': 1 })
 })
 
 it.each([true, false])('SSR deriva administrador=%s antes del render y cambia sin red', async admin => {
@@ -216,7 +217,8 @@ it('middleware inicia licencia y apps antes de resolverlas y no vuelve a pedir m
   h.fetch.mockImplementation(url => new Promise(resolve => waiting.set(url, resolve)))
   const middleware = loadNuxtSource183('middleware/auth.global.ts', h.globals, { '~/utils/flowApps': flowApps }).default
   const navigating = middleware({ path: '/', fullPath: '/' })
-  expect([...waiting.keys()].sort()).toEqual(['/api/apps', '/api/license/status'])
+  expect([...waiting.keys()].sort()).toEqual(['/api/account/status', '/api/apps', '/api/license/status'])
+  waiting.get('/api/account/status')!({ account: { phase: 'active' } })
   waiting.get('/api/apps')!({ apps: [{ key: 'core', enabled: true, accessible: true }] })
   waiting.get('/api/license/status')!({ required: false, activated: false })
   await navigating

@@ -16,6 +16,7 @@ async function testMail() {
 </script>
 <template>
   <main class="mx-auto max-w-3xl space-y-6 px-4 py-8 text-brand-text">
+    <nav class="flex flex-wrap gap-6"><NuxtLink to="/platform/accounts" class="text-brand-blue underline underline-offset-4">Ciclo de vida de las cuentas</NuxtLink><NuxtLink to="/platform/plans" class="text-brand-blue underline underline-offset-4">Planes y límites</NuxtLink><NuxtLink to="/" class="text-brand-blue underline underline-offset-4">Volver a Flow</NuxtLink></nav>
     <div class="flex items-center justify-between gap-4"><h1 class="text-2xl font-bold">Correo de plataforma</h1><ThemeSelector /></div>
     <p v-if="error" role="alert" class="text-brand-error-text">No se pudo consultar la configuración o no tienes acceso al panel de plataforma.</p>
     <template v-else-if="mail">

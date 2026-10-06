@@ -1,11 +1,14 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
-import { withTenant } from '~/server/db'
+import { withTenantRecovery as withTenant } from '~/server/db'
 import { people, users, tenants, roles } from '~/server/db/schema'
 import type { AuthTokenPayload } from '~/server/utils/auth'
 import { adminRoleAllowed } from '~/server/utils/rbac'
+import { accountLifecycle } from '~/server/utils/accountLifecycle'
+import type { AccountLifecycle } from '~/utils/accountLifecycle'
 
 type AuthProfile = {
+  accountLifecycle?: AccountLifecycle
   tenantName: string | null; country: string | null; idleTimeoutMinutes: number | null; idleWarningMinutes: number | null
   onboardingStatus: string | null
   email: string | null; fullName: string | null; phone: string | null; emailVerifiedAt: Date | string | null
@@ -16,6 +19,7 @@ type AuthProfile = {
 export async function loadAuthUser(auth: AuthTokenPayload, apiKey = false) {
   const profile = await withTenant(auth.tenantId, async tx => {
       const [row] = await tx.select({
+        accountLifecycle: sql<AccountLifecycle>`account_lifecycle_state(${auth.tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''})`,
         tenantName: tenants.name, country: tenants.country,
         idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes,
         onboardingStatus: tenants.onboardingStatus, email: people.email, fullName: people.fullName,
@@ -26,7 +30,7 @@ export async function loadAuthUser(auth: AuthTokenPayload, apiKey = false) {
         .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId))).limit(1)
       return row
     })
-  return publicAuthUser(auth, profile, apiKey)
+  return { ...publicAuthUser(auth, profile, apiKey), accountLifecycle: profile?.accountLifecycle ?? await accountLifecycle(auth.tenantId) }
 }
 
 function publicAuthUser(auth: AuthTokenPayload, profile: AuthProfile | undefined, apiKey = false) {
@@ -39,7 +43,8 @@ function publicAuthUser(auth: AuthTokenPayload, profile: AuthProfile | undefined
     authenticated: true, emailVerified: Boolean(profile?.emailVerifiedAt), onboardingStatus: profile?.onboardingStatus ?? 'complete',
     email: profile?.email ?? null, fullName: profile?.fullName ?? null, phone: profile?.phone ?? null,
     jobTitle: profile?.jobTitle ?? null, timezone: profile?.timezone ?? null, totpEnabled: profile?.totpEnabled ?? false,
-    isAdmin
+    isAdmin,
+    isPlatformAdmin: !apiKey && Boolean(profile?.email && (process.env.PLATFORM_ADMIN_EMAILS ?? '').split(',').map(value => value.trim().toLowerCase()).includes(profile.email.toLowerCase()))
   }
 }
 
@@ -53,6 +58,7 @@ export async function createLoginSession(event: H3Event, auth: AuthTokenPayload)
         RETURNING id
       )
       SELECT created.id AS "sessionId", u.role_id AS "roleId", r.is_system AS "isSystem",
+        account_lifecycle_state(${auth.tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''}) AS "accountLifecycle",
         t.name AS "tenantName", t.country, t.idle_timeout_minutes AS "idleTimeoutMinutes",
         t.idle_warning_minutes AS "idleWarningMinutes", t.onboarding_status AS "onboardingStatus",
         p.email, p.full_name AS "fullName", p.phone, p.email_verified_at AS "emailVerifiedAt",
@@ -63,5 +69,5 @@ export async function createLoginSession(event: H3Event, auth: AuthTokenPayload)
     `)
     return rows[0]
   })
-  return publicAuthUser({ ...auth, sid: profile.sessionId }, profile)
+  return { ...publicAuthUser({ ...auth, sid: profile.sessionId }, profile), accountLifecycle: profile.accountLifecycle ?? await accountLifecycle(auth.tenantId) }
 }

@@ -48,7 +48,7 @@ beforeAll(async () => {
   template = JSON.parse(await readFile(new URL('../../data/blueprints/taller-mecanico.json', import.meta.url), 'utf8'))
 }, 60_000)
 
-afterAll(async () => { await admin.end(); await testDb.stop() })
+afterAll(async () => { await (await import('../../server/db')).client.end(); await admin.end(); await testDb.stop() })
 
 describe('blueprint (Postgres real con RLS)', () => {
   it('instala el taller completo, exporta la estructura y no aplica cambios al reimportarla', async () => {

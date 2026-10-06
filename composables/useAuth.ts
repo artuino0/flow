@@ -5,6 +5,8 @@
 export interface AuthUser {
   id: string
   isAdmin: boolean
+  isPlatformAdmin?: boolean
+  accountLifecycle?: import('~/utils/accountLifecycle').AccountLifecycle
   sessionId?: string
   tenantName?: string
   // Dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md): país de la
@@ -69,7 +71,7 @@ export function useAuth() {
     renewedAt.value = Date.now()
     if (import.meta.client) {
       nuxtApp.runWithContext(() => {
-        useRealtime().resumeSession()
+        if (!['suspended', 'pending_deletion'].includes(value.accountLifecycle?.phase ?? '')) useRealtime().resumeSession()
         void preloadRouteComponents('/').catch(() => undefined)
       })
     }
@@ -112,7 +114,7 @@ export function useAuth() {
         user.value = null
       }
     }
-    if (user.value?.authenticated && import.meta.client) nuxtApp.runWithContext(() => useRealtime().resumeSession())
+    if (user.value?.authenticated && !['suspended', 'pending_deletion'].includes(user.value.accountLifecycle?.phase ?? '') && import.meta.client) nuxtApp.runWithContext(() => useRealtime().resumeSession())
     return user.value
   }
 

@@ -9,7 +9,7 @@ import { auditThemeColors } from '../../scripts/auditThemeColors'
 
 let app: App | undefined
 afterEach(() => { app?.unmount(); app = undefined; document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.restoreAllMocks() })
-it.each(['light', 'dark', 'system'] as const)('dominios Cloudflare en %s: estados, DNS, copiar y verificar', async mode => {
+it.each(['light', 'dark', 'system'] as const)('dominios en tema %s: estados, DNS, accesibilidad y proveedores', async mode => {
   const states = new Map<string, ReturnType<typeof ref>>()
   vi.stubGlobal('useState', (key: string, init: () => unknown) => { if (!states.has(key)) states.set(key, ref(init())); return states.get(key) })
   vi.stubGlobal('useNuxtApp', () => ({}))
@@ -17,8 +17,15 @@ it.each(['light', 'dark', 'system'] as const)('dominios Cloudflare en %s: estado
   const theme = useTheme(); theme.initialize(); theme.setMode(mode)
   expect(document.documentElement.dataset.theme).toBe(mode === 'light' ? 'light' : 'dark')
   const dns = [{ type: 'CNAME', name: 'www', value: 'customers.flow.test', purpose: 'routing' }, { type: 'TXT', name: '_cf-custom-hostname.www', value: 'ownership-token', purpose: 'ownership' }]
-  const domains = ['dns', 'certificate', 'active', 'error'].map((state, index) => ({ id: 'd' + index, siteId: 's', siteName: 'Sitio', hostname: index === 0 ? 'cliente.test' : `www${index}.cliente.test`, status: state === 'active' ? 'active' : 'pending', providerName: 'cloudflare', providerConfigured: true, ownershipVerified: state !== 'dns', certificateVerified: state === 'active', verificationState: state, validationError: state === 'error' ? 'Revisa los registros DNS de validación.' : null, dnsRecords: dns }))
-  const fetcher = vi.fn(async () => ({ ...domains[0], status: 'active' }))
+  const domains = [
+    { id: 'active', hostname: 'www.activo.test', status: 'active', providerName: 'cloudflare', providerData: { cloudflare: { managedByZone: true, dnsVerified: true, edgeVerified: true } }, dnsVerified: true },
+    { id: 'dns', hostname: 'cliente.test', status: 'pending', providerName: 'cloudflare', providerData: { cloudflare: { managedByZone: true, dnsVerified: false, edgeVerified: false } }, dnsVerified: false },
+    { id: 'connection', hostname: 'www.cliente.test', status: 'pending', providerName: 'cloudflare', providerData: { cloudflare: { managedByZone: true, dnsVerified: true, edgeVerified: false } }, dnsVerified: true },
+    { id: 'error', hostname: 'error.test', status: 'error', providerName: 'cloudflare', validationError: 'Revisa los registros DNS de validación.', dnsVerified: false },
+    { id: 'railway', hostname: 'www.railway.test', status: 'pending', providerName: 'railway', dnsVerified: false },
+    { id: 'vercel', hostname: 'www.vercel.test', status: 'pending', providerName: 'vercel', dnsVerified: false }
+  ].map((domain, index) => ({ siteId: 's', siteName: 'Sitio', isPrimary: false, rootPageId: null, rootPageTitle: null, recordType: index === 1 ? 'apex' : 'subdomain', ownershipVerified: false, certificateVerified: false, lastCheckedAt: null, providerConfigured: true, dnsRecords: dns, ...domain }))
+  const fetcher = vi.fn(async (url: string) => url.includes('/verify') ? ({ status: 'pending', providerData: { cloudflare: { managedByZone: true, dnsVerified: true, edgeVerified: false } } }) : undefined)
   const copy = vi.fn(async () => {})
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } })
   const globals = { ref, computed, reactive, watch, useConfirm: () => ({ confirm: async () => true }), useRequestHeaders: () => ({}), $fetch: fetcher,
@@ -28,12 +35,30 @@ it.each(['light', 'dark', 'system'] as const)('dominios Cloudflare en %s: estado
   app = createApp({ render: () => h(Suspense, {}, { default: () => h(component) }) })
   app.component('ListPageHeader', defineComponent({ setup(_, { slots }) { return () => h('header', slots.actions?.()) } })); app.mount(host)
   await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
-  for (const text of ['Esperando DNS', 'Emitiendo certificado', 'Activo', 'Error:', 'Propiedad:', 'Certificado:', 'CNAME aplanado o ALIAS', 'www', 'Verificar ahora']) expect(host.textContent).toContain(text)
+  const activeRow = host.querySelector('.domain-block')!
+  expect(activeRow.textContent).toContain('Tu dominio está conectado y funcionando')
+  expect(activeRow.querySelector<HTMLElement>('.dns-panel')!.style.display).toBe('none')
+  const toggle = activeRow.querySelector<HTMLButtonElement>('.dns-toggle')!
+  expect(toggle.textContent).toContain('Ver registros DNS'); expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  toggle.focus(); expect(document.activeElement).toBe(toggle); toggle.click(); await nextTick()
+  expect(toggle.getAttribute('aria-expanded')).toBe('true'); expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBe(activeRow.querySelector('.dns-panel'))
+  expect(host.textContent).toContain('Falta configurar el DNS')
+  expect(host.textContent).toContain('Comprobando conexión segura')
+  expect(host.textContent).toContain('Hay un problema')
+  expect(host.textContent).toContain('Revisa los registros DNS de validación.')
+  expect(host.textContent).toContain('Tu dominio no lleva «www».')
+  expect(host.textContent).not.toContain('www.railway.test hacia')
+  expect(host.textContent).not.toContain('Emitiendo certificado')
+  expect(host.textContent).not.toContain('Custom Hostname')
+  expect(host.textContent).not.toContain('CNAME aplanado')
   expect(host.querySelectorAll('.dns-record')).toHaveLength(8)
-  host.querySelector<HTMLButtonElement>('.dns-record label button')!.click(); await nextTick(); expect(copy).toHaveBeenCalledWith('www')
-  host.querySelector<HTMLButtonElement>('button[aria-label="Verificar ahora"]')!.click(); await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
-  expect(fetcher).toHaveBeenCalledWith('/api/sites/domains/d0/verify', { method: 'POST' })
-  expect(host.textContent).toContain('cliente.test quedó activo.')
+  const copyButton = host.querySelector<HTMLButtonElement>('.dns-record label button')!
+  copyButton.click(); await nextTick(); expect(copy).toHaveBeenCalledWith('www')
+  const verifyButton = Array.from(host.querySelectorAll<HTMLButtonElement>('.dns-intro .primary')).find(button => button.textContent?.includes('Comprobar de nuevo'))!
+  verifyButton.click(); await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
+  expect(fetcher).toHaveBeenCalledWith('/api/sites/domains/dns/verify', { method: 'POST' })
+  expect(host.textContent).toContain('El registro está bien, pero la conexión segura todavía no responde.')
+  expect(host.querySelectorAll('.dns-intro .primary')).toHaveLength(5)
   expect(auditThemeColors()).toEqual([])
   expect(readFileSync('pages/sites/domains/index.vue', 'utf8')).toContain('darkReady: true')
   expect(lightTokens['sites-warning-text']).toBeDefined(); expect(darkTokens['sites-warning-text']).toBeDefined()

@@ -6,6 +6,8 @@ import { jobQueue } from '~/server/db/schema'
 import { logger } from '~/server/utils/logger'
 import { getPlanUsage } from '~/server/utils/billing'
 import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
+import { accountLifecycle } from '~/server/utils/accountLifecycle'
+import { accountBlocked } from '~/utils/accountLifecycle'
 
 // Cola de trabajos en Postgres. Objetivos:
 //  - Los correos (y otras tareas) ya no se envían dentro de la petición o del
@@ -17,7 +19,7 @@ import { getLicenseStatus, IS_ONPREM_BUILD } from '~/server/utils/license'
 //  - Un trabajo se identifica opcionalmente con una clave de idempotencia
 //    (p. ej. "recordatorio:<cita>:<programación>") y no se encola dos veces.
 
-export type JobKind = 'email' | 'platform_crm' | 'agenda_expire'
+export type JobKind = 'email' | 'platform_crm' | 'agenda_expire' | 'account_notice' | 'account_export' | 'olap_sync'
 export type JobStatus = 'pending' | 'processing' | 'succeeded' | 'dead'
 
 export interface ClaimedJob {
@@ -165,7 +167,7 @@ export async function claimJobs(options: ClaimOptions): Promise<ClaimedJob[]> {
   // los privilegios del dueño: bajo RLS Postgres recorrería toda la cola.
   const rows = await db.execute(sql`
     SELECT id, tenant_id AS "tenantId", kind, payload, attempts, max_attempts AS "maxAttempts"
-    FROM claim_job_batch(${options.batchSize}::int, ${options.perTenantLimit}::int, ${options.workerId}, ${now.toISOString()}::timestamptz)`)
+    FROM claim_job_batch(${options.batchSize}::int, ${options.perTenantLimit}::int, ${options.workerId}, ${now.toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''})`)
   return [...rows] as unknown as ClaimedJob[]
 }
 
@@ -241,6 +243,8 @@ export async function runJobQueueTick(options: TickOptions = {}): Promise<TickRe
     try { await (await import('./pendingRegistrationCleanup')).cleanupPendingRegistrations() }
     catch { logger.warn('pending_registration_cleanup_failed') }
   }
+  await (await import('./accountNotices')).reconcileAccounts(5000, options.now?.() ?? new Date())
+  await (await import('./accountDeletion')).runAccountDeletionTick(5000, options.now?.() ?? new Date())
   try { await db.execute(sql`select purge_agenda_security_buckets(${(options.now?.() ?? new Date()).toISOString()}::timestamptz),purge_auth_security_buckets()`) }
   catch { logger.warn('agenda_security_cleanup_failed') }
   if (process.env.PLATFORM_CRM_TENANT_SLUG) {
@@ -258,6 +262,10 @@ export async function runJobQueueTick(options: TickOptions = {}): Promise<TickRe
   const result: TickResult = { claimed: 0, succeeded: 0, retried: 0, dead: 0, recovered: await recoverStuckJobs(undefined, clock()), purged: 0 }
 
   const execute = async (job: ClaimedJob) => {
+    if (job.tenantId && !['account_notice', 'account_export'].includes(job.kind) && accountBlocked(await accountLifecycle(job.tenantId, clock()))) {
+      await withJobWorker(tx => tx.execute(sql`update job_queue set status='pending',attempts=greatest(0,attempts-1),locked_at=null,locked_by=null,updated_at=${clock().toISOString()}::timestamptz where id=${job.id}::uuid and status='processing'`))
+      return
+    }
     const handler = handlers.get(job.kind)
     let outcome: JobOutcome
     if (!handler) outcome = { ok: false, retryable: false, error: `No hay un manejador para el tipo de trabajo "${job.kind}"` }

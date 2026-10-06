@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
 import { logger } from './logger'
+import { withAccountRecovery } from './accountContext'
 import Stripe from 'stripe'
 import { clearRegistrationChoice, registrationEvent } from '~/server/utils/registrationIntent'
 import { db, withTenant } from '~/server/db'
@@ -292,7 +293,10 @@ async function findPlanFromStripePrice(priceId: string | null | undefined) {
   return plans.find(plan => planPriceId(plan, 'month') === priceId || planPriceId(plan, 'year') === priceId) ?? null
 }
 
-export async function syncStripeSubscription(subscription: StripeSubscriptionSync, tenantId?: string | null) {
+export function syncStripeSubscription(subscription: StripeSubscriptionSync, tenantId?: string | null, event?: { id: string; created: number }) {
+  return withAccountRecovery(() => syncStripeSubscriptionInRecovery(subscription, tenantId, event))
+}
+async function syncStripeSubscriptionInRecovery(subscription: StripeSubscriptionSync, tenantId?: string | null, event?: { id: string; created: number }) {
   const resolvedTenantId = tenantId ?? subscription.metadata.tenantId
   if (!resolvedTenantId) throw new Error('Stripe no entregó el tenant de la suscripción')
   const priceId = subscription.items.data[0]?.price.id ?? null
@@ -304,7 +308,15 @@ export async function syncStripeSubscription(subscription: StripeSubscriptionSyn
   const periodStart = subscription.current_period_start ?? subscription.items.data[0]?.current_period_start ?? null
   const periodEnd = subscription.current_period_end ?? subscription.items.data[0]?.current_period_end ?? null
   const effectiveLimits = await getEffectivePlanLimits(resolvedTenantId, plan.id)
-  await withTenant(resolvedTenantId, async tx => {
+  const applied = await withTenant(resolvedTenantId, async tx => {
+    const [tenant] = await tx.execute(sql`select account_lifecycle from tenants where id=${resolvedTenantId}::uuid for update`)
+    if (!tenant) return false
+    const metadata = (tenant.account_lifecycle ?? {}) as Record<string, unknown>
+    if (metadata.deletionStarted) {
+      logger.warn('account_payment_after_deletion_started', { action: 'manual_refund_review' })
+      throw new Error('El borrado ya comenzó. El equipo de Flow debe revisar y reembolsar manualmente cualquier cobro tardío.')
+    }
+    if (event && (Number(metadata.stripeEventCreated ?? 0) > event.created || metadata.stripeEventId === event.id)) return false
     await tx.execute(sql`SELECT set_config('app.plan_change_source', 'stripe_webhook', true)`)
     await tx.insert(tenantSubscriptions).values({
       tenantId: resolvedTenantId,
@@ -332,7 +344,10 @@ export async function syncStripeSubscription(subscription: StripeSubscriptionSyn
     })
     await tx.execute(sql`UPDATE tenants SET storage_limit_bytes = ${effectiveStorageLimit(effectiveLimits.storageBytes)}::bigint WHERE id = ${resolvedTenantId}::uuid`)
     await tx.update(tenants).set({ trialConsumedAt: sql`coalesce(${tenants.trialConsumedAt}, now())` }).where(eq(tenants.id, resolvedTenantId))
+    if (event) await tx.execute(sql`update tenants set account_lifecycle=account_lifecycle || ${JSON.stringify({ stripeEventCreated: event.created, stripeEventId: event.id })}::jsonb where id=${resolvedTenantId}::uuid`)
+    return true
   })
+  if (!applied) return getTenantSubscription(resolvedTenantId)
   if (plan.code === 'agenda' && ['trialing', 'active'].includes(subscription.status)) {
     const { installAgendaTemplate } = await import('~/server/utils/agendaTemplate')
     await installAgendaTemplate(resolvedTenantId)

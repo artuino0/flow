@@ -148,6 +148,7 @@ async function openPortal() {
         <div class="summary-actions">
           <button v-if="subscription?.stripeCustomerId" type="button" class="button outline" :disabled="openingPortal" @click="openPortal"><CreditCard :size="15" />{{ openingPortal ? 'Abriendo…' : 'Administrar facturación' }}</button>
           <button type="button" class="button primary" @click="scrollToPlans"><ArrowRightCircle :size="15" />Cambiar plan</button>
+          <NuxtLink v-if="isAdmin" to="/exportar" class="button outline"><Download :size="15" />Exportar datos de la organización</NuxtLink>
         </div>
       </section>
 
@@ -242,4 +243,3 @@ async function openPortal() {
 @media(max-width:1100px){.limits-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.limits-grid .usage-metric:nth-child(4n+1){padding-left:16px;border-left:1px solid rgb(var(--brand-billing-divider))}.limits-grid .usage-metric:nth-child(2n+1){padding-left:0;border-left:0}}
 @media(max-width:720px){.limits-grid{grid-template-columns:1fr}.limits-grid .usage-metric{padding-left:0;border-left:0}.limit-actions{align-items:flex-end;flex-direction:column}.section-head .limit-summary{text-align:right}}
 </style>
-

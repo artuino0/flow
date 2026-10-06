@@ -11,11 +11,11 @@ export const agendaSecurityBuckets = pgTable('agenda_security_buckets', {
 }, table => ({ tenantKey: primaryKey({ columns: [table.tenantId, table.keyHash] }), expiry: index('agenda_security_expiry_idx').on(table.expiresAt) }))
 
 export const agendaSiteSettings = pgTable('agenda_site_settings', {
-  siteId: uuid('site_id').primaryKey().references(() => sites.id), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  siteId: uuid('site_id').primaryKey().references(() => sites.id), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   config: jsonb('config').notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })
 export const agendaPublicBookings = pgTable('agenda_public_bookings', {
-  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }), pageId: uuid('page_id').notNull().references(() => sitePages.id, { onDelete: 'cascade' }), recordId: uuid('record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull(), clientEmailHash: text('client_email_hash'), clientPhoneHash: text('client_phone_hash'), serviceIds: jsonb('service_ids').$type<string[]>().notNull(),
   status: text('status').$type<'active' | 'canceled'>().notNull().default('active'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -26,7 +26,7 @@ export const agendaPublicBookings = pgTable('agenda_public_bookings', {
 })
 
 export const agendaSettings = pgTable('agenda_settings', {
-  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id),
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
   slotMinutes: integer('slot_minutes').notNull().default(30),
   bufferMinutes: integer('buffer_minutes').notNull().default(0),
   minNoticeMinutes: integer('min_notice_minutes').notNull().default(0),
@@ -36,12 +36,12 @@ export const agendaSettings = pgTable('agenda_settings', {
   confirmationMessage: text('confirmation_message').notNull().default('Tu cita quedó agendada.')
 })
 export const agendaSchedules = pgTable('agenda_schedules', {
-  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id), userId: uuid('user_id').notNull().references(() => users.id),
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), userId: uuid('user_id').notNull().references(() => users.id),
   weekday: integer('weekday').notNull(), startTime: time('start_time').notNull(), endTime: time('end_time').notNull(),
   validFrom: date('valid_from'), validTo: date('valid_to')
 })
 export const agendaTimeOff = pgTable('agenda_time_off', {
-  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id), userId: uuid('user_id').references(() => users.id),
+  id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), userId: uuid('user_id').references(() => users.id),
   startLocal: timestamp('start_local', { mode: 'string' }).notNull(), endLocal: timestamp('end_local', { mode: 'string' }).notNull(),
   reason: text('reason').notNull(), allDay: boolean('all_day').notNull().default(false)
 })
@@ -49,7 +49,7 @@ export const agendaTimeOff = pgTable('agenda_time_off', {
 // entities: define los objetos/modulos del sistema (ej. Clientes, Facturas, Productores).
 export const entities = pgTable('entities', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   slug: text('slug').notNull(),
   description: text('description'),
@@ -255,7 +255,7 @@ export const entityFieldCounters = pgTable('entity_field_counters', {
 export const records = pgTable('records', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'restrict' }),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   customData: jsonb('custom_data').notNull().default({}),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   isDirty: boolean('is_dirty').notNull().default(false),
@@ -285,7 +285,7 @@ export const records = pgTable('records', {
 // relation_definitions: define tipos de vinculo permitidos entre dos entidades (grafo).
 export const relationDefinitions = pgTable('relation_definitions', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   sourceEntityId: uuid('source_entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
   targetEntityId: uuid('target_entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
@@ -299,7 +299,7 @@ export const relationDefinitions = pgTable('relation_definitions', {
 // via trigger PL/pgSQL (ver migracion 0005); la validacion de campos vive solo en Zod (Nitro).
 export const recordRelations = pgTable('record_relations', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   relationDefinitionId: uuid('relation_definition_id').notNull().references(() => relationDefinitions.id, { onDelete: 'cascade' }),
   sourceRecordId: uuid('source_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
   targetRecordId: uuid('target_record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
@@ -317,7 +317,7 @@ export const recordRelations = pgTable('record_relations', {
 // roles: RBAC por tenant. Sin permisos a nivel de campo en el MVP.
 export const roles = pgTable('roles', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   isSystem: boolean('is_system').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
@@ -372,6 +372,7 @@ export const tenants = pgTable('tenants', {
   slug: text('slug').notNull().default(sql`'org-' || substr(gen_random_uuid()::text, 1, 8)`),
   email: text('email'),
   onboardingStatus: text('onboarding_status').notNull().default('complete'),
+  accountLifecycle: jsonb('account_lifecycle').$type<Record<string, unknown>>().notNull().default({}),
   trialConsumedAt: timestamp('trial_consumed_at', { withTimezone: true }),
   registrationIntent: jsonb('registration_intent').$type<import('../../utils/registrationIntent').RegistrationIntent>(),
   platformCrmAttribution: jsonb('platform_crm_attribution').$type<import('../../utils/registrationIntent').RegistrationChoice>(),
@@ -468,7 +469,7 @@ export const people = pgTable('people', {
 // 2026-09-04) - ver el comentario largo en `people` de arriba para el porque.
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   personId: uuid('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   roleId: uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
   jobTitle: text('job_title'),
@@ -807,7 +808,7 @@ export const apiKeys = pgTable('api_keys', {
 // limpieza en esta entrega (documentado, no un descuido).
 export const files = pgTable('files', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
   fileName: text('file_name').notNull(),
   mimeType: text('mime_type').notNull(),
@@ -829,7 +830,7 @@ export const files = pgTable('files', {
 
 export const triggers = pgTable('triggers', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   entityId: uuid('entity_id').notNull().references(() => entities.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   // on_create | on_update | on_delete | on_transition (ERD-53) - texto simple,
@@ -860,7 +861,7 @@ export const triggers = pgTable('triggers', {
 // denormaliza tenant_id en vez de resolverlo siempre via relation_definitions.
 export const triggerActions = pgTable('trigger_actions', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   triggerId: uuid('trigger_id').notNull().references(() => triggers.id, { onDelete: 'cascade' }),
   actionType: text('action_type').notNull(), // webhook | email | notification | update_field (ERD-49)
   config: jsonb('config').notNull().default({}),
@@ -883,7 +884,7 @@ export const triggerActions = pgTable('trigger_actions', {
 // (acción, origen) evita duplicados durante reintentos del workflow.
 export const triggerActionOutputs = pgTable('trigger_action_outputs', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   triggerActionId: uuid('trigger_action_id').notNull().references(() => triggerActions.id, { onDelete: 'cascade' }),
   sourceRecordId: uuid('source_record_id').references(() => records.id, { onDelete: 'set null' }),
   targetRecordId: uuid('target_record_id').references(() => records.id, { onDelete: 'set null' }),
@@ -897,7 +898,7 @@ export const triggerActionOutputs = pgTable('trigger_action_outputs', {
 
 export const triggerLogs = pgTable('trigger_logs', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   triggerId: uuid('trigger_id').notNull().references(() => triggers.id, { onDelete: 'cascade' }),
   recordId: uuid('record_id').references(() => records.id, { onDelete: 'set null' }),
   status: text('status').notNull().default('success'), // success | failed | retrying | dead_letter
@@ -935,7 +936,7 @@ export const triggerLogs = pgTable('trigger_logs', {
 // momento en que se guardó.
 export const reports = pgTable('reports', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   description: text('description').notNull(),
   queryDsl: jsonb('query_dsl').notNull(),
@@ -960,7 +961,7 @@ export const reports = pgTable('reports', {
 // (mismo motivo que `queryDsl.title` en listReports() de server/utils/reports.ts).
 export const printReports = pgTable('print_reports', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   baseEntitySlug: text('base_entity_slug').notNull(),
@@ -1000,7 +1001,7 @@ export const dimDate = pgTable('dim_date', {
 // hechos historicos ya facturados/registrados deben seguir siendo validos).
 export const dimCliente = pgTable('dim_cliente', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recordId: uuid('record_id'),
   nombre: text('nombre').notNull(),
   email: text('email'),
@@ -1015,7 +1016,7 @@ export const dimCliente = pgTable('dim_cliente', {
 
 export const dimSucursal = pgTable('dim_sucursal', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recordId: uuid('record_id'),
   nombre: text('nombre').notNull(),
   ciudad: text('ciudad'),
@@ -1033,7 +1034,7 @@ export const dimSucursal = pgTable('dim_sucursal', {
 // tipicas de un esquema en estrella.
 export const factEventos = pgTable('fact_eventos', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   dateId: integer('date_id').notNull().references(() => dimDate.id),
   clienteId: uuid('cliente_id').references(() => dimCliente.id, { onDelete: 'set null' }),
   sucursalId: uuid('sucursal_id').references(() => dimSucursal.id, { onDelete: 'set null' }),
@@ -1056,7 +1057,7 @@ export const factEventos = pgTable('fact_eventos', {
 // record_activities: Bitácora unificada de auditoría y notas (Timeline).
 export const recordActivities = pgTable('record_activities', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recordId: uuid('record_id').notNull().references(() => records.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   // Tipos automáticos: 'CREATED', 'UPDATED', 'DELETED', 'LINKED', 'UNLINKED'
@@ -1668,7 +1669,7 @@ export const olapEtlState = pgTable('olap_etl_state', {
 
 // ERD-138: metadatos de uso, sin contenido conversacional.
 export const agentUsage = pgTable('agent_usage', {
- id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+ id: uuid('id').primaryKey().defaultRandom(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
  userId: uuid('user_id').notNull().references(() => users.id), day: date('day').notNull(),
  aiCalls: integer('ai_calls').notNull().default(0), tokensIn: bigint('tokens_in', { mode: 'number' }).notNull().default(0), tokensOut: bigint('tokens_out', { mode: 'number' }).notNull().default(0),
  catalogCalls: integer('catalog_calls').notNull().default(0), offtopicCalls: integer('offtopic_calls').notNull().default(0), limitedCalls: integer('limited_calls').notNull().default(0), unavailableCalls: integer('unavailable_calls').notNull().default(0),

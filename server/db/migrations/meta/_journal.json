@@ -708,6 +708,41 @@
       "when": 1791244800000,
       "tag": "0100_pending_registrations",
       "breakpoints": true
+    },
+    {
+      "version": "7",
+      "idx": 101,
+      "when": 1791244801000,
+      "breakpoints": true,
+      "tag": "0101_account_lifecycle"
+    },
+    {
+      "version": "7",
+      "idx": 102,
+      "when": 1791244802000,
+      "breakpoints": true,
+      "tag": "0102_account_exports"
+    },
+    {
+      "version": "7",
+      "idx": 103,
+      "when": 1791244803000,
+      "breakpoints": true,
+      "tag": "0103_account_deletion"
+    },
+    {
+      "version": "7",
+      "idx": 104,
+      "when": 1791244804000,
+      "breakpoints": true,
+      "tag": "0104_account_tenant_foreign_keys"
+    },
+    {
+      "version": "7",
+      "idx": 105,
+      "when": 1791244805000,
+      "breakpoints": true,
+      "tag": "0105_account_context"
     }
   ]
 }

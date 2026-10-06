@@ -18,7 +18,7 @@ export const platformCrmBlueprint: Blueprint = {
     fields: [
       { ...field('nombre', 'Nombre'), required: true, validationRules: { notBlank: true } },
       { name: 'origen', label: 'Origen', dataType: 'select', required: true, validationRules: { options: [{ value: 'flow_saas', label: 'Flow (SaaS)' }, { value: 'desarrollo', label: 'Desarrollo a la medida' }, { value: 'otro', label: 'Otro' }] } },
-      select('estado', 'Estado', ['Prospecto', 'En prueba', 'Activo', 'Impago', 'Cancelado', 'En proyecto', 'Finalizado']),
+      select('estado', 'Estado', ['Prospecto', 'En prueba', 'Activo', 'Impago', 'Suspendido', 'Borrado programado', 'Cancelado', 'Cancelado/Eliminado', 'En proyecto', 'Finalizado']),
       field('contacto', 'Contacto'), field('correo', 'Correo'), field('telefono', 'Teléfono'),
       select('plan', 'Plan', ['Agenda', 'Starter', 'Crecimiento', 'Escala', 'Empresarial']), select('intervalo', 'Intervalo', ['Mensual', 'Anual']),
       { ...field('mrr', 'Ingreso mensual recurrente (MXN)', 'currency'), validationRules: { currency: 'MXN', decimals: 2 } },
@@ -65,7 +65,7 @@ export function platformClientSource(input: unknown) {
   }).join('; ') : ''
 }
 export type SyncResult = { status: 'created' | 'updated' | 'unchanged' | 'skipped'; fields: string[] }
-type SyncOptions = { apply?: boolean; deleted?: { nombre: string; correo: string | null; fecha_alta: string; fecha_baja: string; fuente?: string } }
+type SyncOptions = { apply?: boolean; deleted?: { nombre: string; correo: string | null; fecha_alta: string; fecha_baja: string; fuente?: string; purged?: boolean } }
 
 /** Candado transaccional en el destino, válido también entre procesos/réplicas. */
 export async function syncPlatformClient(tenantId: string, options: SyncOptions = {}): Promise<SyncResult> {
@@ -73,6 +73,9 @@ export async function syncPlatformClient(tenantId: string, options: SyncOptions 
   if (!destination || destination.id === tenantId) return { status: 'skipped', fields: [] }
   return withSystemRecordAccess(() => withTenant(destination.id, async tx => {
     await tx.execute(sql`set local statement_timeout = '10000'`)
+    // Antes de tomar candados de filas del CRM: el borrado exclusivo del
+    // origen espera esta lectura y ninguna sincronización revive datos viejos.
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${tenantId},191))`)
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${destination.id + ':' + tenantId}, 187))`)
     const [module] = await tx.select().from(entities).where(and(eq(entities.tenantId, destination.id), eq(entities.slug, 'clientes'), eq(entities.isActive, true), isNull(entities.deletedAt))).limit(1)
     if (!module) throw new Error('El CRM de plataforma aún no está instalado')
@@ -95,20 +98,25 @@ export async function syncPlatformClient(tenantId: string, options: SyncOptions 
         (select count(*)::int from entities where tenant_id = ${tenantId}::uuid and is_active and deleted_at is null) as modules,
         (select max(last_seen_at) from auth_sessions where tenant_id = ${tenantId}::uuid) as activity`)
       const [owner] = await origin.select({ email: people.email }).from(users).innerJoin(people, eq(people.id, users.personId)).innerJoin(roles, eq(roles.id, users.roleId)).where(and(eq(users.tenantId, tenantId), eq(roles.isSystem, true))).orderBy(users.createdAt).limit(1)
-      return { tenant, subscription, usage, owner }
+      const [lifecycle] = await origin.execute(sql`select account_lifecycle_state(${tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''}) as account`)
+      return { tenant, subscription, usage, owner, account: lifecycle!.account as { phase: string } }
     })()
     await tx.execute(sql`select set_config('app.tenant_id', ${destination.id}, true)`)
     const date = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null
-    let desired: Record<string, unknown>
+    let desired: Record<string, unknown>, purged = false
     if (!source) {
       if (!previous && !options.deleted) return { status: 'skipped', fields: [] }
-      desired = { ...(previous ? {} : options.deleted), estado: 'Cancelado', fecha_baja: old.fecha_baja ?? options.deleted?.fecha_baja ?? new Date().toISOString(), mrr: '0.00', proximo_cobro: null, fin_prueba: null, usuarios: 0, modulos: 0 }
+      const deleted = await tx.execute(sql`select 1 from account_lifecycle_events where tenant_hash=encode(digest(${tenantId},'sha256'),'hex') and phase='deleted' limit 1`)
+      purged = Boolean(options.deleted?.purged || old.estado === 'Cancelado/Eliminado' || deleted.length)
+      desired = purged
+        ? { nombre: old.nombre ?? options.deleted?.nombre, origen: 'flow_saas', estado: 'Cancelado/Eliminado', plan: old.plan ?? null, fecha_alta: old.fecha_alta ?? options.deleted?.fecha_alta, fecha_baja: old.fecha_baja ?? options.deleted?.fecha_baja ?? new Date().toISOString() }
+        : { ...(previous ? {} : options.deleted), estado: 'Cancelado', fecha_baja: old.fecha_baja ?? options.deleted?.fecha_baja ?? new Date().toISOString(), mrr: '0.00', proximo_cobro: null, fin_prueba: null, usuarios: 0, modulos: 0 }
     } else {
-      const { tenant, subscription, usage, owner } = source
+      const { tenant, subscription, usage, owner, account } = source
       const s = subscription?.subscription, p = subscription?.plan
       // Starter manual/trialing sin fechas es el respaldo, no una contratación.
       const fallback = s?.provider === 'manual' && s.status === 'trialing' && !s.stripeSubscriptionId && !s.trialEndsAt && !s.currentPeriodEnd && !tenant.trialConsumedAt
-      const state = platformClientState(fallback ? null : s?.status ?? null, tenant.onboardingStatus !== 'complete' && !tenant.trialConsumedAt)
+      const state = account.phase === 'pending_deletion' ? 'Borrado programado' : account.phase === 'suspended' ? 'Suspendido' : platformClientState(fallback ? null : s?.status ?? null, tenant.onboardingStatus !== 'complete' && !tenant.trialConsumedAt)
       const sourceText = platformClientSource(tenant.registrationIntent) || platformClientSource(tenant.platformCrmAttribution) || String(old.fuente ?? '')
       const planName = p ? ({ agenda: 'Agenda', starter: 'Starter', crecimiento: 'Crecimiento', escala: 'Escala', empresarial: 'Empresarial' } as Record<string, string>)[p.code] ?? null : null
       desired = { nombre: tenant.name, correo: owner?.email ?? tenant.email, estado: state, plan: fallback ? null : planName, intervalo: fallback || !s ? null : s.billingInterval === 'year' ? 'Anual' : 'Mensual',
@@ -119,13 +127,13 @@ export async function syncPlatformClient(tenantId: string, options: SyncOptions 
     if (!previous) desired.origen = 'flow_saas'
     const fields = await tx.select().from(entityFields).where(eq(entityFields.entityId, module.id))
     const schema = buildRecordSchema(fields, { timezone: destination.timezone })
-    const candidate = previous ? { ...old, ...desired } : applyFieldDefaults(fields, desired, { timezone: destination.timezone })
+    const candidate = purged ? desired : previous ? { ...old, ...desired } : applyFieldDefaults(fields, desired, { timezone: destination.timezone })
     const validated = JSON.parse(JSON.stringify(schema.parse(candidate))) as Record<string, unknown>
     const diff = Object.fromEntries(Object.keys(desired).filter(key => !isDeepStrictEqual(old[key], validated[key])).map(key => [key, validated[key]]))
     const restore = Boolean(previous?.deletedAt)
-    if (previous && !Object.keys(diff).length && !restore) return { status: 'unchanged', fields: [] }
+    if (previous && !Object.keys(diff).length && !restore && (!purged || isDeepStrictEqual(old, validated))) return { status: 'unchanged', fields: [] }
     if (options.apply !== false) {
-      if (previous) await tx.update(records).set({ customData: sql`${records.customData} || ${JSON.stringify(diff)}::jsonb`, deletedAt: null, updatedAt: new Date() }).where(and(eq(records.id, previous.id), eq(records.tenantId, destination.id)))
+      if (previous) await tx.update(records).set({ customData: purged ? validated : sql`${records.customData} || ${JSON.stringify(diff)}::jsonb`, deletedAt: null, updatedAt: new Date() }).where(and(eq(records.id, previous.id), eq(records.tenantId, destination.id)))
       else await tx.insert(records).values({ tenantId: destination.id, entityId: module.id, customData: validated })
     }
     return { status: previous ? 'updated' : 'created', fields: Object.keys(diff) }

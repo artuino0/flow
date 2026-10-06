@@ -1,7 +1,10 @@
 import { sql } from 'drizzle-orm'
-import { db, withTenant } from '~/server/db'
+import { db, withTenant, withTenantRecovery } from '~/server/db'
 import { dimDate, dimCliente, dimSucursal, factEventos } from '~/server/db/schema'
 import { logger } from '~/server/utils/logger'
+import { accountLifecycle } from './accountLifecycle'
+import { accountBlocked } from '~/utils/accountLifecycle'
+import { withSystemRecordAccess } from './recordActorContext'
 
 // ERD-87: ETL OLAP incremental por cursor persistente y lotes globales.
 export function toDimDateId(d: Date): number {
@@ -25,6 +28,7 @@ export interface OlapEtlResult {
   batches: number
   recordsProcessed: number
   recordsSkippedDeleted: number
+  recordsDeferred: number
   tenants: number
   factUpserts: number
   dimClienteUpserts: number
@@ -47,7 +51,7 @@ function asDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value)
 }
 
-export async function runOlapEtl(now = new Date(), options: { batchSize?: number; budgetMs?: number; lagMs?: number } = {}): Promise<OlapEtlResult> {
+export async function runOlapEtl(now = new Date(), options: { batchSize?: number; budgetMs?: number; lagMs?: number; tenantId?: string; recordIds?: string[] } = {}): Promise<OlapEtlResult> {
   const startedAt = Date.now()
   const batchSize = options.batchSize ?? 1000
   const budgetMs = options.budgetMs ?? 45_000
@@ -55,10 +59,13 @@ export async function runOlapEtl(now = new Date(), options: { batchSize?: number
   const cursorRows = await db.execute(sql`select last_updated_at::text as updated_at, last_record_id from olap_etl_state where job = ${JOB} limit 1`)
   const [stored] = cursorRows as unknown as Array<{ updated_at: string; last_record_id: string }>
   let cursor: Cursor = stored ? { updatedAt: stored.updated_at, recordId: stored.last_record_id } : INITIAL_CURSOR
-  const result: OlapEtlResult = { batches: 0, recordsProcessed: 0, recordsSkippedDeleted: 0, tenants: 0, factUpserts: 0, dimClienteUpserts: 0, dimSucursalUpserts: 0, cursor: { updatedAt: new Date(cursor.updatedAt).toISOString(), recordId: cursor.recordId }, reachedEnd: false, durationMs: 0 }
+  const result: OlapEtlResult = { batches: 0, recordsProcessed: 0, recordsSkippedDeleted: 0, recordsDeferred: 0, tenants: 0, factUpserts: 0, dimClienteUpserts: 0, dimSucursalUpserts: 0, cursor: { updatedAt: new Date(cursor.updatedAt).toISOString(), recordId: cursor.recordId }, reachedEnd: false, durationMs: 0 }
+  const replay = Boolean(options.tenantId && options.recordIds)
 
   while (true) {
-    const queryResult = await db.execute(sql`select * from olap_changed_records(${cursor.updatedAt}::timestamptz, ${cursor.recordId}::uuid, ${until.toISOString()}::timestamptz, ${batchSize})`)
+    const queryResult = replay
+      ? await withSystemRecordAccess(() => withTenant(options.tenantId!, tx => tx.execute(sql`select r.id,r.tenant_id,r.entity_id,e.slug as entity_slug,r.custom_data,r.created_at,r.updated_at,r.updated_at::text as updated_at_cursor,(r.deleted_at is not null) as is_deleted from records r join entities e on e.id=r.entity_id and e.tenant_id=r.tenant_id where r.tenant_id=${options.tenantId!}::uuid and r.id in (select value::uuid from jsonb_array_elements_text(${JSON.stringify(options.recordIds)}::jsonb)) order by r.id`)))
+      : await db.execute(sql`select * from olap_changed_records(${cursor.updatedAt}::timestamptz, ${cursor.recordId}::uuid, ${until.toISOString()}::timestamptz, ${batchSize})`)
     const batch = queryResult as unknown as ChangedRecord[]
     if (!batch.length) { result.reachedEnd = true; break }
     result.batches += 1
@@ -78,6 +85,12 @@ export async function runOlapEtl(now = new Date(), options: { batchSize?: number
       let tenantDimSucursalUpserts = 0
       let tenantFactUpserts = 0
       try {
+        if (accountBlocked(await accountLifecycle(tenantId, now))) {
+          const last = records[records.length - 1]!
+          await withTenantRecovery(tenantId, tx => tx.execute(sql`insert into job_queue(tenant_id,kind,payload,idempotency_key) values (${tenantId}::uuid,'olap_sync',${JSON.stringify({ recordIds: records.map(record => record.id) })}::jsonb,${`olap:${last.id}:${last.updated_at_cursor}`}) on conflict do nothing`))
+          result.recordsDeferred += records.length
+          continue
+        }
         await withTenant(tenantId, async (tx) => {
           const dates = new Map<number, ReturnType<typeof dateDimValue>>()
           for (const record of records) {
@@ -127,6 +140,7 @@ export async function runOlapEtl(now = new Date(), options: { batchSize?: number
     if (failed) break
 
     result.recordsProcessed += activeCount
+    if (replay) { result.reachedEnd = true; break }
     const last = batch[batch.length - 1]!
     cursor = { updatedAt: last.updated_at_cursor, recordId: last.id }
     await db.execute(sql`insert into olap_etl_state (job, last_updated_at, last_record_id, updated_at) values (${JOB}, ${cursor.updatedAt}::timestamptz, ${cursor.recordId}::uuid, now()) on conflict (job) do update set last_updated_at = excluded.last_updated_at, last_record_id = excluded.last_record_id, updated_at = now()`)

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 
 export type StorageDriver = 'local' | 'r2'
 
@@ -18,6 +18,7 @@ export interface StoredObjectAdapter {
   put(input: PutStoredObjectInput): Promise<void>
   get(key: string): Promise<Buffer>
   delete(key: string): Promise<void>
+  list?(prefix: string): Promise<string[]>
 }
 
 let adapter: StoredObjectAdapter | null = null
@@ -123,4 +124,37 @@ export async function deleteStoredObject(key: string): Promise<void> {
 
 export function usingR2() {
   return driver() === 'r2'
+}
+
+/** El llamador conserva el prefijo de propiedad y vuelve a comprobar cada llave. */
+export async function listStoredObjects(prefix: string): Promise<string[]> {
+  assertKey(prefix)
+  if (!prefix.endsWith('/')) throw new StorageConfigurationError('El prefijo debe terminar en barra')
+  if (adapter) {
+    if (!adapter.list) throw new StorageConfigurationError('El adaptador no permite inventariar archivos')
+    return adapter.list(prefix)
+  }
+  if (driver() === 'local') {
+    const keys: string[] = []
+    const walk = async (directory: string, keyPrefix: string) => {
+      let entries
+      try { entries = await fs.readdir(directory, { withFileTypes: true }) } catch (error: any) { if (error?.code === 'ENOENT') return; throw error }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) throw new StorageConfigurationError('No se puede inventariar un enlace simbólico')
+        if (entry.isDirectory()) await walk(path.join(directory, entry.name), keyPrefix + entry.name + '/')
+        else if (entry.isFile()) keys.push(keyPrefix + entry.name)
+      }
+    }
+    await walk(localObjectPath(prefix), prefix)
+    return keys
+  }
+  const { client, bucket } = getR2Client(); const keys: string[] = []
+  let token: string | undefined
+  do {
+    const page = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }))
+    keys.push(...(page.Contents ?? []).flatMap(item => item.Key ? [item.Key] : []))
+    if (page.IsTruncated && (!page.NextContinuationToken || page.NextContinuationToken === token)) throw new StorageConfigurationError('El inventario de almacenamiento quedó incompleto')
+    token = page.IsTruncated ? page.NextContinuationToken : undefined
+  } while (token)
+  return keys
 }

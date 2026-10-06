@@ -1,5 +1,11 @@
 # Changelog
 
+### [0.156.0] - 2026-10-05
+#### [feature]
+- [ERD-191](https://dydasoftware.atlassian.net/browse/ERD-191) - Ciclo de vida de la cuenta: una organización con el pago vencido tiene 7 días de gracia y después queda suspendida; ve una pantalla para regularizar su pago, puede exportar sus datos y recibe avisos por correo. Al pagar recupera el acceso de inmediato. El administrador de la plataforma tiene una pantalla de cuentas para ver su estado, simular y aplicar acciones. El borrado definitivo de cuentas queda apagado por omisión.
+#### [bugfix]
+- [ERD-193](https://dydasoftware.atlassian.net/browse/ERD-193) - Sitios: la pantalla de dominios es más clara. Distingue DNS pendiente, conexión segura pendiente, error y dominio activo; pliega los registros DNS cuando el dominio ya funciona, explica cómo conectar un dominio raíz y permite copiar cada registro.
+
 ### [0.155.0] - 2026-10-05
 #### [feature]
 - [ERD-197](https://dydasoftware.atlassian.net/browse/ERD-197) - Registro: el correo se verifica en el paso 2, antes de crear la organización. La organización, el usuario y las invitaciones se crean juntos al final, solo con un correo ya verificado; si recargas la página el asistente retoma donde ibas. El selector de tema del registro queda arriba a la derecha, como en el inicio de sesión.

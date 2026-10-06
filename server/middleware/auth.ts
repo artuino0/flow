@@ -1,8 +1,11 @@
 import { AUTH_COOKIE_NAME, resolveAuthToken, verifyAuthToken } from '~/server/utils/auth'
 import { resolveApiKeyAuth } from '~/server/utils/apiKeyAuth'
 import { validateSession } from '~/server/utils/sessions'
-import { and, eq } from 'drizzle-orm'
-import { withTenant } from '~/server/db'
+import { and, eq, sql } from 'drizzle-orm'
+import type { AccountLifecycle } from '~/utils/accountLifecycle'
+import { withTenantRecovery as withTenant } from '~/server/db'
+import { accountLifecycle, ACCOUNT_RECOVERY_PATHS, requireAccountAdmin } from '~/server/utils/accountLifecycle'
+import { accountBlocked } from '~/utils/accountLifecycle'
 import { people, tenants, users } from '~/server/db/schema'
 
 // Middleware global (HU-ERD-15): valida el JWT de cualquier ruta /api/* salvo
@@ -103,9 +106,17 @@ export default defineEventHandler(async (event) => {
   }
 
   const auth = event.context.auth!
-  const [membership] = await withTenant(auth.tenantId, tx => tx.select({ verifiedAt: people.emailVerifiedAt, status: tenants.onboardingStatus }).from(users)
+  const [membership] = await withTenant(auth.tenantId, tx => tx.select({ verifiedAt: people.emailVerifiedAt, status: tenants.onboardingStatus,
+    account: sql<AccountLifecycle>`account_lifecycle_state(${auth.tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''})` }).from(users)
     .leftJoin(people, eq(people.id, users.personId)).leftJoin(tenants, eq(tenants.id, users.tenantId))
     .where(and(eq(users.id, auth.sub), eq(users.tenantId, auth.tenantId))).limit(1))
+  const account = membership?.account ?? await accountLifecycle(auth.tenantId)
+  if (path === '/api/account/status') return
+  if (accountBlocked(account) && path !== '/api/auth/me' && !path.startsWith('/api/platform/')) {
+    if (!ACCOUNT_RECOVERY_PATHS.has(path)) throw createError({ statusCode: 403, statusMessage: 'La cuenta está suspendida, contacta al administrador.' })
+    await requireAccountAdmin(event)
+    return
+  }
   const onboarding = !membership?.verifiedAt ? 'email_pending' : membership.status ?? 'complete'
   if (onboarding === 'complete' || path === '/api/auth/me' || path === '/api/billing/registration-intent') return
   if (onboarding === 'email_pending') {

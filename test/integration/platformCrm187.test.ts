@@ -8,6 +8,7 @@ import { createTestDb, type TestDb } from '../setup/testDb'
 const simulation = vi.hoisted(() => ({ event: {} as Record<string, unknown> }))
 vi.mock('h3', async original => ({ ...await original<typeof import('h3')>(), getHeader: () => 'simulated-signature', readRawBody: async () => '{}' }))
 vi.mock('stripe', () => ({ default: class {
+  subscriptions = { retrieve: async () => (simulation.event.data as { object: unknown }).object }
   customers = { create: async () => ({ id: 'cus_simulated187' }) }
   checkout = { sessions: { create: async () => ({ url: 'https://stripe.test/simulated187' }) } }
   webhooks = { constructEvent: () => simulation.event }

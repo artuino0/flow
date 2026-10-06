@@ -29,6 +29,9 @@ let entityBId: string
 
 beforeAll(async () => {
   testDb = await createTestDb()
+  const owner = postgres(testDb.ownerUrl)
+  await owner`insert into tenants(id,name) values (${TENANT_A},'A sintético'),(${TENANT_B},'B sintético')`
+  await owner.end()
   app = postgres(testDb.appUrl, { max: 1 })
 
   const entityA = await asTenant(TENANT_A, (tx) =>

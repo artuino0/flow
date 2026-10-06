@@ -200,6 +200,34 @@ describe('registro provisional HU-197', () => {
     expect(await provisional.provisionalRegistrationStatus(kept.token,kept.witness)).toMatchObject({ pending: true, verified: true })
     await expect(provisional.completeProvisionalRegistration(expiredVerified.witness,organization('purged-verified'))).rejects.toMatchObject({ statusCode:401 })
   })
+  it('integración 191/197: suspensión, avisos, purgas y cascada conservan el outbox sin tenant', async () => {
+    const { randomUUID } = await import('node:crypto')
+    const tenantId = randomUUID(), ordinary = randomUUID(), notice = randomUUID()
+    const start = await provisional.startProvisionalRegistration(account('integration-191'))
+    const content = await codeFor(start.token)
+    const [platformJob] = await admin`select id from job_queue where payload->>'pendingRegistrationId'=${content.row.id}`
+    await admin`insert into tenants(id,name,slug,account_lifecycle) values (${tenantId},'Cuenta suspendida de prueba','integration-suspended-191','{"manualSuspendedAt":"2026-01-01T00:00:00Z"}')`
+    await admin`insert into job_queue(id,tenant_id,kind,payload) values (${ordinary},${tenantId},'email','{}'),(${notice},${tenantId},'account_notice','{}')`
+    const claimed = await queue.claimJobs({ batchSize: 1000, perTenantLimit: 1000, workerId: 'integration-191-197' })
+    expect(claimed.some(job => job.id === platformJob!.id && job.tenantId === null)).toBe(true)
+    expect(claimed.some(job => job.id === notice)).toBe(true)
+    expect(claimed.some(job => job.id === ordinary)).toBe(false)
+    expect((await admin`select status,attempts from job_queue where id=${ordinary}`)[0]).toMatchObject({ status: 'pending', attempts: 0 })
+    await (await import('../../server/utils/pendingRegistrationCleanup')).cleanupPendingRegistrations()
+    await (await import('../../server/utils/accountDeletion')).runAccountDeletionTick()
+    expect(await admin`select id from pending_registrations where id=${content.row.id}`).toHaveLength(1)
+    await admin`update pending_registrations set expires_at=now()-interval '1 second' where id=${content.row.id}`
+    expect(await provisional.purgeProvisionalRegistrations()).toBe(1)
+    expect(await admin`select id from job_queue where id in (${ordinary},${notice})`).toHaveLength(2)
+    const kept = await provisional.startProvisionalRegistration(account('integration-cascade'))
+    const keptContent = await codeFor(kept.token)
+    await admin`delete from tenants where id=${tenantId}`
+    expect(await admin`select id from job_queue where tenant_id=${tenantId}`).toHaveLength(0)
+    expect(await admin`select id from job_queue where payload->>'pendingRegistrationId'=${keptContent.row.id}`).toHaveLength(1)
+    const invalidJob = { id: randomUUID(), tenantId: null, kind: 'account_notice', payload: { noticeId: randomUUID() }, attempts: 1, maxAttempts: 1 }
+    expect(await (await import('../../server/utils/accountNotices')).handleAccountNotice(invalidJob)).toMatchObject({ ok: false, retryable: false })
+    expect(await (await import('../../server/utils/accountExport')).handleAccountExport({ ...invalidJob, kind: 'account_export', payload: { exportId: randomUUID() } })).toMatchObject({ ok: false, retryable: false })
+  })
   it('cola toma trabajos sin tenant y conserva aislamiento de tenant, incluso sin WHERE', async () => {
     const readyAccount = await ready('queue'), final = await provisional.completeProvisionalRegistration(readyAccount.witness, organization('queue'))
     const { withTenant } = await import('../../server/db')

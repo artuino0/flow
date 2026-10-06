@@ -327,6 +327,8 @@ export async function validateBlueprintAgainstSnapshot(input: unknown, snapshot:
 }
 
 export async function validateBlueprint(tenantId: string, input: unknown, exactCreates = false): Promise<BlueprintValidationResult> {
+  const shape = blueprintSchema.safeParse(input)
+  if (!shape.success) return invalidBlueprintShape(shape.error.issues, input)
   const result = await withTenant(tenantId, tx => validateBlueprintInTx(tx, tenantId, input, exactCreates))
   if (result.normalized) {
     const incoming = result.normalized.modules.filter(module => module.action === 'create' && module.kind === 'hecho').length

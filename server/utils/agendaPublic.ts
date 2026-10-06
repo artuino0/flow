@@ -24,6 +24,8 @@ import { agendaTurnstileKey, verifyAgendaTurnstile } from './agendaTurnstile'
 import { agendaPrivateKey } from './agendaPersistentLimit'
 import { expireAgendaConfirmations } from './agendaConfirmation'
 import { stateWorkflowSchema } from './stateWorkflow'
+import { accountLifecycle } from './accountLifecycle'
+import { accountBlocked } from '~/utils/accountLifecycle'
 
 export interface PublicAgendaOrigin { origin: string; host: string; ip: string; userAgent: string }
 function unavailableAgenda(reason: string): never {
@@ -50,6 +52,7 @@ export async function resolveAgendaContext(site: string, page: string, origin: P
   const rows = await db.execute(sql`select * from resolve_public_agenda(${site}::uuid,${page}::uuid,${verified.hostname},${verified.flow})`)
   const tenantId = rows[0]?.tenant_id
   if (!tenantId) return unavailableAgenda('Resolución pública rechazada: sitio/página/versión no publicados, agenda desactivada o dominio no autorizado.')
+  if (accountBlocked(await accountLifecycle(String(tenantId)))) return unavailableAgenda('Agenda no disponible.')
   if (!verified.flow) {
     // Comprobación explícita del argumento hostname: no depender de la
     // resolución de nombres de columnas/argumentos del resolver SQL.

@@ -6,7 +6,7 @@ import * as flowApps from '../../utils/flowApps'
 function harness(authenticated = false, contracted = false, verified = true) {
   const state = new Map<string, ReturnType<typeof ref>>()
   const user = ref(authenticated ? { authenticated: true, isAdmin: true, emailVerified: verified, onboardingStatus: contracted ? 'complete' : 'plan_pending' } : null)
-  const fetch = vi.fn(async (url: string) => url === '/api/license/status' ? { required: false, activated: false } : { intent: contracted ? null : { plan: 'starter', interval: 'year' } })
+  const fetch = vi.fn(async (url: string) => url === '/api/account/status' ? { account: { phase: 'active' } } : url === '/api/license/status' ? { required: false, activated: false } : { intent: contracted ? null : { plan: 'starter', interval: 'year' } })
   const navigate = vi.fn((path: unknown) => path)
   const globals = {
     useState: (key: string, init: () => unknown) => { if (!state.has(key)) state.set(key, ref(init())); return state.get(key) },
@@ -58,7 +58,7 @@ it('una suscripción contratada ignora la elección y no fuerza elegir plan', as
 it('una cuenta completa sin contratación ve el selector y aviso al retirarse su plan guardado', async () => {
   const h = harness(true)
   h.user.value!.onboardingStatus = 'complete'
-  h.fetch.mockImplementation(async url => url === '/api/license/status' ? { required: false, activated: false } : { intent: null, unavailable: true })
+  h.fetch.mockImplementation(async url => url === '/api/account/status' ? { account: { phase: 'active' } } : url === '/api/license/status' ? { required: false, activated: false } : { intent: null, unavailable: true })
   await h.middleware(h.route('/elegir-plan'))
   expect(h.navigate).not.toHaveBeenCalled()
   expect(h.state.get('registration-plan-unavailable')?.value).toBe(true)

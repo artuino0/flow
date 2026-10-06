@@ -4,6 +4,8 @@ import path from 'node:path'
 import { getManagedTenantLogo, readManagedTenantLogo } from '~/server/utils/managedStorage'
 import { eq } from 'drizzle-orm'
 import { db, withTenant } from '~/server/db'
+import { assertAccountActive } from '~/server/utils/accountLifecycle'
+import { accountRecoveryAccess } from '~/server/utils/accountContext'
 import { tenantEmailSettings } from '~/server/db/schema'
 import { decryptSetting } from '~/server/utils/settingsCrypto'
 import { readSesPlatformConfig } from '~/server/utils/sesTenants'
@@ -272,6 +274,7 @@ export function buildInvitationEmailHtml(params: InvitationEmailParams & { invit
  * persiste (createTransport/sendMail no tocan la base).
  */
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<void> {
+  if (params.tenantId && !accountRecoveryAccess()) await assertAccountActive(params.tenantId)
   const inviteUrl = `${getAppBaseUrl()}/invitacion/${params.token}`
   const emailLogo = await resolveEmailLogo(params.tenantId)
   await deliverMail({
@@ -331,6 +334,7 @@ export function buildGeneralEmailHtml(params: PlainEmailParams & { logoSrc?: str
  * personalizada del tenant y cae a las variables de entorno si no existe.
  */
 export async function sendPlainEmail(params: PlainEmailParams) {
+  if (params.tenantId && !accountRecoveryAccess()) await assertAccountActive(params.tenantId)
   const emailLogo = await resolveEmailLogo(params.tenantId)
   return deliverMail({
     to: params.to,

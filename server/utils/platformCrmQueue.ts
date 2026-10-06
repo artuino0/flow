@@ -5,13 +5,13 @@ import type { ClaimedJob, JobOutcome } from './jobQueue'
 import { platformCrmDestination, platformClientSource, syncPlatformClient } from './platformCrm'
 import { logger } from './logger'
 
-const payloadSchema = z.object({ tenantId: z.string().uuid(), deleted: z.object({ nombre: z.string(), correo: z.string().nullable(), fecha_alta: z.string(), fecha_baja: z.string(), attribution: z.unknown().optional() }).optional() })
+const payloadSchema = z.object({ tenantId: z.string().uuid(), deleted: z.object({ nombre: z.string(), correo: z.string().nullable(), fecha_alta: z.string(), fecha_baja: z.string(), attribution: z.unknown().optional(), purged: z.boolean().optional() }).optional() })
 export async function handlePlatformCrmJob(job: ClaimedJob): Promise<JobOutcome> {
   const parsed = payloadSchema.safeParse(job.payload)
   if (!parsed.success) return { ok: false, retryable: false, error: 'Evento CRM inválido' }
   try {
     const deleted = parsed.data.deleted
-    await syncPlatformClient(parsed.data.tenantId, { deleted: deleted ? { nombre: deleted.nombre, correo: deleted.correo, fecha_alta: deleted.fecha_alta, fecha_baja: deleted.fecha_baja, fuente: platformClientSource(deleted.attribution) } : undefined })
+    await syncPlatformClient(parsed.data.tenantId, { deleted: deleted ? { nombre: deleted.nombre, correo: deleted.correo, fecha_alta: deleted.fecha_alta, fecha_baja: deleted.fecha_baja, fuente: platformClientSource(deleted.attribution), purged: deleted.purged } : undefined })
     return { ok: true }
   } catch { return { ok: false, retryable: true, error: 'No se pudo sincronizar el CRM' } }
 }

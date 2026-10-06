@@ -28,6 +28,9 @@ async function asTenant<T>(tenantId: string, fn: (tx: TransactionSql) => Promise
 
 beforeAll(async () => {
   testDb = await createTestDb()
+  const owner = postgres(testDb.ownerUrl)
+  await owner`insert into tenants(id,name) values (${TENANT_A},'A sintético'),(${TENANT_B},'B sintético')`
+  await owner.end()
   // max:1 a proposito: fuerza que TODAS las queries de este archivo compartan
   // la misma conexion fisica, para que el comportamiento del GUC app.tenant_id
   // entre tests sea determinista (ver el test de "conexion que ya uso

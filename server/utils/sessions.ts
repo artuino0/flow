@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
-import { withTenant } from '~/server/db'
+import { withTenantRecovery as withTenant } from '~/server/db'
 import { sessionCache } from '~/server/utils/shortCache'
 
 type SessionOwner = { sub: string; tenantId: string; sid?: string }
