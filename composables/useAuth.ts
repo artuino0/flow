@@ -9,6 +9,7 @@ export interface AuthUser {
   accountLifecycle?: import('~/utils/accountLifecycle').AccountLifecycle
   sessionId?: string
   tenantName?: string
+  tenantHasLogo?: boolean
   // Dominio fiscal fijo (DOCS/HU_Timbrado_CFDI_PAC.md): país de la
   // organización — la nav muestra "Facturación" solo si es 'MX'.
   country?: string

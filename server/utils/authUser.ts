@@ -9,6 +9,7 @@ import type { AccountLifecycle } from '~/utils/accountLifecycle'
 
 type AuthProfile = {
   accountLifecycle?: AccountLifecycle
+  tenantHasLogo: boolean | null
   tenantName: string | null; country: string | null; idleTimeoutMinutes: number | null; idleWarningMinutes: number | null
   onboardingStatus: string | null
   email: string | null; fullName: string | null; phone: string | null; emailVerifiedAt: Date | string | null
@@ -20,7 +21,7 @@ export async function loadAuthUser(auth: AuthTokenPayload, apiKey = false) {
   const profile = await withTenant(auth.tenantId, async tx => {
       const [row] = await tx.select({
         accountLifecycle: sql<AccountLifecycle>`account_lifecycle_state(${auth.tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''})`,
-        tenantName: tenants.name, country: tenants.country,
+        tenantName: tenants.name, tenantHasLogo: sql<boolean>`${tenants.logoStorageKey} IS NOT NULL`, country: tenants.country,
         idleTimeoutMinutes: tenants.idleTimeoutMinutes, idleWarningMinutes: tenants.idleWarningMinutes,
         onboardingStatus: tenants.onboardingStatus, email: people.email, fullName: people.fullName,
         phone: people.phone, emailVerifiedAt: people.emailVerifiedAt, totpEnabled: people.totpEnabled,
@@ -38,7 +39,7 @@ function publicAuthUser(auth: AuthTokenPayload, profile: AuthProfile | undefined
   const isAdmin = adminRoleAllowed(profile?.isSystem, apiKey)
   return {
     id: auth.sub, sessionId: auth.sid, tenantId: auth.tenantId, roleId,
-    tenantName: profile?.tenantName, country: profile?.country ?? 'MX',
+    tenantName: profile?.tenantName, tenantHasLogo: Boolean(profile?.tenantHasLogo), country: profile?.country ?? 'MX',
     idleTimeoutMinutes: profile?.idleTimeoutMinutes ?? 30, idleWarningMinutes: profile?.idleWarningMinutes ?? 2,
     authenticated: true, emailVerified: Boolean(profile?.emailVerifiedAt), onboardingStatus: profile?.onboardingStatus ?? 'complete',
     email: profile?.email ?? null, fullName: profile?.fullName ?? null, phone: profile?.phone ?? null,
@@ -59,7 +60,7 @@ export async function createLoginSession(event: H3Event, auth: AuthTokenPayload)
       )
       SELECT created.id AS "sessionId", u.role_id AS "roleId", r.is_system AS "isSystem",
         account_lifecycle_state(${auth.tenantId}::uuid,${new Date().toISOString()}::timestamptz,${process.env.PLATFORM_CRM_TENANT_SLUG ?? ''}) AS "accountLifecycle",
-        t.name AS "tenantName", t.country, t.idle_timeout_minutes AS "idleTimeoutMinutes",
+        t.name AS "tenantName", t.logo_storage_key IS NOT NULL AS "tenantHasLogo", t.country, t.idle_timeout_minutes AS "idleTimeoutMinutes",
         t.idle_warning_minutes AS "idleWarningMinutes", t.onboarding_status AS "onboardingStatus",
         p.email, p.full_name AS "fullName", p.phone, p.email_verified_at AS "emailVerifiedAt",
         p.totp_enabled AS "totpEnabled", u.job_title AS "jobTitle", u.timezone

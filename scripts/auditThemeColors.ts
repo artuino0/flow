@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 /** Lista cerrada: cascarón HU-161, registros HU-162, ajustes HU-163 y módulos/chat HU-164. */
 export const migratedThemeFiles = [
-  'components/NavigationMore.vue', 'components/NavigationPinnedItem.vue', 'components/QuickCreate.vue',
+  'components/NavigationMore.vue', 'components/NavigationPinnedItem.vue', 'components/QuickCreate.vue', 'components/OrganizationBrandPill.vue',
   'components/RegistrationChosenPlan.vue',
   'pages/cuenta-suspendida.vue', 'pages/exportar.vue', 'pages/platform/index.vue', 'pages/platform/accounts.vue', 'components/AccountExport.vue', 'components/AccountPayment.vue',
   'components/SitesSeoPanel.vue', 'components/SitesSeoChecklist.vue', 'components/SitesSeoSummary.vue',

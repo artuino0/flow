@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.159.0] - 2026-10-06
+#### [feature]
+- [ERD-204](https://dydasoftware.atlassian.net/browse/ERD-204) - Encabezado: junto a «Flow» ahora aparece la marca de tu organización, con su logo (o sus iniciales si no hay logo) y su nombre. Para administradores es un acceso directo a Identidad visual.
+
 ### [0.158.0] - 2026-10-06
 #### [feature]
 - [ERD-203](https://dydasoftware.atlassian.net/browse/ERD-203) - Calendario de registros: al hacer clic en un día y hora, el registro se captura en un panel lateral a la derecha, sin salir del calendario, con la fecha y la hora ya llenas. Al guardar, el calendario se actualiza y conserva la vista. El panel incluye un enlace para abrir el formulario en página completa.

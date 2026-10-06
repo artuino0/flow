@@ -4,11 +4,10 @@
 // dentro del <slot />.
 // HU-ERD-22: nombre del usuario autenticado + logout.
 //
-// Diseno Pencil (ERPDinamico.pen): aplicado aca por primera vez a todo el
-// layout autenticado (antes solo pages/login.vue seguia el diseno real, ver
-// componente AppHeader del .pen). No hay endpoint de nombre de tenant hoy
-// (AuthUser solo trae tenantId, no un nombre legible) - se omite el chip de
-// "Acme S.A." del diseno en vez de inventar un dato que el backend no expone.
+// Diseño Pencil (ERPDinamico.pen): aplicado acá por primera vez a todo el
+// layout autenticado (antes solo pages/login.vue seguía el diseño real, ver
+// componente AppHeader del .pen). La marca del tenant usa el nombre y el
+// indicador de logo que ya devuelve /api/auth/me.
 import { LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, Settings, MessageCircle } from '@lucide/vue'
 import { contentNeedsLight } from '~/utils/theme'
 import { IDLE_RETURN_KEY, safeInternalRoute } from '~/utils/returnToRoute'
@@ -38,6 +37,10 @@ const navRoute = useRoute()
 const forceLightContent = computed(() => contentNeedsLight(navRoute.meta))
 const { navigationTourId: activeTourId, navigationTourIndex: activeTourIndex } = useOnboarding()
 const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
+const showOrganizationBrand = computed(() => Boolean(
+  user.value?.authenticated && user.value.tenantId && user.value.tenantName?.trim()
+  && !editorFullscreen.value && !['/registro', '/login', '/elegir-plan'].includes(navRoute.path)
+))
 // El chat es una superficie de trabajo de borde a borde. A diferencia de
 // formularios y listados, no debe heredar el padding ni el scroll general del
 // layout: sus propios paneles controlan el desplazamiento interno.
@@ -109,6 +112,12 @@ async function onLogout(reason?: 'inactividad') {
         <img src="/brand/isotipo-white.png" alt="Flow" class="flow-mark-dark h-7 w-7 object-contain" />
         <span class="text-base font-bold text-brand-text">Flow</span>
         <div class="mx-1 hidden h-5 w-px bg-brand-border-light sm:block" />
+        <OrganizationBrandPill
+          v-if="showOrganizationBrand && user"
+          :organization-name="user.tenantName || ''"
+          :has-logo="user.tenantHasLogo"
+          :is-admin="user.isAdmin"
+        />
       </div>
 
       <GlobalSearch />
