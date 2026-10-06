@@ -113,7 +113,10 @@ async function onLogout(reason?: 'inactividad') {
 
       <GlobalSearch />
       <div class="flex min-h-12 w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap sm:gap-4">
-        <QuickCreate v-if="!editorFullscreen" />
+        <ClientOnly v-if="!editorFullscreen">
+          <QuickCreate />
+          <template #fallback><span class="block h-11 w-11" aria-hidden="true" /></template>
+        </ClientOnly>
         <NuxtLink v-if="chat.canAccess.value" to="/chat" aria-label="Abrir chat" class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/25 sm:h-8 sm:w-8">
           <MessageCircle class="h-[18px] w-[18px]" :stroke-width="1.75" />
           <span v-if="chat.unreadCount.value" class="absolute -right-1.5 -top-1.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-brand-primary-fg">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>

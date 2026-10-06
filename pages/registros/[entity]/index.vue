@@ -248,6 +248,9 @@ const initialView: RecordView = calendarEnabled.value ? 'calendar' : boardEnable
 const viewMode = ref<RecordView>(initialView)
 const initialCalendarView = meta.value?.calendarConfig?.defaultView ?? 'month'
 const calendarRangeValue = ref(calendarRange(new Date(), initialCalendarView))
+function onCalendarRangeChange(range: { from: string; to: string }) {
+  if (range.from !== calendarRangeValue.value.from || range.to !== calendarRangeValue.value.to) calendarRangeValue.value = range
+}
 interface CalendarResponse {
   config: NonNullable<typeof meta.value>['calendarConfig']
   events: Array<{ id: string; customData: Record<string, unknown>; updatedAt: string; date: string; time: string; durationMinutes: number; title: string; color: string | null; groupValue: string; groupLabel: string }>
@@ -595,7 +598,7 @@ async function onDelete(id: string) {
     </div>
 
     <main class="records-content" :class="{ 'board-content': viewMode === 'board' }">
-      <p v-if="metaPending || (viewMode === 'table' && recordsPending) || (viewMode === 'board' && boardPending) || (viewMode === 'calendar' && calendarPending)" class="content-message">Cargando...</p>
+      <p v-if="metaPending || (viewMode === 'table' && recordsPending) || (viewMode === 'board' && boardPending) || (viewMode === 'calendar' && calendarPending && !calendarData)" class="content-message">Cargando...</p>
       <p v-else-if="metaError" class="content-message text-brand-error-text">
         {{ metaError.statusCode === 403 && String(metaError.statusMessage || '').includes('desactivado') ? 'Este módulo está desactivado.' : 'No se pudo cargar la definición de esta entidad.' }}
       </p>
@@ -634,7 +637,7 @@ async function onDelete(id: string) {
           :pending="calendarPending"
           :can-update="meta.permissions.canUpdate"
           :assigned-to-me="assignedToMe"
-          @range-change="calendarRangeValue = $event"
+          @range-change="onCalendarRangeChange"
           @create-record="onCalendarCreate"
           @open-record="onCalendarOpen"
           @updated="onCalendarUpdated"
