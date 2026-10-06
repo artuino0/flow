@@ -159,9 +159,12 @@ export interface InviteUserResult {
  * cuerpo del correo.
  */
 export async function inviteUser(tenantId: string, email: string, roleId: string, inviterFullName: string): Promise<InviteUserResult> {
-  const normalizedEmail = email.trim().toLowerCase()
+  return withTenant(tenantId, tx => inviteUserInTx(tx, tenantId, email, roleId, inviterFullName))
+}
 
-  const outcome = await withTenant(tenantId, async (tx) => {
+export async function inviteUserInTx(tx: typeof db, tenantId: string, email: string, roleId: string, inviterFullName: string): Promise<InviteUserResult> {
+  const normalizedEmail = email.trim().toLowerCase()
+  const outcome = await (async () => {
     const role = await assertRoleInTenant(tx, tenantId, roleId)
     const [tenant] = await tx.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
     const tenantName = tenant?.name ?? 'tu organización'
@@ -205,7 +208,7 @@ export async function inviteUser(tenantId: string, email: string, roleId: string
     await enqueueCriticalEmailInTx(tx, tenantId, { to: newPerson.email, platform: true, purpose: 'invitation', subject: `Te invitaron a unirte a ${tenantName} en Flow`, html: 'Invitación protegida',
       encryptedHtml: encryptSetting(buildInvitationEmailHtml({ token, to: newPerson.email, tenantName, inviterName: inviterFullName, roleName: role.name, inviteUrl: `${getAppBaseUrl()}/invitacion/${token}` })) })
     return { kind: 'new' as const, membershipRow, person: newPerson, tenantName, roleName: role.name, token }
-  })
+  })()
 
   return {
     user: {

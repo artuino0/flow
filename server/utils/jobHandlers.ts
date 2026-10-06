@@ -3,7 +3,7 @@ import { sendPlainEmail, SmtpNotConfiguredError } from '~/server/utils/mailer'
 import { MailError } from './mail/types'
 import { decryptSetting } from './settingsCrypto'
 import { db, withJobWorker } from '~/server/db'
-import { emailVerificationTokens, jobQueue } from '~/server/db/schema'
+import { emailVerificationTokens, jobQueue, pendingRegistrations } from '~/server/db/schema'
 import { eq } from 'drizzle-orm'
 
 /**
@@ -36,7 +36,11 @@ export async function handleEmailJob(job: ClaimedJob): Promise<JobOutcome> {
       const [verification] = await db.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.id, parsed.data.verificationId))
       if (!verification || verification.usedAt || !verification.codeExpiresAt || verification.codeExpiresAt <= new Date()) return { ok: true }
     }
-    await sendPlainEmail({ tenantId: job.tenantId, ...parsed.data, html: parsed.data.encryptedHtml ? decryptSetting(parsed.data.encryptedHtml) : parsed.data.html,
+    if (parsed.data.pendingRegistrationId) {
+      const [pending] = await db.select().from(pendingRegistrations).where(eq(pendingRegistrations.id, parsed.data.pendingRegistrationId))
+      if (!pending || pending.verifiedAt || pending.codeExpiresAt <= new Date() || pending.codeHash !== parsed.data.pendingCodeHash) return { ok: true }
+    }
+    await sendPlainEmail({ tenantId: job.tenantId ?? undefined, ...parsed.data, html: parsed.data.encryptedHtml ? decryptSetting(parsed.data.encryptedHtml) : parsed.data.html,
       jobId: job.id, fallback: job.attempts > 1 && !receipt?.startedAt, retryProvider: receipt?.startedAt ? receipt.provider ?? undefined : undefined })
     return { ok: true }
   } catch (error) {
@@ -52,6 +56,7 @@ export function registerDefaultJobHandlers(): void {
   registerJobHandler('platform_crm', async job => (await import('./platformCrmQueue')).handlePlatformCrmJob(job))
   registerJobHandler('agenda_expire', async job => {
     if (typeof job.payload.recordId !== 'string') return { ok: false, retryable: false, error: 'Trabajo de expiración inválido' }
+    if (!job.tenantId) return { ok: false, retryable: false, error: 'Trabajo sin organización inválido' }
     await (await import('./agendaConfirmation')).expireAgendaConfirmations(job.tenantId, Date.now(), job.payload.recordId)
     return { ok: true }
   })

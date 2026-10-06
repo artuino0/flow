@@ -26,6 +26,21 @@ async function currentCode(personId: string) {
   const html = decryptSetting(job!.payload.encryptedHtml)
   return { code: html.match(/letter-spacing:6px">(\d{6})/)![1]!, token: new URL(html.match(/https?:\/\/[^"<> ]+/)![0]!).searchParams.get('token')!, payload: job!.payload }
 }
+const witnesses = new Map<string, string>()
+async function registerHttp(body: typeof input & { invitees?: { email: string }[] }) {
+  const provisional = await import('../../server/utils/provisionalRegistration')
+  let witness = witnesses.get(body.email)
+  if (!witness) {
+    const start = await provisional.startProvisionalRegistration(body)
+    const [pending] = await admin`select id,code_hash from pending_registrations where email=${body.email}`
+    const [job] = await admin`select payload from job_queue where payload->>'pendingRegistrationId'=${pending!.id} and payload->>'pendingCodeHash'=${pending!.code_hash}`
+    const code = decryptSetting(job!.payload.encryptedHtml).match(/letter-spacing:6px">(\d{6})/)![1]!
+    witness = await provisional.verifyProvisionalRegistration(start.token,code)
+    witnesses.set(body.email,witness)
+  }
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: `${provisional.WITNESS_COOKIE}=${witness}` },
+    body: JSON.stringify({ organizationName: body.organizationName, slug: body.slug, invitees: body.invitees }) })
+}
 beforeAll(async () => {
   vi.stubEnv('JWT_SECRET', 'local-secret-registration-195'); vi.stubEnv('APP_MODE', 'saas'); vi.stubEnv('APP_BASE_URL', 'http://localhost:3000')
   database = await createTestDb(); admin = postgres(database.adminUrl)
@@ -67,7 +82,7 @@ afterAll(async () => {
 describe('registro resistente y OTP', () => {
   it('incidente: POST responde antes de 2 s con socket SMTP que nunca saluda y cuenta confirmada', async () => {
     const started = Date.now()
-    const result = await Promise.race([fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }).then(async response => ({ status: response.status, body: await response.json() })),
+    const result = await Promise.race([registerHttp(input).then(async response => ({ status: response.status, body: await response.json() })),
       new Promise<null>(resolve => setTimeout(() => resolve(null), 1990))])
     if (!result) {
       const tenants = await admin`select id from tenants where slug=${input.slug}`
@@ -77,14 +92,14 @@ describe('registro resistente y OTP', () => {
     expect(Date.now() - started).toBeLessThan(2000)
     expect(result!.status).toBe(200)
     const [tenant] = await admin`select id,onboarding_status,registration_intent from tenants where slug=${input.slug}`
-    expect(tenant!.onboarding_status).toBe('email_pending'); expect(tenant!.registration_intent.plan).toBe('agenda')
-    const jobs = await admin`select status,attempts,payload from job_queue where tenant_id=${tenant!.id}::uuid`
+    expect(tenant!.onboarding_status).toBe('plan_pending'); expect(tenant!.registration_intent.plan).toBe('agenda')
+    const jobs = await admin`select status,attempts,payload from job_queue where tenant_id is null and payload->>'to'=${input.email}`
     expect(jobs).toHaveLength(1); expect(jobs[0]).toMatchObject({ status: 'pending', attempts: 0 })
     expect(jobs[0]!.payload.html).not.toMatch(/\d{6}/)
     console.info(`POST_REGISTRATION_MS=${Date.now() - started}; SMTP_SILENT=true; QUEUED=1`)
   })
   it('reintento HTTP y doble envío simultáneo recuperan la misma cuenta sin correo duplicado', async () => {
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+    const response = await registerHttp(input)
     expect(response.status).toBe(200); expect((await response.json()).resumed).toBe(true)
     const [a, b] = await Promise.all([registration.registerTenant(account('double')), registration.registerTenant(account('double'))])
     expect(a.tenantId).toBe(b.tenantId)
@@ -150,15 +165,16 @@ describe('registro resistente y OTP', () => {
   it('POST con veinte invitaciones y fallo parcial responde antes de 2 s sin esperar al correo', async () => {
     const body = account('http-team')
     const started = Date.now()
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body,
-      invitees: [{ email: body.email }, ...Array.from({ length: 19 }, (_, index) => ({ email: `team195-${index}@local.test` }))] }) })
+    const response = await registerHttp({ ...body,
+      invitees: [{ email: body.email }, ...Array.from({ length: 19 }, (_, index) => ({ email: `team195-${index}@local.test` }))] })
     const result = await response.json()
     const duration = Date.now() - started
     expect(response.status).toBe(200)
     expect(duration).toBeLessThan(2000)
-    expect(result).toMatchObject({ invitationsQueued: 19, invitationsFailed: 1, verificationDelivery: 'queued' })
+    expect(result).toMatchObject({ invitationsQueued: 19, invitationsFailed: 1 })
     expect(await admin`select id from users where tenant_id=${result.tenantId}::uuid`).toHaveLength(20)
-    expect(await admin`select id from job_queue where tenant_id=${result.tenantId}::uuid and status='pending'`).toHaveLength(20)
+    expect(await admin`select id from job_queue where tenant_id=${result.tenantId}::uuid and status='pending'`).toHaveLength(19)
+    expect(await admin`select id from job_queue where tenant_id is null and payload->>'to'=${body.email}`).toHaveLength(1)
     console.info(`POST_REGISTRATION_TEAM_MS=${duration}; INVITES_QUEUED=19; INVITES_FAILED=1; SMTP_SILENT=true`)
   })
   it('limpieza aislada elimina solo altas vacías antiguas, conserva verificadas y recientes', async () => {

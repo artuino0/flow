@@ -1,0 +1,14 @@
+import { z } from 'zod'
+import { authRequestLimit } from '~/server/utils/authPersistentLimit'
+import { WITNESS_COOKIE, challengeCookie, registrationCookie, resendProvisionalRegistration, provisionalRegistrationStatus, witnessCookie } from '~/server/utils/provisionalRegistration'
+export default defineEventHandler(async event => {
+  const challenge = challengeCookie(event)
+  const status = await provisionalRegistrationStatus(challenge, witnessCookie(event))
+  if (!status.pending) throw createError({ statusCode: 401, statusMessage: 'Inicia tu registro de nuevo.' })
+  await authRequestLimit(event, 'registration-emission', status.email)
+  const body = await readValidatedBody(event, z.object({ email: z.string().trim().toLowerCase().email() }).parse)
+  await authRequestLimit(event, 'registration-emission-target', body.email)
+  const result = await resendProvisionalRegistration(challenge, body.email)
+  registrationCookie(event, WITNESS_COOKIE, '', 0)
+  return result
+})

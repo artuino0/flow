@@ -4,8 +4,9 @@ import { jobQueue } from '~/server/db/schema'
 import { emailJobSchema, type emailQuota } from '~/server/utils/jobQueue'
 
 /** La operación de negocio y el correo pendiente se confirman juntos. */
-export async function enqueueCriticalEmailInTx(tx: typeof db, tenantId: string, payload: EmailJobPayload, quota?: Awaited<ReturnType<typeof emailQuota>>) {
+export async function enqueueCriticalEmailInTx(tx: typeof db, tenantId: string | null, payload: EmailJobPayload, quota?: Awaited<ReturnType<typeof emailQuota>>) {
   const parsed = emailJobSchema.parse(payload)
+  if (tenantId === null && (!parsed.platform || parsed.purpose !== 'registration' || !parsed.pendingRegistrationId || !parsed.encryptedHtml)) throw new Error('Correo provisional sin alcance válido')
   const limit = quota?.usage.usage.find(item => item.concept === 'emails')
   const [row] = await tx.insert(jobQueue).values({ tenantId, kind: 'email', payload: parsed,
     status: quota?.exceeded ? 'dead' : 'pending', lastError: quota?.exceeded ? `Límite del plan ${quota.usage.plan}: se excedió la cuota mensual de correos (${limit!.limit}).` : null,

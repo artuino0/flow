@@ -27,6 +27,8 @@ async function mount(file: string, options: { choice?: boolean; blocked?: boolea
   const app = vue.createApp({ render: () => vue.h(vue.Suspense, {}, { default: () => vue.h(page) }) })
   app.component('NuxtLink', vue.defineComponent({ setup(_, { slots }) { return () => vue.h('a', {}, slots.default?.()) } }))
   app.component('RegistrationStepIndicator', compileVueComponent('components/RegistrationStepIndicator.vue'))
+  app.component('RegistrationChosenPlan', compileVueComponent('components/RegistrationChosenPlan.vue'))
+  app.component('RegistrationOtpStep', compileVueComponent('components/RegistrationOtpStep.vue'))
   app.component('ThemeSelector', { render: () => null })
   app.mount(host); apps.push(app); await flush()
   return { host, fetch, navigate }

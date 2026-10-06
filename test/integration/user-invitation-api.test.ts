@@ -21,6 +21,7 @@ function event(roleId: string, userId: string, email: string) {
 }
 
 beforeAll(async () => {
+  vi.stubEnv('SETTINGS_ENCRYPTION_KEY', 'local-invitation-api-fixture-197')
   testDb = await createTestDb()
   admin = postgres(testDb.adminUrl)
   process.env.APP_DATABASE_URL = testDb.appUrl
@@ -54,6 +55,7 @@ afterAll(async () => {
   await admin?.end()
   await testDb?.stop()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('POST /api/users', () => {

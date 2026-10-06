@@ -7,10 +7,13 @@ import { themeBootstrap } from '../../utils/theme'
 
 const apps: vue.App[] = []
 const flush = async () => { await new Promise(resolve => setTimeout(resolve, 0)); await vue.nextTick() }
-afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks() })
+afterEach(() => { apps.splice(0).forEach(app => app.unmount()); document.body.innerHTML = ''; sessionStorage.clear(); vi.restoreAllMocks() })
 
 async function mountSlugScenario(check: { available: boolean; reason?: string }) {
   const fetch = vi.fn(async (url: string) => {
+    if (url === '/api/auth/register/status') return { pending: false }
+    if (url === '/api/auth/register/start') return { ok: true, retryAfter: 60, delivery: 'queued' }
+    if (url === '/api/auth/register/verify') return { ok: true }
     if (url === '/api/tenants/check-slug') return check
     if (url === '/api/auth/register') return { tenantName: 'Acme', slug: 'acme', invitationsSent: 0 }
     throw new Error(`Endpoint no simulado: ${url}`)
@@ -18,12 +21,16 @@ async function mountSlugScenario(check: { available: boolean; reason?: string })
   const page = compileVueComponent('pages/registro.vue', { '~/utils/registrationIntent': intent }, {
     ...vue, definePageMeta: vi.fn(), navigateTo: vi.fn(), $fetch: fetch,
     useRoute: () => ({ query: {} }), useState: () => vue.ref(null),
+    useAuth: () => ({ fetchMe: vi.fn() }),
+    useFetch: async () => ({ data: vue.ref({ plans: [] }) }),
     useDeploymentConfig: async () => ({ data: vue.ref({ appMode: 'saas', appBaseUrl: 'https://app.dydasoftware.com' }) })
   })
   const host = document.createElement('div'); document.body.append(host)
   const app = vue.createApp({ render: () => vue.h(vue.Suspense, {}, { default: () => vue.h(page) }) })
   app.component('NuxtLink', vue.defineComponent({ props: ['to'], setup(_, { slots }) { return () => vue.h('a', {}, slots.default?.()) } }))
   app.component('RegistrationStepIndicator', compileVueComponent('components/RegistrationStepIndicator.vue'))
+  app.component('RegistrationOtpStep', compileVueComponent('components/RegistrationOtpStep.vue'))
+  app.component('RegistrationChosenPlan', compileVueComponent('components/RegistrationChosenPlan.vue'))
   app.component('ThemeSelector', { render: () => null })
   app.mount(host); apps.push(app); await flush()
   return { host, fetch }
@@ -34,6 +41,13 @@ async function input(host: Element, selector: string, value: string) {
   field.value = value; field.dispatchEvent(new Event('input', { bubbles: true })); await flush()
 }
 function button(host: Element, text: string) { return [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes(text))! }
+async function advanceAfterIdentity(host: Element) {
+  button(host, 'Continuar').click(); await flush()
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 2 de 5: Verifica tu correo')
+  expect(host.querySelector('#organizationName')).toBeNull()
+  await input(host, '#verification-code', '123456')
+  button(host, 'Verificar correo').click(); await flush()
+}
 
 it('identificador disponible permite continuar y el resumen separa el acceso real del identificador', async () => {
   const { host, fetch } = await mountSlugScenario({ available: true })
@@ -43,7 +57,7 @@ it('identificador disponible permite continuar y el resumen separa el acceso rea
   await input(host, '#fullName', 'Ana Pérez'); await input(host, '#email', 'ana@example.com')
   await input(host, '#password', 'clave1234'); await input(host, '#confirmPassword', 'clave1234')
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 1 de 5: Tu cuenta')
-  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush(); button(host, 'Continuar').click(); await flush()
+  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush(); await advanceAfterIdentity(host)
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 3 de 5: Tu organización')
   await input(host, '#organizationName', 'Acme'); await new Promise(resolve => setTimeout(resolve, 450)); await flush()
   expect(fetch).toHaveBeenCalledWith('/api/tenants/check-slug', { query: { slug: 'acme' } })
@@ -53,7 +67,7 @@ it('identificador disponible permite continuar y el resumen separa el acceso rea
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 4 de 5: Invita a tu equipo')
   expect(button(host, 'Agregar otro correo').className).toContain('w-full')
   button(host, 'Continuar').click(); await flush()
-  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 5 de 5: Listo')
+  expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 5 de 5: Elegir plan')
   expect(host.querySelector('div.bg-brand-bg')).toBeTruthy()
   const completed = [...host.querySelectorAll<HTMLElement>('[role="progressbar"] > .rounded-full')]
   expect(completed).toHaveLength(5)
@@ -72,7 +86,7 @@ it.each([
   const { host } = await mountSlugScenario(check)
   await input(host, '#fullName', 'Ana Pérez'); await input(host, '#email', 'ana@example.com')
   await input(host, '#password', 'clave1234'); await input(host, '#confirmPassword', 'clave1234')
-  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush(); button(host, 'Continuar').click(); await flush()
+  host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush(); await advanceAfterIdentity(host)
   await input(host, '#organizationName', 'Acme'); await new Promise(resolve => setTimeout(resolve, 450)); await flush()
   expect(host.textContent).toContain(message)
   expect(button(host, 'Continuar').disabled).toBe(true)
@@ -84,7 +98,7 @@ it.each(['light', 'dark', 'system'] as const)('registro conserva sus tokens en t
   await input(host, '#fullName', 'Ana Pérez'); await input(host, '#email', 'ana@example.com')
   await input(host, '#password', 'clave1234'); await input(host, '#confirmPassword', 'clave1234')
   host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await flush()
-  button(host, 'Continuar').click(); await flush()
+  await advanceAfterIdentity(host)
   expect(host.querySelector('#slug-help')).toBeTruthy()
   expect(document.documentElement.dataset.theme).toBe(mode === 'light' ? 'light' : 'dark')
 })

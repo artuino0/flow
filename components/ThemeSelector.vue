@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Sun, Moon, Monitor, Check } from '@lucide/vue'
 import type { ThemeMode } from '~/utils/theme'
 
+defineProps<{ touchTarget?: boolean }>()
+
 const { mode, setMode } = useTheme()
 const options = [{ value: 'light', label: 'Claro', icon: Sun }, { value: 'dark', label: 'Oscuro', icon: Moon }, { value: 'system', label: 'Sistema', icon: Monitor }] as const
 const selected = computed(() => options.find(option => option.value === mode.value) ?? options[2])
@@ -39,7 +41,7 @@ onBeforeUnmount(() => document.removeEventListener('click', outside))
 
 <template>
   <div ref="root" class="relative">
-    <button ref="trigger" type="button" :aria-label="`Tema: ${selected.label}`" aria-haspopup="menu" :aria-expanded="open" class="flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue" @click.stop="open ? close() : show()" @keydown.down.prevent="show()" @keydown.up.prevent="show(true)">
+    <button ref="trigger" type="button" :aria-label="`Tema: ${selected.label}`" aria-haspopup="menu" :aria-expanded="open" class="flex items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue" :class="touchTarget ? 'h-11 w-11 bg-brand-surface' : 'h-8 w-8'" @click.stop="open ? close() : show()" @keydown.down.prevent="show()" @keydown.up.prevent="show(true)">
       <component :is="selected.icon" class="h-[17px] w-[17px]" :stroke-width="1.75" />
     </button>
     <div v-if="open" ref="menu" role="menu" aria-label="Tema de la aplicación" class="absolute right-0 top-full z-50 mt-2 w-40 rounded-lg border border-brand-border-light bg-brand-surface p-1 shadow-lg" @keydown="keydown">

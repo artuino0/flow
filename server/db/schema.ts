@@ -722,12 +722,37 @@ export const tenantEmailSettings = pgTable('tenant_email_settings', {
 // Cola de trabajos (migracion 0071): correos y otras tareas diferidas. Un proceso
 // las toma con FOR UPDATE SKIP LOCKED (server/utils/jobQueue.ts). RLS: cada
 // organizacion ve solo los suyos; el proceso de la cola usa withJobWorker().
+export const pendingRegistrations = pgTable('pending_registrations', {
+  id: uuid('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  fullName: text('full_name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  intent: jsonb('intent'),
+  challengeHash: text('challenge_hash').notNull().unique(),
+  codeHash: text('code_hash').notNull(),
+  codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  emissions: jsonb('emissions').$type<string[]>().notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  witnessHash: text('witness_hash').unique(),
+  witnessExpiresAt: timestamp('witness_expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+})
+
+export const registrationReceipts = pgTable('registration_receipts', {
+  witnessHash: text('witness_hash').primaryKey(),
+  requestHash: text('request_hash').notNull(),
+  result: jsonb('result').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+})
+
 export const jobQueue = pgTable('job_queue', {
   deliveryProvider: text('delivery_provider'),
   deliveryId: text('delivery_id'),
   deliveryStartedAt: timestamp('delivery_started_at', { withTimezone: true }),
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   kind: text('kind').notNull(),
   payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
   status: text('status').notNull().default('pending'),

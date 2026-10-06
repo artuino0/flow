@@ -37,6 +37,15 @@ async function input(host: Element, id: string, value: string) {
 it.each(scenarios)('OTP accesible y continuación con tema $mode a $width', async ({ mode, width }) => {
   const { host, fetch, navigate, fetchMe, meta } = await mount(mode, width)
   expect(meta).toHaveBeenCalledWith({ layout: false, darkReady: true })
+  expect(host.querySelectorAll('button[aria-label^="Tema:"]')).toHaveLength(1)
+  const themeButton = host.querySelector<HTMLButtonElement>('button[aria-label^="Tema:"]')!
+  expect(themeButton.closest('.fixed')?.className).toBe('fixed right-4 top-4 z-50')
+  expect(themeButton.closest('form')).toBeNull()
+  expect(themeButton.classList.contains('h-11') && themeButton.classList.contains('w-11')).toBe(true)
+  expect(themeButton.classList.contains('bg-brand-surface')).toBe(true)
+  themeButton.click(); await flush()
+  expect(host.querySelector('[role="menu"][aria-label="Tema de la aplicación"]')).toBeTruthy()
+  themeButton.click(); await flush()
   const code = host.querySelector<HTMLInputElement>('#verification-code')!
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('Paso 2 de 5: Verifica tu correo')
   const steps = [...host.querySelectorAll<HTMLElement>('[role="progressbar"] > .rounded-full')]

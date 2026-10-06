@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// HU multi-organizacion (2026-09-04): "Registro" - wizard de 4 pasos fiel al
+// HU-ERD-197: registro de cinco pasos, OTP antes de la organización, fiel al
 // diseño real (Screen/Registro Paso 1-4 del .pen, revisado por completo con
 // mcp__pencil__execute antes de escribir este archivo, pencil-antes-de-frontend
-// - nodos gQM6L/OQNF9/D6C1Ul/uwmVR). El cuarto paso espera la verificación
-// del correo; el plan se elige después de seguir el enlace recibido.
+// - nodos gQM6L/OQNF9/D6C1Ul/uwmVR). El alta final requiere el testigo
+// de correo verificado; el plan se elige después de crear la organización.
 //
 // "Tamaño del equipo" (paso 2) sigue siendo cosmético. El rol de cada invitado
 // (paso 3) siempre es "Miembro" - el diseño muestra un selector, pero
@@ -28,14 +28,14 @@ if (appConfig.value?.appMode === 'dedicated') {
 }
 
 const step = ref(1)
-const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organización', 'Invita a tu equipo', 'Listo']
+const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organización', 'Invita a tu equipo', 'Elegir plan']
 const loading = ref(false)
 const errorMessage = ref('')
 const accountExists = ref(false)
 const choiceError = ref('')
 type PublicPlan = { key: string; name: string; description: string; monthlyPriceCents: number; annualPriceCents: number; currency: string }
 const choice = ref<RegistrationChoice | null>(normalizeRegistrationChoice(useRoute().query))
-const { data: publicPlans } = choice.value ? await useFetch<{ plans: PublicPlan[] }>('/api/public/plans') : { data: ref<{ plans: PublicPlan[] } | null>(null) }
+const { data: publicPlans } = await useFetch<{ plans: PublicPlan[] }>('/api/public/plans')
 const chosenPlan = computed(() => publicPlans.value?.plans.find(plan => plan.key === choice.value?.plan))
 const chosenPrice = computed(() => chosenPlan.value ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: chosenPlan.value.currency, maximumFractionDigits: 0 }).format((choice.value?.interval === 'year' ? chosenPlan.value.annualPriceCents : chosenPlan.value.monthlyPriceCents) / 100) : '')
 const loginLink = computed(() => ({ path: '/login', query: chosenPlan.value && choice.value ? { ...choice.value } : {} }))
@@ -45,6 +45,7 @@ async function changePlan() {
   choiceError.value = ''
   try {
     if (result.value) await $fetch('/api/billing/registration-intent', { method: 'POST', body: { clear: true } })
+    else if (step.value > 1) await $fetch('/api/auth/register/intent', { method: 'POST', body: { clear: true } })
     choice.value = null
     useState<RegistrationChoice | null>('registration-landing-choice').value = null
     await navigateTo('/registro', { replace: true })
@@ -159,35 +160,122 @@ async function onSubmit() {
     const response = await $fetch<{ ok: boolean; tenantId: string; tenantName: string; slug: string; invitationsSent: number }>('/api/auth/register', {
       method: 'POST',
       body: {
-        fullName: fullName.value.trim(),
-        email: email.value.trim(),
-        password: password.value,
         organizationName: organizationName.value.trim(),
         slug: slug.value,
-        invitees: cleanInvitees.length ? cleanInvitees : undefined,
-        registrationChoice: chosenPlan.value ? choice.value : undefined
+        invitees: cleanInvitees.length ? cleanInvitees : undefined
       }
     })
 
     result.value = { tenantName: response.tenantName, slug: response.slug, invitationsSent: response.invitationsSent }
-    step.value = 4
-    await navigateTo('/confirmar-correo')
+    step.value = 5
+    sessionStorage.removeItem('flow-registration-draft')
+    await useAuth().fetchMe()
+    await navigateTo('/elegir-plan')
   } catch (err: unknown) {
-    const failure = err as { data?: { statusMessage?: string; message?: string }; statusCode?: number }
+    const failure = err as { data?: { statusMessage?: string; message?: string; statusCode?: number }; statusCode?: number }
     errorMessage.value = failure.data?.statusMessage || failure.data?.message || 'No pudimos confirmar la respuesta. Reintenta con los mismos datos para continuar tu registro.'
     accountExists.value = failure.statusCode === 409
+    if ((failure.statusCode || failure.data?.statusCode) === 401) {
+      emailConfirmed.value = false; code.value = ''; step.value = 2
+      otpMessage.value = 'La autorización venció. Solicita un código nuevo para continuar.'
+    }
   } finally {
     loading.value = false
   }
 }
+
+const code = ref('')
+const emailConfirmed = ref(false)
+const newEmail = ref('')
+const changing = ref(false)
+const seconds = ref(0)
+const delivery = ref('queued')
+const otpMessage = ref('')
+const busyAction = ref<'verify' | 'resend' | 'change-email' | null>(null)
+let countdown: ReturnType<typeof setInterval> | undefined
+let statusPoll: ReturnType<typeof setInterval> | undefined
+async function startRegistration() {
+  if (loading.value || !canContinueStep1.value) return
+  loading.value = true; errorMessage.value = ''
+  try {
+    const status = await $fetch<{ retryAfter: number; delivery: string }>('/api/auth/register/start', { method: 'POST', body: {
+      fullName: fullName.value.trim(), email: email.value.trim(), password: password.value, registrationChoice: chosenPlan.value ? choice.value : undefined
+    } })
+    email.value = email.value.trim().toLowerCase()
+    password.value = ''; confirmPassword.value = ''
+    seconds.value = status.retryAfter; delivery.value = status.delivery; step.value = 2
+  } catch (error: unknown) { showFailure(error) }
+  finally { loading.value = false }
+}
+function showFailure(error: unknown) {
+  const failure = error as { data?: { statusMessage?: string } }
+  errorMessage.value = failure.data?.statusMessage || 'No pudimos confirmar la respuesta. Intenta de nuevo.'
+}
+async function otpAction(action: 'verify' | 'resend' | 'change-email') {
+  if (loading.value) return
+  loading.value = true; busyAction.value = action; errorMessage.value = ''; otpMessage.value = ''
+  try {
+    if (action === 'verify') {
+      if (!emailConfirmed.value) await $fetch('/api/auth/register/verify', { method: 'POST', body: { code: code.value } })
+      emailConfirmed.value = true; code.value = ''; step.value = 3
+    } else {
+      const response = await $fetch<{ email: string; retryAfter: number; delivery: string }>(`/api/auth/register/${action === 'resend' ? 'resend' : 'change-email'}`, { method: 'POST', body: action === 'change-email' ? { email: newEmail.value } : {} })
+      email.value = response.email; seconds.value = response.retryAfter; delivery.value = response.delivery
+      emailConfirmed.value = false
+      code.value = ''; changing.value = false; otpMessage.value = 'El nuevo código está pendiente de envío.'
+    }
+  } catch (error: unknown) { showFailure(error) }
+  finally { loading.value = false; busyAction.value = null }
+}
+const verifyCode = () => otpAction('verify')
+const resendCode = () => otpAction('resend')
+const changeEmail = () => otpAction('change-email')
+onMounted(async () => {
+  countdown = setInterval(() => { if (seconds.value > 0) seconds.value-- }, 1000)
+  statusPoll = setInterval(async () => {
+    if (loading.value || step.value < 2 || step.value > 4) return
+    try {
+      const status = await $fetch<{ pending: boolean; verified?: boolean; delivery?: string }>('/api/auth/register/status')
+      if (status.pending && status.delivery) delivery.value = status.delivery
+      if (emailConfirmed.value && !status.verified) {
+        emailConfirmed.value = false; step.value = 2
+        otpMessage.value = 'La autorización venció. Solicita un código nuevo para continuar.'
+      }
+    } catch (error: unknown) { showFailure(error) }
+  }, 15000)
+  try {
+    const status = await $fetch<{ pending: boolean; verified?: boolean; email?: string; fullName?: string; registrationChoice?: unknown; retryAfter?: number; delivery?: string }>('/api/auth/register/status')
+    if (!status.pending) { sessionStorage.removeItem('flow-registration-draft'); return }
+    email.value = status.email || ''; fullName.value = status.fullName || ''
+    choice.value = normalizeRegistrationChoice(status.registrationChoice)
+    seconds.value = status.retryAfter || 0; delivery.value = status.delivery || 'queued'
+    step.value = status.verified ? 3 : 2
+    emailConfirmed.value = Boolean(status.verified)
+    const draft = JSON.parse(sessionStorage.getItem('flow-registration-draft') || 'null')
+    if (draft?.email === email.value && status.verified) {
+      organizationName.value = typeof draft.organizationName === 'string' ? draft.organizationName : ''
+      slugEditedManually.value = true; slug.value = typeof draft.slug === 'string' ? draft.slug : ''
+      invitees.value = Array.isArray(draft.invitees) ? draft.invitees.slice(0, 20).filter((value: unknown) => typeof value === 'string').map((email: string) => ({ email })) : [{ email: '' }]
+      teamSize.value = draft.teamSize || '2-10'; step.value = draft.step === 4 ? 4 : 3
+    }
+  } catch (error: unknown) {
+    showFailure(error)
+  }
+})
+watch([step, organizationName, slug, teamSize, invitees], () => {
+  if (import.meta.client && step.value >= 3 && step.value <= 4) sessionStorage.setItem('flow-registration-draft', JSON.stringify({ email: email.value, step: step.value, organizationName: organizationName.value, slug: slug.value, teamSize: teamSize.value, invitees: invitees.value.map(item => item.email) }))
+}, { deep: true })
+onBeforeUnmount(() => { if (countdown) clearInterval(countdown); if (statusPoll) clearInterval(statusPoll); if (slugCheckTimer) clearTimeout(slugCheckTimer) })
 
 const brandText = computed(() => {
   switch (step.value) {
     case 1:
       return 'Crea tu organización y empieza a modelar tus entidades en minutos, sin escribir código.'
     case 2:
-      return 'Cada organización vive en su propio espacio, con su URL, sus datos y sus usuarios.'
+      return 'Verifica tu correo para continuar con tu organización.'
     case 3:
+      return 'Cada organización vive en su propio espacio, con su URL, sus datos y sus usuarios.'
+    case 4:
       return 'Colabora con tu equipo: cada persona ve solo lo que su rol le permite.'
     default:
       return 'Confirma tu correo, elige un plan y comienza con 30 días de prueba.'
@@ -197,6 +285,7 @@ const brandText = computed(() => {
 
 <template>
   <div class="access-page flex min-h-screen flex-col font-sans lg:flex-row">
+    <div class="fixed right-4 top-4 z-50"><ThemeSelector touch-target /></div>
     <div class="access-brand flex w-full shrink-0 flex-col rounded-b-[28px] text-brand-tooltip-fg lg:hidden">
       <div class="flex h-[54px] w-full items-center justify-between px-6">
         <span class="text-[15px] font-semibold">9:41</span>
@@ -236,18 +325,7 @@ const brandText = computed(() => {
           <p class="mt-1 text-sm text-brand-text-secondary">Empieza con tus datos personales. Después configuramos tu organización.</p>
         </div>
 
-        <section v-if="chosenPlan" aria-label="Plan elegido" class="flex w-full items-center gap-3 rounded-lg bg-brand-blue-bg px-[14px] py-3 text-brand-text">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-surface">
-            <CalendarCheck class="h-[18px] w-[18px] text-brand-blue" :stroke-width="1.75" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-[10px] font-bold tracking-[0.06em] text-brand-blue">PLAN ELEGIDO</p>
-            <p class="text-sm font-bold">{{ chosenPlan.name }} · {{ chosenPrice }} MXN {{ choice?.interval === 'year' ? 'al año' : 'al mes' }}</p>
-            <p class="text-xs text-brand-text-secondary">30 días de prueba gratis</p>
-          </div>
-          <button type="button" :disabled="loading" aria-label="Cambiar plan" class="shrink-0 rounded bg-brand-surface px-2.5 py-1.5 text-xs font-bold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue disabled:opacity-50" @click="changePlan">Cambiar</button>
-          <p v-if="choiceError" role="alert" class="basis-full text-xs text-brand-error-text">{{ choiceError }}</p>
-        </section>
+        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
 
         <div v-if="errorMessage" class="flex items-start gap-2 rounded bg-brand-error-bg px-3 py-2.5">
           <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-brand-error-text" :stroke-width="2" />
@@ -312,9 +390,9 @@ const brandText = computed(() => {
 
         <button
           type="button"
-          :disabled="!canContinueStep1"
+          :disabled="loading || !canContinueStep1"
           class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-          @click="step = 2"
+          @click="startRegistration"
         >
           Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </button>
@@ -326,9 +404,18 @@ const brandText = computed(() => {
 
       <!-- Paso 2: Tu organización -->
       <div v-else-if="step === 2" class="flex w-full max-w-[380px] flex-col gap-5">
+        <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="2" />
+        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
+        <RegistrationOtpStep :email="email" :code="code" :new-email="newEmail" :changing="changing" :busy="loading" :busy-action="busyAction" :seconds="seconds" :message="otpMessage" :error="errorMessage" :delivery="delivery" :invitation-failures="0" :verified="emailConfirmed" provisional
+          @update:code="code = $event.replace(/\D/g, '').slice(0, 6)" @update:new-email="newEmail = $event" @confirm-code="verifyCode" @resend-code="resendCode" @start-email-change="changing = true; newEmail = email" @change-email="changeEmail" @cancel-email-change="changing = false" />
+        <button type="button" :disabled="loading" class="flex items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface disabled:opacity-60" @click="changing = true; newEmail = email"><ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás</button>
+      </div>
+
+      <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="3" />
         </div>
+        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
 
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Crea tu organización</h2>
@@ -401,7 +488,7 @@ const brandText = computed(() => {
           <button
             type="button"
             class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface"
-            @click="step = 1"
+            @click="step = 2"
           >
             <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
           </button>
@@ -409,7 +496,7 @@ const brandText = computed(() => {
             type="button"
             :disabled="!canContinueStep2"
             class="flex flex-1 items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:cursor-not-allowed disabled:opacity-60"
-            @click="step = 3"
+            @click="step = 4"
           >
             Continuar <ArrowRight class="h-4 w-4" :stroke-width="2" />
           </button>
@@ -417,10 +504,11 @@ const brandText = computed(() => {
       </div>
 
       <!-- Paso 3: Invita a tu equipo -->
-      <div v-else-if="step === 3" class="flex w-full max-w-[380px] flex-col gap-5">
+      <div v-else-if="step === 4" class="flex w-full max-w-[380px] flex-col gap-5">
         <div class="flex flex-col gap-2">
           <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="4" />
         </div>
+        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
 
         <div>
           <h2 class="text-2xl font-bold text-brand-text">Invita a tu equipo</h2>
@@ -459,7 +547,7 @@ const brandText = computed(() => {
             type="button"
             :disabled="loading"
             class="flex flex-1 items-center justify-center gap-2 rounded border border-brand-control-border px-4 py-[9px] text-sm font-semibold text-brand-text hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-60"
-            @click="step = 2"
+            @click="step = 3"
           >
             <ArrowLeft class="h-4 w-4" :stroke-width="2" /> Atrás
           </button>
@@ -479,14 +567,15 @@ const brandText = computed(() => {
       </div>
 
       <!-- Paso 4: Confirmación de correo -->
-      <div v-else-if="step === 4 && result" class="flex w-full max-w-[380px] flex-col gap-5">
+      <div v-else-if="step === 5 && result" class="flex w-full max-w-[380px] flex-col gap-5">
         <RegistrationStepIndicator :steps="visualRegistrationSteps" :current-step="5" />
+        <RegistrationChosenPlan :chosen-plan="chosenPlan" :chosen-price="chosenPrice" :choice-error="choiceError" :choice="choice" :loading="loading" @change="changePlan" />
         <div class="flex flex-col items-center gap-[14px] text-center">
           <div class="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-brand-success-bg">
             <CircleCheck class="h-7 w-7 text-brand-success-text" :stroke-width="1.75" />
           </div>
           <h2 class="text-[22px] font-bold text-brand-text">Tu organización está creada</h2>
-          <p class="text-sm text-brand-text-secondary">Confirma tu correo para activar el acceso. Enviamos un código a {{ email }}.</p>
+          <p class="text-sm text-brand-text-secondary">Tu correo está verificado. Elige un plan para activar el acceso.</p>
         </div>
 
         <div class="w-full rounded bg-brand-bg px-[14px] py-1">
@@ -513,13 +602,12 @@ const brandText = computed(() => {
         </div>
 
         <NuxtLink
-          to="/confirmar-correo"
+          to="/elegir-plan"
           class="flex w-full items-center justify-center gap-2 rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover"
         >
-          Ver estado de mi correo <ArrowRight class="h-4 w-4" :stroke-width="2" />
+          Elegir plan <ArrowRight class="h-4 w-4" :stroke-width="2" />
         </NuxtLink>
       </div>
-      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
     </div>
   </div>
 </template>

@@ -54,6 +54,7 @@ const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organiza
 
 <template>
   <main class="access-page flex min-h-screen flex-col font-sans lg:flex-row">
+    <div class="fixed right-4 top-4 z-50"><ThemeSelector touch-target /></div>
     <aside class="access-brand hidden w-[560px] shrink-0 flex-col items-center justify-center gap-5 px-16 text-brand-tooltip-fg lg:flex">
       <div class="flex h-16 w-16 items-center justify-center rounded-[14px] bg-brand-switch-thumb/15"><img src="/brand/isotipo-white.png" alt="Flow" class="h-9 w-9 object-contain" /></div>
       <h1 class="text-[28px] font-bold">Flow</h1>
@@ -88,7 +89,6 @@ const visualRegistrationSteps = ['Tu cuenta', 'Verifica tu correo', 'Tu organiza
           />
         </div>
       </div>
-      <div class="flex w-full max-w-[380px] justify-end"><ThemeSelector /></div>
     </section>
   </main>
 </template>

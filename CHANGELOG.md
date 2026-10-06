@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.155.0] - 2026-10-05
+#### [feature]
+- [ERD-197](https://dydasoftware.atlassian.net/browse/ERD-197) - Registro: el correo se verifica en el paso 2, antes de crear la organización. La organización, el usuario y las invitaciones se crean juntos al final, solo con un correo ya verificado; si recargas la página el asistente retoma donde ibas. El selector de tema del registro queda arriba a la derecha, como en el inicio de sesión.
+
 ### [0.154.2] - 2026-10-05
 #### [bugfix]
 - [ERD-198](https://dydasoftware.atlassian.net/browse/ERD-198) - Registro: las pantallas del asistente ahora siguen el diseño nuevo. La tarjeta del plan elegido se reconstruyó (icono, etiqueta «Plan elegido», nombre y precio, «30 días de prueba gratis» y botón «Cambiar») y se muestra bajo el título del paso 1; se ajustaron el indicador de pasos, la cabecera móvil, la pantalla del código y el resumen final.

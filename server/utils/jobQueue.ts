@@ -22,7 +22,7 @@ export type JobStatus = 'pending' | 'processing' | 'succeeded' | 'dead'
 
 export interface ClaimedJob {
   id: string
-  tenantId: string
+  tenantId: string | null
   kind: string
   payload: Record<string, unknown>
   attempts: number
@@ -92,7 +92,9 @@ export const emailJobSchema = z.object({
   encryptedHtml: z.string().max(1_000_000).optional(),
   platform: z.boolean().optional(),
   verificationId: z.string().uuid().optional(),
-  purpose: z.enum(['verification', 'invitation', 'password-reset']).optional(),
+  purpose: z.enum(['verification', 'invitation', 'password-reset', 'registration']).optional(),
+  pendingRegistrationId: z.string().uuid().optional(),
+  pendingCodeHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   attachments: z.array(z.object({ filename: z.string().max(255), content: z.string().max(10_000_000), contentType: z.string().max(255).optional(), cid: z.string().max(255).optional() })).max(20).optional()
 })
 export type EmailJobPayload = z.infer<typeof emailJobSchema>
@@ -233,6 +235,8 @@ function envNumber(name: string, fallback: number): number {
  * ejecuta con un ritmo máximo, hasta agotar el tiempo o la cola.
  */
 export async function runJobQueueTick(options: TickOptions = {}): Promise<TickResult> {
+  try { await (await import('./provisionalRegistration')).purgeProvisionalRegistrations() }
+  catch { logger.warn('provisional_registration_cleanup_failed') }
   if (process.env.REGISTRATION_PENDING_CLEANUP_ENABLED === 'true') {
     try { await (await import('./pendingRegistrationCleanup')).cleanupPendingRegistrations() }
     catch { logger.warn('pending_registration_cleanup_failed') }

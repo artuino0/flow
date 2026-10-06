@@ -7,10 +7,10 @@ export function registrationEvent(event: 'registration_started' | 'plan_preselec
   console.info(JSON.stringify({ event, plan: choice?.plan ?? null, interval: choice?.interval ?? null, source: choice?.utm_source ?? null }))
 }
 
-export async function validateRegistrationChoice(input: unknown): Promise<RegistrationChoice | null> {
+export async function validateRegistrationChoice(input: unknown, executor: Pick<typeof db, 'select'> = db): Promise<RegistrationChoice | null> {
   const choice = normalizeRegistrationChoice(input)
   if (!choice) return null
-  const [plan] = await db.select({ key: plans.code }).from(plans).where(and(eq(plans.code, choice.plan), eq(plans.isPublic, true), eq(plans.isActive, true))).limit(1)
+  const [plan] = await executor.select({ key: plans.code }).from(plans).where(and(eq(plans.code, choice.plan), eq(plans.isPublic, true), eq(plans.isActive, true))).limit(1)
   return plan ? choice : null
 }
 

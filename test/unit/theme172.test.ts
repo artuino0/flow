@@ -29,6 +29,9 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
   const fetch = vi.fn(async (url: string) => {
     if (state.error) throw { data: { statusMessage: 'Error de prueba: enlace inválido o cuenta bloqueada' } }
     if (url === '/api/tenants/check-slug') return { available: true }
+    if (url === '/api/auth/register/status') return { pending: false }
+    if (url === '/api/auth/register/start') return { ok: true, retryAfter: 60, delivery: 'queued' }
+    if (url === '/api/auth/register/verify') return { ok: true }
     if (url === '/api/auth/register') return { ok: true, tenantName: 'Prueba', slug: 'prueba', invitationsSent: 0 }
     if (url === '/api/auth/email-verification/change-email') return { email: 'nuevo@ejemplo.invalid' }
     if (['/api/auth/password-reset/request', '/api/auth/password-reset/confirm', '/api/users/accept-invitation', '/api/auth/email-verification/confirm', '/api/auth/email-verification/resend', '/api/license/activate'].includes(url)) return { ok: true }
@@ -51,6 +54,7 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
     useNuxtApp: () => ({ hook: (name: string, fn: () => void) => { if (name === 'page:finish') finishPage = fn; return () => { if (name === 'page:finish') finishPage = undefined } } }),
     useDeploymentConfig: async () => ({ data: ref({ appMode: 'shared' }) }), navigateTo: navigate, $fetch: fetch,
     useFetch: (url: string) => {
+      if (url === '/api/public/plans') return { data: ref({ plans: [] }) }
       if (url === '/api/auth/email-verification/status') return { data: ref({ delivery: 'sent', retryAfter: 0 }), refresh: vi.fn() }
       if (url !== '/api/license/status') throw new Error(`useFetch no simulado: ${url}`)
       return { data: ref({ required: true, activated: !!state.ready, requestCode: 'LOCAL', customer: 'Prueba', expiresAt: '2027-01-01' }), refresh: vi.fn() }
@@ -60,6 +64,7 @@ async function mount(route: string, mode: 'light' | 'dark', state: State = {}) {
   app.component('ThemeSelector', { render: () => null })
   app.component('RegistrationStepIndicator', compileVueComponent('components/RegistrationStepIndicator.vue'))
   app.component('RegistrationOtpStep', compileVueComponent('components/RegistrationOtpStep.vue'))
+  app.component('RegistrationChosenPlan', compileVueComponent('components/RegistrationChosenPlan.vue'))
   const link: Component = { setup(_, { attrs, slots }) { return () => h('a', { ...attrs, href: attrs.to }, slots.default?.()) } }
   app.component('NuxtLink', link)
   const host = document.createElement('div'); document.body.append(host); apps.push(app); app.mount(host); await flush()
@@ -161,9 +166,11 @@ describe.each(['light', 'dark'] as const)('acceso montado en %s sin red', mode =
     await input(host, 'fullName', 'Prueba'); await input(host, 'email', 'qa@ejemplo.invalid')
     await input(host, 'password', 'Clave-local-1'); await input(host, 'confirmPassword', 'Clave-local-1')
     const checkbox = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!; checkbox.checked = true; checkbox.dispatchEvent(new Event('change', { bubbles: true })); await flush()
-    await click(host, 'Continuar'); expect(host.textContent).toContain('Crea tu organización')
+    await click(host, 'Continuar'); expect(host.textContent).toContain('Verifica tu correo')
+    expect(host.querySelector('#organizationName')).toBeNull()
+    await input(host, 'verification-code', '123456'); await click(host, 'Verificar correo'); expect(host.textContent).toContain('Crea tu organización')
     await input(host, 'organizationName', 'Prueba'); await click(host, 'Continuar'); expect(host.textContent).toContain('Invita a tu equipo')
-    await click(host, 'Omitir por ahora'); expect(host.textContent).toContain('Confirma tu correo')
+    await click(host, 'Omitir por ahora'); expect(host.textContent).toContain('Tu correo está verificado')
     expect(fetch).toHaveBeenCalledWith('/api/auth/register', expect.objectContaining({ method: 'POST', body: expect.objectContaining({ slug: 'prueba', invitees: undefined }) }))
   })
   it('recuperación presenta éxito sin exponer existencia de cuenta', async () => {

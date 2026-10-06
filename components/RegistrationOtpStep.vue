@@ -3,6 +3,8 @@ import { MailCheck, RefreshCw } from '@lucide/vue'
 import { computed } from 'vue'
 
 const props = defineProps<{
+  provisional?: boolean
+  verified?: boolean
   email: string
   code: string
   newEmail: string
@@ -33,7 +35,7 @@ const emit = defineEmits<{
     <div>
       <div class="mb-3 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-brand-info-bg"><MailCheck class="h-6 w-6 text-brand-info-text" aria-hidden="true" /></div>
       <h1 class="text-2xl font-bold text-brand-text">Verifica tu correo</h1>
-      <p class="mt-1 text-sm leading-5 text-brand-text-secondary">Tu organización ya está creada. Enviamos un código de 6 dígitos a <strong class="break-words text-brand-text">{{ email }}</strong>. Ingrésalo para continuar. El código vence en 15 minutos.</p>
+      <p class="mt-1 text-sm leading-5 text-brand-text-secondary"><template v-if="!provisional">Tu organización ya está creada. </template>Enviamos un código de 6 dígitos a <strong class="break-words text-brand-text">{{ email }}</strong>. Ingrésalo para continuar. El código vence en 15 minutos.</p>
     </div>
 
     <p v-if="delivery === 'failed'" role="alert" class="rounded bg-brand-error-bg p-3 text-sm text-brand-error-text">No pudimos enviar el código; reenvíalo.</p>
@@ -42,7 +44,11 @@ const emit = defineEmits<{
     <p v-if="message" role="status" class="rounded bg-brand-success-bg p-3 text-sm text-brand-success-text">{{ message }}</p>
     <p v-if="error" id="verification-error" role="alert" class="rounded bg-brand-error-bg p-3 text-sm text-brand-error-text">{{ error }}</p>
 
-    <form v-if="!changing" class="space-y-4" @submit.prevent="emit('confirm-code')">
+    <div v-if="verified && !changing" class="space-y-4">
+      <p role="status" class="rounded bg-brand-success-bg p-3 text-sm text-brand-success-text">Tu correo está verificado.</p>
+      <button type="button" :disabled="busy" class="w-full rounded bg-brand-orange px-4 py-[9px] text-sm font-semibold text-brand-primary-fg hover:bg-brand-orange-hover disabled:opacity-50" @click="emit('confirm-code')">Continuar</button>
+    </div>
+    <form v-else-if="!changing" class="space-y-4" @submit.prevent="emit('confirm-code')">
       <label for="verification-code" class="sr-only">Código de seis dígitos</label>
       <div class="relative grid grid-cols-6 gap-2 rounded focus-within:outline focus-within:outline-2 focus-within:outline-brand-blue">
         <span v-for="slot in 6" :key="slot" aria-hidden="true" class="flex h-14 items-center justify-center rounded border bg-brand-surface text-2xl font-bold tabular-nums text-brand-text" :class="error ? 'border-brand-error-text' : code.length === slot - 1 ? 'border-brand-orange' : 'border-brand-control-border'">{{ code[slot - 1] || '' }}</span>
@@ -65,6 +71,6 @@ const emit = defineEmits<{
       <button v-if="changing" type="button" :disabled="busy || seconds > 0" class="inline-flex items-center gap-2 rounded border border-brand-control-border px-3 py-3 text-sm font-semibold text-brand-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue disabled:opacity-50" @click="emit('resend-code')"><RefreshCw class="h-4 w-4" aria-hidden="true" />{{ busyAction === 'resend' ? 'Enviando código…' : seconds > 0 ? `Reenviar código en ${secondsDisplay}` : 'Reenviar código' }}</button>
       <button v-if="!changing" type="button" :disabled="busy" class="w-full rounded px-3 py-2 text-center text-sm font-semibold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue disabled:opacity-50" @click="emit('start-email-change')">Usar otro correo</button>
     </div>
-    <p class="border-t border-brand-border-light pt-4 text-xs leading-5 text-brand-text-secondary">Puedes solicitar un código cada minuto y hasta cinco por hora. El enlace de respaldo del correo también permite confirmar tu cuenta.</p>
+    <p class="border-t border-brand-border-light pt-4 text-xs leading-5 text-brand-text-secondary">Puedes solicitar un código cada minuto y hasta cinco por hora. <template v-if="!provisional">El enlace de respaldo del correo también permite confirmar tu cuenta.</template></p>
   </div>
 </template>
