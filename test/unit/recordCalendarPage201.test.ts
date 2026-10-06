@@ -27,7 +27,7 @@ function mountStandaloneCalendar(onCreate: (payload: { date: string; time: strin
   return { host, app }
 }
 
-function mountCalendarPage() {
+function mountCalendarPage(options: { createHandler?: () => Promise<{ id?: string; customData?: { _agenda_conflict?: boolean } }>; confirmHandler?: () => Promise<boolean> } = {}) {
   const config = { enabled: true, startDateField: 'fecha', startTimeField: null, durationField: null, endField: null, titleField: 'fecha', colorField: null, groupByField: null, defaultView: 'day' as const }
   const meta = vue.ref({
     entity: { id: 'agenda-citas', slug: 'agenda-citas', name: 'Citas', workflowConfig: null, labelConfig: null },
@@ -41,6 +41,10 @@ function mountCalendarPage() {
   const requests: Array<{ from: string; to: string }> = []
   const calendarPending = vue.ref(false)
   const calendarData = vue.ref({ config, events: [], relationLabels: {}, timezone: 'America/Mexico_City' })
+  const refreshCalendar = vi.fn()
+  const fetchCreate = vi.fn(options.createHandler ?? (async () => ({ id: 'created-record' })))
+  const confirm = vi.fn(options.confirmHandler ?? (async () => true))
+  const toast = { error: vi.fn(), success: vi.fn(), updated: vi.fn() }
   const globals = {
     ...vue,
     definePageMeta: vi.fn(),
@@ -49,7 +53,9 @@ function mountCalendarPage() {
     useEntityFields: async () => ({ data: meta, pending: vue.ref(false), error: vue.ref(null) }),
     useIsAdmin: async () => ({ data: vue.ref(false) }),
     useRequestHeaders: () => ({}),
-    useToast: () => ({ error: vi.fn(), success: vi.fn() }),
+    useToast: () => toast,
+    useConfirm: () => ({ confirm }),
+    $fetch: fetchCreate,
     navigateTo: vi.fn(),
     useFetch: async (url: string, options: { query?: vue.ComputedRef<Record<string, unknown>> } = {}) => {
       if (url.endsWith('/calendar')) {
@@ -59,7 +65,7 @@ function mountCalendarPage() {
           requests.push({ from: String(value.from), to: String(value.to) })
           calendarPending.value = true
         })
-        return { data: calendarData, pending: calendarPending, error: vue.ref(null), refresh: vi.fn() }
+        return { data: calendarData, pending: calendarPending, error: vue.ref(null), refresh: refreshCalendar }
       }
       const data = url.endsWith('/board')
         ? vue.ref(null)
@@ -69,6 +75,7 @@ function mountCalendarPage() {
   }
   const childGlobals = { ...vue, useToast: globals.useToast }
   const recordCalendar = compileVueComponent('components/RecordCalendar.vue', { '~/utils/calendar': calendar }, childGlobals)
+  const recordCreateForm = compileVueComponent('components/RecordCreateForm.vue', { '@lucide/vue': { Clock: { render: () => null } } }, globals)
   const page = compileVueComponent('pages/registros/[entity]/index.vue', {
     '~/utils/calendar': calendar,
     '~/utils/listFilters': listFilters,
@@ -76,15 +83,81 @@ function mountCalendarPage() {
   }, globals)
   const app = vue.createApp({ render: () => vue.h(vue.Suspense, null, { default: () => vue.h(page) }) })
   app.component('RecordCalendar', recordCalendar)
-  app.component('NuxtLink', vue.defineComponent({ props: ['to'], setup: (props, { slots }) => () => vue.h('a', { href: props.to }, slots.default?.()) }))
+  app.component('RecordCreateForm', recordCreateForm)
+  app.component('DynamicForm', vue.defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], setup: (props, { emit, expose }) => { expose({ validateAll: () => true }); return () => vue.h('input', { value: (props.modelValue as Record<string, unknown>)?.fecha ?? '', onInput: (event: Event) => emit('update:modelValue', { ...props.modelValue, fecha: (event.target as HTMLInputElement).value }) }) } }))
+  app.component('AgendaConflictOverride', { render: () => null })
+  app.component('NuxtLink', vue.defineComponent({ props: ['to'], setup: (props, { slots }) => () => vue.h('a', { href: typeof props.to === 'string' ? props.to : props.to?.path }, slots.default?.()) }))
   app.component('RecordKanbanBoard', { render: () => null })
   app.component('DynamicTable', { render: () => null })
   const host = document.createElement('div')
   document.body.append(host)
   app.mount(host)
   apps.push(app)
-  return { app, host, requests, calendarPending, calendarData }
+  return { app, host, requests, calendarPending, calendarData, refreshCalendar, fetchCreate, toast, confirm }
 }
+
+it('abre el panel desde el hueco con la fecha y hora seleccionadas, y al guardar refresca sin salir del calendario', async () => {
+  const { host, refreshCalendar, fetchCreate } = mountCalendarPage()
+  await flush()
+  const slot = [...host.querySelectorAll<HTMLButtonElement>('.calendar-time-slot button')].find(button => button.getAttribute('aria-label')?.includes('10:00'))
+  expect(slot).toBeTruthy()
+  slot!.click()
+  await flush()
+  const dialog = document.body.querySelector('[role="dialog"]')
+  expect(dialog).toBeTruthy()
+  expect(dialog?.textContent).toContain(host.querySelector('.calendar-mobile-day strong')?.textContent)
+  expect(dialog?.textContent).toContain('10:00')
+  expect(dialog?.querySelector('a')?.getAttribute('href')).toContain('/registros/agenda-citas/nuevo')
+  ;(dialog?.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+  await flush()
+  expect(fetchCreate).toHaveBeenCalledWith('/api/records/agenda-citas', expect.objectContaining({ method: 'POST' }))
+  expect(refreshCalendar).toHaveBeenCalledOnce()
+  expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+  expect(host.querySelector('.calendar-views button.active')?.textContent).toBe('Día')
+})
+
+it('mantiene abierto el panel y conserva los campos si el servidor responde con conflicto de agenda', async () => {
+  const { host, fetchCreate, toast } = mountCalendarPage({ createHandler: async () => { throw { statusCode: 409, data: { statusMessage: 'Hueco ya ocupado' } } } })
+  await flush()
+  ;([...host.querySelectorAll<HTMLButtonElement>('.calendar-time-slot button')].find(button => button.getAttribute('aria-label')?.includes('10:00')) as HTMLButtonElement).click()
+  await flush()
+  const dialog = document.body.querySelector('[role="dialog"]')!
+  const input = dialog.querySelector('input')!
+  input.value = '2026-10-07'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flush()
+  ;(dialog.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+  await flush()
+  expect(fetchCreate).toHaveBeenCalledOnce()
+  expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('Hueco ya ocupado')
+  expect((dialog.querySelector('input') as HTMLInputElement).value).toBe('2026-10-07')
+  expect(document.body.querySelector('[role="dialog"]')).toBeTruthy()
+  expect(toast.error).toHaveBeenCalledOnce()
+})
+
+it('atrapa el foco, pide confirmación por Escape con cambios y restaura el foco al calendario', async () => {
+  const confirm = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  const { host } = mountCalendarPage({ confirmHandler: confirm })
+  await flush()
+  const slot = [...host.querySelectorAll<HTMLButtonElement>('.calendar-time-slot button')].find(button => button.getAttribute('aria-label')?.includes('10:00'))!
+  slot.focus()
+  slot.click()
+  await flush()
+  const dialog = document.body.querySelector('[role="dialog"]')!
+  const input = dialog.querySelector('input')!
+  expect(dialog.contains(document.activeElement)).toBe(true)
+  input.value = 'cambio'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flush()
+  dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await flush()
+  expect(confirm).toHaveBeenCalledOnce()
+  expect(document.body.querySelector('[role="dialog"]')).toBeTruthy()
+  dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await flush()
+  expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+  expect(document.activeElement).toBe(slot)
+})
 
 it('recuerda Semana al remontar y consulta el rango semanal actual con una sola actualización extra como máximo', async () => {
   localStorage.setItem('flow-record-calendar-view:agenda-citas', 'week')

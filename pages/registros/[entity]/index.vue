@@ -251,6 +251,10 @@ type CalendarView = 'day' | 'week' | 'month'
 const calendarView = ref<CalendarView>(initialCalendarView)
 const calendarViewReady = ref(false)
 const calendarRangeValue = ref(calendarRange(new Date(), calendarView.value))
+const calendarCreateOpen = ref(false)
+const calendarCreateValues = ref<Record<string, string>>({})
+const calendarCreateDate = ref('')
+const calendarCreateTime = ref('')
 function onCalendarViewChange(value: CalendarView) {
   calendarView.value = value
   if (import.meta.client) localStorage.setItem(`flow-record-calendar-view:${slug}`, value)
@@ -325,7 +329,14 @@ function onCalendarCreate(payload: { date: string; time: string }) {
       ? localDateTimeToIso(payload.date, payload.time, calendarData.value?.timezone ?? 'America/Mexico_City')
       : payload.time
   }
-  void navigateTo({ path: `/registros/${slug}/nuevo`, query })
+  calendarCreateValues.value = query
+  calendarCreateDate.value = payload.date
+  calendarCreateTime.value = payload.time
+  calendarCreateOpen.value = true
+}
+function onCalendarCreated() {
+  calendarCreateOpen.value = false
+  void refreshCalendar()
 }
 function onCalendarUpdated(updated: CalendarResponse['events'][number]) {
   reconcileBoardRecord({ id: updated.id, customData: updated.customData, updatedAt: updated.updatedAt })
@@ -678,6 +689,17 @@ async function onDelete(id: string) {
         </div>
       </template>
     </main>
+    <RecordCreateForm
+      v-if="calendarCreateOpen && meta"
+      mode="drawer"
+      :slug="slug"
+      :data="meta"
+      :initial-values="calendarCreateValues"
+      :calendar-date="calendarCreateDate"
+      :calendar-time="calendarCreateTime"
+      @close="calendarCreateOpen = false"
+      @created="onCalendarCreated"
+    />
   </div>
 </template>
 

@@ -31,7 +31,7 @@ export const migratedThemeFiles = [
   'components/DynamicFileValue.vue', 'components/DynamicTable.vue', 'components/FieldDateValue.vue',
   'components/FieldFormModal.vue', 'components/FieldImpactWarningModal.vue', 'components/FieldValidationParameter.vue',
   'components/ReportOptionSelect.vue', 'components/RecordAssociationsPanel.vue', 'components/RecordDetailView.vue',
-  'components/RecordLinesTable.vue', 'components/RecordKanbanBoard.vue', 'components/RecordCalendar.vue',
+  'components/RecordLinesTable.vue', 'components/RecordKanbanBoard.vue', 'components/RecordCalendar.vue', 'components/RecordCreateForm.vue',
   'components/ActivityTimeline.vue', 'components/VariableTextField.vue',
   'pages/registros/[entity]/index.vue', 'pages/registros/[entity]/[id]/index.vue',
   'pages/registros/[entity]/nuevo.vue', 'pages/registros/[entity]/[id]/editar.vue',

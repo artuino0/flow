@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.158.0] - 2026-10-06
+#### [feature]
+- [ERD-203](https://dydasoftware.atlassian.net/browse/ERD-203) - Calendario de registros: al hacer clic en un día y hora, el registro se captura en un panel lateral a la derecha, sin salir del calendario, con la fecha y la hora ya llenas. Al guardar, el calendario se actualiza y conserva la vista. El panel incluye un enlace para abrir el formulario en página completa.
+
 ### [0.157.2] - 2026-10-06
 #### [bugfix]
 - [ERD-202](https://dydasoftware.atlassian.net/browse/ERD-202) - Calendario de registros: recuerda la vista elegida (Día, Semana o Mes) en cada módulo; las horas quedan alineadas con sus líneas; se muestran las 24 horas con el desplazamiento inicial en las 07:00; y una línea roja marca la hora actual en el día de hoy.
