@@ -23,7 +23,7 @@ export const navigationLayoutSchema = z.object({ groups: z.array(groupSchema).ma
 export type NavigationLayout = z.infer<typeof navigationLayoutSchema>
 export type NavigationGroup = NavigationLayout['groups'][number]
 export interface NavigationEntity {
-  id: string; slug: string; name: string; icon: string | null; moduleKind: string; showInMenu?: boolean
+  id: string; slug: string; name: string; icon: string | null; moduleKind: string; showInMenu?: boolean; canCreate?: boolean
 }
 export interface NavigationNode {
   id: string; name: string; icon: string | null

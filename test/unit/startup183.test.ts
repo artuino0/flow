@@ -8,6 +8,7 @@ import * as flowApps from '../../utils/flowApps'
 import * as sidebar from '../../utils/sidebarPlanUsage'
 import * as tours from '../../utils/onboardingTours'
 import * as siteNav from '../../utils/siteNavigation'
+import * as unifiedNavigation from '../../utils/unifiedNavigation'
 import * as returnToRoute from '../../utils/returnToRoute'
 import { createMemoryHistory, createRouter, isNavigationFailure } from 'vue-router'
 import * as realtimeRetry from '../../utils/realtimeRetry'
@@ -35,6 +36,7 @@ function harness(client = true) {
     if (url === '/api/license/status') return { required: false, activated: false }
     if (url === '/api/apps') return { apps: flowApps.FLOW_APP_LIST.map(app => ({ key: app.key, enabled: true, accessible: true })) }
     if (url === '/api/nav/entities') return { groups: [], unassigned: [] }
+    if (url === '/api/navigation/pins') return { keys: [] }
     if (url.startsWith('/api/entities')) return { entities: [] }
     if (url === '/api/dashboard/operational') return { modules: [], activity: [], activityTotal: 0 }
     if (url === '/api/dashboard/shortcuts') return { available: [], shortcuts: [] }
@@ -86,11 +88,11 @@ function harness(client = true) {
   }, options)
   const load = (file: string, imports: Record<string, unknown> = {}) => Object.assign(globals, loadNuxtSource183(file, globals, imports, client))
   load('composables/useAuth.ts'); load('composables/useIsAdmin.ts'); load('composables/useFlowAppAccess.ts')
-  load('composables/useFlowApps.ts', { '~/utils/flowApps': flowApps })
   if (readFileSyncSafe('composables/useAfterFirstPaint.ts')) load('composables/useAfterFirstPaint.ts')
   if (readFileSyncSafe('composables/useShellResource.ts')) load('composables/useShellResource.ts')
   load('composables/useRealtime.ts', { '~/utils/realtimeRetry': realtimeRetry })
   load('composables/useDesignerPlanUsage.ts'); load('composables/useBillingOverview.ts'); load('composables/useChat.ts')
+  load('composables/useUnifiedNavigation.ts', { '~/utils/unifiedNavigation': unifiedNavigation })
   load('composables/useNotifications.ts'); load('composables/useIdleTimeout.ts')
   load('composables/usePlanLimit.ts', { '~/utils/planLimit': planLimit })
   Object.assign(nuxtApp, { runWithContext: (fn: () => unknown) => fn() })
@@ -124,11 +126,12 @@ it('conteo del login, cascarón real y navegación: sin roles por red ni duplica
   const middleware = loadNuxtSource183('middleware/auth.global.ts', h.globals, { '~/utils/flowApps': flowApps }).default
   await middleware(h.route)
   const imports = { '~/utils/sidebarPlanUsage': sidebar, '~/utils/onboardingTours': tours, '~/utils/siteNavigation': siteNav,
+    '~/utils/unifiedNavigation': unifiedNavigation,
     '~/utils/flowApps': flowApps, '~/components/AppNavGroup.vue': stub, '~/components/AppNavEntity.vue': stub,
     '~/utils/moduleIcons': { moduleIconComponent: () => stub }, '~/utils/theme': { contentNeedsLight: () => false },
     '~/utils/returnToRoute': { IDLE_RETURN_KEY: 'idle', safeInternalRoute: () => null } }
   const component = (file: string) => compileVueComponent(file, imports, h.globals)
-  mount(component('layouts/default.vue'), { AppNav: component('components/AppNav.vue'), FlowAppLauncher: component('components/FlowAppLauncher.vue'),
+  mount(component('layouts/default.vue'), { AppNav: component('components/AppNav.vue'), QuickCreate: component('components/QuickCreate.vue'), NavigationMore: component('components/NavigationMore.vue'), NavigationPinnedItem: component('components/NavigationPinnedItem.vue'),
     SidebarPlanUsage: component('components/SidebarPlanUsage.vue'), NotificationCenter: component('components/NotificationCenter.vue'), ChatFloatingDock: component('components/ChatFloatingDock.vue') })
   const host = mount(component('pages/index.vue'))
   await flush()
@@ -189,6 +192,7 @@ it.each([
   { name: 'correo sin verificar', verified: false, target: '/modulos', expected: '/confirmar-correo' },
   { name: 'onboarding pendiente', onboarding: 'plan_pending', target: '/modulos', expected: '/elegir-plan' },
   { name: 'app deshabilitada', disabled: true, target: '/sites', expected: '/' },
+  { name: 'app activa sin permiso', denied: true, target: '/sites/pages', expected: '/' },
   { name: 'sin sesión', anonymous: true, target: '/modulos', expected: { path: '/login', query: { redirect: '/modulos' } } },
   { name: 'login autenticado', target: '/login', expected: '/' },
   { name: 'confirmación de correo ya completada', target: '/confirmar-correo', expected: '/' },
@@ -202,6 +206,7 @@ it.each([
     if (scenario.anonymous && (url === '/api/auth/me' || url === '/api/auth/refresh')) throw new Error('anonymous')
     if (url === '/api/license/status') return scenario.license ?? { required: false, activated: false }
     if (scenario.disabled && url === '/api/apps') return { apps: flowApps.FLOW_APP_LIST.map(app => ({ key: app.key, enabled: false, accessible: false })) }
+    if (scenario.denied && url === '/api/apps') return { apps: flowApps.FLOW_APP_LIST.map(app => ({ key: app.key, enabled: true, accessible: app.key !== 'sites' })) }
     return original(url)
   })
   const middleware = loadNuxtSource183('middleware/auth.global.ts', h.globals, { '~/utils/flowApps': flowApps }).default

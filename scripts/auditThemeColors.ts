@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 /** Lista cerrada: cascarón HU-161, registros HU-162, ajustes HU-163 y módulos/chat HU-164. */
 export const migratedThemeFiles = [
+  'components/NavigationMore.vue', 'components/NavigationPinnedItem.vue', 'components/QuickCreate.vue',
   'components/RegistrationChosenPlan.vue',
   'pages/cuenta-suspendida.vue', 'pages/exportar.vue', 'pages/platform/index.vue', 'pages/platform/accounts.vue', 'components/AccountExport.vue', 'components/AccountPayment.vue',
   'components/SitesSeoPanel.vue', 'components/SitesSeoChecklist.vue', 'components/SitesSeoSummary.vue',
@@ -22,7 +23,7 @@ export const migratedThemeFiles = [
   'app.vue', 'assets/css/main.css', 'layouts/default.vue', 'pages/index.vue',
   'components/AppNav.vue', 'components/AppNavEntity.vue', 'components/AppNavGroup.vue', 'components/AppNavTooltip.vue',
   'components/ChattitoHelp.vue', 'components/ChattitoPanel.vue', 'components/ChattitoToggle.vue',
-  'components/FlowAppLauncher.vue', 'components/GlobalSearch.vue', 'components/NotificationCenter.vue',
+  'components/GlobalSearch.vue', 'components/NotificationCenter.vue',
   'components/InactivityWarningModal.vue', 'components/SettingsConfirmDialog.vue', 'components/SidebarPlanUsage.vue',
   'components/ThemeSelector.vue', 'components/ToastContainer.vue', 'components/ListPageHeader.vue', 'components/PanelResizeHandle.vue',
   'components/DynamicForm.vue', 'components/DynamicSelectField.vue', 'components/DynamicRelationField.vue',
@@ -132,7 +133,6 @@ export const themeColorExceptions: Record<string, Record<string, number>> = {
   'components/AppNavGroup.vue': { '#33475B26': 1 },
   'components/AppNavTooltip.vue': { '#33475B20': 1, '#33475b33': 1 },
   'components/ChattitoHelp.vue': { '#33475b14': 1 },
-  'components/FlowAppLauncher.vue': { 'rgba(33,61,94,.17)': 1 },
   'components/NotificationCenter.vue': { '#33475B22': 1 },
   'components/SidebarPlanUsage.vue': { '#33475b26': 1 },
   'components/DynamicTable.vue': { '#33475B14': 1 },

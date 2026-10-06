@@ -743,6 +743,13 @@
       "when": 1791244805000,
       "breakpoints": true,
       "tag": "0105_account_context"
+    },
+    {
+      "version": "7",
+      "idx": 106,
+      "when": 1791244806000,
+      "breakpoints": true,
+      "tag": "0106_navigation_pins"
     }
   ]
 }

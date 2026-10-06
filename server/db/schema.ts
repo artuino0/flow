@@ -1676,3 +1676,10 @@ export const agentUsage = pgTable('agent_usage', {
  messagesTotal: integer('messages_total').notNull().default(0), actions: jsonb('actions').notNull().default({ navigate: 0, point: 0, 'start-tour': 0 }),
  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [uniqueIndex('agent_usage_tenant_user_day').on(table.tenantId, table.userId, table.day)])
+
+export const navigationPins = pgTable('navigation_pins', {
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemKey: text('item_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, table => ({ scopeKey: primaryKey({ columns: [table.tenantId, table.userId, table.itemKey] }) }))

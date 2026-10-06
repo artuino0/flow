@@ -1,5 +1,9 @@
 # Changelog
 
+### [0.157.0] - 2026-10-06
+#### [feature]
+- [ERD-199](https://dydasoftware.atlassian.net/browse/ERD-199) - Navegación única: desaparece el selector de aplicaciones y todo queda en una sola barra lateral (Tablero, tus accesos anclados, módulos, Sites, Automatización y Facturación). El menú «Más» muestra todo por área y permite anclar lo que más usas (hasta 12 accesos, guardados por usuario). Ajustes se abre con el engrane del encabezado y hay un botón «+» para crear registros rápido.
+
 ### [0.156.1] - 2026-10-06
 #### [bugfix]
 - [ERD-200](https://dydasoftware.atlassian.net/browse/ERD-200) - Registro: la tarjeta «Plan elegido» ahora aparece una sola vez, arriba del indicador de pasos y en el mismo lugar durante todo el asistente; antes se repetía dentro de cada paso.

@@ -72,7 +72,7 @@ function toggle() {
 </script>
 <template>
   <div>
-    <button ref="trigger" type="button" :aria-label="group.name" :aria-expanded="compact ? !!panelOpen : open" :aria-controls="compact ? panelId : undefined" :aria-haspopup="compact ? 'dialog' : undefined" class="relative flex w-full items-center gap-2 rounded py-2 text-left text-[13px] font-semibold" :class="[compact ? 'justify-center px-1 min-h-10' : 'px-3', active || panelOpen ? 'bg-brand-sidebar-active-bg text-brand-blue' : 'text-brand-text hover:bg-brand-bg']" @click="compact ? togglePanel() : toggle()" @keydown.esc="closePanel(true)">
+    <button ref="trigger" type="button" :aria-label="group.name" :aria-expanded="compact ? !!panelOpen : open" :aria-controls="compact ? panelId : undefined" :aria-haspopup="compact ? 'dialog' : undefined" class="relative flex h-9 min-h-9 max-sm:h-11 max-sm:min-h-11 w-full items-center gap-2 rounded py-0 text-left text-[13px] font-semibold" :class="[compact ? 'justify-center px-1' : 'px-3', active || panelOpen ? 'bg-brand-sidebar-active-bg text-brand-blue' : 'text-brand-text hover:bg-brand-bg']" @click="compact ? togglePanel() : toggle()" @keydown.esc="closePanel(true)">
       <component :is="moduleIconComponent(group.icon)" class="h-4 w-4 shrink-0" :stroke-width="1.75" />
       <span v-if="!compact" class="flex-1 leading-5">{{ group.name }}</span>
       <ChevronDown v-if="!compact" class="h-3.5 w-3.5 shrink-0" :class="{ '-rotate-90': !open }" />

@@ -37,7 +37,6 @@ const profileMenuOpen = ref(false)
 const navRoute = useRoute()
 const forceLightContent = computed(() => contentNeedsLight(navRoute.meta))
 const { navigationTourId: activeTourId, navigationTourIndex: activeTourIndex } = useOnboarding()
-const { activeKey } = useFlowApps()
 const editorFullscreen = computed(() => navRoute.meta.editorFullscreen === true)
 // El chat es una superficie de trabajo de borde a borde. A diferencia de
 // formularios y listados, no debe heredar el padding ni el scroll general del
@@ -103,24 +102,25 @@ async function onLogout(reason?: 'inactividad') {
 
 <template>
   <div class="flex h-screen flex-col overflow-hidden bg-brand-bg font-sans">
-    <header class="flex h-14 shrink-0 items-center justify-between border-b border-brand-border-light bg-brand-surface px-6">
+    <header class="flex min-h-14 shrink-0 flex-wrap items-center justify-between border-b border-brand-border-light bg-brand-surface px-3 sm:h-14 sm:flex-nowrap sm:px-6">
       <div class="flex items-center gap-2">
-        <button v-if="!editorFullscreen" type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
+        <button v-if="!editorFullscreen" type="button" aria-label="Abrir menú" :aria-expanded="mobileMenuOpen" class="flex h-11 w-11 items-center justify-center rounded text-brand-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue sm:hidden" @click="mobileMenuOpen = true; sidebarCollapsed = false"><Menu class="h-5 w-5" /></button>
         <img src="/brand/isotipo.png" alt="Flow" class="flow-mark-light h-7 w-7 object-contain" />
         <img src="/brand/isotipo-white.png" alt="Flow" class="flow-mark-dark h-7 w-7 object-contain" />
         <span class="text-base font-bold text-brand-text">Flow</span>
         <div class="mx-1 hidden h-5 w-px bg-brand-border-light sm:block" />
-        <FlowAppLauncher v-if="!editorFullscreen" />
       </div>
 
       <GlobalSearch />
-      <div class="flex items-center gap-2 sm:gap-4">
-        <NuxtLink v-if="chat.canAccess.value" to="/chat" aria-label="Abrir chat" class="relative flex h-8 w-8 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/25">
+      <div class="flex min-h-12 w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap sm:gap-4">
+        <QuickCreate v-if="!editorFullscreen" />
+        <NuxtLink v-if="chat.canAccess.value" to="/chat" aria-label="Abrir chat" class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/25 sm:h-8 sm:w-8">
           <MessageCircle class="h-[18px] w-[18px]" :stroke-width="1.75" />
           <span v-if="chat.unreadCount.value" class="absolute -right-1.5 -top-1.5 flex min-w-[17px] items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold leading-[17px] text-brand-primary-fg">{{ chat.unreadCount.value > 99 ? '99+' : chat.unreadCount.value }}</span>
         </NuxtLink>
-        <NotificationCenter />
-        <ThemeSelector />
+        <div class="[&_button[data-tour=notifications]]:h-11 [&_button[data-tour=notifications]]:w-11 sm:[&_button[data-tour=notifications]]:h-8 sm:[&_button[data-tour=notifications]]:w-8"><NotificationCenter /></div>
+        <NuxtLink to="/ajustes" aria-label="Ajustes" class="flex h-11 w-11 shrink-0 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"><Settings class="h-[18px] w-[18px]" :stroke-width="1.75" /></NuxtLink>
+        <ThemeSelector touch-target />
         <ChattitoToggle v-if="user?.authenticated && user.emailVerified && user.onboardingStatus === 'complete'" />
 
         <div class="h-6 w-px bg-brand-border-light" />
@@ -131,7 +131,7 @@ async function onLogout(reason?: 'inactividad') {
             aria-label="Abrir menú de cuenta"
             data-tour="account"
             :aria-expanded="profileMenuOpen"
-            class="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg"
+            class="flex min-h-11 items-center gap-2 rounded px-1.5 py-1 hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             @click.stop="profileMenuOpen = !profileMenuOpen"
           >
             <div class="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-brand-blue-bg">
@@ -186,24 +186,27 @@ async function onLogout(reason?: 'inactividad') {
         v-if="!editorFullscreen"
         data-tour="menu"
         class="z-20 h-full shrink-0 flex-col border-r border-brand-border-light bg-brand-surface transition-[width] duration-150 sm:static sm:flex"
-        :class="[sidebarCollapsed ? 'w-16' : activeKey === 'sites' ? 'w-60' : 'w-80', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
+        :class="[sidebarCollapsed ? 'w-16' : 'w-60', mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 flex overflow-y-auto' : 'hidden']"
         @keydown.esc="mobileMenuOpen = false"
       >
         <div class="flex shrink-0 items-center border-b border-brand-border-light py-3.5" :class="sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'">
           <span v-if="!sidebarCollapsed" class="text-xs font-bold tracking-wide text-brand-text-muted">MENÚ</span>
-          <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="rounded p-1 text-brand-text-secondary sm:hidden" @click="mobileMenuOpen = false"><X class="h-4 w-4" /></button>
+          <button v-if="mobileMenuOpen" type="button" aria-label="Cerrar menú" class="flex h-11 w-11 items-center justify-center rounded text-brand-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue sm:hidden" @click="mobileMenuOpen = false"><X class="h-4 w-4" /></button>
+
+        </div>
+        <div class="flex min-h-0 flex-1 flex-col gap-px">
+          <AppNav :compact="sidebarCollapsed" />
+        </div>
+        <div class="flex shrink-0 justify-end border-t border-brand-border-light px-2 py-1">
           <button
             type="button"
             :title="sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'"
-            class="flex h-[26px] w-[26px] items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg"
+            class="flex h-11 w-11 items-center justify-center rounded text-brand-text-secondary hover:bg-brand-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
             @click="toggleSidebar"
           >
             <PanelLeftOpen v-if="sidebarCollapsed" class="h-4 w-4" :stroke-width="1.75" />
             <PanelLeftClose v-else class="h-4 w-4" :stroke-width="1.75" />
           </button>
-        </div>
-        <div class="flex min-h-0 flex-1 flex-col gap-px">
-          <AppNav :compact="sidebarCollapsed" />
         </div>
       </aside>
 
@@ -212,7 +215,7 @@ async function onLogout(reason?: 'inactividad') {
       </main>
     </div>
 
-    <div v-if="settingsDirty" class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between gap-4 border-t border-brand-border-light bg-brand-surface px-6 py-4 shadow-[0_-2px_8px_#33475B12]" :class="sidebarCollapsed ? 'sm:left-16' : activeKey === 'sites' ? 'sm:left-60' : 'sm:left-80'">
+    <div v-if="settingsDirty" class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between gap-4 border-t border-brand-border-light bg-brand-surface px-6 py-4 shadow-[0_-2px_8px_#33475B12]" :class="sidebarCollapsed ? 'sm:left-16' : 'sm:left-60'">
       <span class="text-xs font-medium text-brand-warning-text">Cambios sin guardar</span>
       <div class="flex gap-3"><button class="rounded border border-brand-border px-4 py-2 text-[13px] font-semibold text-brand-text hover:bg-brand-bg" @click="discardHandler?.()">Descartar</button><button class="rounded bg-brand-orange px-4 py-2 text-[13px] font-semibold text-brand-primary-fg hover:bg-brand-orange-hover" @click="saveHandler?.()">Guardar cambios</button></div>
     </div>
